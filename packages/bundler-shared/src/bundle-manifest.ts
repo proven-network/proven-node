@@ -78,7 +78,7 @@ export class BundleManifestGenerator {
       },
       modules,
       entrypoints,
-      sources: sources.map(source => ({
+      sources: sources.map((source) => ({
         relativePath: source.relativePath,
         content: source.content,
         size: source.size,
@@ -266,7 +266,8 @@ export class BundleManifestGenerator {
   private calculateBundleSize(sources: SourceFile[] | SourceInfo[]): number {
     return sources.reduce((total, source) => {
       const contentSize = Buffer.byteLength(source.content, 'utf8');
-      const sourceMapSize = ('sourceMap' in source && source.sourceMap) ? Buffer.byteLength(source.sourceMap, 'utf8') : 0;
+      const sourceMapSize =
+        'sourceMap' in source && source.sourceMap ? Buffer.byteLength(source.sourceMap, 'utf8') : 0;
       return total + contentSize + sourceMapSize;
     }, 0);
   }

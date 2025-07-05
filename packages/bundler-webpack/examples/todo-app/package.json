@@ -23,7 +23,12 @@
     "ts-node": "^10.9.2",
     "@types/node": "^20.10.4"
   },
-  "keywords": ["proven-network", "webpack", "example", "todo"],
+  "keywords": [
+    "proven-network",
+    "webpack",
+    "example",
+    "todo"
+  ],
   "author": "Proven Network",
   "license": "MIT"
 }

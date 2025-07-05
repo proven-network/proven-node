@@ -22,7 +22,7 @@ const server = http.createServer((req, res) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
 
   let filePath = path.join(__dirname, req.url === '/' ? 'index.html' : req.url);
-  
+
   // Security check - ensure file is within the project directory
   if (!filePath.startsWith(__dirname)) {
     res.writeHead(403);

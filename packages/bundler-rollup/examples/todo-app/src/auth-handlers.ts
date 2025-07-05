@@ -6,14 +6,14 @@ import { getCurrentIdentity } from '@proven-network/session';
  */
 export const getCurrentUser = run(() => {
   console.log('Getting current user identity');
-  
+
   const identity = getCurrentIdentity();
-  
+
   if (!identity) {
     console.log('No user currently authenticated');
     return { authenticated: false, user: null };
   }
-  
+
   console.log('User is authenticated:', identity);
   return {
     authenticated: true,
@@ -30,7 +30,7 @@ export const getCurrentUser = run(() => {
 export const isAuthenticated = run((): boolean => {
   const identity = getCurrentIdentity();
   const isAuth = !!identity;
-  
+
   console.log('Authentication check:', isAuth);
   return isAuth;
 });
@@ -40,7 +40,7 @@ export const isAuthenticated = run((): boolean => {
  */
 export const getUserPermissions = run(() => {
   const identity = getCurrentIdentity();
-  
+
   if (!identity) {
     console.log('No identity, returning guest permissions');
     return {
@@ -49,14 +49,14 @@ export const getUserPermissions = run(() => {
       canDelete: false,
     };
   }
-  
+
   // For this example, authenticated users have full permissions
   const permissions = {
     canRead: true,
     canWrite: true,
     canDelete: true,
   };
-  
+
   console.log('User permissions:', permissions);
   return permissions;
 });

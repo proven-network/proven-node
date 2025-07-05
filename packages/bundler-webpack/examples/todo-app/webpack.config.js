@@ -26,7 +26,7 @@ module.exports = {
   plugins: [
     // TODO: Add ProvenWebpackPlugin when bundler is working
     // new ProvenWebpackPlugin({
-    //   output: 'development', 
+    //   output: 'development',
     //   mode: 'development',
     //   entryPatterns: ['./src/**/*.ts'],
     //   sourceMaps: true,

@@ -23,7 +23,7 @@ export default {
     }),
     // TODO: Add provenRollupPlugin when bundler is working
     // provenRollupPlugin({
-    //   output: 'development', 
+    //   output: 'development',
     //   mode: isProduction ? 'production' : 'development',
     //   entryPatterns: ['./src/**/*.ts'],
     //   sourceMaps: !isProduction,

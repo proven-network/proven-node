@@ -10,7 +10,7 @@ let nextId = 1;
  */
 export const createTodo = run((request: CreateTodoRequest): Todo => {
   console.log('Creating new todo:', request);
-  
+
   const now = new Date();
   const todo: Todo = {
     id: `todo-${nextId++}`,
@@ -20,10 +20,10 @@ export const createTodo = run((request: CreateTodoRequest): Todo => {
     createdAt: now,
     updatedAt: now,
   };
-  
+
   todos.push(todo);
   console.log(`Created todo "${todo.title}" with ID: ${todo.id}`);
-  
+
   return todo;
 });
 
@@ -32,21 +32,22 @@ export const createTodo = run((request: CreateTodoRequest): Todo => {
  */
 export const getTodos = run((filter?: TodoFilter): Todo[] => {
   console.log('Fetching todos with filter:', filter);
-  
+
   let filteredTodos = [...todos];
-  
+
   if (filter?.completed !== undefined) {
-    filteredTodos = filteredTodos.filter(todo => todo.completed === filter.completed);
+    filteredTodos = filteredTodos.filter((todo) => todo.completed === filter.completed);
   }
-  
+
   if (filter?.search) {
     const searchLower = filter.search.toLowerCase();
-    filteredTodos = filteredTodos.filter(todo => 
-      todo.title.toLowerCase().includes(searchLower) ||
-      todo.description?.toLowerCase().includes(searchLower)
+    filteredTodos = filteredTodos.filter(
+      (todo) =>
+        todo.title.toLowerCase().includes(searchLower) ||
+        todo.description?.toLowerCase().includes(searchLower)
     );
   }
-  
+
   console.log(`Returning ${filteredTodos.length} todos`);
   return filteredTodos;
 });
@@ -56,22 +57,22 @@ export const getTodos = run((filter?: TodoFilter): Todo[] => {
  */
 export const updateTodo = run((request: UpdateTodoRequest): Todo => {
   console.log('Updating todo:', request);
-  
-  const todoIndex = todos.findIndex(todo => todo.id === request.id);
+
+  const todoIndex = todos.findIndex((todo) => todo.id === request.id);
   if (todoIndex === -1) {
     throw new Error(`Todo with ID ${request.id} not found`);
   }
-  
+
   const todo = todos[todoIndex];
   const updatedTodo: Todo = {
     ...todo,
     ...request,
     updatedAt: new Date(),
   };
-  
+
   todos[todoIndex] = updatedTodo;
   console.log(`Updated todo "${updatedTodo.title}"`);
-  
+
   return updatedTodo;
 });
 
@@ -80,17 +81,17 @@ export const updateTodo = run((request: UpdateTodoRequest): Todo => {
  */
 export const deleteTodo = run((todoId: string): boolean => {
   console.log('Deleting todo:', todoId);
-  
+
   const initialLength = todos.length;
-  todos = todos.filter(todo => todo.id !== todoId);
-  
+  todos = todos.filter((todo) => todo.id !== todoId);
+
   const deleted = todos.length < initialLength;
   if (deleted) {
     console.log(`Deleted todo with ID: ${todoId}`);
   } else {
     console.log(`Todo with ID ${todoId} not found`);
   }
-  
+
   return deleted;
 });
 
@@ -99,14 +100,14 @@ export const deleteTodo = run((todoId: string): boolean => {
  */
 export const toggleAllTodos = run((completed: boolean): Todo[] => {
   console.log(`Marking all todos as ${completed ? 'completed' : 'uncompleted'}`);
-  
+
   const now = new Date();
-  todos = todos.map(todo => ({
+  todos = todos.map((todo) => ({
     ...todo,
     completed,
     updatedAt: now,
   }));
-  
+
   console.log(`Updated ${todos.length} todos`);
   return todos;
 });
@@ -116,16 +117,16 @@ export const toggleAllTodos = run((completed: boolean): Todo[] => {
  */
 export const getTodoStats = run(() => {
   const total = todos.length;
-  const completed = todos.filter(todo => todo.completed).length;
+  const completed = todos.filter((todo) => todo.completed).length;
   const pending = total - completed;
-  
+
   const stats = {
     total,
     completed,
     pending,
     completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,
   };
-  
+
   console.log('Todo statistics:', stats);
   return stats;
 });

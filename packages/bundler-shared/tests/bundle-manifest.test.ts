@@ -134,11 +134,13 @@ describe('BundleManifestGenerator', () => {
       });
       expect(result.dependencies).toEqual(mockDependencies);
       expect(result.entrypoints).toEqual(mockEntrypoints);
-      expect(result.sources).toEqual([{
-        relativePath: mockSources[0].relativePath,
-        content: mockSources[0].content,
-        size: mockSources[0].size,
-      }]);
+      expect(result.sources).toEqual([
+        {
+          relativePath: mockSources[0].relativePath,
+          content: mockSources[0].content,
+          size: mockSources[0].size,
+        },
+      ]);
       expect(result.metadata).toBeDefined();
       expect(result.metadata.buildMode).toBe('production');
       expect(result.metadata.entrypointCount).toBe(1);

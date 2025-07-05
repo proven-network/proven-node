@@ -317,7 +317,12 @@ export class EntrypointDiscovery {
     const parameters: ParameterInfo[] = [];
 
     // For run/runWithOptions, the handler function is the last argument
-    let handlerArg: t.Expression | t.SpreadElement | t.JSXNamespacedName | t.ArgumentPlaceholder | null = null;
+    let handlerArg:
+      | t.Expression
+      | t.SpreadElement
+      | t.JSXNamespacedName
+      | t.ArgumentPlaceholder
+      | null = null;
 
     if (node.arguments.length >= 2) {
       const arg = node.arguments[node.arguments.length - 1];
@@ -332,7 +337,12 @@ export class EntrypointDiscovery {
       }
     }
 
-    if (!handlerArg || t.isSpreadElement(handlerArg) || t.isJSXNamespacedName(handlerArg) || t.isArgumentPlaceholder(handlerArg)) {
+    if (
+      !handlerArg ||
+      t.isSpreadElement(handlerArg) ||
+      t.isJSXNamespacedName(handlerArg) ||
+      t.isArgumentPlaceholder(handlerArg)
+    ) {
       return parameters;
     }
 

@@ -25,7 +25,12 @@
     "tslib": "^2.6.2",
     "@types/node": "^20.10.4"
   },
-  "keywords": ["proven-network", "rollup", "example", "todo"],
+  "keywords": [
+    "proven-network",
+    "rollup",
+    "example",
+    "todo"
+  ],
   "author": "Proven Network",
   "license": "MIT"
 }

@@ -1,47 +1,47 @@
 export type ColumnDetails = {
-    type: string;
-    isNullable: boolean;
+  type: string;
+  isNullable: boolean;
 };
 export type ColumnRecord = Record<string, ColumnDetails>;
 export type TableRecord = Record<string, ColumnRecord>;
 export type GeneratedSchema = {
-    tables: TableRecord;
+  tables: TableRecord;
 };
 export type InitialGeneratedSchema = {
-    tables: {};
+  tables: {};
 };
 export type CurrentColumn = {
-    name: string;
-    type: string;
-    isNullable: boolean;
+  name: string;
+  type: string;
+  isNullable: boolean;
 };
 export type CreateTableState = {
-    currentTableName: string;
-    currentColumns: CurrentColumn[];
+  currentTableName: string;
+  currentColumns: CurrentColumn[];
 };
 export type InitialCreateTableState = {
-    currentTableName: never;
-    currentColumns: CurrentColumn[];
+  currentTableName: never;
+  currentColumns: CurrentColumn[];
 };
 export type QueryState = {
-    currentTableName: string;
-    allColumns: boolean;
-    specificColumns: string[];
+  currentTableName: string;
+  allColumns: boolean;
+  specificColumns: string[];
 };
 export type InitialQueryState = {
-    currentTableName: never;
-    allColumns: false;
-    specificColumns: [];
+  currentTableName: never;
+  allColumns: false;
+  specificColumns: [];
 };
 export type AlterTableState = {
-    currentTableName: string;
+  currentTableName: string;
 };
 export type InitialAlterTableState = {
-    currentTableName: never;
+  currentTableName: never;
 };
 export type DropTableState = {
-    currentTableName: string;
+  currentTableName: string;
 };
 export type InitialDropTableState = {
-    currentTableName: never;
+  currentTableName: never;
 };
