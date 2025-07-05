@@ -11,6 +11,8 @@ crossterm = "0.29.0"
 # Async and messaging
 proven-local.workspace = true
 proven-core.workspace = true
+proven-applications.workspace = true
+proven-util.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 crossbeam-channel = "0.5"

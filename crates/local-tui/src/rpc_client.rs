@@ -7,10 +7,13 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
 use proven_core::{
-    AnonymizeCommand, AnonymizeResponse, Command, CreateApplicationCommand,
-    CreateApplicationResponse, IdentifyCommand, IdentifyResponse, Response, WhoAmICommand,
-    WhoAmIResponse, routes,
+    AddAllowedOriginCommand, AddAllowedOriginResponse, AnonymizeCommand, AnonymizeResponse,
+    Command, CreateApplicationCommand, CreateApplicationResponse, IdentifyCommand,
+    IdentifyResponse, ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse, Response,
+    WhoAmICommand, WhoAmIResponse, routes,
 };
+use proven_applications::Application;
+use proven_util::Origin;
 use rand::rngs::OsRng;
 use reqwest::{blocking::Client, blocking::multipart};
 use std::collections::HashMap;
@@ -214,6 +217,79 @@ impl RpcClient {
             AnonymizeResponse::AnonymizeFailure(error) => Err(RpcError::ServerError(format!(
                 "Failed to anonymize: {error}"
             ))),
+        }
+    }
+
+    /// List applications owned by the current user (management session)
+    pub fn list_applications_by_owner(&mut self, node_url: &str) -> Result<Vec<Application>, RpcError> {
+        self.node_url = Some(node_url.to_string());
+
+        // Ensure we have an identified session for listing applications
+        self.ensure_identified_session(node_url)?;
+
+        let session_id = {
+            let session = self
+                .sessions
+                .get(&SessionType::Management)
+                .ok_or_else(|| RpcError::InvalidResponse("No management session".to_string()))?;
+            session.session_id
+        };
+
+        let command = Command::ListApplicationsByOwner(ListApplicationsByOwnerCommand);
+        let Response::ListApplicationsByOwner(response) =
+            self.send_rpc_command(node_url, &session_id, &command)?
+        else {
+            return Err(RpcError::InvalidResponse(
+                "Invalid response type".to_string(),
+            ));
+        };
+
+        match response {
+            ListApplicationsByOwnerResponse::ListApplicationsByOwnerSuccess(applications) => {
+                info!("Retrieved {} applications", applications.len());
+                Ok(applications)
+            }
+            ListApplicationsByOwnerResponse::ListApplicationsByOwnerFailure(error) => Err(
+                RpcError::ServerError(format!("Failed to list applications: {error}")),
+            ),
+        }
+    }
+
+    /// Add an allowed origin to an application (management session)
+    pub fn add_allowed_origin(&mut self, node_url: &str, application_id: Uuid, origin: Origin) -> Result<(), RpcError> {
+        self.node_url = Some(node_url.to_string());
+
+        // Ensure we have an identified session for modifying applications
+        self.ensure_identified_session(node_url)?;
+
+        let session_id = {
+            let session = self
+                .sessions
+                .get(&SessionType::Management)
+                .ok_or_else(|| RpcError::InvalidResponse("No management session".to_string()))?;
+            session.session_id
+        };
+
+        let command = Command::AddAllowedOrigin(AddAllowedOriginCommand {
+            application_id,
+            origin,
+        });
+        let Response::AddAllowedOrigin(response) =
+            self.send_rpc_command(node_url, &session_id, &command)?
+        else {
+            return Err(RpcError::InvalidResponse(
+                "Invalid response type".to_string(),
+            ));
+        };
+
+        match response {
+            AddAllowedOriginResponse::AddAllowedOriginSuccess => {
+                info!("Successfully added allowed origin to application {}", application_id);
+                Ok(())
+            }
+            AddAllowedOriginResponse::AddAllowedOriginFailure(error) => Err(
+                RpcError::ServerError(format!("Failed to add allowed origin: {error}")),
+            ),
         }
     }
 

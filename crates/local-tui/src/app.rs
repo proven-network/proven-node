@@ -34,6 +34,7 @@ use std::{
     time::Duration,
 };
 use tracing::info;
+use proven_util::Origin;
 
 /// Events that can occur in the TUI
 #[derive(Debug, Clone)]
@@ -301,11 +302,27 @@ impl App {
             return;
         }
 
+        if self.ui_state.show_application_manager_modal {
+            self.handle_application_manager_modal_keys(key);
+            return;
+        }
+
         // Handle other global keys that should work even during shutdown
         match key.code {
             KeyCode::Char('?') => {
                 // Help toggle always works, even during shutdown
                 self.ui_state.show_help = !self.ui_state.show_help;
+                return;
+            }
+            KeyCode::Char('a') => {
+                // Open Application Manager modal (only if not shutting down)
+                if !self.shutting_down {
+                    self.ui_state.show_application_manager_modal = true;
+                    self.ui_state.app_manager_view = 0; // Start with list view
+                    self.ui_state.app_manager_selected_index = 0;
+                    self.ui_state.app_manager_result = None; // Clear previous result
+                    self.load_applications(); // Load applications when opening modal
+                }
                 return;
             }
             KeyCode::Char('c') => {
@@ -324,6 +341,8 @@ impl App {
                     self.ui_state.show_node_type_modal = false;
                 } else if self.ui_state.show_log_level_modal {
                     self.ui_state.show_log_level_modal = false;
+                } else if self.ui_state.show_application_manager_modal {
+                    self.ui_state.show_application_manager_modal = false;
                 }
                 return;
             }
@@ -910,6 +929,299 @@ impl App {
         } else {
             self.ui_state.rpc_modal_result =
                 Some("❌ No running nodes available for RPC operations".to_string());
+        }
+    }
+
+    /// Load applications owned by the current user
+    fn load_applications(&mut self) {
+        // Find a running node
+        let nodes = self.node_manager.get_nodes_for_ui();
+        let running_node = nodes
+            .iter()
+            .find(|(_, (_, status, _specializations))| matches!(status, NodeStatus::Running));
+
+        if let Some((node_id, (name, _, _specializations))) = running_node {
+            let node_url = self.node_manager.get_node_url(*node_id);
+
+            if let Some(url) = node_url {
+                info!(
+                    "Loading applications via RPC with node: {} ({}) at {}",
+                    name,
+                    node_id.full_pokemon_name(),
+                    url
+                );
+
+                match self.rpc_client.list_applications_by_owner(&url) {
+                    Ok(applications) => {
+                        info!("Loaded {} applications", applications.len());
+                        self.ui_state.app_manager_applications = applications;
+                        self.ui_state.app_manager_result = Some(format!(
+                            "✅ Loaded {} applications",
+                            self.ui_state.app_manager_applications.len()
+                        ));
+                    }
+                    Err(e) => {
+                        self.ui_state.app_manager_result = Some(format!(
+                            "❌ Failed to load applications: {e}"
+                        ));
+                    }
+                }
+            } else {
+                self.ui_state.app_manager_result = Some(format!(
+                    "❌ Could not determine URL for node {}",
+                    node_id.full_pokemon_name()
+                ));
+            }
+        } else {
+            self.ui_state.app_manager_result =
+                Some("❌ No running nodes available for application operations".to_string());
+        }
+    }
+
+    /// Handle keys when application manager modal is open
+    fn handle_application_manager_modal_keys(&mut self, key: KeyEvent) {
+        match key.code {
+            // Close modal
+            KeyCode::Esc => {
+                self.ui_state.show_application_manager_modal = false;
+                self.ui_state.app_manager_result = None;
+            }
+
+            // Handle different views
+            _ => match self.ui_state.app_manager_view {
+                0 => self.handle_app_list_keys(key),        // List view
+                1 => self.handle_app_details_keys(key),     // Details view
+                2 => self.handle_add_origin_keys(key),      // Add origin view
+                3 => self.handle_create_application_keys(key), // Create application view
+                _ => {}
+            },
+        }
+    }
+
+    /// Handle keys in application list view
+    fn handle_app_list_keys(&mut self, key: KeyEvent) {
+        match key.code {
+            // Navigate up
+            KeyCode::Up => {
+                if !self.ui_state.app_manager_applications.is_empty() && self.ui_state.app_manager_selected_index > 0 {
+                    self.ui_state.app_manager_selected_index -= 1;
+                }
+            }
+
+            // Navigate down
+            KeyCode::Down => {
+                if !self.ui_state.app_manager_applications.is_empty() 
+                    && self.ui_state.app_manager_selected_index < self.ui_state.app_manager_applications.len() - 1 {
+                    self.ui_state.app_manager_selected_index += 1;
+                }
+            }
+
+            // View application details
+            KeyCode::Enter => {
+                if let Some(app) = self.ui_state.app_manager_applications.get(self.ui_state.app_manager_selected_index) {
+                    self.ui_state.app_manager_selected_application = Some(app.clone());
+                    self.ui_state.app_manager_view = 1; // Switch to details view
+                }
+            }
+
+            // Create new application
+            KeyCode::Char('c') => {
+                self.ui_state.app_manager_view = 3; // Switch to create application view
+                self.ui_state.app_manager_result = None;
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Handle keys in application details view
+    fn handle_app_details_keys(&mut self, key: KeyEvent) {
+        match key.code {
+            // Go to add origin view
+            KeyCode::Char('a') => {
+                self.ui_state.app_manager_view = 2; // Switch to add origin view
+                self.ui_state.app_manager_origin_input.clear();
+                self.ui_state.app_manager_result = None;
+            }
+
+            // Go back to list view
+            KeyCode::Backspace => {
+                self.ui_state.app_manager_view = 0; // Switch to list view
+                self.ui_state.app_manager_selected_application = None;
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Handle keys in add origin view
+    fn handle_add_origin_keys(&mut self, key: KeyEvent) {
+        match key.code {
+            // Add the origin
+            KeyCode::Enter => {
+                if !self.ui_state.app_manager_origin_input.is_empty() {
+                    if let Some(app) = &self.ui_state.app_manager_selected_application {
+                        let origin_input = self.ui_state.app_manager_origin_input.clone();
+                        self.add_origin_to_application(app.id, &origin_input);
+                    }
+                }
+            }
+
+            // Go back to details view
+            KeyCode::Backspace => {
+                self.ui_state.app_manager_view = 1; // Switch to details view
+                self.ui_state.app_manager_origin_input.clear();
+                self.ui_state.app_manager_result = None;
+            }
+
+            // Handle text input
+            KeyCode::Char(c) => {
+                self.ui_state.app_manager_origin_input.push(c);
+            }
+
+            // Handle backspace in input
+            KeyCode::Delete => {
+                self.ui_state.app_manager_origin_input.pop();
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Add an origin to an application
+    fn add_origin_to_application(&mut self, application_id: uuid::Uuid, origin_str: &str) {
+        // Parse the origin string
+        let origin = match origin_str.parse::<Origin>() {
+            Ok(origin) => origin,
+            Err(e) => {
+                self.ui_state.app_manager_result = Some(format!(
+                    "❌ Invalid origin format: {e}"
+                ));
+                return;
+            }
+        };
+
+        // Find a running node
+        let nodes = self.node_manager.get_nodes_for_ui();
+        let running_node = nodes
+            .iter()
+            .find(|(_, (_, status, _specializations))| matches!(status, NodeStatus::Running));
+
+        if let Some((node_id, (name, _, _specializations))) = running_node {
+            let node_url = self.node_manager.get_node_url(*node_id);
+
+            if let Some(url) = node_url {
+                info!(
+                    "Adding origin {} to application {} via RPC with node: {} ({}) at {}",
+                    origin_str,
+                    application_id,
+                    name,
+                    node_id.full_pokemon_name(),
+                    url
+                );
+
+                match self.rpc_client.add_allowed_origin(&url, application_id, origin) {
+                    Ok(()) => {
+                        self.ui_state.app_manager_result = Some(format!(
+                            "✅ Successfully added origin: {origin_str}"
+                        ));
+                        
+                        // Reload applications to get updated data
+                        self.load_applications();
+                        
+                        // Update selected application if it's still there
+                        if let Some(updated_app) = self.ui_state.app_manager_applications
+                            .iter()
+                            .find(|app| app.id == application_id) {
+                            self.ui_state.app_manager_selected_application = Some(updated_app.clone());
+                        }
+
+                        // Clear input and go back to details view
+                        self.ui_state.app_manager_origin_input.clear();
+                        self.ui_state.app_manager_view = 1;
+                    }
+                    Err(e) => {
+                        self.ui_state.app_manager_result = Some(format!(
+                            "❌ Failed to add origin: {e}"
+                        ));
+                    }
+                }
+            } else {
+                self.ui_state.app_manager_result = Some(format!(
+                    "❌ Could not determine URL for node {}",
+                    node_id.full_pokemon_name()
+                ));
+            }
+        } else {
+            self.ui_state.app_manager_result =
+                Some("❌ No running nodes available for application operations".to_string());
+        }
+    }
+
+    /// Handle keys in create application view
+    fn handle_create_application_keys(&mut self, key: KeyEvent) {
+        match key.code {
+            // Create the application
+            KeyCode::Enter => {
+                self.create_new_application();
+            }
+
+            // Go back to list view
+            KeyCode::Backspace => {
+                self.ui_state.app_manager_view = 0; // Switch to list view
+                self.ui_state.app_manager_result = None;
+            }
+
+            _ => {}
+        }
+    }
+
+    /// Create a new application
+    fn create_new_application(&mut self) {
+        // Find a running node
+        let nodes = self.node_manager.get_nodes_for_ui();
+        let running_node = nodes
+            .iter()
+            .find(|(_, (_, status, _specializations))| matches!(status, NodeStatus::Running));
+
+        if let Some((node_id, (name, _, _specializations))) = running_node {
+            let node_url = self.node_manager.get_node_url(*node_id);
+
+            if let Some(url) = node_url {
+                info!(
+                    "Creating new application via RPC with node: {} ({}) at {}",
+                    name,
+                    node_id.full_pokemon_name(),
+                    url
+                );
+
+                match self.rpc_client.create_application(&url, "new-app") {
+                    Ok(application_id) => {
+                        self.ui_state.app_manager_result = Some(format!(
+                            "✅ Successfully created application: {application_id}"
+                        ));
+                        
+                        // Reload applications to get updated data including the new application
+                        self.load_applications();
+                        
+                        // Go back to list view to show the new application
+                        self.ui_state.app_manager_view = 0;
+                    }
+                    Err(e) => {
+                        self.ui_state.app_manager_result = Some(format!(
+                            "❌ Failed to create application: {e}"
+                        ));
+                    }
+                }
+            } else {
+                self.ui_state.app_manager_result = Some(format!(
+                    "❌ Could not determine URL for node {}",
+                    node_id.full_pokemon_name()
+                ));
+            }
+        } else {
+            self.ui_state.app_manager_result =
+                Some("❌ No running nodes available for application operations".to_string());
         }
     }
 }
