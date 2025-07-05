@@ -1467,9 +1467,9 @@ checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
 name = "aws-config"
-version = "1.8.0"
+version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "455e9fb7743c6f6267eb2830ccc08686fbb3d13c9a689369562fd4d4ef9ea462"
+checksum = "c18d005c70d2b9c0c1ea8876c039db0ec7fb71164d25c73ccea21bf41fd02171"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1567,9 +1567,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-ec2"
-version = "1.139.0"
+version = "1.144.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b92e3d00f89108bc36102fcb4f23fb0b59ee12a6dc62156c27ce40e42337127"
+checksum = "add35d8b2a48685f23180cb5dc21c1c57e6855c0ec1e5aae9d155053cfd04736"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1590,9 +1590,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-kms"
-version = "1.76.0"
+version = "1.77.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8565497721d9f18fa29a68bc5d8225b39e1cc7399d7fc6f1ad803ca934341804"
+checksum = "6cd57d0c1a5bd6c7eaa2b26462e046d5ca7b72189346718d2435dfc48bfa988b"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1612,9 +1612,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-route53resolver"
-version = "1.78.0"
+version = "1.80.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e9cb5c9b25d3293ebba1e741e1ce7bf7bd9a67fa78c811e152b0ead35973143"
+checksum = "30e2c9eb4668f93d50f7e2041adf15f2e4e9cc76e0b72d501e81fbc105c28176"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1634,9 +1634,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-s3"
-version = "1.93.0"
+version = "1.96.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16b9734dc8145b417a3c22eae8769a2879851690982dba718bdc52bd28ad04ce"
+checksum = "6e25d24de44b34dcdd5182ac4e4c6f07bcec2661c505acef94c0d293b65505fe"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1668,9 +1668,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-secretsmanager"
-version = "1.77.0"
+version = "1.78.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f78dbba23909cb019804796ab361a1155ff793eb0ed38877132055af5a48aba"
+checksum = "04f96b46a81d4e6e213f6e614dbc22b8babec9c5f7a0f48afed47219d88ec6c0"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1690,9 +1690,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-sts"
-version = "1.75.0"
+version = "1.76.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3258fa707f2f585ee3049d9550954b959002abd59176975150a01d5cf38ae3f"
+checksum = "cb1cd79a3412751a341a28e2cd0d6fa4345241976da427b075a0c0cd5409f886"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1747,9 +1747,9 @@ dependencies = [
 
 [[package]]
 name = "aws-smithy-checksums"
-version = "0.63.3"
+version = "0.63.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2f77a921dbd2c78ebe70726799787c1d110a2245dd65e39b20923dfdfb2deee"
+checksum = "244f00666380d35c1c76b90f7b88a11935d11b84076ac22a4c014ea0939627af"
 dependencies = [
  "aws-smithy-http",
  "aws-smithy-types",
@@ -2066,9 +2066,9 @@ dependencies = [
 
 [[package]]
 name = "axum_typed_multipart"
-version = "0.16.2"
+version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8986dff40423605627d31ebd1cc903d39001b6370c0c7337b02a8093ba484521"
+checksum = "7915d0c957ffd1a28edd7dff1f6d7b79c80e519b19b0961a8c80423504c45a82"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2087,9 +2087,9 @@ dependencies = [
 
 [[package]]
 name = "axum_typed_multipart_macros"
-version = "0.16.2"
+version = "0.16.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f58e854cb9d7f3ea26701fbbbb38f6cec456d8129f86c1b91c7171711a5d30d7"
+checksum = "cc9e427c074d9f5355a2a7d969cf3a48dde6bf888b120937fb4c96ad2604b48a"
 dependencies = [
  "darling",
  "heck 0.5.0",
@@ -2981,15 +2981,15 @@ dependencies = [
 
 [[package]]
 name = "console"
-version = "0.15.11"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "054ccb5b10f9f2cbf51eb355ca1d05c2d279ce1804688d0db74b4733a5aeafd8"
+checksum = "2e09ced7ebbccb63b4c65413d821f2e00ce54c5ca4514ddc6b3c892fdbcbc69d"
 dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
  "unicode-width 0.2.0",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -3926,7 +3926,7 @@ dependencies = [
  "error_reporter",
  "fast-socks5",
  "h2 0.4.11",
- "hickory-resolver 0.25.0-alpha.5",
+ "hickory-resolver 0.25.0-alpha.4",
  "http 1.3.1",
  "http-body-util",
  "hyper 1.6.0",
@@ -4179,9 +4179,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.30.1"
+version = "0.30.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5a7c1929be2f1558f798c1b75fbc828d8bc62b200435c10601a346f5a8fd67b"
+checksum = "0d4346e56cda020df5da35a3ec2624f09bd77c9f5ed18d903915007825fe9d3f"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -4241,8 +4241,8 @@ dependencies = [
  "deno_features",
  "deno_permissions",
  "deno_tls",
- "hickory-proto 0.25.0-alpha.5",
- "hickory-resolver 0.25.0-alpha.5",
+ "hickory-proto 0.25.0-alpha.4",
+ "hickory-resolver 0.25.0-alpha.4",
  "pin-project",
  "quinn",
  "rustls-tokio-stream",
@@ -4378,7 +4378,7 @@ dependencies = [
  "async-trait",
  "capacity_builder",
  "deno_error",
- "deno_lockfile 0.30.1",
+ "deno_lockfile 0.30.2",
  "deno_semver",
  "futures",
  "indexmap 2.10.0",
@@ -4433,7 +4433,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_graph",
- "deno_lockfile 0.30.1",
+ "deno_lockfile 0.30.2",
  "deno_npm 0.35.0",
  "deno_npm_cache",
  "deno_package_json",
@@ -4597,7 +4597,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_graph",
- "deno_lockfile 0.30.1",
+ "deno_lockfile 0.30.2",
  "deno_media_type",
  "deno_npm 0.35.0",
  "deno_package_json",
@@ -6722,9 +6722,9 @@ dependencies = [
 
 [[package]]
 name = "hickory-proto"
-version = "0.25.0-alpha.5"
+version = "0.25.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d00147af6310f4392a31680db52a3ed45a2e0f68eb18e8c3fe5537ecc96d9e2"
+checksum = "d063c0692ee669aa6d261988aa19ca5510f1cc40e4f211024f50c888499a35d7"
 dependencies = [
  "async-recursion",
  "async-trait",
@@ -6737,7 +6737,7 @@ dependencies = [
  "idna",
  "ipnet",
  "once_cell",
- "rand 0.9.1",
+ "rand 0.8.5",
  "serde",
  "thiserror 2.0.12",
  "tinyvec",
@@ -6769,18 +6769,18 @@ dependencies = [
 
 [[package]]
 name = "hickory-resolver"
-version = "0.25.0-alpha.5"
+version = "0.25.0-alpha.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5762f69ebdbd4ddb2e975cd24690bf21fe6b2604039189c26acddbc427f12887"
+checksum = "42bc352e4412fb657e795f79b4efcf2bd60b59ee5ca0187f3554194cd1107a27"
 dependencies = [
  "cfg-if",
  "futures-util",
- "hickory-proto 0.25.0-alpha.5",
+ "hickory-proto 0.25.0-alpha.4",
  "ipconfig",
  "moka",
  "once_cell",
  "parking_lot 0.12.4",
- "rand 0.9.1",
+ "rand 0.8.5",
  "resolv-conf",
  "serde",
  "smallvec",
@@ -10442,8 +10442,8 @@ dependencies = [
  "axum 0.8.4",
  "axum-server",
  "bytes",
- "hickory-proto 0.25.0-alpha.5",
- "hickory-resolver 0.25.0-alpha.5",
+ "hickory-proto 0.25.0-alpha.4",
+ "hickory-resolver 0.25.0-alpha.4",
  "multi_key_map",
  "parking_lot 0.12.4",
  "proven-bootable",
@@ -10598,7 +10598,7 @@ dependencies = [
  "console",
  "ed25519-dalek",
  "futures",
- "hickory-resolver 0.25.0-alpha.5",
+ "hickory-resolver 0.25.0-alpha.4",
  "http 1.3.1",
  "openraft",
  "proven-applications",
