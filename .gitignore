@@ -2,5 +2,5 @@
 /target-devcontainer
 /kernel/build
 /kernel/output
-/.rustc*
+/rustc-ice*.txt
 .vscode
