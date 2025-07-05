@@ -2,7 +2,7 @@
 
 use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, NodeId};
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
 use std::fmt::Write;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use std::{
     collections::HashMap,
     fs::{self, File, OpenOptions},
     io::{BufWriter, Write as IoWrite},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::mpsc,
     thread,
 };
@@ -29,11 +29,18 @@ enum LogWriterCommand {
     WriteLog(LogEntry),
 }
 
+/// File size limit for log rotation (1MB)
+const MAX_FILE_SIZE: u64 = 1024 * 1024;
+
 /// Async log writer that runs in background thread
 struct AsyncLogWriter {
     command_receiver: mpsc::Receiver<LogWriterCommand>,
     session_dir: PathBuf,
     writers: HashMap<LogCategory, BufWriter<File>>,
+    /// Track current file sizes for rotation
+    file_sizes: HashMap<LogCategory, u64>,
+    /// Track current file paths for each category
+    current_files: HashMap<LogCategory, PathBuf>,
 }
 
 impl AsyncLogWriter {
@@ -46,9 +53,11 @@ impl AsyncLogWriter {
             command_receiver,
             session_dir: base_dir.clone(),
             writers: HashMap::new(),
+            file_sizes: HashMap::new(),
+            current_files: HashMap::new(),
         };
 
-        // Create initial log files
+        // Create initial log files and directory structure
         writer.ensure_writer(&LogCategory::All)?;
         writer.ensure_writer(&LogCategory::Debug)?;
 
@@ -85,52 +94,158 @@ impl AsyncLogWriter {
             return Ok(());
         }
 
-        let file_path = self.get_file_path(category);
+        self.rotate_file(category)?;
+        Ok(())
+    }
 
-        // Create parent directory if needed
-        if let Some(parent) = file_path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+    /// Get the directory path for a log category
+    fn get_category_dir(&self, category: &LogCategory) -> PathBuf {
+        let dir_name = match category {
+            LogCategory::All => "all",
+            LogCategory::Debug => "debug",
+            LogCategory::Node(node_id) => {
+                return self
+                    .session_dir
+                    .join(format!("node_{}", node_id.execution_order()));
+            }
+        };
+        self.session_dir.join(dir_name)
+    }
+
+    /// Get the current symlink path for a log category (legacy location)
+    fn get_symlink_path(&self, category: &LogCategory) -> PathBuf {
+        let filename = match category {
+            LogCategory::All => "all.log",
+            LogCategory::Debug => "debug.log",
+            LogCategory::Node(node_id) => {
+                return self
+                    .session_dir
+                    .join(format!("node_{}.log", node_id.execution_order()));
+            }
+        };
+        self.session_dir.join(filename)
+    }
+
+    /// Generate timestamped filename
+    fn generate_timestamped_filename(timestamp: DateTime<Utc>) -> String {
+        format!("{}.log", timestamp.format("%Y-%m-%d_%H-%M-%S"))
+    }
+
+    /// Create a new log file for the given category
+    fn rotate_file(&mut self, category: &LogCategory) -> Result<()> {
+        // Close existing writer if any
+        if let Some(mut writer) = self.writers.remove(category) {
+            writer.flush()?;
         }
 
+        // Create category directory
+        let category_dir = self.get_category_dir(category);
+        fs::create_dir_all(&category_dir).with_context(|| {
+            format!(
+                "Failed to create category directory: {}",
+                category_dir.display()
+            )
+        })?;
+
+        // Generate timestamped filename
+        let timestamp = Utc::now();
+        let filename = Self::generate_timestamped_filename(timestamp);
+        let file_path = category_dir.join(&filename);
+
+        // Create new file
         let file = OpenOptions::new()
             .create(true)
             .append(true)
             .open(&file_path)
-            .with_context(|| format!("Failed to open log file: {}", file_path.display()))?;
+            .with_context(|| format!("Failed to create log file: {}", file_path.display()))?;
 
         let writer = BufWriter::new(file);
         self.writers.insert(category.clone(), writer);
+        self.file_sizes.insert(category.clone(), 0);
+        self.current_files
+            .insert(category.clone(), file_path.clone());
 
-        debug!("Created log writer for category: {:?}", category);
+        // Create/update symlink
+        self.update_symlink(category, &file_path)?;
+
+        debug!(
+            "Rotated log file for category: {:?} -> {}",
+            category,
+            file_path.display()
+        );
         Ok(())
     }
 
-    /// Get the full file path for a log category
-    fn get_file_path(&self, category: &LogCategory) -> PathBuf {
-        let filename = match category {
-            LogCategory::All => "all.log".to_string(),
-            LogCategory::Debug => "debug.log".to_string(),
-            LogCategory::Node(node_id) => format!("node_{}.log", node_id.execution_order()),
-        };
+    /// Update symlink to point to current file
+    fn update_symlink(&self, category: &LogCategory, target_path: &Path) -> Result<()> {
+        let symlink_path = self.get_symlink_path(category);
 
-        self.session_dir.join(filename)
+        // Remove existing symlink if it exists
+        if symlink_path.exists() || symlink_path.is_symlink() {
+            fs::remove_file(&symlink_path).with_context(|| {
+                format!("Failed to remove old symlink: {}", symlink_path.display())
+            })?;
+        }
+
+        // Create relative path for symlink
+        let relative_target = target_path
+            .strip_prefix(&self.session_dir)
+            .with_context(|| "Failed to create relative path for symlink")?;
+
+        // Create symlink
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(relative_target, &symlink_path)
+                .with_context(|| format!("Failed to create symlink: {}", symlink_path.display()))?;
+        }
+
+        #[cfg(windows)]
+        {
+            std::os::windows::fs::symlink_file(relative_target, &symlink_path)
+                .with_context(|| format!("Failed to create symlink: {}", symlink_path.display()))?;
+        }
+
+        debug!(
+            "Updated symlink: {} -> {}",
+            symlink_path.display(),
+            relative_target.display()
+        );
+        Ok(())
+    }
+
+    /// Check if file needs rotation and rotate if necessary
+    fn check_and_rotate_if_needed(&mut self, category: &LogCategory) -> Result<()> {
+        let current_size = self.file_sizes.get(category).copied().unwrap_or(0);
+
+        if current_size >= MAX_FILE_SIZE {
+            debug!(
+                "File size limit reached for category {:?}, rotating",
+                category
+            );
+            self.rotate_file(category)?;
+        }
+
+        Ok(())
     }
 
     /// Write a log entry to the appropriate files
     fn write_log_entry(&mut self, entry: &LogEntry) -> Result<()> {
         let log_line = Self::format_log_entry(entry)?;
+        let log_line_bytes = log_line.len() as u64 + 1; // +1 for newline
 
         // Write to "all" logs
-        self.write_to_category(&LogCategory::All, &log_line)?;
+        self.check_and_rotate_if_needed(&LogCategory::All)?;
+        self.write_to_category(&LogCategory::All, &log_line, log_line_bytes)?;
 
         // Write to debug logs if it's from main thread
         if entry.node_id == MAIN_THREAD_NODE_ID {
-            self.write_to_category(&LogCategory::Debug, &log_line)?;
+            self.check_and_rotate_if_needed(&LogCategory::Debug)?;
+            self.write_to_category(&LogCategory::Debug, &log_line, log_line_bytes)?;
         } else {
             // Write to node-specific log
             let node_category = LogCategory::Node(entry.node_id);
-            self.write_to_category(&node_category, &log_line)?;
+            self.check_and_rotate_if_needed(&node_category)?;
+            self.write_to_category(&node_category, &log_line, log_line_bytes)?;
         }
 
         // Force flush after every write for immediate visibility
@@ -140,13 +255,23 @@ impl AsyncLogWriter {
     }
 
     /// Write log line to a specific category
-    fn write_to_category(&mut self, category: &LogCategory, log_line: &str) -> Result<()> {
+    fn write_to_category(
+        &mut self,
+        category: &LogCategory,
+        log_line: &str,
+        line_bytes: u64,
+    ) -> Result<()> {
         // Ensure writer exists
         self.ensure_writer(category)?;
 
         if let Some(writer) = self.writers.get_mut(category) {
             writeln!(writer, "{log_line}")
                 .with_context(|| format!("Failed to write to log category: {category:?}"))?;
+
+            // Update file size
+            let current_size = self.file_sizes.get(category).copied().unwrap_or(0);
+            self.file_sizes
+                .insert(category.clone(), current_size + line_bytes);
         }
 
         Ok(())

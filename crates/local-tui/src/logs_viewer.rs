@@ -3,7 +3,7 @@
 use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, NodeId};
 
 use std::collections::HashMap;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -12,13 +12,19 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
 use tracing::debug;
 
-/// File-based log reader for efficient memory usage and line indexing
-pub struct LogFileReader {
+/// Information about a single log file
+#[derive(Debug, Clone)]
+struct LogFileInfo {
     file_path: PathBuf,
-    /// Cache of line positions for efficient seeking
+    /// Timestamp parsed from filename
+    timestamp: DateTime<Utc>,
+    /// Total lines in this file
+    total_lines: usize,
+    /// Line positions for efficient seeking
     line_positions: Vec<u64>,
     /// Whether line positions have been indexed
     indexed: bool,
@@ -26,11 +32,12 @@ pub struct LogFileReader {
     last_modified: Option<std::time::SystemTime>,
 }
 
-impl LogFileReader {
-    /// Create a new log file reader
-    pub const fn new(file_path: PathBuf) -> Self {
+impl LogFileInfo {
+    const fn new(file_path: PathBuf, timestamp: DateTime<Utc>) -> Self {
         Self {
             file_path,
+            timestamp,
+            total_lines: 0,
             line_positions: Vec::new(),
             indexed: false,
             last_modified: None,
@@ -50,7 +57,7 @@ impl LogFileReader {
         })
     }
 
-    /// Index the file to build line position cache (for efficient seeking)
+    /// Index the file to build line position cache
     fn ensure_indexed(&mut self) -> Result<()> {
         if !self.needs_reindex() {
             return Ok(());
@@ -58,6 +65,7 @@ impl LogFileReader {
 
         if !self.file_path.exists() {
             self.line_positions.clear();
+            self.total_lines = 0;
             self.indexed = true;
             self.last_modified = None;
             return Ok(());
@@ -88,19 +96,14 @@ impl LogFileReader {
 
         // Remove the last position (EOF)
         self.line_positions.pop();
+        self.total_lines = self.line_positions.len();
         self.indexed = true;
 
         Ok(())
     }
 
-    /// Get total number of lines in the file
-    pub fn total_lines(&mut self) -> Result<usize> {
-        self.ensure_indexed()?;
-        Ok(self.line_positions.len())
-    }
-
-    /// Read all log entries from the file (used for building filtered views)
-    pub fn read_all_entries(&mut self) -> Result<Vec<LogEntry>> {
+    /// Read all log entries from this file
+    fn read_all_entries(&mut self) -> Result<Vec<LogEntry>> {
         if !self.file_path.exists() {
             return Ok(Vec::new());
         }
@@ -123,8 +126,11 @@ impl LogFileReader {
                 }
                 Err(e) => {
                     debug!(
-                        "Failed to parse log line {}: {} - Error: {}",
-                        line_num, line, e
+                        "Failed to parse log line {} in {}: {} - Error: {}",
+                        line_num,
+                        self.file_path.display(),
+                        line,
+                        e
                     );
                 }
             }
@@ -132,10 +138,182 @@ impl LogFileReader {
 
         Ok(entries)
     }
+}
 
-    /// Check if file has been updated
+/// Multi-file log reader that seamlessly handles multiple log files in chronological order
+pub struct MultiFileReader {
+    /// Base directory for logs (either `session_dir` or category subdirectory)
+    base_dir: PathBuf,
+    /// Log files sorted by timestamp (oldest first)
+    files: Vec<LogFileInfo>,
+    /// Whether we've discovered files in the directory
+    discovered: bool,
+    /// Last discovery time
+    last_discovery: Option<Instant>,
+    /// Discovery interval
+    discovery_interval: Duration,
+}
+
+impl MultiFileReader {
+    /// Create a new multi-file reader
+    pub const fn new(base_dir: PathBuf) -> Self {
+        Self {
+            base_dir,
+            files: Vec::new(),
+            discovered: false,
+            last_discovery: None,
+            discovery_interval: Duration::from_secs(1), // Check for new files every second
+        }
+    }
+
+    /// Parse timestamp from filename (e.g., "2024-01-15_14-30-45.log")
+    fn parse_timestamp_from_filename(filename: &str) -> Option<DateTime<Utc>> {
+        let name = filename.strip_suffix(".log")?;
+        DateTime::parse_from_str(&format!("{name} +0000"), "%Y-%m-%d_%H-%M-%S %z")
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }
+
+    /// Discover log files in the directory
+    fn discover_files(&mut self) -> Result<()> {
+        if !self.base_dir.exists() {
+            self.files.clear();
+            self.discovered = true;
+            self.last_discovery = Some(Instant::now());
+            return Ok(());
+        }
+
+        let mut new_files = Vec::new();
+
+        // Read directory entries
+        let entries = fs::read_dir(&self.base_dir)
+            .with_context(|| format!("Failed to read directory: {}", self.base_dir.display()))?;
+
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_file() {
+                if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
+                    if let Some(timestamp) = Self::parse_timestamp_from_filename(filename) {
+                        new_files.push(LogFileInfo::new(path, timestamp));
+                    }
+                }
+            }
+        }
+
+        // Sort by timestamp (oldest first)
+        new_files.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+        // Update existing files and add new ones
+        let mut updated_files = Vec::new();
+
+        for new_file in new_files {
+            if let Some(existing_idx) = self
+                .files
+                .iter()
+                .position(|f| f.file_path == new_file.file_path)
+            {
+                // Keep existing file info but update metadata
+                let mut existing = self.files[existing_idx].clone();
+                existing.timestamp = new_file.timestamp; // Update timestamp if needed
+                updated_files.push(existing);
+            } else {
+                // New file
+                updated_files.push(new_file);
+            }
+        }
+
+        self.files = updated_files;
+        self.discovered = true;
+        self.last_discovery = Some(Instant::now());
+
+        Ok(())
+    }
+
+    /// Check if we need to rediscover files
+    fn should_rediscover(&self) -> bool {
+        if !self.discovered {
+            return true;
+        }
+
+        self.last_discovery
+            .is_none_or(|last_discovery| last_discovery.elapsed() >= self.discovery_interval)
+    }
+
+    /// Ensure files are discovered and indexed
+    fn ensure_discovered(&mut self) -> Result<()> {
+        if self.should_rediscover() {
+            self.discover_files()?;
+        }
+
+        // Index all files
+        for file in &mut self.files {
+            file.ensure_indexed()?;
+        }
+
+        Ok(())
+    }
+
+    /// Get total number of lines across all files
+    pub fn total_lines(&mut self) -> Result<usize> {
+        self.ensure_discovered()?;
+        Ok(self.files.iter().map(|f| f.total_lines).sum())
+    }
+
+    /// Read all log entries from all files in chronological order
+    pub fn read_all_entries(&mut self) -> Result<Vec<LogEntry>> {
+        self.ensure_discovered()?;
+
+        let mut all_entries = Vec::new();
+
+        for file in &mut self.files {
+            let mut entries = file.read_all_entries()?;
+            all_entries.append(&mut entries);
+        }
+
+        Ok(all_entries)
+    }
+
+    /// Check if any files have been updated
     pub fn has_updates(&self) -> bool {
-        self.needs_reindex()
+        // Check if we should rediscover files
+        if self.should_rediscover() {
+            return true;
+        }
+
+        // Check if any existing files have been updated
+        self.files.iter().any(LogFileInfo::needs_reindex)
+    }
+}
+
+/// File-based log reader for efficient memory usage and line indexing (legacy, now uses `MultiFileReader`)
+pub struct LogFileReader {
+    multi_reader: MultiFileReader,
+}
+
+impl LogFileReader {
+    /// Create a new log file reader
+    pub const fn new(directory_path: PathBuf) -> Self {
+        // The path should now be a directory containing timestamped log files
+        Self {
+            multi_reader: MultiFileReader::new(directory_path),
+        }
+    }
+
+    /// Get total number of lines in all files
+    pub fn total_lines(&mut self) -> Result<usize> {
+        self.multi_reader.total_lines()
+    }
+
+    /// Read all log entries from all files
+    pub fn read_all_entries(&mut self) -> Result<Vec<LogEntry>> {
+        self.multi_reader.read_all_entries()
+    }
+
+    /// Check if any files have been updated
+    pub fn has_updates(&self) -> bool {
+        self.multi_reader.has_updates()
     }
 }
 
@@ -403,42 +581,42 @@ impl LogWorker {
 
     fn get_log_file_path(&self, node_filter: Option<NodeId>) -> PathBuf {
         node_filter.map_or_else(
-            || self.session_dir.join("all.log"),
+            || self.session_dir.join("all"),
             |node_id| {
                 if node_id == MAIN_THREAD_NODE_ID {
-                    self.session_dir.join("debug.log")
+                    self.session_dir.join("debug")
                 } else {
                     self.session_dir
-                        .join(format!("node_{}.log", node_id.execution_order()))
+                        .join(format!("node_{}", node_id.execution_order()))
                 }
             },
         )
     }
 
-    fn get_or_create_file_reader(&mut self, file_path: PathBuf) -> &mut LogFileReader {
+    fn get_or_create_file_reader(&mut self, directory_path: PathBuf) -> &mut LogFileReader {
         self.file_readers
-            .entry(file_path.clone())
-            .or_insert_with(|| LogFileReader::new(file_path))
+            .entry(directory_path.clone())
+            .or_insert_with(|| LogFileReader::new(directory_path))
     }
 
     fn rebuild_complete_state(&mut self) -> Result<bool> {
-        let file_path = self.get_log_file_path(self.state.node_filter);
+        let directory_path = self.get_log_file_path(self.state.node_filter);
 
-        // Read all entries from the appropriate file
+        // Read all entries from the appropriate directory
         let (all_logs, current_line_count) = {
-            let reader = self.get_or_create_file_reader(file_path.clone());
+            let reader = self.get_or_create_file_reader(directory_path.clone());
             let logs = reader.read_all_entries()?;
             let line_count = reader.total_lines()?;
             (logs, line_count)
         };
 
-        // For node-specific files, don't apply node filtering again
-        let should_apply_node_filter = file_path.file_name().is_some_and(|name| name == "all.log");
+        // For node-specific directories, don't apply node filtering again
+        let should_apply_node_filter = directory_path.file_name().is_some_and(|name| name == "all");
 
         if should_apply_node_filter {
             self.state.rebuild_filtered_logs(&all_logs);
         } else {
-            // For node-specific files, only apply level filtering
+            // For node-specific directories, only apply level filtering
             let old_node_filter = self.state.node_filter;
             self.state.node_filter = None; // Temporarily disable node filtering
             self.state.rebuild_filtered_logs(&all_logs);
@@ -446,23 +624,28 @@ impl LogWorker {
         }
 
         // Update line count
-        let had_updates =
-            self.last_line_counts.get(&file_path).copied().unwrap_or(0) != current_line_count;
-        self.last_line_counts.insert(file_path, current_line_count);
+        let had_updates = self
+            .last_line_counts
+            .get(&directory_path)
+            .copied()
+            .unwrap_or(0)
+            != current_line_count;
+        self.last_line_counts
+            .insert(directory_path, current_line_count);
 
         Ok(had_updates)
     }
 
     fn check_for_updates(&mut self) -> bool {
-        let file_path = self.get_log_file_path(self.state.node_filter);
+        let directory_path = self.get_log_file_path(self.state.node_filter);
 
         let has_updates = {
-            let reader = self.get_or_create_file_reader(file_path);
+            let reader = self.get_or_create_file_reader(directory_path);
             reader.has_updates()
         };
 
         if has_updates {
-            // File has been updated, rebuild complete state
+            // Directory has been updated, rebuild complete state
             match self.rebuild_complete_state() {
                 Ok(updated) => updated,
                 Err(e) => {
@@ -774,10 +957,10 @@ mod tests {
         // Give async writer time to process
         std::thread::sleep(std::time::Duration::from_millis(200));
 
-        // Test reading with LogFileReader
+        // Test reading with LogFileReader (using new directory structure)
         let session_dir = writer.get_session_dir();
-        let all_log_path = session_dir.join("all.log");
-        let mut reader = LogFileReader::new(all_log_path);
+        let all_log_dir = session_dir.join("all");
+        let mut reader = LogFileReader::new(all_log_dir);
         let logs = reader.read_all_entries().expect("Failed to read logs");
 
         assert_eq!(logs.len(), 2);
