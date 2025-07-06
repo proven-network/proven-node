@@ -2,7 +2,6 @@ import { Plugin } from 'rollup';
 import {
   BundlerOptions,
   BundleManifestGenerator,
-  DevWrapperGenerator,
   mergeOptions,
   validateOptions,
   formatFileSize,
@@ -258,66 +257,6 @@ async function retransformWithCompleteManifest(
       }
     }
   }
-}
-
-/**
- * Creates a manifest from transformed files (fallback when no pre-generated manifest)
- */
-async function createManifestFromTransformedFiles(
-  transformedFiles: Map<string, { originalCode: string; code: string; handlers: any[] }>,
-  projectRoot: string,
-  options: BundlerOptions
-): Promise<BundleManifest> {
-  const modules: ExecutableModule[] = [];
-
-  // Convert transformed files to manifest modules
-  for (const [filePath, transformed] of transformedFiles) {
-    if (transformed.handlers.length > 0) {
-      modules.push({
-        specifier: `file:///${path.relative(projectRoot, filePath)}`,
-        content: transformed.originalCode,
-        handlers: transformed.handlers.map((h) => ({
-          name: h.name,
-          type: h.type,
-          parameters: h.parameters,
-          config: h.config,
-        })),
-        imports: [], // TODO: Extract imports if needed
-      });
-    }
-  }
-
-  // Read package.json for dependencies
-  let dependencies: Record<string, string> = {};
-  try {
-    const packageJsonPath = path.join(projectRoot, 'package.json');
-    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf-8'));
-    const allDeps = {
-      ...packageJson.dependencies,
-      ...(options.includeDevDependencies ? packageJson.devDependencies : {}),
-    };
-
-    // Filter out file: dependencies as they are local packages
-    dependencies = Object.fromEntries(
-      Object.entries(allDeps).filter(
-        ([, version]) => typeof version === 'string' && !version.startsWith('file:')
-      )
-    ) as Record<string, string>;
-  } catch {
-    // Ignore if package.json doesn't exist
-  }
-
-  return {
-    id: `bundle-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    version: '1.0',
-    modules,
-    dependencies,
-    metadata: {
-      createdAt: new Date().toISOString(),
-      mode: options.mode || 'development',
-      pluginVersion: '0.0.1',
-    },
-  };
 }
 
 /**

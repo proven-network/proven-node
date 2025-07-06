@@ -1,22 +1,17 @@
 /// <reference lib="DOM" />
-import {
-  MessageBroker,
-  getWindowIdFromUrl,
-  ExecuteMessage,
-  ParentToBridgeMessage,
-  BridgeToParentMessage,
-} from '@proven-network/common';
+import { MessageBroker, getWindowIdFromUrl } from '../../helpers/broker';
+import { BridgeRequest, BridgeResponse, ExecuteRequest } from '@proven-network/common';
 import { bytesToHex } from '@noble/curves/abstract/utils';
+import { WhoAmIResult } from '../../types';
 import type {
   WhoAmI,
-  WhoAmIResult,
   ExecuteHash,
   ExecuteLog,
   ExecutionResult,
   ExecuteResult,
   ExecuteHashResult,
   RpcResponse,
-} from '@proven-network/common';
+} from '../../types';
 
 // WhoAmIMessage is still local to the bridge
 export type WhoAmIMessage = {
@@ -24,8 +19,29 @@ export type WhoAmIMessage = {
   nonce: number;
 };
 
-// Local type that combines imported ParentToBridgeMessage with local WhoAmIMessage
-type LocalParentToBridgeMessage = ParentToBridgeMessage | WhoAmIMessage;
+// Auth signal request messages (SDK-facing)
+export type RequestAuthSignalMessage = {
+  type: 'request_auth_signal';
+  nonce: number;
+  signalKey: string;
+};
+
+export type UpdateAuthSignalMessage = {
+  type: 'update_auth_signal';
+  nonce: number;
+  signalKey: string;
+  signalValue: any;
+};
+
+// Local type that combines imported BridgeRequest with local messages
+type LocalParentToBridgeMessage = BridgeRequest;
+
+// Whitelist of signals that can be accessed by SDK
+const ALLOWED_SIGNAL_KEYS = new Set(['auth.state', 'auth.userInfo', 'auth.isAuthenticated']);
+
+function isSignalKeyAllowed(key: string): boolean {
+  return ALLOWED_SIGNAL_KEYS.has(key);
+}
 
 function isParentMessage(data: unknown): data is LocalParentToBridgeMessage {
   if (
@@ -42,6 +58,16 @@ function isParentMessage(data: unknown): data is LocalParentToBridgeMessage {
 
   if (message.type === 'whoAmI') {
     return true;
+  }
+
+  if (message.type === 'request_auth_signal') {
+    return 'signalKey' in message && typeof message.signalKey === 'string';
+  }
+
+  if (message.type === 'update_auth_signal') {
+    return (
+      'signalKey' in message && typeof message.signalKey === 'string' && 'signalValue' in message
+    );
   }
 
   if (message.type === 'execute') {
@@ -98,22 +124,33 @@ class BridgeClient {
         });
       });
 
+      // Set up state update listener for auth state changes
+      this.broker.on('state_updated', (message) => {
+        this.handleStateUpdate(message.data.key, message.data.value);
+      });
+
       console.debug('Bridge: Broker initialized successfully');
 
       // Notify parent that bridge is ready
-      this.forwardToParent({
-        type: 'iframe_ready',
-        iframeType: 'bridge',
-      });
+      parent.postMessage(
+        {
+          type: 'iframe_ready',
+          iframeType: 'bridge',
+        },
+        '*'
+      );
     } catch (error) {
       console.error('Bridge: Failed to initialize broker:', error);
 
       // Notify parent of initialization error
-      this.forwardToParent({
-        type: 'iframe_error',
-        iframeType: 'bridge',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      parent.postMessage(
+        {
+          type: 'iframe_error',
+          iframeType: 'bridge',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+        '*'
+      );
 
       throw new Error(
         `Bridge: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -131,7 +168,7 @@ class BridgeClient {
     });
   }
 
-  async handleParentMessage(message: ParentToBridgeMessage) {
+  async handleParentMessage(message: LocalParentToBridgeMessage) {
     try {
       console.debug('Bridge: Received message from parent:', message);
 
@@ -139,6 +176,10 @@ class BridgeClient {
         await this.handleWhoAmI(message);
       } else if (message.type === 'execute') {
         await this.handleExecute(message);
+      } else if (message.type === 'request_auth_signal') {
+        await this.handleRequestAuthSignal(message);
+      } else if (message.type === 'update_auth_signal') {
+        await this.handleUpdateAuthSignal(message);
       } else {
         // This should never happen due to our type guard, but TypeScript requires it
         const exhaustiveCheck: never = message;
@@ -146,6 +187,177 @@ class BridgeClient {
       }
     } catch (error) {
       console.error('Bridge: Error handling parent message:', error);
+      this.forwardToParent({
+        type: 'response',
+        nonce: message.nonce,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  /**
+   * Translate auth signal keys to generic state keys
+   */
+  private authSignalToStateKey(authKey: string): string {
+    switch (authKey) {
+      case 'auth.state':
+        return 'auth_state';
+      case 'auth.userInfo':
+        return 'auth_user_info';
+      case 'auth.isAuthenticated':
+        return 'auth_is_authenticated';
+      default:
+        throw new Error(`Unknown auth signal key: ${authKey}`);
+    }
+  }
+
+  /**
+   * Translate generic state keys back to auth signal keys
+   */
+  private stateKeyToAuthSignal(stateKey: string): string {
+    switch (stateKey) {
+      case 'auth_state':
+        return 'auth.state';
+      case 'auth_user_info':
+        return 'auth.userInfo';
+      case 'auth_is_authenticated':
+        return 'auth.isAuthenticated';
+      default:
+        throw new Error(`Unknown state key: ${stateKey}`);
+    }
+  }
+
+  /**
+   * Handle state updates from state iframe and forward relevant ones to SDK
+   */
+  private handleStateUpdate(stateKey: string, value: any): void {
+    // Check if this is an auth-related state update
+    if (stateKey.startsWith('auth_')) {
+      try {
+        const authSignalKey = this.stateKeyToAuthSignal(stateKey);
+
+        // Forward auth state update to SDK
+        this.forwardToParent({
+          type: 'response',
+          data: {
+            type: 'auth_signal_update',
+            signalKey: authSignalKey,
+            signalValue: value,
+          },
+        } as any);
+      } catch {
+        console.warn('Bridge: Unknown auth state key:', stateKey);
+      }
+    }
+  }
+
+  async handleRequestAuthSignal(message: RequestAuthSignalMessage) {
+    console.debug('Bridge: Handling auth signal request:', message.signalKey);
+
+    // Check if signal key is whitelisted
+    if (!isSignalKeyAllowed(message.signalKey)) {
+      console.warn('Bridge: Auth signal key not allowed:', message.signalKey);
+      this.forwardToParent({
+        type: 'response',
+        nonce: message.nonce,
+        success: false,
+        error: `Auth signal key '${message.signalKey}' is not allowed`,
+      });
+      return;
+    }
+
+    try {
+      // Translate auth signal request to generic state request
+      const stateKey = this.authSignalToStateKey(message.signalKey);
+      const response = await this.broker.request<{
+        success: boolean;
+        data?: any;
+        error?: string;
+      }>(
+        'get_state',
+        {
+          key: stateKey,
+          tabId: this.windowId,
+        },
+        'state'
+      );
+
+      if (response.success) {
+        this.forwardToParent({
+          type: 'response',
+          nonce: message.nonce,
+          success: true,
+          data: response.data,
+        });
+      } else {
+        this.forwardToParent({
+          type: 'response',
+          nonce: message.nonce,
+          success: false,
+          error: response.error || 'Unknown error',
+        });
+      }
+    } catch (error) {
+      console.error('Bridge: Error requesting signal:', error);
+      this.forwardToParent({
+        type: 'response',
+        nonce: message.nonce,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  async handleUpdateAuthSignal(message: UpdateAuthSignalMessage) {
+    console.debug('Bridge: Handling auth signal update:', message.signalKey, message.signalValue);
+
+    // Check if signal key is whitelisted
+    if (!isSignalKeyAllowed(message.signalKey)) {
+      console.warn('Bridge: Auth signal key not allowed:', message.signalKey);
+      this.forwardToParent({
+        type: 'response',
+        nonce: message.nonce,
+        success: false,
+        error: `Auth signal key '${message.signalKey}' is not allowed`,
+      });
+      return;
+    }
+
+    try {
+      // Translate auth signal update to generic state update
+      const stateKey = this.authSignalToStateKey(message.signalKey);
+      const response = await this.broker.request<{
+        success: boolean;
+        data?: any;
+        error?: string;
+      }>(
+        'set_state',
+        {
+          key: stateKey,
+          value: message.signalValue,
+          tabId: this.windowId,
+        },
+        'state'
+      );
+
+      if (response.success) {
+        this.forwardToParent({
+          type: 'response',
+          nonce: message.nonce,
+          success: true,
+          data: response.data,
+        });
+      } else {
+        this.forwardToParent({
+          type: 'response',
+          nonce: message.nonce,
+          success: false,
+          error: response.error || 'Unknown error',
+        });
+      }
+    } catch (error) {
+      console.error('Bridge: Error updating signal:', error);
       this.forwardToParent({
         type: 'response',
         nonce: message.nonce,
@@ -190,7 +402,7 @@ class BridgeClient {
     }
   }
 
-  async handleExecute(message: ExecuteMessage) {
+  async handleExecute(message: ExecuteRequest) {
     try {
       const { manifestId, manifest, handler, args } = message.data;
 
@@ -439,7 +651,7 @@ class BridgeClient {
     });
   }
 
-  forwardToParent(message: BridgeToParentMessage) {
+  forwardToParent(message: BridgeResponse) {
     console.debug('Bridge: Forwarding to parent:', message);
     parent.postMessage(message, '*');
   }

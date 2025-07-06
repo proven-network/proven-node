@@ -82,23 +82,29 @@ const BRIDGE_IFRAME_HTML: &str = include_str!("../../static/iframes/bridge/bridg
 const CONNECT_IFRAME_HTML: &str = include_str!("../../static/iframes/connect/connect.html");
 const REGISTER_IFRAME_HTML: &str = include_str!("../../static/iframes/register/register.html");
 const RPC_IFRAME_HTML: &str = include_str!("../../static/iframes/rpc/rpc.html");
+const STATE_IFRAME_HTML: &str = include_str!("../../static/iframes/state/state.html");
 iframe_handler!(bridge_iframe_html_handler, BRIDGE_IFRAME_HTML);
 iframe_handler!(connect_iframe_html_handler, CONNECT_IFRAME_HTML);
 iframe_handler!(register_iframe_html_handler, REGISTER_IFRAME_HTML);
 iframe_handler!(rpc_iframe_html_handler, RPC_IFRAME_HTML);
+iframe_handler!(state_iframe_html_handler, STATE_IFRAME_HTML);
 
 // Iframe JS
 const BRIDGE_IFRAME_JS: &str = include_str!("../../dist/iframes/bridge/bridge.js");
 const CONNECT_IFRAME_JS: &str = include_str!("../../dist/iframes/connect/connect.js");
 const REGISTER_IFRAME_JS: &str = include_str!("../../dist/iframes/register/register.js");
 const RPC_IFRAME_JS: &str = include_str!("../../dist/iframes/rpc/rpc.js");
+const STATE_IFRAME_JS: &str = include_str!("../../dist/iframes/state/state.js");
 js_handler!(bridge_iframe_js_handler, BRIDGE_IFRAME_JS);
 js_handler!(connect_iframe_js_handler, CONNECT_IFRAME_JS);
 js_handler!(register_iframe_js_handler, REGISTER_IFRAME_JS);
 js_handler!(rpc_iframe_js_handler, RPC_IFRAME_JS);
+js_handler!(state_iframe_js_handler, STATE_IFRAME_JS);
 
 // Shared workers
 const BROKER_WORKER_JS: &str = include_str!("../../dist/workers/broker-worker.js");
 const RPC_WORKER_JS: &str = include_str!("../../dist/workers/rpc-worker.js");
+const STATE_WORKER_JS: &str = include_str!("../../dist/workers/state-worker.js");
 js_handler!(broker_worker_js_handler, BROKER_WORKER_JS);
 js_handler!(rpc_worker_js_handler, RPC_WORKER_JS);
+js_handler!(state_worker_js_handler, STATE_WORKER_JS);

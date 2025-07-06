@@ -13,7 +13,8 @@
   "dependencies": {
     "@proven-network/handler": "file:../../../handler",
     "@proven-network/session": "file:../../../session",
-    "@proven-network/sdk": "file:../../../sdk"
+    "@proven-network/sdk": "file:../../../sdk",
+    "@preact/signals-core": "^1.8.0"
   },
   "devDependencies": {
     "@proven-network/bundler-rollup": "file:../../",

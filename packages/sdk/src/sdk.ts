@@ -1,25 +1,24 @@
 import {
-  generateWindowId,
-  ExecuteOutput,
-  WhoAmIResult,
-  ExecutionResult,
-  ExecuteError,
-  ParentToBridgeMessage,
-  OpenModalMessage,
-  CloseModalMessage,
+  SdkExecutionResult,
+  SdkExecuteError,
+  BridgeRequest,
   BundleManifest,
   QueuedHandler,
-  ExecuteMessage,
+  ExecuteRequest,
 } from '@proven-network/common';
+import { AuthSignalManager, type AuthStateSignals } from './signals';
+
+// Local type definitions for SDK
+export type ExecuteOutput = string | number | boolean | null | undefined;
 
 export type ProvenSDK = {
   execute: (manifestIdOrScript: string, handler: string, args?: any[]) => Promise<ExecuteOutput>;
-  whoAmI: () => Promise<WhoAmIResult>;
-  isAuthenticated: () => Promise<boolean>;
+  checkAuthentication: () => Promise<boolean>;
   initConnectButton: (targetElement?: HTMLElement | string) => Promise<void>;
   registerManifest: (manifest: BundleManifest) => void;
   updateManifest: (manifest: BundleManifest) => void;
-};
+  destroy: () => void;
+} & AuthStateSignals;
 
 export type Logger = {
   debug: (message: string, data?: any) => void;
@@ -36,33 +35,41 @@ export const ProvenSDK = (options: {
 }): ProvenSDK => {
   const { logger, authGatewayOrigin, applicationId } = options;
 
+  // Initialize signal manager for reactive authentication state
+  const authSignalManager = new AuthSignalManager();
+
   // Build iframe URLs from well-known paths
   const bridgeIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/bridge.html`;
   const connectIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/connect.html`;
   const registerIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/register.html`;
   const rpcIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/rpc.html`;
+  const stateIframeUrl = `${authGatewayOrigin}/app/${applicationId}/iframes/state.html`;
 
   // Generate unique window ID for this SDK instance
-  const windowId = generateWindowId();
+  const windowId = crypto.randomUUID();
   logger?.debug('SDK: Generated window ID:', windowId);
 
   let bridgeIframe: HTMLIFrameElement | null = null;
   let connectIframe: HTMLIFrameElement | null = null;
   let rpcIframe: HTMLIFrameElement | null = null;
+  let stateIframe: HTMLIFrameElement | null = null;
   let modalIframe: HTMLIFrameElement | null = null;
   let modalOverlay: HTMLDivElement | null = null;
   let bridgeIframeReady = false;
   let rpcIframeReady = false;
   let connectIframeReady = false;
+  let stateIframeReady = false;
   let nonce = 0;
 
   // Promises for iframe readiness
   let bridgeReadyPromise: Promise<void> | null = null;
   let rpcReadyPromise: Promise<void> | null = null;
   let connectReadyPromise: Promise<void> | null = null;
+  let stateReadyPromise: Promise<void> | null = null;
   let bridgeReadyResolve: (() => void) | null = null;
   let rpcReadyResolve: (() => void) | null = null;
   let connectReadyResolve: (() => void) | null = null;
+  let stateReadyResolve: (() => void) | null = null;
   const pendingCallbacks = new Map<
     number,
     { resolve: (data: any) => void; reject: (error: Error) => void }
@@ -167,7 +174,7 @@ export const ProvenSDK = (options: {
         hasManifest: !!handler.manifest,
       });
 
-      const executeMessage: ExecuteMessage = {
+      const executeMessage: ExecuteRequest = {
         type: 'execute',
         nonce: 0, // Will be set by sendMessage
         data: {
@@ -181,11 +188,11 @@ export const ProvenSDK = (options: {
       const response = await sendMessage(executeMessage);
 
       // Process the response same as before
-      let result: ExecutionResult;
+      let result: SdkExecutionResult;
       if (response && typeof response === 'object' && 'execution_result' in response) {
-        result = response.execution_result as ExecutionResult;
+        result = response.execution_result as SdkExecutionResult;
       } else {
-        result = response as ExecutionResult;
+        result = response as SdkExecutionResult;
       }
 
       if ('Ok' in result) {
@@ -431,6 +438,55 @@ export const ProvenSDK = (options: {
     return connectReadyPromise;
   };
 
+  const createStateIframe = (): Promise<void> => {
+    if (stateIframe && stateIframeReady) {
+      return Promise.resolve();
+    }
+
+    if (stateReadyPromise) {
+      return stateReadyPromise;
+    }
+
+    stateReadyPromise = new Promise((resolve, reject) => {
+      stateReadyResolve = resolve;
+
+      stateIframe = document.createElement('iframe');
+      stateIframe.src = `${stateIframeUrl}?app=${applicationId}#window=${windowId}`;
+      stateIframe.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+
+      // Hide the state iframe as it's only for communication
+      stateIframe.style.cssText = `
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        top: -1000px;
+        left: -1000px;
+        border: none;
+        visibility: hidden;
+      `;
+
+      stateIframe.onerror = () => {
+        stateReadyPromise = null;
+        stateReadyResolve = null;
+        reject(new Error('Failed to load state iframe'));
+      };
+
+      // Set timeout as backup
+      setTimeout(() => {
+        if (!stateIframeReady) {
+          stateReadyPromise = null;
+          stateReadyResolve = null;
+          reject(new Error('State iframe initialization timeout'));
+        }
+      }, 10000); // 10 second timeout
+
+      // Append state iframe to document body (hidden)
+      document.body.appendChild(stateIframe);
+    });
+
+    return stateReadyPromise;
+  };
+
   const handleIframeMessage = (event: MessageEvent) => {
     const message = event.data;
 
@@ -440,6 +496,10 @@ export const ProvenSDK = (options: {
 
       if (message.iframeType === 'bridge' && bridgeReadyResolve) {
         bridgeIframeReady = true;
+
+        // Initialize signal manager with sendMessage function
+        authSignalManager.setSendMessage(sendMessage);
+
         bridgeReadyResolve();
         bridgeReadyResolve = null;
       } else if (message.iframeType === 'rpc' && rpcReadyResolve) {
@@ -450,15 +510,27 @@ export const ProvenSDK = (options: {
         connectIframeReady = true;
         connectReadyResolve();
         connectReadyResolve = null;
+      } else if (message.iframeType === 'state' && stateReadyResolve) {
+        stateIframeReady = true;
+        stateReadyResolve();
+        stateReadyResolve = null;
+
+        // Signal manager is initialized when bridge is ready
       }
+      return;
+    }
+
+    // Connect iframe no longer sends direct messages - all auth updates go through state system
+
+    // Handle state updates from state iframe
+    if (stateIframe && event.source === stateIframe.contentWindow) {
+      // State updates are now handled via bridge auth signal updates
       return;
     }
 
     // Handle iframe error messages
     if (message.type === 'iframe_error') {
       logger?.error('SDK: Iframe initialization error:', message);
-
-      const error = new Error(`${message.iframeType} iframe error: ${message.error}`);
 
       if (message.iframeType === 'bridge' && bridgeReadyResolve) {
         bridgeReadyPromise = null;
@@ -472,6 +544,10 @@ export const ProvenSDK = (options: {
         connectReadyPromise = null;
         connectReadyResolve = null;
         // Reject would be handled by the timeout in createConnectIframe
+      } else if (message.iframeType === 'state' && stateReadyResolve) {
+        stateReadyPromise = null;
+        stateReadyResolve = null;
+        // Reject would be handled by the timeout in createStateIframe
       }
       return;
     }
@@ -479,6 +555,15 @@ export const ProvenSDK = (options: {
     // Handle messages from bridge iframe
     if (bridgeIframe && event.source === bridgeIframe.contentWindow) {
       if (message.type === 'response') {
+        // Check for auth signal updates in response data
+        if (message.data?.type === 'auth_signal_update') {
+          authSignalManager.handleAuthSignalUpdate(
+            message.data.signalKey,
+            message.data.signalValue
+          );
+          return;
+        }
+
         // Handle API responses
         const callback = pendingCallbacks.get(message.nonce);
         if (callback) {
@@ -499,29 +584,9 @@ export const ProvenSDK = (options: {
       }
       return;
     }
-
-    // Handle messages from button iframe (for backwards compatibility during transition)
-    if (connectIframe && event.source === connectIframe.contentWindow) {
-      const connectMessage = message as OpenModalMessage;
-
-      if (connectMessage.type === 'open_registration_modal') {
-        openRegistrationModal();
-      }
-      return;
-    }
-
-    // Handle messages from modal iframe (for backwards compatibility during transition)
-    if (modalIframe && event.source === modalIframe.contentWindow) {
-      const modalMessage = message as CloseModalMessage;
-
-      if (modalMessage.type === 'close_registration_modal') {
-        closeRegistrationModal();
-      }
-      return;
-    }
   };
 
-  const sendMessage = async (message: ParentToBridgeMessage): Promise<any> => {
+  const sendMessage = async (message: BridgeRequest): Promise<any> => {
     // Wait for bridge iframe to be ready if it's not already
     if (!bridgeIframeReady) {
       await createBridgeIframe();
@@ -549,7 +614,7 @@ export const ProvenSDK = (options: {
    * Creates a proper JavaScript Error object from ExecuteError details.
    * This error can be thrown and will behave like a normal browser error.
    */
-  const createErrorFromExecuteError = (executeError: ExecuteError): Error => {
+  const createErrorFromExecuteError = (executeError: SdkExecuteError): Error => {
     const error = new Error(executeError.error.message);
     error.name = executeError.error.name;
 
@@ -626,54 +691,21 @@ export const ProvenSDK = (options: {
       if (shouldSendManifest) {
         sentManifests.add(manifest.id);
       }
-    } else {
-      // Fallback to script-based execution (backward compatibility)
-      executeMessage = {
-        type: 'execute',
-        nonce: 0,
-        data: {
-          manifestId: 'legacy-script',
-          manifest: {
-            id: 'legacy-script',
-            version: '1.0.0',
-            modules: [
-              {
-                path: 'script.js',
-                content: manifestIdOrScript,
-                handlers: [],
-                dependencies: [],
-              },
-            ],
-            entrypoints: [],
-            dependencies: { production: {}, development: {}, all: {} },
-            metadata: {
-              createdAt: new Date().toISOString(),
-              mode: 'development' as const,
-              pluginVersion: '1.0.0',
-              fileCount: 1,
-              bundleSize: manifestIdOrScript.length,
-              sourceMaps: false,
-            },
-          },
-          handler,
-          args,
-        },
-      };
     }
 
     const response = await sendMessage(executeMessage);
 
-    // The response now contains either the full ExecutionResult (legacy) or ExecuteSuccessResponse (new)
-    let result: ExecutionResult;
+    // The response now contains either the full SdkExecutionResult (legacy) or ExecuteSuccessResponse (new)
+    let result: SdkExecutionResult;
 
     // Check if this is the new format with code_package_hash
     if (response && typeof response === 'object' && 'execution_result' in response) {
-      // New format: { execution_result: ExecutionResult, code_package_hash: string }
-      result = response.execution_result as ExecutionResult;
+      // New format: { execution_result: SdkExecutionResult, code_package_hash: string }
+      result = response.execution_result as SdkExecutionResult;
       // The bridge already handles storing the hash mapping, so we don't need to do anything with it here
     } else {
-      // Legacy format: direct ExecutionResult
-      result = response as ExecutionResult;
+      // Legacy format: direct SdkExecutionResult
+      result = response as SdkExecutionResult;
     }
 
     if ('Ok' in result) {
@@ -695,21 +727,11 @@ export const ProvenSDK = (options: {
     }
   };
 
-  const whoAmI = async (): Promise<WhoAmIResult> => {
-    logger?.debug('SDK: Getting identity');
-
-    const response = await sendMessage({
-      type: 'whoAmI',
-      nonce: 0, // Will be set by sendMessage
-    });
-
-    return response;
-  };
-
-  const isAuthenticated = async (): Promise<boolean> => {
+  const checkAuthentication = async (): Promise<boolean> => {
     try {
-      const whoAmIResult = await whoAmI();
-      return whoAmIResult.result === 'identified';
+      // Use the reactive signal to check authentication state
+      const signals = authSignalManager.getSignals();
+      return signals.isAuthenticated.value;
     } catch (error) {
       logger?.error('SDK: Error checking authentication status:', error);
       return false;
@@ -738,7 +760,7 @@ export const ProvenSDK = (options: {
     try {
       // Wait for core iframes to be ready before initializing manifests
       logger?.debug('SDK: Waiting for core iframes to be ready...');
-      await Promise.all([createBridgeIframe(), createRpcIframe()]);
+      await Promise.all([createBridgeIframe(), createRpcIframe(), createStateIframe()]);
 
       logger?.debug('SDK: Core iframes ready, initializing manifest system...');
 
@@ -764,13 +786,60 @@ export const ProvenSDK = (options: {
     });
   }, 10);
 
+  /**
+   * Destroy the SDK and clean up all resources
+   */
+  const destroy = (): void => {
+    logger?.debug('SDK: Destroying SDK instance');
+
+    // Clean up signal manager
+    authSignalManager.destroy();
+
+    // Remove event listeners
+    window.removeEventListener('message', handleIframeMessage);
+
+    // Clean up iframes
+    if (bridgeIframe && bridgeIframe.parentNode) {
+      bridgeIframe.parentNode.removeChild(bridgeIframe);
+      bridgeIframe = null;
+    }
+    if (rpcIframe && rpcIframe.parentNode) {
+      rpcIframe.parentNode.removeChild(rpcIframe);
+      rpcIframe = null;
+    }
+    if (stateIframe && stateIframe.parentNode) {
+      stateIframe.parentNode.removeChild(stateIframe);
+      stateIframe = null;
+    }
+    if (connectIframe && connectIframe.parentNode) {
+      connectIframe.parentNode.removeChild(connectIframe);
+      connectIframe = null;
+    }
+    if (modalOverlay && modalOverlay.parentNode) {
+      modalOverlay.parentNode.removeChild(modalOverlay);
+      modalOverlay = null;
+      modalIframe = null;
+    }
+
+    // Clear pending callbacks
+    pendingCallbacks.clear();
+
+    logger?.debug('SDK: SDK instance destroyed');
+  };
+
+  // Get auth signals (simplified API)
+  const getSignals = (): AuthStateSignals => {
+    return authSignalManager.getSignals();
+  };
+
   return {
     execute,
-    whoAmI,
-    isAuthenticated,
+    checkAuthentication,
     initConnectButton,
     registerManifest,
     updateManifest,
+    destroy,
+    ...getSignals(),
   };
 };
 

@@ -1,5 +1,5 @@
 import { parse } from '@babel/parser';
-import traverse, { type NodePath } from '@babel/traverse';
+import traverse from '@babel/traverse';
 import * as t from '@babel/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -148,7 +148,7 @@ export class EntrypointDiscovery {
     }
 
     // Named imports
-    const namedImports = node.specifiers
+    node.specifiers
       .filter((spec) => t.isImportSpecifier(spec))
       .map((spec) => {
         const importSpec = spec as t.ImportSpecifier;

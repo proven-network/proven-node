@@ -10,7 +10,8 @@ use crate::handlers::{
     create_session_handler, http_rpc_handler, management_http_rpc_handler,
     management_ws_rpc_handler, nats_cluster_endpoint_handler, register_iframe_html_handler,
     register_iframe_js_handler, rpc_iframe_html_handler, rpc_iframe_js_handler,
-    rpc_worker_js_handler, webauthn_authentication_finish_handler,
+    rpc_worker_js_handler, state_iframe_html_handler, state_iframe_js_handler,
+    state_worker_js_handler, webauthn_authentication_finish_handler,
     webauthn_authentication_start_handler, webauthn_registration_finish_handler,
     webauthn_registration_start_handler, whoami_handler, ws_rpc_handler,
 };
@@ -62,6 +63,8 @@ pub mod routes {
     pub const IFRAME_REGISTER_HTML: &str = "/app/{application_id}/iframes/register.html";
     /// RPC iframe HTML endpoint
     pub const IFRAME_RPC_HTML: &str = "/app/{application_id}/iframes/rpc.html";
+    /// State iframe HTML endpoint
+    pub const IFRAME_STATE_HTML: &str = "/app/{application_id}/iframes/state.html";
     /// Bridge iframe JS endpoint
     pub const IFRAME_BRIDGE_JS: &str = "/app/{application_id}/iframes/bridge.js";
     /// Connect iframe JS endpoint
@@ -70,10 +73,14 @@ pub mod routes {
     pub const IFRAME_REGISTER_JS: &str = "/app/{application_id}/iframes/register.js";
     /// RPC iframe JS endpoint
     pub const IFRAME_RPC_JS: &str = "/app/{application_id}/iframes/rpc.js";
+    /// State iframe JS endpoint
+    pub const IFRAME_STATE_JS: &str = "/app/{application_id}/iframes/state.js";
     /// Broker worker JS endpoint
     pub const WORKER_BROKER_JS: &str = "/app/{application_id}/workers/broker-worker.js";
     /// RPC worker JS endpoint
     pub const WORKER_RPC_JS: &str = "/app/{application_id}/workers/rpc-worker.js";
+    /// State worker JS endpoint
+    pub const WORKER_STATE_JS: &str = "/app/{application_id}/workers/state-worker.js";
 }
 
 /// Type alias for a function that can build bootstrapped routes
@@ -174,14 +181,17 @@ impl RouterBuilder {
                 get(register_iframe_html_handler),
             )
             .route(routes::IFRAME_RPC_HTML, get(rpc_iframe_html_handler))
+            .route(routes::IFRAME_STATE_HTML, get(state_iframe_html_handler))
             // Iframe JS
             .route(routes::IFRAME_BRIDGE_JS, get(bridge_iframe_js_handler))
             .route(routes::IFRAME_CONNECT_JS, get(connect_iframe_js_handler))
             .route(routes::IFRAME_REGISTER_JS, get(register_iframe_js_handler))
             .route(routes::IFRAME_RPC_JS, get(rpc_iframe_js_handler))
+            .route(routes::IFRAME_STATE_JS, get(state_iframe_js_handler))
             // Shared workers
             .route(routes::WORKER_BROKER_JS, get(broker_worker_js_handler))
             .route(routes::WORKER_RPC_JS, get(rpc_worker_js_handler))
+            .route(routes::WORKER_STATE_JS, get(state_worker_js_handler))
             .with_state(full_ctx);
 
         router.merge(stateful_router)

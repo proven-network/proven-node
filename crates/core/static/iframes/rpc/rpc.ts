@@ -1,14 +1,9 @@
 /// <reference lib="DOM" />
-import { createSession, getSession } from '@proven-network/common';
-import { CoseSign1Decoder, CoseSign1Encoder } from '@proven-network/common';
-import { bytesToHex, hexToBytes } from '@noble/curves/abstract/utils';
-import { MessageBroker, getWindowIdFromUrl } from '@proven-network/common';
+import { createSession, getSession } from '../../helpers/sessions';
+import { CoseSign1Decoder, CoseSign1Encoder } from '../../helpers/cose';
+import { MessageBroker, getWindowIdFromUrl } from '../../helpers/broker';
 
-// Generic message types for broker communication
-type RpcRequest = {
-  type: 'rpc_request';
-  data: any; // The raw RPC call data to be signed
-};
+import { hexToBytes } from '@noble/curves/abstract/utils';
 
 type RpcResponse = {
   success: boolean;

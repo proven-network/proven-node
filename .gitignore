@@ -3,7 +3,6 @@
 /target-devcontainer
 node_modules/
 dist/
-types/
 coverage/
 *.tsbuildinfo
 

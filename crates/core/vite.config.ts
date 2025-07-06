@@ -9,8 +9,10 @@ const entries = {
   connect: 'static/iframes/connect/connect.ts',
   register: 'static/iframes/register/register.ts',
   rpc: 'static/iframes/rpc/rpc.ts',
+  state: 'static/iframes/state/state.ts',
   'broker-worker': 'static/workers/broker-worker.ts',
   'rpc-worker': 'static/workers/rpc-worker.ts',
+  'state-worker': 'static/workers/state-worker.ts',
 };
 
 const pathMap = {
@@ -18,8 +20,10 @@ const pathMap = {
   connect: 'iframes/connect/connect.js',
   register: 'iframes/register/register.js',
   rpc: 'iframes/rpc/rpc.js',
+  state: 'iframes/state/state.js',
   'broker-worker': 'workers/broker-worker.js',
   'rpc-worker': 'workers/rpc-worker.js',
+  'state-worker': 'workers/state-worker.js',
 };
 
 // If building a specific entry, build only that one

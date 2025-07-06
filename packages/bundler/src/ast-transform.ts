@@ -1,7 +1,7 @@
 import * as babel from '@babel/core';
 import * as t from '@babel/types';
 import { NodePath } from '@babel/traverse';
-import { HandlerInfo, BundleManifest } from './types';
+import { BundleManifest } from './types';
 import * as pathUtils from 'path';
 
 /**
@@ -77,7 +77,7 @@ function createHandlerTransformPlugin(
     name: 'proven-handler-transform',
     visitor: {
       Program: {
-        enter(path) {
+        enter(_path) {
           // Use fixed variable names to ensure consistency across transformations
           manifestVarName = '_provenManifest';
           manifestSentVarName = '_provenManifestSent';
@@ -136,7 +136,7 @@ function createHandlerTransformPlugin(
  */
 function extractHandlerInfo(
   path: NodePath<t.CallExpression>,
-  filePath: string
+  _filePath: string
 ): ExtractedHandler | null {
   const callee = path.node.callee;
 

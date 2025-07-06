@@ -2,7 +2,6 @@ import { Plugin } from 'vite';
 import {
   BundlerOptions,
   BundleManifestGenerator,
-  DevWrapperGenerator,
   mergeOptions,
   validateOptions,
   formatFileSize,

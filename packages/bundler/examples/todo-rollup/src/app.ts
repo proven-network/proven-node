@@ -1,5 +1,6 @@
 // Example of how the app should work with bundler transformation
 import { sdk } from './sdk-init';
+import { effect } from '@preact/signals-core';
 
 // Import handlers directly - bundler will transform these
 import { createTodo, getTodos, updateTodo, deleteTodo, getTodoStats } from './todo-handlers';
@@ -21,20 +22,10 @@ export async function initApp() {
     await sdk.initConnectButton('#auth-container');
     console.log('Auth button initialized');
 
-    // Check authentication status
-    await checkAuthStatus();
-
-    // Only load todos if user is authenticated
-    const isAuth = await sdk.isAuthenticated();
-    if (isAuth) {
-      await loadTodos();
-      await updateStats();
-    }
+    // Set up reactive authentication state handling
+    setupReactiveAuth();
 
     console.log('✅ Rollup Todo App initialized successfully');
-
-    // Set up periodic auth status checking
-    setupAuthStatusPolling();
   } catch (error) {
     console.error('Failed to initialize app:', error);
   }
@@ -56,26 +47,27 @@ async function loadManifest() {
   }
 }
 
-export async function checkAuthStatus() {
-  try {
-    // Use the SDK's real authentication check
-    const isAuth = await sdk.isAuthenticated();
+// Set up reactive authentication state handling
+function setupReactiveAuth() {
+  console.log('🔄 Setting up reactive authentication state...');
 
-    if (isAuth) {
-      // Get additional user info when authenticated
-      const whoAmIResult = await sdk.whoAmI();
-      updateAuthUI(isAuth, whoAmIResult);
+  // React to authentication state changes
+  effect(() => {
+    const authState = sdk.authState.value;
+    const userInfo = sdk.userInfo.value;
+    const isAuthenticated = sdk.isAuthenticated.value;
 
-      // Load todos and stats when user signs in
-      await loadTodos();
-      await updateStats();
-    } else {
-      updateAuthUI(isAuth);
+    console.log('Auth state changed:', { authState, isAuthenticated, userInfo });
+
+    // Update UI based on authentication state
+    updateAuthUI(isAuthenticated, userInfo);
+
+    // Load todos and stats when user is authenticated
+    if (isAuthenticated) {
+      loadTodos().catch(console.error);
+      updateStats().catch(console.error);
     }
-  } catch (error) {
-    console.error('Error checking auth status:', error);
-    updateAuthUI(false);
-  }
+  });
 }
 
 export async function addTodo(title: string, description?: string) {
@@ -304,25 +296,6 @@ export function handleFilterTodos(filter: 'all' | 'pending' | 'completed') {
 
 export function handleSearchTodos(query: string) {
   setSearch(query);
-}
-
-// Set up periodic authentication status checking
-function setupAuthStatusPolling() {
-  // Check auth status every 30 seconds
-  setInterval(async () => {
-    try {
-      const wasAuthenticated = document.getElementById('todo-interface')?.style.display === 'block';
-      const isAuthenticated = await sdk.isAuthenticated();
-
-      // Only update UI if authentication status changed
-      if (wasAuthenticated !== isAuthenticated) {
-        console.log('Authentication status changed, updating UI');
-        await checkAuthStatus();
-      }
-    } catch (error) {
-      console.error('Error during auth status polling:', error);
-    }
-  }, 30000); // 30 seconds
 }
 
 // Set up global functions for HTML onclick handlers

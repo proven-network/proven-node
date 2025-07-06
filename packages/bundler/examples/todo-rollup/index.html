@@ -226,14 +226,24 @@
         margin-bottom: 8px;
         color: #555;
       }
+      .reactive-badge {
+        display: inline-block;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.8em;
+        font-weight: bold;
+        margin-left: 10px;
+      }
     </style>
   </head>
   <body>
     <div class="header">
-      <h1>📝 Todo App<span class="rollup-badge">Rollup</span></h1>
+      <h1>📝 Todo App<span class="rollup-badge">Rollup</span><span class="reactive-badge">Reactive</span></h1>
       <p>
         This example demonstrates the Proven Network rollup bundler with manifest-based handler
-        execution.
+        execution and reactive authentication state using Preact Signals.
       </p>
       <div id="auth-status" class="auth-status">
         <span id="auth-text">Checking authentication...</span>
@@ -248,6 +258,8 @@
       <p>• Automatic handler discovery across modules</p>
       <p>• Development and production build optimization</p>
       <p>• Source map support for debugging</p>
+      <p>• <strong>NEW:</strong> Reactive authentication state with Preact Signals</p>
+      <p>• <strong>NEW:</strong> Cross-tab synchronization via SharedWorker</p>
     </div>
 
     <!-- Todo interface - hidden until authenticated -->

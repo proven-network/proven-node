@@ -2,13 +2,15 @@
   "scripts": {
     "build": "npm run build:clean && npm run build:self-contained",
     "build:clean": "rm -rf dist",
-    "build:self-contained": "npm run build:bridge && npm run build:connect && npm run build:register && npm run build:rpc && npm run build:broker-worker && npm run build:rpc-worker",
+    "build:self-contained": "npm run build:bridge && npm run build:connect && npm run build:register && npm run build:rpc && npm run build:state && npm run build:broker-worker && npm run build:rpc-worker && npm run build:state-worker",
     "build:bridge": "VITE_ENTRY=bridge vite build",
     "build:connect": "VITE_ENTRY=connect vite build",
     "build:register": "VITE_ENTRY=register vite build",
     "build:rpc": "VITE_ENTRY=rpc vite build",
+    "build:state": "VITE_ENTRY=state vite build",
     "build:broker-worker": "VITE_ENTRY=broker-worker vite build",
     "build:rpc-worker": "VITE_ENTRY=rpc-worker vite build",
+    "build:state-worker": "VITE_ENTRY=state-worker vite build",
     "test": "jest",
     "lint": "echo 'Linting handled by root workspace'",
     "test:iframe": "node test/server.js"

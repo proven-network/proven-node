@@ -1,18 +1,18 @@
 /// <reference lib="DOM" />
-import { authenticate } from '@proven-network/common';
-import { MessageBroker, getWindowIdFromUrl } from '@proven-network/common';
+import { authenticate } from '../../helpers/webauthn';
+import { MessageBroker, getWindowIdFromUrl } from '../../helpers/broker';
 import { hexToBytes } from '@noble/curves/abstract/utils';
+import { WhoAmIResult } from '../../types';
 import {
   Anonymize,
   Identify,
   WhoAmI,
-  WhoAmIResult,
   AnonymizeResponse,
   IdentifyResponse,
   RpcResponse,
-} from '@proven-network/common';
+} from '../../types';
 import { signAsync, getPublicKeyAsync } from '@noble/ed25519';
-import { getSession } from '@proven-network/common';
+import { getSession } from '../../helpers/sessions';
 
 class ConnectClient {
   applicationId: string;
@@ -126,8 +126,46 @@ class ConnectClient {
       // Only update UI after successful identify RPC
       console.debug('Connect: Identify successful, updating UI');
       await this.updateAuthUI();
+
+      // Update auth state in the state system via broker
+      await this.updateAuthStateInStateSystem(true);
     } catch (error) {
       console.error('Connect: Failed to send identify RPC request:', error);
+    }
+  }
+
+  // Update auth state in the state system via broker
+  async updateAuthStateInStateSystem(authenticated: boolean): Promise<void> {
+    try {
+      console.debug('Connect: Updating auth state in state system:', authenticated);
+
+      if (authenticated) {
+        // Send authenticated state with user info to state iframe
+        await this.broker.request(
+          'set_state',
+          {
+            key: 'auth_state',
+            value: 'authenticated',
+            tabId: this.windowId,
+          },
+          'state'
+        );
+      } else {
+        // Send unauthenticated state
+        await this.broker.request(
+          'set_state',
+          {
+            key: 'auth_state',
+            value: 'unauthenticated',
+            tabId: this.windowId,
+          },
+          'state'
+        );
+      }
+
+      console.debug('Connect: Auth state updated in state system successfully');
+    } catch (error) {
+      console.error('Connect: Failed to update auth state in state system:', error);
     }
   }
 
@@ -187,6 +225,9 @@ class ConnectClient {
       }
 
       await this.updateAuthUI();
+
+      // Update auth state in the state system via broker
+      await this.updateAuthStateInStateSystem(false);
     } catch (error) {
       console.error('Connect: Failed to sign out:', error);
     }
@@ -243,13 +284,6 @@ class ConnectClient {
         this.resetSignInButton();
       } else {
         // Other error (user cancelled, PRF not available, etc.)
-        let errorMessage = 'Sign-in failed';
-        if ((error as Error).name === 'NotAllowedError') {
-          errorMessage = 'Sign-in was cancelled';
-        } else if ((error as Error).message) {
-          errorMessage = (error as Error).message;
-        }
-
         this.resetSignInButton();
       }
     }

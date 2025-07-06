@@ -3,7 +3,6 @@ import {
   ExecutableModule,
   BuildMetadata,
   ResolvedBundlerOptions,
-  DependencyInfo,
   SourceFile,
   EntrypointInfo,
 } from './types';
@@ -257,7 +256,7 @@ export class BundleManifestGenerator {
   /**
    * Generates bundle metadata
    */
-  private generateMetadata(sources: SourceFile[], entrypoints?: EntrypointInfo[]): BuildMetadata {
+  private generateMetadata(_sources: SourceFile[], _entrypoints?: EntrypointInfo[]): BuildMetadata {
     return {
       createdAt: new Date().toISOString(),
       mode: this.options.mode || 'development',

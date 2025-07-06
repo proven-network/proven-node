@@ -1,4 +1,5 @@
-// Shared RPC command and response type definitions
+// Internal RPC command and response type definitions for core system
+// These types are used internally by the core and should not be exposed to SDK
 
 // Basic types
 export type ExecuteOutput = string | number | boolean | null | undefined;
@@ -112,3 +113,39 @@ export type CreateApplicationResponse = RpcResponse<CreateApplicationResult>;
 
 // Union of all RPC commands
 export type RpcCall = Anonymize | Execute | ExecuteHash | Identify | WhoAmI | CreateApplication;
+
+// Broker message types for internal iframe communication
+export type BrokerMessage = {
+  type: string;
+  nonce: number;
+  data: any;
+  target?: string;
+  source?: string;
+};
+
+// State system message types
+export type StateGetRequest = {
+  key: string;
+  tabId: string;
+};
+
+export type StateSetRequest = {
+  key: string;
+  value: any;
+  tabId: string;
+};
+
+export type StateValueResponse = {
+  type: 'state_value';
+  key: string;
+  value: any;
+  exists: boolean;
+  tabId: string;
+};
+
+export type StateUpdateNotification = {
+  type: 'state_update';
+  key: string;
+  value: any;
+  tabId: string;
+};

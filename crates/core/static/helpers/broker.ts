@@ -455,12 +455,3 @@ export function getWindowIdFromUrl(): string | null {
   }
   return null;
 }
-
-// Utility function to generate a random window ID
-export function generateWindowId(): string {
-  return (
-    'win_' +
-    Math.random().toString(36).substring(2, 15) +
-    Math.random().toString(36).substring(2, 15)
-  );
-}
