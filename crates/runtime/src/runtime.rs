@@ -169,7 +169,7 @@ impl
     }
 
     /// Creates a new [`RuntimeOptions`] instance with all testing stores and a module loader created from a manifest.
-    /// This is useful for testing runtime execution with CodePackages created from manifests.
+    /// This is useful for testing runtime execution with `CodePackages` created from manifests.
     ///
     /// # Panics
     /// This function will panic if creating a temporary directory fails or if the manifest is invalid.
@@ -969,6 +969,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::too_many_lines)]
     async fn test_debug_manifest_specifier_issue() {
         use proven_code_package::CodePackage;
         // Debug test to investigate the SpecifierNotFoundInCodePackage error
@@ -1097,18 +1098,18 @@ mod tests {
         // Debug: Check what specifiers are available
         println!("Available specifiers in CodePackage:");
         for spec in code_package.specifiers() {
-            println!("  - {}", spec);
+            println!("  - {spec}");
         }
 
         // Debug: Check valid entrypoints
         println!("Valid entrypoints:");
         for entrypoint in code_package.valid_entrypoints() {
-            println!("  - {}", entrypoint);
+            println!("  - {entrypoint:?}");
         }
 
         // The problematic specifier from the error
         let problem_specifier = ModuleSpecifier::parse("file:///src/todo-handlers.ts").unwrap();
-        println!("Looking for specifier: {}", problem_specifier);
+        println!("Looking for specifier: {problem_specifier:?}");
 
         // Check if the specifier exists in the CodePackage
         let source = code_package.get_module_source(&problem_specifier);
@@ -1118,7 +1119,7 @@ mod tests {
         let is_entrypoint = code_package
             .valid_entrypoints()
             .contains(&problem_specifier);
-        println!("Is valid entrypoint: {}", is_entrypoint);
+        println!("Is valid entrypoint: {is_entrypoint}");
 
         // Create module loader and check
         let module_loader = ModuleLoader::new(code_package);
@@ -1152,19 +1153,19 @@ mod tests {
         let module_options_result = module_loader.get_module_options(&problem_specifier);
         println!("Module options result: {:?}", module_options_result.is_ok());
         if let Err(ref err) = module_options_result {
-            println!("Module options error: {:?}", err);
+            println!("Module options error: {err:?}");
         }
         if let Ok(ref opts) = module_options_result {
             println!("Number of handlers found: {}", opts.handler_options.len());
-            for (key, _) in &opts.handler_options {
-                println!("  Handler: {}", key);
+            for key in opts.handler_options.keys() {
+                println!("  Handler: {key}");
             }
 
             // Check if the specific handler exists
             let handler_exists = opts
                 .handler_options
                 .contains_key("file:///src/todo-handlers.ts#getTodoStats");
-            println!("getTodoStats handler exists: {}", handler_exists);
+            println!("getTodoStats handler exists: {handler_exists}");
         }
 
         // The main issue was that JSDoc comments before export statements weren't being

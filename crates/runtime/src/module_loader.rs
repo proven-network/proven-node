@@ -317,8 +317,7 @@ fn rewrite_run_functions(module_specifier: &str, module_source: &str) -> String 
         let run_function = &caps[5]; // runOnHttp, run, etc.
 
         format!(
-            "{}export {} {} = {}('{}', '{}', ",
-            prefix, const_or_let, function_name, run_function, module_specifier, function_name
+            "{prefix}export {const_or_let} {function_name} = {run_function}('{module_specifier}', '{function_name}', "
         )
     });
 
