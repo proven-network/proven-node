@@ -11,7 +11,10 @@ use crate::{
 use anyhow::Result;
 use chrono::Utc;
 use crossterm::{
-    event::{self, DisableMouseCapture, KeyCode, KeyEvent, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyModifiers,
+        MouseButton, MouseEvent, MouseEventKind,
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -34,7 +37,7 @@ use std::{
     },
     time::Duration,
 };
-use tracing::info;
+use tracing::{info, warn};
 
 /// Events that can occur in the TUI
 #[derive(Debug, Clone)]
@@ -163,7 +166,7 @@ impl App {
         // Setup terminal (synchronous)
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
@@ -247,6 +250,9 @@ impl App {
                 }
             }
 
+            // Check mouse hold timeout for text selection
+            self.check_mouse_hold_timeout();
+
             // Send periodic tick event
             self.handle_event(Event::Tick);
         }
@@ -259,8 +265,16 @@ impl App {
     fn handle_event(&mut self, event: Event) {
         match event {
             Event::Input(crossterm_event) => {
-                if let crossterm::event::Event::Key(key) = crossterm_event {
-                    self.handle_key_event(key);
+                match crossterm_event {
+                    crossterm::event::Event::Key(key) => {
+                        self.handle_key_event(key);
+                    }
+                    crossterm::event::Event::Mouse(mouse) => {
+                        self.handle_mouse_event(mouse);
+                    }
+                    _ => {
+                        // Ignore other event types (resize, focus, paste, etc.)
+                    }
                 }
             }
 
@@ -384,7 +398,8 @@ impl App {
                 if !self.shutting_down {
                     self.ui_state.show_node_type_modal = true;
                     self.ui_state.node_modal_selected_index = 0; // Reset to first option
-                    self.ui_state.node_specializations_selected = vec![false; 7]; // Reset all selections
+                    self.ui_state.node_specializations_selected = vec![false; 7];
+                    // Reset all selections
                 }
             }
 
@@ -610,6 +625,170 @@ impl App {
             }
 
             _ => {}
+        }
+    }
+
+    /// Handle mouse events
+    fn handle_mouse_event(&mut self, mouse: MouseEvent) {
+        // Only process mouse events if not shutting down and no modals are open
+        if self.shutting_down
+            || self.ui_state.show_help
+            || self.ui_state.show_log_level_modal
+            || self.ui_state.show_rpc_modal
+            || self.ui_state.show_node_type_modal
+            || self.ui_state.show_application_manager_modal
+        {
+            return;
+        }
+
+        match mouse.kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.handle_mouse_down(mouse.column, mouse.row);
+            }
+            MouseEventKind::Up(MouseButton::Left) => {
+                self.handle_mouse_up(mouse.column, mouse.row);
+            }
+            MouseEventKind::ScrollUp => {
+                self.handle_mouse_scroll_up(mouse.column, mouse.row);
+            }
+            MouseEventKind::ScrollDown => {
+                self.handle_mouse_scroll_down(mouse.column, mouse.row);
+            }
+            _ => {
+                // Ignore other mouse events (drag, right click, etc.)
+            }
+        }
+    }
+
+    /// Handle mouse down events
+    fn handle_mouse_down(&mut self, column: u16, row: u16) {
+        // Record mouse down state
+        self.ui_state.mouse_state.is_down = true;
+        self.ui_state.mouse_state.down_time = Some(std::time::Instant::now());
+
+        // Handle immediate clicks for sidebar (only if not in logs area)
+        if self.ui_state.sidebar_area.x <= column
+            && column < self.ui_state.sidebar_area.x + self.ui_state.sidebar_area.width
+            && self.ui_state.sidebar_area.y <= row
+            && row < self.ui_state.sidebar_area.y + self.ui_state.sidebar_area.height
+        {
+            self.handle_sidebar_click(column, row);
+        }
+    }
+
+    /// Handle mouse up events
+    fn handle_mouse_up(&mut self, _column: u16, _row: u16) {
+        // Clear mouse down state
+        self.ui_state.mouse_state.is_down = false;
+        self.ui_state.mouse_state.down_time = None;
+
+        // If mouse capture was disabled, re-enable it
+        if !self.ui_state.mouse_state.capture_enabled {
+            if let Err(e) = self.re_enable_mouse_capture() {
+                warn!("Failed to re-enable mouse capture: {}", e);
+            }
+        }
+    }
+
+    /// Disable mouse capture to allow native text selection
+    fn disable_mouse_capture(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        execute!(std::io::stdout(), DisableMouseCapture)?;
+        self.ui_state.mouse_state.capture_enabled = false;
+        info!("Mouse capture disabled - text selection mode enabled");
+        Ok(())
+    }
+
+    /// Re-enable mouse capture
+    fn re_enable_mouse_capture(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        execute!(std::io::stdout(), EnableMouseCapture)?;
+        self.ui_state.mouse_state.capture_enabled = true;
+        info!("Mouse capture re-enabled");
+        Ok(())
+    }
+
+    /// Check if mouse should be disabled for text selection
+    fn check_mouse_hold_timeout(&mut self) {
+        if !self.ui_state.mouse_state.is_down || !self.ui_state.mouse_state.capture_enabled {
+            return;
+        }
+
+        if let Some(down_time) = self.ui_state.mouse_state.down_time {
+            let hold_duration = std::time::Duration::from_millis(250); // 250ms threshold
+            if down_time.elapsed() > hold_duration {
+                if let Err(e) = self.disable_mouse_capture() {
+                    warn!("Failed to disable mouse capture: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Handle scroll wheel up events  
+    fn handle_mouse_scroll_up(&self, column: u16, row: u16) {
+        // Only scroll if mouse is over the logs area
+        if self.ui_state.logs_area.x <= column
+            && column < self.ui_state.logs_area.x + self.ui_state.logs_area.width
+            && self.ui_state.logs_area.y <= row
+            && row < self.ui_state.logs_area.y + self.ui_state.logs_area.height
+        {
+            self.log_reader.scroll_up(3); // Scroll 3 lines at a time
+        }
+    }
+
+    /// Handle scroll wheel down events
+    fn handle_mouse_scroll_down(&self, column: u16, row: u16) {
+        // Only scroll if mouse is over the logs area
+        if self.ui_state.logs_area.x <= column
+            && column < self.ui_state.logs_area.x + self.ui_state.logs_area.width
+            && self.ui_state.logs_area.y <= row
+            && row < self.ui_state.logs_area.y + self.ui_state.logs_area.height
+        {
+            self.log_reader.scroll_down(3); // Scroll 3 lines at a time
+        }
+    }
+
+    /// Handle clicks in the sidebar area
+    const fn handle_sidebar_click(&mut self, column: u16, row: u16) {
+        // Check if click is in debug area first (bottom section)
+        if self.ui_state.sidebar_debug_area.x <= column
+            && column < self.ui_state.sidebar_debug_area.x + self.ui_state.sidebar_debug_area.width
+            && self.ui_state.sidebar_debug_area.y <= row
+            && row < self.ui_state.sidebar_debug_area.y + self.ui_state.sidebar_debug_area.height
+        {
+            // Clicked on debug logs
+            self.ui_state.logs_sidebar_debug_selected = true;
+            self.ui_state.logs_sidebar_selected = 0;
+            return;
+        }
+
+        // Check if click is in main area (Overview and nodes)
+        if self.ui_state.sidebar_main_area.x <= column
+            && column < self.ui_state.sidebar_main_area.x + self.ui_state.sidebar_main_area.width
+            && self.ui_state.sidebar_main_area.y <= row
+            && row < self.ui_state.sidebar_main_area.y + self.ui_state.sidebar_main_area.height
+        {
+            // Calculate which item was clicked based on row within main area
+            let relative_row = row - self.ui_state.sidebar_main_area.y;
+
+            // Main area layout:
+            // Row 0: Empty line
+            // Row 1: "Overview" (All logs)
+            // Row 2: Empty line
+            // Row 3+: Individual nodes
+
+            if relative_row == 1 {
+                // Clicked on Overview
+                self.ui_state.logs_sidebar_selected = 0;
+                self.ui_state.logs_sidebar_debug_selected = false;
+            } else if relative_row >= 3 {
+                // Calculate which node was clicked
+                let node_index = relative_row - 3; // Adjust for empty lines at top
+
+                if (node_index as usize) < self.ui_state.logs_sidebar_nodes.len() {
+                    // Clicked on a valid node
+                    self.ui_state.logs_sidebar_selected = (node_index + 1) as usize; // +1 because "All" is index 0
+                    self.ui_state.logs_sidebar_debug_selected = false;
+                }
+            }
         }
     }
 

@@ -16,6 +16,35 @@ use ratatui::{
         ScrollbarState,
     },
 };
+use std::time::Instant;
+
+/// Mouse state for dynamic capture switching
+#[derive(Debug)]
+pub struct MouseState {
+    /// Whether mouse button is currently pressed
+    pub is_down: bool,
+    /// When the mouse button was pressed
+    pub down_time: Option<Instant>,
+    /// Whether mouse capture is currently enabled
+    pub capture_enabled: bool,
+}
+
+impl MouseState {
+    /// Create a new mouse state
+    pub const fn new() -> Self {
+        Self {
+            is_down: false,
+            down_time: None,
+            capture_enabled: true, // Start with capture enabled
+        }
+    }
+}
+
+impl Default for MouseState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// UI state management
 #[derive(Debug)]
@@ -73,6 +102,16 @@ pub struct UiState {
     pub app_manager_origin_input: String,
     /// Result message for application operations
     pub app_manager_result: Option<String>,
+    /// Sidebar area for mouse click detection
+    pub sidebar_area: ratatui::layout::Rect,
+    /// Main sidebar list area (for Overview and nodes)
+    pub sidebar_main_area: ratatui::layout::Rect,
+    /// Debug area at bottom of sidebar  
+    pub sidebar_debug_area: ratatui::layout::Rect,
+    /// Logs area for mouse scroll detection
+    pub logs_area: ratatui::layout::Rect,
+    /// Mouse state for dynamic capture switching
+    pub mouse_state: MouseState,
 }
 
 impl UiState {
@@ -106,6 +145,11 @@ impl UiState {
             app_manager_selected_application: None,
             app_manager_origin_input: String::new(),
             app_manager_result: None,
+            sidebar_area: ratatui::layout::Rect::default(),
+            sidebar_main_area: ratatui::layout::Rect::default(),
+            sidebar_debug_area: ratatui::layout::Rect::default(),
+            logs_area: ratatui::layout::Rect::default(),
+            mouse_state: MouseState::new(),
         }
     }
 
@@ -296,7 +340,7 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
 
 /// Create colored spans for a log entry with proper alignment and wrapping
 #[allow(clippy::too_many_lines)]
-fn create_colored_log_lines(
+pub fn create_colored_log_lines(
     entry: &crate::messages::LogEntry,
     show_node_name: bool,
     max_width: u16,
@@ -625,6 +669,9 @@ fn render_logs<S: std::hash::BuildHasher>(
     // Render logs in the remaining space
     let logs_area = horizontal_chunks[1];
 
+    // Store logs area for mouse scroll detection
+    ui_state.logs_area = logs_area;
+
     // Determine what the node filter should be based on current UI state
     let desired_node_filter = if ui_state.logs_sidebar_debug_selected {
         // Show only debug (main thread) logs
@@ -768,7 +815,7 @@ fn render_logs<S: std::hash::BuildHasher>(
 fn render_logs_sidebar<S: std::hash::BuildHasher>(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
-    ui_state: &UiState,
+    ui_state: &mut UiState,
     _log_reader: &LogReader,
     nodes: &HashMap<
         NodeId,
@@ -780,6 +827,9 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
         S,
     >,
 ) {
+    // Store sidebar areas for mouse click detection
+    ui_state.sidebar_area = area;
+
     // Render the border
     let border_block = Block::default()
         .borders(Borders::ALL)
@@ -801,6 +851,10 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
         ])
         .split(inner_area);
     let (main_area, debug_area) = (chunks[0], chunks[1]);
+
+    // Store areas for mouse click detection
+    ui_state.sidebar_main_area = main_area;
+    ui_state.sidebar_debug_area = debug_area;
 
     // Create main sidebar items (All + nodes)
     let mut items = vec![
@@ -1048,6 +1102,11 @@ fn render_help_overlay(frame: &mut Frame, area: ratatui::layout::Rect) {
         Line::from("  PageUp/PageDown - Scroll logs (page by page)"),
         Line::from("  Home/End        - Scroll to top/bottom of logs"),
         Line::from("  l               - Select log level filter"),
+        Line::from(""),
+        Line::from("Mouse Controls:"),
+        Line::from("  Click sidebar   - Select node or debug logs"),
+        Line::from("  Scroll wheel    - Scroll logs up/down"),
+        Line::from("  Click and drag  - Text selection (auto-enabled after 250ms)"),
         Line::from(""),
         Line::from("Press ? or Esc to close this help"),
     ];
