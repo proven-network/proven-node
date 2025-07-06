@@ -167,6 +167,40 @@ impl
             rpc_endpoints: RpcEndpoints::external(),
         }
     }
+
+    /// Creates a new [`RuntimeOptions`] instance with all testing stores and a module loader created from a manifest.
+    /// This is useful for testing runtime execution with CodePackages created from manifests.
+    ///
+    /// # Panics
+    /// This function will panic if creating a temporary directory fails or if the manifest is invalid.
+    #[cfg(test)]
+    #[must_use]
+    pub async fn for_test_manifest(manifest: &proven_code_package::BundleManifest) -> Self {
+        use proven_code_package::CodePackage;
+        use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
+        use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
+        use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
+        use tempfile::tempdir;
+
+        let code_package = CodePackage::from_manifest(manifest).await.unwrap();
+
+        Self {
+            application_sql_store: DirectSqlStore2::new(tempdir().unwrap().keep()),
+            application_store: MemoryStore2::new(),
+            file_system_store: MemoryStore::<
+                StoredEntry,
+                ciborium::de::Error<std::io::Error>,
+                ciborium::ser::Error<std::io::Error>,
+            >::new(),
+            module_loader: ModuleLoader::new(code_package),
+            nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
+            nft_store: MemoryStore3::new(),
+            personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
+            personal_store: MemoryStore3::new(),
+            radix_nft_verifier: MockRadixNftVerifier::new(),
+            rpc_endpoints: RpcEndpoints::external(),
+        }
+    }
 }
 
 /// Executes ESM modules in a single-threaded environment. Cannot use in tokio without spawning in dedicated thread.
@@ -185,7 +219,7 @@ impl
 /// use proven_radix_nft_verifier_mock::MockRadixNftVerifier;
 /// use proven_runtime::{
 ///     Error, ExecutionRequest, ExecutionResult, HandlerSpecifier, ModuleLoader, RpcEndpoints,
-///     Runtime, RuntimeOptions,
+///     Runtime, RuntimeOptions, Worker,
 /// };
 /// use proven_sql_direct::{DirectSqlStore2, DirectSqlStore3};
 /// use proven_store_memory::{MemoryStore, MemoryStore2, MemoryStore3};
@@ -193,29 +227,35 @@ impl
 /// use tempfile::tempdir;
 /// use uuid::Uuid;
 ///
-/// let code_package = CodePackage::from_str("export const handler = (a, b) => a + b;")
+/// #[tokio::main]
+/// async fn main() {
+///     let code_package = CodePackage::from_str("export const handler = (a, b) => a + b;")
+///         .await
+///         .unwrap();
+///
+///     let mut worker = Worker::new(RuntimeOptions {
+///         application_sql_store: DirectSqlStore2::new(tempdir().unwrap().keep()),
+///         application_store: MemoryStore2::new(),
+///         file_system_store: MemoryStore::new(),
+///         module_loader: ModuleLoader::new(code_package),
+///         nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
+///         nft_store: MemoryStore3::new(),
+///         personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
+///         personal_store: MemoryStore3::new(),
+///         radix_nft_verifier: MockRadixNftVerifier::new(),
+///         rpc_endpoints: RpcEndpoints::external(),
+///     })
 ///     .await
-///     .unwrap();
+///     .expect("Failed to create worker");
 ///
-/// let mut runtime = Runtime::new(RuntimeOptions {
-///     application_sql_store: DirectSqlStore2::new(tempdir().unwrap().keep()),
-///     application_store: MemoryStore2::new(),
-///     file_system_store: MemoryStore::new(),
-///     module_loader: ModuleLoader::new(code_package),
-///     nft_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
-///     nft_store: MemoryStore3::new(),
-///     personal_sql_store: DirectSqlStore3::new(tempdir().unwrap().keep()),
-///     personal_store: MemoryStore3::new(),
-///     radix_nft_verifier: MockRadixNftVerifier::new(),
-///     rpc_endpoints: RpcEndpoints::external(),
-/// })
-/// .expect("Failed to create runtime");
-///
-/// runtime.execute(ExecutionRequest::Rpc {
-///     application_id: Uuid::new_v4(),
-///     args: vec![json!(10), json!(20)],
-///     handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
-/// });
+///     worker
+///         .execute(ExecutionRequest::Rpc {
+///             application_id: Uuid::new_v4(),
+///             args: vec![json!(10), json!(20)],
+///             handler_specifier: HandlerSpecifier::parse("file:///main.ts#handler").unwrap(),
+///         })
+///         .await;
+/// }
 /// ```
 pub struct Runtime<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>
 where
@@ -817,5 +857,325 @@ mod tests {
                 }
             }
         });
+    }
+
+    #[tokio::test]
+    async fn test_runtime_execute_with_manifest_codepackage() {
+        // Test runtime execution with a CodePackage created from a manifest
+        // This tests the same scenario as the test_todo_manifest_module_not_found_error
+        // but actually executes one of the handlers to verify full end-to-end functionality
+
+        let manifest_json = r#"{
+            "id": "manifest-31f0c8950596982b",
+            "version": "1.0.0",
+            "modules": [
+                {
+                    "specifier": "file:///src/todo-handlers.ts",
+                    "content": "import { run } from '@proven-network/handler';\n\n// In-memory storage for this example\nlet todos = [];\nlet nextId = 1;\n\nexport const createTodo = run((request) => {\n  const todo = {\n    id: `todo-${nextId++}`,\n    title: request.title,\n    description: request.description,\n    completed: false,\n    createdAt: new Date(),\n    updatedAt: new Date(),\n  };\n  todos.push(todo);\n  return todo;\n});\n\nexport const getTodos = run((filter) => {\n  let filteredTodos = [...todos];\n  if (filter?.completed !== undefined) {\n    filteredTodos = filteredTodos.filter((todo) => todo.completed === filter.completed);\n  }\n  return filteredTodos;\n});",
+                    "handlers": [
+                        {
+                            "name": "createTodo",
+                            "type": "rpc",
+                            "parameters": [
+                                {
+                                    "name": "request",
+                                    "type": "CreateTodoRequest",
+                                    "optional": false
+                                }
+                            ]
+                        },
+                        {
+                            "name": "getTodos",
+                            "type": "rpc",
+                            "parameters": [
+                                {
+                                    "name": "filter",
+                                    "type": "TodoFilter",
+                                    "optional": false
+                                }
+                            ]
+                        }
+                    ],
+                    "imports": [
+                        "@proven-network/handler"
+                    ]
+                }
+            ],
+            "dependencies": {},
+            "metadata": {
+                "createdAt": "2025-07-06T12:31:55.308Z",
+                "mode": "development",
+                "pluginVersion": "0.0.1"
+            }
+        }"#;
+
+        let manifest: proven_code_package::BundleManifest =
+            serde_json::from_str(manifest_json).unwrap();
+
+        // Create RuntimeOptions from manifest
+        let options = RuntimeOptions::for_test_manifest(&manifest).await;
+
+        run_in_thread(|| {
+            let mut runtime = Runtime::new(options).unwrap();
+
+            // Test creating a todo
+            let create_request = ExecutionRequest::for_identified_session_rpc_test(
+                "file:///src/todo-handlers.ts#createTodo",
+                vec![serde_json::json!({"title": "Test Todo", "description": "A test todo item"})],
+            );
+
+            match runtime.execute(create_request) {
+                Ok(ExecutionResult::Ok { output, .. }) => {
+                    // Verify the todo was created successfully
+                    assert!(output.is_object(), "Should return a todo object");
+                    let todo = output.as_object().unwrap();
+                    assert!(todo.contains_key("id"), "Should have an id");
+                    assert!(todo.contains_key("title"), "Should have a title");
+                    assert_eq!(todo.get("title").unwrap(), "Test Todo");
+                    assert_eq!(todo.get("description").unwrap(), "A test todo item");
+                    assert_eq!(todo.get("completed").unwrap(), false);
+                }
+                Ok(ExecutionResult::Error { error, .. }) => {
+                    panic!("Unexpected js error: {error:?}");
+                }
+                Err(error) => {
+                    panic!("Unexpected execution error: {error:?}");
+                }
+            }
+
+            // Test getting todos
+            let get_request = ExecutionRequest::for_identified_session_rpc_test(
+                "file:///src/todo-handlers.ts#getTodos",
+                vec![serde_json::json!({})],
+            );
+
+            match runtime.execute(get_request) {
+                Ok(ExecutionResult::Ok { output, .. }) => {
+                    // Verify we get the todo we created
+                    assert!(output.is_array(), "Should return an array of todos");
+                    let todos = output.as_array().unwrap();
+                    assert_eq!(todos.len(), 1, "Should have 1 todo");
+                    let todo = &todos[0];
+                    assert_eq!(todo.get("title").unwrap(), "Test Todo");
+                }
+                Ok(ExecutionResult::Error { error, .. }) => {
+                    panic!("Unexpected js error: {error:?}");
+                }
+                Err(error) => {
+                    panic!("Unexpected execution error: {error:?}");
+                }
+            }
+        });
+    }
+
+    #[tokio::test]
+    async fn test_debug_manifest_specifier_issue() {
+        use proven_code_package::CodePackage;
+        // Debug test to investigate the SpecifierNotFoundInCodePackage error
+        // Using the exact manifest from the user's error
+
+        let manifest_json = r#"{
+            "id": "manifest-31f0c8950596982b",
+            "version": "1.0.0",
+            "modules": [
+                {
+                    "specifier": "file:///src/auth-handlers.ts",
+                    "content": "import { run } from '@proven-network/handler';\nimport { getCurrentIdentity } from '@proven-network/session';\n\n/**\n * Get current user information\n */\nexport const getCurrentUser = run(() => {\n  console.log('Getting current user identity');\n\n  const identity = getCurrentIdentity();\n\n  if (!identity) {\n    console.log('No user currently authenticated');\n    return { authenticated: false, user: null };\n  }\n\n  console.log('User is authenticated:', identity);\n  return {\n    authenticated: true,\n    user: {\n      id: identity || 'unknown',\n      name: `User ${identity}`,\n    },\n  };\n});\n\n/**\n * Check if user is authenticated\n */\nexport const isAuthenticated = run((): boolean => {\n  const identity = getCurrentIdentity();\n  const isAuth = !!identity;\n\n  console.log('Authentication check:', isAuth);\n  return isAuth;\n});\n\n/**\n * Get user's todo permissions (example of authorization)\n */\nexport const getUserPermissions = run(() => {\n  const identity = getCurrentIdentity();\n\n  if (!identity) {\n    console.log('No identity, returning guest permissions');\n    return {\n      canRead: false,\n      canWrite: false,\n      canDelete: false,\n    };\n  }\n\n  // For this example, authenticated users have full permissions\n  const permissions = {\n    canRead: true,\n    canWrite: true,\n    canDelete: true,\n  };\n\n  console.log('User permissions:', permissions);\n  return permissions;\n});",
+                    "handlers": [
+                        {
+                            "name": "getCurrentUser",
+                            "type": "rpc",
+                            "parameters": []
+                        },
+                        {
+                            "name": "isAuthenticated",
+                            "type": "rpc",
+                            "parameters": []
+                        },
+                        {
+                            "name": "getUserPermissions",
+                            "type": "rpc",
+                            "parameters": []
+                        }
+                    ],
+                    "imports": [
+                        "@proven-network/handler",
+                        "@proven-network/session"
+                    ]
+                },
+                {
+                    "specifier": "file:///src/todo-handlers.ts",
+                    "content": "import { run } from '@proven-network/handler';\nimport { Todo, CreateTodoRequest, UpdateTodoRequest, TodoFilter } from './types';\n\n// In-memory storage for this example (in a real app, this would be persistent storage)\nlet todos: Todo[] = [];\nlet nextId = 1;\n\n// Non-handler utility function that can be imported directly\nexport const formatTodoId = (id: number): string => `todo-${id}`;\n\n// Non-handler constant that can be imported directly\nexport const MAX_TODOS = 100;\n\n/**\n * Create a new todo item\n */\nexport const createTodo = run((request: CreateTodoRequest): Todo => {\n  console.log('Creating new todo:', request);\n\n  const now = new Date();\n  const todo: Todo = {\n    id: formatTodoId(nextId++),\n    title: request.title,\n    description: request.description,\n    completed: false,\n    createdAt: now,\n    updatedAt: now,\n  };\n\n  todos.push(todo);\n  console.log(`Created todo \"${todo.title}\" with ID: ${todo.id}`);\n\n  return todo;\n});\n\n/**\n * Get all todos with optional filtering\n */\nexport const getTodos = run((filter?: TodoFilter): Todo[] => {\n  console.log('Fetching todos with filter:', filter);\n\n  let filteredTodos = [...todos];\n\n  if (filter?.completed !== undefined) {\n    filteredTodos = filteredTodos.filter((todo) => todo.completed === filter.completed);\n  }\n\n  if (filter?.search) {\n    const searchLower = filter.search.toLowerCase();\n    filteredTodos = filteredTodos.filter(\n      (todo) =>\n        todo.title.toLowerCase().includes(searchLower) ||\n        todo.description?.toLowerCase().includes(searchLower)\n    );\n  }\n\n  console.log(`Returning ${filteredTodos.length} todos`);\n  return filteredTodos;\n});\n\n/**\n * Update an existing todo\n */\nexport const updateTodo = run((request: UpdateTodoRequest): Todo => {\n  console.log('Updating todo:', request);\n\n  const todoIndex = todos.findIndex((todo) => todo.id === request.id);\n  if (todoIndex === -1) {\n    throw new Error(`Todo with ID ${request.id} not found`);\n  }\n\n  const todo = todos[todoIndex];\n  const updatedTodo: Todo = {\n    ...todo,\n    ...request,\n    updatedAt: new Date(),\n  };\n\n  todos[todoIndex] = updatedTodo;\n  console.log(`Updated todo \"${updatedTodo.title}\"`);\n\n  return updatedTodo;\n});\n\n/**\n * Delete a todo by ID\n */\nexport const deleteTodo = run((todoId: string): boolean => {\n  console.log('Deleting todo:', todoId);\n\n  const initialLength = todos.length;\n  todos = todos.filter((todo) => todo.id !== todoId);\n\n  const deleted = todos.length < initialLength;\n  if (deleted) {\n    console.log(`Deleted todo with ID: ${todoId}`);\n  } else {\n    console.log(`Todo with ID ${todoId} not found`);\n  }\n\n  return deleted;\n});\n\n/**\n * Mark all todos as completed or uncompleted\n */\nexport const toggleAllTodos = run((completed: boolean): Todo[] => {\n  console.log(`Marking all todos as ${completed ? 'completed' : 'uncompleted'}`);\n\n  const now = new Date();\n  todos = todos.map((todo) => ({\n    ...todo,\n    completed,\n    updatedAt: now,\n  }));\n\n  console.log(`Updated ${todos.length} todos`);\n  return todos;\n});\n\n/**\n * Get todo statistics\n */\nexport const getTodoStats = run(() => {\n  const total = todos.length;\n  const completed = todos.filter((todo) => todo.completed).length;\n  const pending = total - completed;\n\n  const stats = {\n    total,\n    completed,\n    pending,\n    completionRate: total > 0 ? Math.round((completed / total) * 100) : 0,\n  };\n\n  console.log('Todo statistics:', stats);\n  return stats;\n});",
+                    "handlers": [
+                        {
+                            "name": "createTodo",
+                            "type": "rpc",
+                            "parameters": [
+                                {
+                                    "name": "request",
+                                    "type": "CreateTodoRequest",
+                                    "optional": false
+                                }
+                            ]
+                        },
+                        {
+                            "name": "getTodos",
+                            "type": "rpc",
+                            "parameters": [
+                                {
+                                    "name": "filter",
+                                    "type": "TodoFilter",
+                                    "optional": false
+                                }
+                            ]
+                        },
+                        {
+                            "name": "updateTodo",
+                            "type": "rpc",
+                            "parameters": [
+                                {
+                                    "name": "request",
+                                    "type": "UpdateTodoRequest",
+                                    "optional": false
+                                }
+                            ]
+                        },
+                        {
+                            "name": "deleteTodo",
+                            "type": "rpc",
+                            "parameters": [
+                                {
+                                    "name": "todoId",
+                                    "type": "string",
+                                    "optional": false
+                                }
+                            ]
+                        },
+                        {
+                            "name": "toggleAllTodos",
+                            "type": "rpc",
+                            "parameters": [
+                                {
+                                    "name": "completed",
+                                    "type": "boolean",
+                                    "optional": false
+                                }
+                            ]
+                        },
+                        {
+                            "name": "getTodoStats",
+                            "type": "rpc",
+                            "parameters": []
+                        }
+                    ],
+                    "imports": [
+                        "@proven-network/handler",
+                        "file:///src/types.ts"
+                    ]
+                },
+                {
+                    "specifier": "file:///src/types.ts",
+                    "content": "// Type definitions for the todo app\n\nexport interface Todo {\n  id: string;\n  title: string;\n  description?: string;\n  completed: boolean;\n  createdAt: Date;\n  updatedAt: Date;\n}\n\nexport interface CreateTodoRequest {\n  title: string;\n  description?: string;\n}\n\nexport interface UpdateTodoRequest {\n  id: string;\n  title?: string;\n  description?: string;\n  completed?: boolean;\n}\n\nexport interface TodoFilter {\n  completed?: boolean;\n  search?: string;\n}",
+                    "handlers": [],
+                    "imports": []
+                }
+            ],
+            "dependencies": {},
+            "metadata": {
+                "createdAt": "2025-07-06T12:31:55.308Z",
+                "mode": "development",
+                "pluginVersion": "0.0.1"
+            }
+        }"#;
+
+        let manifest: proven_code_package::BundleManifest =
+            serde_json::from_str(manifest_json).unwrap();
+
+        // Create CodePackage from manifest
+        let code_package = CodePackage::from_manifest(&manifest).await.unwrap();
+
+        // Debug: Check what specifiers are available
+        println!("Available specifiers in CodePackage:");
+        for spec in code_package.specifiers() {
+            println!("  - {}", spec);
+        }
+
+        // Debug: Check valid entrypoints
+        println!("Valid entrypoints:");
+        for entrypoint in code_package.valid_entrypoints() {
+            println!("  - {}", entrypoint);
+        }
+
+        // The problematic specifier from the error
+        let problem_specifier = ModuleSpecifier::parse("file:///src/todo-handlers.ts").unwrap();
+        println!("Looking for specifier: {}", problem_specifier);
+
+        // Check if the specifier exists in the CodePackage
+        let source = code_package.get_module_source(&problem_specifier);
+        println!("Module source found: {}", source.is_some());
+
+        // Check if it's a valid entrypoint
+        let is_entrypoint = code_package
+            .valid_entrypoints()
+            .contains(&problem_specifier);
+        println!("Is valid entrypoint: {}", is_entrypoint);
+
+        // Create module loader and check
+        let module_loader = ModuleLoader::new(code_package);
+        let module = module_loader.get_module(&problem_specifier, ProcessingMode::Runtime);
+        println!("Module loader can load module: {}", module.is_some());
+
+        // Check the processed module source for Options mode
+        let options_source =
+            module_loader.get_module_source(&problem_specifier, ProcessingMode::Options);
+        if let Some(ref source) = options_source {
+            println!("Options mode source (first 1000 chars):");
+            println!("{}", &source[..source.len().min(1000)]);
+
+            // Look for createTodo specifically
+            if let Some(start) = source.find("export const createTodo") {
+                let end = source[start..].find('\n').unwrap_or(100) + start;
+                println!("createTodo line: {}", &source[start..end]);
+            }
+        }
+
+        // Test the specific handler from the error
+        let handler_specifier =
+            HandlerSpecifier::parse("file:///src/todo-handlers.ts#getTodoStats").unwrap();
+        println!("Handler specifier: {}", handler_specifier.as_str());
+        println!(
+            "Module specifier from handler: {}",
+            handler_specifier.module_specifier()
+        );
+
+        // Test module options parsing specifically
+        let module_options_result = module_loader.get_module_options(&problem_specifier);
+        println!("Module options result: {:?}", module_options_result.is_ok());
+        if let Err(ref err) = module_options_result {
+            println!("Module options error: {:?}", err);
+        }
+        if let Ok(ref opts) = module_options_result {
+            println!("Number of handlers found: {}", opts.handler_options.len());
+            for (key, _) in &opts.handler_options {
+                println!("  Handler: {}", key);
+            }
+
+            // Check if the specific handler exists
+            let handler_exists = opts
+                .handler_options
+                .contains_key("file:///src/todo-handlers.ts#getTodoStats");
+            println!("getTodoStats handler exists: {}", handler_exists);
+        }
+
+        // The main issue was that JSDoc comments before export statements weren't being
+        // handled correctly by the rewrite_run_functions regex. This has been fixed.
+        assert!(
+            is_entrypoint,
+            "The todo-handlers module should be a valid entrypoint"
+        );
+        assert!(
+            module_options_result.is_ok(),
+            "Module options should parse successfully after the fix"
+        );
     }
 }

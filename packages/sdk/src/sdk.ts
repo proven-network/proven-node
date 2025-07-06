@@ -9,11 +9,13 @@ import {
   CloseModalMessage,
   BundleManifest,
   QueuedHandler,
+  ExecuteMessage,
 } from '@proven-network/common';
 
 export type ProvenSDK = {
   execute: (manifestIdOrScript: string, handler: string, args?: any[]) => Promise<ExecuteOutput>;
   whoAmI: () => Promise<WhoAmIResult>;
+  isAuthenticated: () => Promise<boolean>;
   initConnectButton: (targetElement?: HTMLElement | string) => Promise<void>;
   registerManifest: (manifest: BundleManifest) => void;
   updateManifest: (manifest: BundleManifest) => void;
@@ -88,25 +90,53 @@ export const ProvenSDK = (options: {
    * Connect to the global handler queue and process queued calls
    */
   const connectHandlerQueue = (): void => {
+    logger?.debug('SDK: Attempting to connect to handler queue...');
+
     // Get reference to the global queue
-    const globalQueue = (window as any).__ProvenHandlerQueue__;
-    if (!globalQueue || !Array.isArray(globalQueue)) {
-      return;
-    }
+    const existingQueue = (window as any).__ProvenHandlerQueue__;
+    logger?.debug('SDK: Found existing queue:', existingQueue);
 
-    // Process existing queued calls
-    while (globalQueue.length > 0) {
-      const handler = globalQueue.shift();
-      if (handler) {
-        executeHandler(handler);
+    if (!existingQueue) {
+      logger?.debug('SDK: Creating new global queue object with push method');
+      // Create queue object directly with push method
+      (window as any).__ProvenHandlerQueue__ = {
+        push: (handler: QueuedHandler) => {
+          logger?.debug('SDK: Executing handler directly:', handler);
+          executeHandler(handler);
+          return 0; // Not meaningful for object, but maintaining array-like interface
+        },
+      };
+    } else if (Array.isArray(existingQueue)) {
+      logger?.debug(`SDK: Processing ${existingQueue.length} existing queued calls...`);
+
+      // Process existing queued calls
+      while (existingQueue.length > 0) {
+        const handler = existingQueue.shift();
+        if (handler) {
+          logger?.debug('SDK: Processing queued handler:', handler);
+          executeHandler(handler);
+        }
       }
+
+      // Replace the push method to execute handlers directly
+      existingQueue.push = (handler: QueuedHandler) => {
+        logger?.debug('SDK: Executing handler directly:', handler);
+        executeHandler(handler);
+        return existingQueue.length;
+      };
+    } else {
+      logger?.warn('SDK: Global queue exists but is not an array:', existingQueue);
+      // Replace with queue object
+      (window as any).__ProvenHandlerQueue__ = {
+        push: (handler: QueuedHandler) => {
+          logger?.debug('SDK: Executing handler directly:', handler);
+          executeHandler(handler);
+          return 0;
+        },
+      };
     }
 
-    // Replace the push method to execute handlers directly
-    globalQueue.push = (handler: QueuedHandler) => {
-      executeHandler(handler);
-      return globalQueue.length;
-    };
+    logger?.debug('SDK: Successfully connected to handler queue');
   };
 
   /**
@@ -118,12 +148,50 @@ export const ProvenSDK = (options: {
   };
 
   /**
-   * Execute a handler from the queue
+   * Execute a handler from the queue (simplified approach)
    */
   const executeHandler = async (handler: QueuedHandler): Promise<void> => {
     try {
-      const result = await execute(handler.manifestId, handler.handler, handler.args);
-      handler.resolve(result);
+      logger?.debug('SDK: Executing handler from queue', {
+        manifestId: handler.manifestId,
+        handler: handler.handler,
+        args: handler.args,
+        hasManifest: !!handler.manifest,
+      });
+
+      const executeMessage: ExecuteMessage = {
+        type: 'execute',
+        nonce: 0, // Will be set by sendMessage
+        data: {
+          manifestId: handler.manifestId,
+          ...(handler.manifest && { manifest: handler.manifest }),
+          handler: handler.handler, // This is now the complete handler specifier from bundler
+          args: handler.args,
+        },
+      };
+
+      const response = await sendMessage(executeMessage);
+
+      // Process the response same as before
+      let result: ExecutionResult;
+      if (response && typeof response === 'object' && 'execution_result' in response) {
+        result = response.execution_result as ExecutionResult;
+      } else {
+        result = response as ExecutionResult;
+      }
+
+      if ('Ok' in result) {
+        const successResult = result.Ok;
+        processExecuteLogs(successResult.logs);
+        handler.resolve(successResult.output as ExecuteOutput);
+      } else if ('Error' in result) {
+        const errorResult = result.Error;
+        processExecuteLogs(errorResult.logs);
+        const jsError = createErrorFromExecuteError(errorResult);
+        handler.reject(jsError);
+      } else {
+        handler.reject(new Error('Invalid execution result format'));
+      }
     } catch (error) {
       handler.reject(error instanceof Error ? error : new Error(String(error)));
     }
@@ -451,6 +519,18 @@ export const ProvenSDK = (options: {
       // Manifest-based execution
       const shouldSendManifest = !sentManifests.has(manifest.id);
 
+      // Log the manifest structure before sending
+      if (shouldSendManifest) {
+        logger?.debug('SDK: Sending manifest structure:', {
+          id: manifest.id,
+          version: manifest.version,
+          modules: manifest.modules?.length || 0,
+          dependencies: manifest.dependencies,
+          metadata: manifest.metadata,
+          fullManifest: manifest,
+        });
+      }
+
       executeMessage = {
         type: 'execute',
         nonce: 0, // Will be set by sendMessage
@@ -546,6 +626,16 @@ export const ProvenSDK = (options: {
     return response;
   };
 
+  const isAuthenticated = async (): Promise<boolean> => {
+    try {
+      const whoAmIResult = await whoAmI();
+      return whoAmIResult.result === 'identified';
+    } catch (error) {
+      logger?.error('SDK: Error checking authentication status:', error);
+      return false;
+    }
+  };
+
   const initConnectButton = async (targetElement?: HTMLElement | string): Promise<void> => {
     logger?.debug('SDK: Initializing button iframe');
     await createConnectIframe(targetElement);
@@ -588,8 +678,9 @@ export const ProvenSDK = (options: {
 
   return {
     execute,
-    initConnectButton,
     whoAmI,
+    isAuthenticated,
+    initConnectButton,
     registerManifest,
     updateManifest,
   };

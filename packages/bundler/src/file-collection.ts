@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { glob } from 'fast-glob';
+import glob from 'fast-glob';
 import { EntrypointInfo, SourceFile, BundlerOptions } from './types';
 import { EntrypointDiscovery } from './entrypoint-discovery';
 
@@ -23,13 +23,24 @@ export class FileCollection {
    */
   async discoverEntrypoints(): Promise<EntrypointInfo[]> {
     const sourceFiles = await this.findSourceFiles();
+    console.log(
+      `🔍 Scanning ${sourceFiles.length} source files for entrypoints:`,
+      sourceFiles.slice(0, 5)
+    );
     const entrypoints: EntrypointInfo[] = [];
 
     for (const filePath of sourceFiles) {
       try {
         const entrypoint = await this.entrypointDiscovery.analyzeFile(filePath);
         if (entrypoint) {
+          console.log(
+            `✅ Found entrypoint: ${filePath} with ${entrypoint.handlers.length} handlers`
+          );
           entrypoints.push(entrypoint);
+        } else {
+          if (filePath.includes('handlers')) {
+            console.log(`❌ No entrypoint found in handler file: ${filePath}`);
+          }
         }
       } catch (error) {
         // Skip files that can't be parsed
@@ -37,6 +48,7 @@ export class FileCollection {
       }
     }
 
+    console.log(`📊 Discovery found ${entrypoints.length} total entrypoints`);
     return entrypoints;
   }
 

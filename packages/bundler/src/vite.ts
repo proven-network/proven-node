@@ -2,10 +2,14 @@ import { Plugin } from 'vite';
 import {
   BundlerOptions,
   BundleManifestGenerator,
+  DevWrapperGenerator,
   mergeOptions,
   validateOptions,
   formatFileSize,
+  transformHandlers,
+  hasHandlerImport,
 } from './index';
+import { BundleManifest, ExecutableModule } from '@proven-network/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -40,6 +44,46 @@ export function provenVitePlugin(options: BundlerOptions = {}): Plugin {
       generator = new BundleManifestGenerator(projectRoot, resolvedOptions);
 
       console.log('🔍 Proven Vite Plugin initialized');
+    },
+
+    async transform(code, id) {
+      // Only transform files that import from @proven-network/handler
+      if (!hasHandlerImport(code)) {
+        return null;
+      }
+
+      // Skip node_modules
+      if (id.includes('node_modules')) {
+        return null;
+      }
+
+      try {
+        // Create a minimal manifest for transformation
+        const manifestId = `bundle-${Date.now()}`;
+
+        // Transform the code
+        const result = await transformHandlers(code, {
+          manifest: {
+            id: manifestId,
+            version: '1.0',
+            modules: [],
+            dependencies: {},
+          },
+          manifestId,
+          filePath: `file://${id}`,
+          sourceMap: true,
+        });
+
+        console.log(`✅ Transformed handlers in ${path.relative(projectRoot, id)}`);
+
+        return {
+          code: result.code,
+          map: result.map,
+        };
+      } catch (error) {
+        console.warn(`Failed to transform handlers in ${id}:`, error);
+        return null;
+      }
     },
 
     async generateBundle() {
@@ -111,17 +155,25 @@ async function handleOutput(
 /**
  * Logs bundle statistics to the console
  */
-function logBundleStats(manifest: any): void {
+function logBundleStats(manifest: BundleManifest): void {
+  const handlers = manifest.modules.reduce(
+    (sum: number, module: ExecutableModule) => sum + module.handlers.length,
+    0
+  );
+  const bundleSize = manifest.modules.reduce(
+    (sum: number, module: ExecutableModule) => sum + Buffer.byteLength(module.content, 'utf8'),
+    0
+  );
+
   const stats = {
-    entrypoints: manifest.entrypoints.length,
-    handlers: manifest.entrypoints.reduce((sum: number, ep: any) => sum + ep.handlers.length, 0),
-    files: manifest.sources.length,
-    dependencies: Object.keys(manifest.dependencies.dependencies).length,
-    size: formatFileSize(manifest.metadata.bundleSize),
+    modules: manifest.modules.length,
+    handlers,
+    dependencies: Object.keys(manifest.dependencies).length,
+    size: formatFileSize(bundleSize),
   };
 
   console.log(
-    `📊 Bundle stats: ${stats.entrypoints} entrypoints, ${stats.handlers} handlers, ${stats.files} files, ${stats.dependencies} dependencies (${stats.size})`
+    `📊 Bundle stats: ${stats.modules} modules, ${stats.handlers} handlers, ${stats.dependencies} dependencies (${stats.size})`
   );
 }
 

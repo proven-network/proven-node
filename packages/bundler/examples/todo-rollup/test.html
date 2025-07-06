@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Proven Bundle Test</title>
+</head>
+<body>
+    <h1>Proven Bundle Test</h1>
+    <div id="output"></div>
+    
+    <script src="dist/bundle.js"></script>
+    <script>
+        console.log('Testing bundle...');
+        
+        // Try calling a handler
+        try {
+            const result = ProvenTodoApp.createTodo({ text: 'Test todo', completed: false });
+            console.log('✅ Handler call succeeded:', result);
+            
+            // Check if queue is populated
+            if (window.__ProvenHandlerQueue__ && window.__ProvenHandlerQueue__.length > 0) {
+                console.log('✅ Queue populated:', window.__ProvenHandlerQueue__);
+                document.getElementById('output').innerHTML = '<p style="color: green;">✅ Bundle test successful!</p>';
+            } else {
+                console.log('❌ Queue is empty');
+                document.getElementById('output').innerHTML = '<p style="color: red;">❌ Queue is empty</p>';
+            }
+        } catch (error) {
+            console.error('❌ Handler call failed:', error);
+            document.getElementById('output').innerHTML = '<p style="color: red;">❌ ' + error.message + '</p>';
+        }
+    </script>
+</body>
+</html>

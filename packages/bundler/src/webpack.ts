@@ -3,10 +3,14 @@ import { validate } from 'schema-utils';
 import {
   BundlerOptions,
   BundleManifestGenerator,
+  DevWrapperGenerator,
   mergeOptions,
   validateOptions,
   formatFileSize,
+  transformHandlers,
+  hasHandlerImport,
 } from './index';
+import { BundleManifest, ExecutableModule } from '@proven-network/common';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
@@ -93,6 +97,34 @@ export class ProvenWebpackPlugin implements WebpackPluginInstance {
 
     // Initialize the generator with the project root
     (this as any).generator = new BundleManifestGenerator(projectRoot, mergedOptions);
+
+    // Add loader for transforming handler files
+    compiler.hooks.compilation.tap(pluginName, (compilation) => {
+      compilation.hooks.normalModuleLoader.tap(pluginName, (loaderContext: any) => {
+        loaderContext[pluginName] = {
+          generator: this.generator,
+          projectRoot,
+        };
+      });
+    });
+
+    // Add our custom loader to webpack's module rules
+    compiler.options.module = compiler.options.module || {};
+    compiler.options.module.rules = compiler.options.module.rules || [];
+
+    // Insert our loader at the beginning to run before other loaders
+    compiler.options.module.rules.unshift({
+      test: /\.(js|jsx|ts|tsx)$/,
+      exclude: /node_modules/,
+      use: [
+        {
+          loader: path.join(__dirname, 'webpack-handler-loader.js'),
+          options: {
+            pluginName,
+          },
+        },
+      ],
+    });
 
     // Hook into the compilation process
     compiler.hooks.emit.tapAsync(pluginName, async (compilation, callback) => {
@@ -188,17 +220,25 @@ export class ProvenWebpackPlugin implements WebpackPluginInstance {
   /**
    * Logs bundle statistics to the console
    */
-  private logBundleStats(manifest: any): void {
+  private logBundleStats(manifest: BundleManifest): void {
+    const handlers = manifest.modules.reduce(
+      (sum: number, module: ExecutableModule) => sum + module.handlers.length,
+      0
+    );
+    const bundleSize = manifest.modules.reduce(
+      (sum: number, module: ExecutableModule) => sum + Buffer.byteLength(module.content, 'utf8'),
+      0
+    );
+
     const stats = {
-      entrypoints: manifest.entrypoints.length,
-      handlers: manifest.entrypoints.reduce((sum: number, ep: any) => sum + ep.handlers.length, 0),
-      files: manifest.sources.length,
-      dependencies: Object.keys(manifest.dependencies.all).length,
-      size: formatFileSize(manifest.metadata.bundleSize),
+      modules: manifest.modules.length,
+      handlers,
+      dependencies: Object.keys(manifest.dependencies).length,
+      size: formatFileSize(bundleSize),
     };
 
     console.log(
-      `📊 Bundle stats: ${stats.entrypoints} entrypoints, ${stats.handlers} handlers, ${stats.files} files, ${stats.dependencies} dependencies (${stats.size})`
+      `📊 Bundle stats: ${stats.modules} modules, ${stats.handlers} handlers, ${stats.dependencies} dependencies (${stats.size})`
     );
   }
 }

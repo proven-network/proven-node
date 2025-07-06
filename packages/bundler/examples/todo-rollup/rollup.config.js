@@ -1,4 +1,4 @@
-// import { provenRollupPlugin } from '../../dist/index.js';
+import { provenRollupPlugin } from '../../dist/rollup.js';
 import typescript from '@rollup/plugin-typescript';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
@@ -9,7 +9,8 @@ export default {
   input: 'src/index.ts',
   output: {
     file: 'dist/bundle.js',
-    format: 'es',
+    format: 'iife',
+    name: 'ProvenTodoApp',
     sourcemap: !isProduction,
   },
   plugins: [
@@ -21,14 +22,12 @@ export default {
       tsconfig: './tsconfig.json',
       sourceMap: !isProduction,
     }),
-    // TODO: Add provenRollupPlugin when bundler is working
-    // provenRollupPlugin({
-    //   output: 'development',
-    //   mode: isProduction ? 'production' : 'development',
-    //   entryPatterns: ['./src/**/*.ts'],
-    //   sourceMaps: !isProduction,
-    //   includeDevDependencies: true,
-    // }),
+    provenRollupPlugin({
+      output: 'development',
+      mode: isProduction ? 'production' : 'development',
+      sourceMaps: !isProduction,
+      includeDevDependencies: true,
+    }),
   ],
   external: [],
 };

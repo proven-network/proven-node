@@ -10,78 +10,30 @@ export interface ParameterInfo {
 
 export interface HandlerInfo {
   name: string;
-  type: 'http' | 'schedule' | 'event' | 'rpc';
+  type: 'rpc' | 'http' | 'event' | 'schedule';
   parameters: ParameterInfo[];
   config?: any;
-  line?: number;
-  column?: number;
 }
 
-export interface ManifestModule {
-  path: string;
-  content: string;
-  handlers: HandlerInfo[];
-  dependencies: string[]; // Module paths this module imports
+export interface ExecutableModule {
+  specifier: string; // Module specifier (e.g., "file:///src/handlers.ts")
+  content: string; // Source code content
+  handlers: HandlerInfo[]; // Exported handlers (empty if no handlers)
+  imports: string[]; // Module imports for dependency resolution
 }
 
-export interface EntrypointInfo {
-  filePath: string;
-  moduleSpecifier: string;
-  handlers: HandlerInfo[];
-  imports: ImportInfo[];
-}
-
-export interface ImportInfo {
-  module: string;
-  type: 'default' | 'named' | 'namespace' | 'side-effect';
-  imports?: string[];
-  localName?: string;
-  isProvenHandler?: boolean;
-}
-
-export interface DependencyInfo {
-  production: Record<string, string>;
-  development: Record<string, string>;
-  all: Record<string, string>;
-}
-
-export interface BundleMetadata {
+export interface BuildMetadata {
   createdAt: string;
   mode: 'development' | 'production';
   pluginVersion: string;
-  fileCount: number;
-  bundleSize: number;
-  sourceMaps: boolean;
-  buildMode?: string;
-  entrypointCount?: number;
-  handlerCount?: number;
-}
-
-export interface ProjectInfo {
-  name: string;
-  version: string;
-  description?: string;
-  main?: string;
-  scripts?: Record<string, string>;
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-}
-
-export interface SourceInfo {
-  relativePath: string;
-  content: string;
-  size?: number;
 }
 
 export interface BundleManifest {
   id: string;
   version: string;
-  project: ProjectInfo;
-  modules: ManifestModule[];
-  entrypoints: EntrypointInfo[];
-  sources: SourceInfo[];
-  dependencies: DependencyInfo;
-  metadata: BundleMetadata;
+  modules: ExecutableModule[];
+  dependencies: Record<string, string>; // Runtime dependencies (NPM packages)
+  metadata?: BuildMetadata; // Optional build metadata (for tooling/debugging)
 }
 
 export type WhoAmIMessage = {
@@ -123,6 +75,7 @@ export type BridgeToParentMessage = ResponseMessage | OpenModalMessage | CloseMo
 // Handler queue types for SDK integration
 export interface QueuedHandler {
   manifestId: string;
+  manifest?: BundleManifest; // Included on first call only
   handler: string;
   args: any[];
   resolve: (value: any) => void;

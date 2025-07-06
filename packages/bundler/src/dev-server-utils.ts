@@ -123,12 +123,12 @@ export class DevServerUtils {
     // Check modules
     let handlerCount = 0;
     for (const module of manifest.modules || []) {
-      if (!module.path) {
-        errors.push(`Module missing path: ${JSON.stringify(module)}`);
+      if (!module.specifier) {
+        errors.push(`Module missing specifier: ${JSON.stringify(module)}`);
       }
 
       if (!module.content) {
-        warnings.push(`Module has empty content: ${module.path}`);
+        warnings.push(`Module has empty content: ${module.specifier}`);
       }
 
       handlerCount += module.handlers?.length || 0;
@@ -181,7 +181,7 @@ export class DevServerUtils {
         handlers.push({
           name: handler.name,
           type: handler.type,
-          module: module.path,
+          module: module.specifier,
           parameterCount: handler.parameters?.length || 0,
         });
       }

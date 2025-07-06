@@ -1,23 +1,21 @@
 import {
-  BundleManifest as CommonBundleManifest,
-  HandlerInfo as CommonHandlerInfo,
-  EntrypointInfo as CommonEntrypointInfo,
-  ImportInfo as CommonImportInfo,
-  ManifestModule as CommonManifestModule,
-  DependencyInfo as CommonDependencyInfo,
-  BundleMetadata as CommonBundleMetadata,
-  ParameterInfo as CommonParameterInfo,
+  BundleManifest,
+  ExecutableModule,
+  BuildMetadata,
+  HandlerInfo,
+  ParameterInfo,
+  QueuedHandler,
 } from '@proven-network/common';
 
 // Re-export common types for convenience
-export type BundleManifest = CommonBundleManifest;
-export type HandlerInfo = CommonHandlerInfo;
-export type EntrypointInfo = CommonEntrypointInfo;
-export type ImportInfo = CommonImportInfo;
-export type ManifestModule = CommonManifestModule;
-export type DependencyInfo = CommonDependencyInfo;
-export type BundleMetadata = CommonBundleMetadata;
-export type ParameterInfo = CommonParameterInfo;
+export type {
+  BundleManifest,
+  ExecutableModule,
+  BuildMetadata,
+  HandlerInfo,
+  ParameterInfo,
+  QueuedHandler,
+};
 
 /**
  * Configuration options for the bundler plugins
@@ -123,6 +121,51 @@ export interface SourceFile {
 }
 
 /**
+ * Entrypoint information
+ */
+export interface EntrypointInfo {
+  /** Module specifier */
+  moduleSpecifier: string;
+
+  /** File path */
+  filePath: string;
+
+  /** Handlers exported by this entrypoint */
+  handlers: HandlerInfo[];
+
+  /** Import information */
+  imports: ImportInfo[];
+}
+
+/**
+ * Import information
+ */
+export interface ImportInfo {
+  /** Module being imported */
+  module: string;
+
+  /** Whether this is a @proven-network import */
+  isProvenHandler: boolean;
+
+  /** Import specifiers */
+  specifiers?: string[];
+}
+
+/**
+ * Dependency information
+ */
+export interface DependencyInfo {
+  /** Production dependencies */
+  production: Record<string, string>;
+
+  /** Development dependencies */
+  development: Record<string, string>;
+
+  /** All dependencies combined */
+  all: Record<string, string>;
+}
+
+/**
  * Resolved dependency information
  */
 export interface ResolvedDependency {
@@ -137,4 +180,23 @@ export interface ResolvedDependency {
 
   /** Transitive dependencies */
   dependencies: string[];
+}
+
+// Global types that are injected by the bundler
+declare global {
+  interface Window {
+    __ProvenHandlerQueue__: QueuedHandler[] & {
+      push: (handler: QueuedHandler) => number;
+    };
+    __ProvenManifest__: BundleManifest;
+  }
+}
+
+// Export the virtual module types directly
+export interface ProvenHandlers {
+  [key: string]: QueuedHandler;
+}
+
+export interface ProvenHandlerTypes {
+  [key: string]: string;
 }

@@ -1,19 +1,32 @@
 import { run } from '@proven-network/handler';
 import { Todo, CreateTodoRequest, UpdateTodoRequest, TodoFilter } from './types';
+import { getCurrentIdentity } from '@proven-network/session';
 
 // In-memory storage for this example (in a real app, this would be persistent storage)
 let todos: Todo[] = [];
 let nextId = 1;
 
+// Non-handler utility function that can be imported directly
+export const formatTodoId = (id: number): string => `todo-${id}`;
+
+// Non-handler constant that can be imported directly
+export const MAX_TODOS = 100;
+
 /**
  * Create a new todo item
  */
 export const createTodo = run((request: CreateTodoRequest): Todo => {
+  const identity = getCurrentIdentity();
+
+  if (!identity) {
+    throw new Error('User is not authenticated');
+  }
+
   console.log('Creating new todo:', request);
 
   const now = new Date();
   const todo: Todo = {
-    id: `todo-${nextId++}`,
+    id: formatTodoId(nextId++),
     title: request.title,
     description: request.description,
     completed: false,
@@ -31,6 +44,12 @@ export const createTodo = run((request: CreateTodoRequest): Todo => {
  * Get all todos with optional filtering
  */
 export const getTodos = run((filter?: TodoFilter): Todo[] => {
+  const identity = getCurrentIdentity();
+
+  if (!identity) {
+    throw new Error('User is not authenticated');
+  }
+
   console.log('Fetching todos with filter:', filter);
 
   let filteredTodos = [...todos];
@@ -56,6 +75,12 @@ export const getTodos = run((filter?: TodoFilter): Todo[] => {
  * Update an existing todo
  */
 export const updateTodo = run((request: UpdateTodoRequest): Todo => {
+  const identity = getCurrentIdentity();
+
+  if (!identity) {
+    throw new Error('User is not authenticated');
+  }
+
   console.log('Updating todo:', request);
 
   const todoIndex = todos.findIndex((todo) => todo.id === request.id);
@@ -80,6 +105,12 @@ export const updateTodo = run((request: UpdateTodoRequest): Todo => {
  * Delete a todo by ID
  */
 export const deleteTodo = run((todoId: string): boolean => {
+  const identity = getCurrentIdentity();
+
+  if (!identity) {
+    throw new Error('User is not authenticated');
+  }
+
   console.log('Deleting todo:', todoId);
 
   const initialLength = todos.length;
@@ -99,6 +130,12 @@ export const deleteTodo = run((todoId: string): boolean => {
  * Mark all todos as completed or uncompleted
  */
 export const toggleAllTodos = run((completed: boolean): Todo[] => {
+  const identity = getCurrentIdentity();
+
+  if (!identity) {
+    throw new Error('User is not authenticated');
+  }
+
   console.log(`Marking all todos as ${completed ? 'completed' : 'uncompleted'}`);
 
   const now = new Date();
@@ -116,6 +153,12 @@ export const toggleAllTodos = run((completed: boolean): Todo[] => {
  * Get todo statistics
  */
 export const getTodoStats = run(() => {
+  const identity = getCurrentIdentity();
+
+  if (!identity) {
+    throw new Error('User is not authenticated');
+  }
+
   const total = todos.length;
   const completed = todos.filter((todo) => todo.completed).length;
   const pending = total - completed;

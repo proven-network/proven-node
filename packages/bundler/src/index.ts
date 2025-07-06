@@ -11,3 +11,11 @@ export { DevServerUtils } from './dev-server-utils';
 
 // Export utility functions
 export { createDefaultOptions, validateOptions, mergeOptions, formatFileSize } from './utils';
+
+// Export AST transformation utilities
+export {
+  transformHandlers,
+  hasHandlerImport,
+  type TransformConfig,
+  type ExtractedHandler,
+} from './ast-transform';

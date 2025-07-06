@@ -1,13 +1,12 @@
 import {
   BundleManifest,
+  ExecutableModule,
+  BuildMetadata,
   ResolvedBundlerOptions,
   DependencyInfo,
   SourceFile,
   EntrypointInfo,
-  BundleMetadata,
-  ManifestModule,
 } from './types';
-import { SourceInfo } from '@proven-network/common';
 import { createHash } from 'crypto';
 import { PackageAnalysis } from './package-analysis';
 import { FileCollection } from './file-collection';
@@ -56,36 +55,26 @@ export class BundleManifestGenerator {
 
     console.log(`Collected ${sources.length} source file(s)`);
 
-    // Convert sources to modules format
-    const modules = this.convertSourcesToModules(sources, entrypoints);
+    // Convert sources to simplified executable modules format
+    const modules = this.convertSourcesToExecutableModules(sources, entrypoints);
 
     const metadata = this.generateMetadata(sources, entrypoints);
 
     // Generate unique manifest ID based on content
-    const manifestId = this.generateManifestId(modules, dependencies, metadata);
+    const manifestId = this.generateManifestId(modules, dependencies.production, metadata);
 
-    return {
+    const manifest: BundleManifest = {
       id: manifestId,
       version: project.version || '1.0.0',
-      project: {
-        name: project.name || 'unknown',
-        version: project.version || '1.0.0',
-        description: project.description || '',
-        main: project.packageJson.main as string,
-        scripts: project.packageJson.scripts as Record<string, string>,
-        dependencies: project.packageJson.dependencies as Record<string, string>,
-        devDependencies: project.packageJson.devDependencies as Record<string, string>,
-      },
       modules,
-      entrypoints,
-      sources: sources.map((source) => ({
-        relativePath: source.relativePath,
-        content: source.content,
-        size: source.size,
-      })),
-      dependencies,
-      metadata,
+      dependencies: dependencies.production, // Only runtime dependencies
     };
+
+    if (this.options.mode === 'development') {
+      manifest.metadata = metadata;
+    }
+
+    return manifest;
   }
 
   /**
@@ -94,42 +83,45 @@ export class BundleManifestGenerator {
   async validateManifest(manifest: BundleManifest): Promise<string[]> {
     const errors: string[] = [];
 
-    // Validate project info
-    if (!manifest.project.name) {
-      errors.push('Project name is missing from package.json');
+    // Validate basic manifest structure
+    if (!manifest.id) {
+      errors.push('Manifest ID is missing');
     }
 
-    if (!manifest.project.version) {
-      errors.push('Project version is missing from package.json');
+    if (!manifest.version) {
+      errors.push('Manifest version is missing');
     }
 
-    // Validate entrypoints
-    if (manifest.entrypoints.length === 0) {
-      errors.push('No entrypoints found');
+    // Validate modules
+    if (manifest.modules.length === 0) {
+      errors.push('No modules found');
     }
 
-    // Validate that all entrypoints have handlers
-    for (const entrypoint of manifest.entrypoints) {
-      if (entrypoint.handlers.length === 0) {
-        errors.push(`Entrypoint ${entrypoint.moduleSpecifier} has no handlers`);
+    // Validate module content and handlers
+    for (const module of manifest.modules) {
+      if (!module.content.trim()) {
+        errors.push(`Module ${module.specifier} is empty`);
+      }
+
+      // Validate handler modules actually have handlers if they import @proven-network/handler
+      const hasProvenHandlerImport = module.imports.some((imp: string) =>
+        imp.includes('@proven-network/handler')
+      );
+      if (hasProvenHandlerImport && module.handlers.length === 0) {
+        errors.push(
+          `Module ${module.specifier} imports @proven-network/handler but defines no handlers`
+        );
       }
     }
 
     // Validate dependencies
     const depValidationErrors = await this.packageAnalysis.validateDependencies(
-      manifest.dependencies.production
+      manifest.dependencies
     );
     errors.push(...depValidationErrors);
 
-    // Validate source files
-    for (const source of manifest.sources) {
-      if (!source.content.trim()) {
-        errors.push(`Source file ${source.relativePath} is empty`);
-      }
-    }
-
     // Check for circular dependencies
-    const circularDeps = this.detectCircularDependencies(manifest.entrypoints, manifest.sources);
+    const circularDeps = this.detectCircularDependencies(manifest.modules);
     if (circularDeps.length > 0) {
       errors.push(`Circular dependencies detected: ${circularDeps.join(', ')}`);
     }
@@ -144,27 +136,8 @@ export class BundleManifestGenerator {
     const optimized = { ...manifest };
 
     if (this.options.mode === 'production') {
-      // Remove source maps in production if not explicitly requested
-      if (!this.options.sourceMaps) {
-        optimized.sources = optimized.sources.map((source) => ({
-          ...source,
-          sourceMap: undefined,
-        }));
-      }
-
-      // Remove dev dependencies in production
-      optimized.dependencies = {
-        production: optimized.dependencies.production,
-        development: {},
-        all: optimized.dependencies.production,
-      };
-
-      // Update metadata
-      optimized.metadata = {
-        ...optimized.metadata,
-        sourceMaps: !!this.options.sourceMaps,
-        bundleSize: this.calculateBundleSize(optimized.sources),
-      };
+      // Remove metadata in production
+      delete optimized.metadata;
     }
 
     return optimized;
@@ -178,31 +151,39 @@ export class BundleManifestGenerator {
   }
 
   /**
-   * Converts source files to modules format with handler information
+   * Converts source files to simplified executable modules format
    */
-  private convertSourcesToModules(
+  private convertSourcesToExecutableModules(
     sources: SourceFile[],
     entrypoints: EntrypointInfo[]
-  ): ManifestModule[] {
-    const modules: ManifestModule[] = [];
+  ): ExecutableModule[] {
+    const modules: ExecutableModule[] = [];
 
     for (const source of sources) {
       // Find handlers for this source file
       const entrypoint = entrypoints.find((ep) => ep.filePath === source.filePath);
       const handlers = entrypoint ? entrypoint.handlers : [];
 
-      // Extract dependencies from imports (simplified)
-      const dependencies = entrypoint
-        ? entrypoint.imports
-            .filter((imp) => imp.module.startsWith('./') || imp.module.startsWith('../'))
-            .map((imp) => imp.module)
+      // Extract all imports (both local and external) and resolve relative imports
+      const imports = entrypoint
+        ? entrypoint.imports.map((imp) => this.resolveImportSpecifier(imp.module, source, sources))
         : [];
 
+      // Convert relative path to proper file:// URL format
+      const moduleSpecifier = source.relativePath.startsWith('file://')
+        ? source.relativePath
+        : `file:///${source.relativePath.replace(/^\//, '')}`;
+
       modules.push({
-        path: source.relativePath,
+        specifier: moduleSpecifier,
         content: source.content,
-        handlers,
-        dependencies,
+        handlers: handlers.map((h) => ({
+          name: h.name,
+          type: h.type,
+          parameters: h.parameters,
+          config: h.config,
+        })),
+        imports,
       });
     }
 
@@ -210,16 +191,61 @@ export class BundleManifestGenerator {
   }
 
   /**
+   * Resolves an import specifier relative to the current source file
+   */
+  private resolveImportSpecifier(
+    importSpecifier: string,
+    currentSource: SourceFile,
+    allSources: SourceFile[]
+  ): string {
+    // If it's an external module (npm package or @proven-network), return as-is
+    if (!importSpecifier.startsWith('./') && !importSpecifier.startsWith('../')) {
+      return importSpecifier;
+    }
+
+    // Resolve relative import to absolute file path
+    const path = require('path');
+    const currentDir = path.dirname(currentSource.relativePath);
+    const resolvedPath = path.resolve('/', currentDir, importSpecifier);
+
+    // Try to find the matching source file (with or without extension)
+    const possibleExtensions = ['.ts', '.tsx', '.js', '.jsx', ''];
+
+    for (const ext of possibleExtensions) {
+      const candidatePath = resolvedPath + ext;
+      const matchingSource = allSources.find(
+        (s) =>
+          s.relativePath === candidatePath || s.relativePath === candidatePath.replace(/^\//, '')
+      );
+
+      if (matchingSource) {
+        // Convert to file:// URL format
+        return matchingSource.relativePath.startsWith('file://')
+          ? matchingSource.relativePath
+          : `file:///${matchingSource.relativePath.replace(/^\//, '')}`;
+      }
+    }
+
+    // If no matching source found, return the resolved path as file:// URL
+    const normalizedPath = resolvedPath.replace(/^\//, '');
+    return `file:///${normalizedPath}`;
+  }
+
+  /**
    * Generates a unique manifest ID based on content hash
    */
   private generateManifestId(
-    modules: ManifestModule[],
-    dependencies: DependencyInfo,
-    metadata: BundleMetadata
+    modules: ExecutableModule[],
+    dependencies: Record<string, string>,
+    metadata: BuildMetadata
   ): string {
     const contentToHash = {
-      modules: modules.map((m) => ({ path: m.path, content: m.content, handlers: m.handlers })),
-      dependencies: dependencies.production,
+      modules: modules.map((m) => ({
+        specifier: m.specifier,
+        content: m.content,
+        handlers: m.handlers,
+      })),
+      dependencies,
       timestamp: metadata.createdAt,
     };
 
@@ -231,19 +257,11 @@ export class BundleManifestGenerator {
   /**
    * Generates bundle metadata
    */
-  private generateMetadata(sources: SourceFile[], entrypoints?: EntrypointInfo[]): BundleMetadata {
-    const handlerCount = entrypoints?.reduce((sum, ep) => sum + ep.handlers.length, 0) || 0;
-
+  private generateMetadata(sources: SourceFile[], entrypoints?: EntrypointInfo[]): BuildMetadata {
     return {
       createdAt: new Date().toISOString(),
       mode: this.options.mode || 'development',
       pluginVersion: this.getPluginVersion(),
-      fileCount: sources.length,
-      bundleSize: this.calculateBundleSize(sources),
-      sourceMaps: !!this.options.sourceMaps,
-      buildMode: this.options.mode || 'development',
-      entrypointCount: entrypoints?.length || 0,
-      handlerCount,
     };
   }
 
@@ -263,22 +281,17 @@ export class BundleManifestGenerator {
   /**
    * Calculates the total bundle size in bytes
    */
-  private calculateBundleSize(sources: SourceFile[] | SourceInfo[]): number {
-    return sources.reduce((total, source) => {
-      const contentSize = Buffer.byteLength(source.content, 'utf8');
-      const sourceMapSize =
-        'sourceMap' in source && source.sourceMap ? Buffer.byteLength(source.sourceMap, 'utf8') : 0;
-      return total + contentSize + sourceMapSize;
+  private calculateBundleSize(modules: ExecutableModule[]): number {
+    return modules.reduce((total, module) => {
+      const contentSize = Buffer.byteLength(module.content, 'utf8');
+      return total + contentSize;
     }, 0);
   }
 
   /**
    * Detects circular dependencies in the module graph
    */
-  private detectCircularDependencies(
-    entrypoints: EntrypointInfo[],
-    sources: SourceInfo[]
-  ): string[] {
+  private detectCircularDependencies(modules: ExecutableModule[]): string[] {
     const circular: string[] = [];
     const visited = new Set<string>();
     const recursionStack = new Set<string>();
@@ -286,12 +299,12 @@ export class BundleManifestGenerator {
     // Build adjacency list from imports
     const adjacencyList = new Map<string, string[]>();
 
-    for (const entrypoint of entrypoints) {
-      const deps = entrypoint.imports
-        .filter((imp) => !imp.isProvenHandler && this.isLocalImport(imp.module))
-        .map((imp) => this.resolveImportToSourcePath(imp.module, entrypoint.filePath, sources));
+    for (const module of modules) {
+      const deps = module.imports
+        .filter((imp: string) => this.isLocalImport(imp))
+        .map((imp: string) => this.resolveImportToModuleSpecifier(imp, module.specifier, modules));
 
-      adjacencyList.set(entrypoint.filePath, deps.filter(Boolean) as string[]);
+      adjacencyList.set(module.specifier, deps.filter(Boolean) as string[]);
     }
 
     // DFS to detect cycles
@@ -319,10 +332,10 @@ export class BundleManifestGenerator {
       return false;
     };
 
-    // Check each entrypoint
-    for (const entrypoint of entrypoints) {
-      if (!visited.has(entrypoint.filePath)) {
-        detectCycle(entrypoint.filePath, []);
+    // Check each module
+    for (const module of modules) {
+      if (!visited.has(module.specifier)) {
+        detectCycle(module.specifier, []);
       }
     }
 
@@ -341,21 +354,21 @@ export class BundleManifestGenerator {
   }
 
   /**
-   * Resolves an import path to a source file path
+   * Resolves an import path to a module specifier
    */
-  private resolveImportToSourcePath(
+  private resolveImportToModuleSpecifier(
     importPath: string,
-    fromFile: string,
-    sources: SourceFile[] | SourceInfo[]
+    fromSpecifier: string,
+    modules: ExecutableModule[]
   ): string | null {
     // This is a simplified resolution - in a real implementation,
     // you'd want more sophisticated module resolution
-    const sourceMap = new Map(sources.map((s) => [s.relativePath, s]));
+    const moduleMap = new Map(modules.map((m) => [m.specifier, m]));
 
-    // Try to find a matching source file
-    for (const [sourcePath] of sourceMap) {
-      if (sourcePath.includes(importPath) || importPath.includes(sourcePath)) {
-        return sourcePath;
+    // Try to find a matching module
+    for (const [moduleSpecifier] of moduleMap) {
+      if (moduleSpecifier.includes(importPath) || importPath.includes(moduleSpecifier)) {
+        return moduleSpecifier;
       }
     }
 
@@ -371,19 +384,24 @@ export class BundleManifestUtils {
    * Calculates bundle statistics
    */
   static calculateStats(manifest: BundleManifest) {
+    const handlerCount = manifest.modules.reduce((sum, module) => sum + module.handlers.length, 0);
+    const bundleSize = manifest.modules.reduce(
+      (sum, module) => sum + Buffer.byteLength(module.content, 'utf8'),
+      0
+    );
+
     const stats = {
-      totalFiles: manifest.sources.length,
-      entrypointCount: manifest.entrypoints.length,
-      handlerCount: manifest.entrypoints.reduce((sum, ep) => sum + ep.handlers.length, 0),
-      dependencyCount: Object.keys(manifest.dependencies.production).length,
-      bundleSize: manifest.metadata.bundleSize,
-      hasSourceMaps: manifest.metadata.sourceMaps,
+      totalModules: manifest.modules.length,
+      handlerCount,
+      dependencyCount: Object.keys(manifest.dependencies).length,
+      bundleSize,
+      hasMetadata: !!manifest.metadata,
     };
 
     // Handler breakdown
     const handlerTypes = new Map<string, number>();
-    for (const entrypoint of manifest.entrypoints) {
-      for (const handler of entrypoint.handlers) {
+    for (const module of manifest.modules) {
+      for (const handler of module.handlers) {
         handlerTypes.set(handler.type, (handlerTypes.get(handler.type) || 0) + 1);
       }
     }
@@ -405,13 +423,12 @@ export class BundleManifestUtils {
     const m = manifest as any;
 
     return !!(
-      m.project &&
-      m.entrypoints &&
-      Array.isArray(m.entrypoints) &&
-      m.sources &&
-      Array.isArray(m.sources) &&
+      m.id &&
+      m.version &&
+      m.modules &&
+      Array.isArray(m.modules) &&
       m.dependencies &&
-      m.metadata
+      typeof m.dependencies === 'object'
     );
   }
 
@@ -424,17 +441,15 @@ export class BundleManifestUtils {
       type: string;
       config: Record<string, unknown>;
       file: string;
-      line?: number;
     }> = [];
 
-    for (const entrypoint of manifest.entrypoints) {
-      for (const handler of entrypoint.handlers) {
+    for (const module of manifest.modules) {
+      for (const handler of module.handlers) {
         handlers.push({
           name: handler.name,
           type: handler.type,
           config: handler.config || {},
-          file: entrypoint.moduleSpecifier,
-          line: handler.line || 0,
+          file: module.specifier,
         });
       }
     }

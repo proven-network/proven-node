@@ -5,19 +5,14 @@ import {
   ExecuteMessage,
   ParentToBridgeMessage,
   BridgeToParentMessage,
-  ResponseMessage,
-  OpenModalMessage,
-  CloseModalMessage,
 } from '@proven-network/common';
 import { bytesToHex } from '@noble/curves/abstract/utils';
 import type {
   WhoAmI,
   WhoAmIResult,
   ExecuteHash,
-  Execute,
   ExecuteLog,
   ExecutionResult,
-  ExecuteError,
   ExecuteResult,
   ExecuteHashResult,
   RpcResponse,
@@ -91,13 +86,13 @@ class BridgeClient {
       await this.broker.connect();
 
       // Set up message handlers for modal events
-      this.broker.on('open_registration_modal', (message) => {
+      this.broker.on('open_registration_modal', (_message) => {
         this.forwardToParent({
           type: 'open_registration_modal',
         });
       });
 
-      this.broker.on('close_registration_modal', (message) => {
+      this.broker.on('close_registration_modal', (_message) => {
         this.forwardToParent({
           type: 'close_registration_modal',
         });
@@ -274,6 +269,16 @@ class BridgeClient {
     manifestHash: string
   ) {
     try {
+      // Log the manifest structure being sent to RPC
+      console.debug('Bridge: Sending manifest to RPC:', {
+        id: manifest.id,
+        version: manifest.version,
+        modules: manifest.modules?.length || 0,
+        dependencies: manifest.dependencies,
+        metadata: manifest.metadata,
+        fullManifest: manifest,
+      });
+
       const fullRpcCall = {
         type: 'Execute',
         data: {
@@ -282,6 +287,8 @@ class BridgeClient {
           args: args,
         },
       } as any;
+
+      console.debug('Bridge: Full RPC call structure:', fullRpcCall);
 
       const response = await this.broker.request<{
         success: boolean;

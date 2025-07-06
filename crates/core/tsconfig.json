@@ -11,6 +11,6 @@
       "@proven-network/sdk": ["../../packages/sdk/src"]
     }
   },
-  "include": ["static/**/*"],
+  "include": ["static/**/*", "../../packages/common/src/**/*"],
   "exclude": ["node_modules", "static/**/*.js"]
 }

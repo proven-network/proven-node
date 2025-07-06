@@ -41,6 +41,59 @@ export class DevWrapperGenerator {
   }
 
   /**
+   * Generates TypeScript type declarations for the handler wrappers
+   */
+  public generateTypeDeclarations(): string {
+    const allHandlers = this.getAllHandlers();
+
+    if (allHandlers.length === 0) {
+      return '// No handlers found in manifest';
+    }
+
+    // Import QueuedHandler and BundleManifest from common package
+    const queuedHandlerInterface = `import { QueuedHandler, BundleManifest } from '@proven-network/common';
+declare global {
+    interface Window {
+        __ProvenHandlerQueue__: QueuedHandler[] & {
+            push: (handler: QueuedHandler) => number;
+        };
+        __ProvenManifest__: BundleManifest;
+    }
+}`;
+
+    const declarations = allHandlers.map(({ handler }) => {
+      const parameters = (handler.parameters || [])
+        .map((param) => {
+          const optional = param.optional ? '?' : '';
+          return `${param.name}${optional}: ${param.type}`;
+        })
+        .join(', ');
+
+      // Generate JSDoc if handler has parameters
+      let jsDoc = '';
+      if ((handler.parameters || []).length > 0) {
+        const paramDocs = (handler.parameters || [])
+          .map((param) => {
+            const optional = param.optional ? ' (optional)' : '';
+            return `* @param {${param.type}} ${param.name}${optional}`;
+          })
+          .join('\n ');
+
+        jsDoc = `/**
+ * Generated handler wrapper
+ ${paramDocs}
+ * @returns {Promise<any>} Handler execution result
+ */
+`;
+      }
+
+      return `${jsDoc}export declare const ${handler.name}: (${parameters}) => Promise<any>;`;
+    });
+
+    return `${queuedHandlerInterface}\n${declarations.join('\n\n')}\nexport {};`;
+  }
+
+  /**
    * Generates wrapper functions for all handlers in the manifest
    */
   public generateHandlerWrappers(): string {
@@ -50,9 +103,10 @@ export class DevWrapperGenerator {
       return '// No handlers found in manifest';
     }
 
+    const manifestInit = this.generateManifestInit();
     const wrappers = allHandlers.map(({ handler }) => this.generateSingleHandlerWrapper(handler));
 
-    return wrappers.join('\n\n');
+    return `${manifestInit}\n\n${wrappers.join('\n\n')}`;
   }
 
   /**
@@ -63,7 +117,7 @@ export class DevWrapperGenerator {
 
     for (const module of this.manifest.modules) {
       for (const handler of module.handlers) {
-        handlers.push({ handler, modulePath: module.path });
+        handlers.push({ handler, modulePath: module.specifier });
       }
     }
 
@@ -71,9 +125,41 @@ export class DevWrapperGenerator {
   }
 
   /**
+   * Gets the module path for a specific handler
+   */
+  private getHandlerModulePath(handler: HandlerInfo): string {
+    for (const module of this.manifest.modules) {
+      for (const moduleHandler of module.handlers) {
+        if (moduleHandler.name === handler.name) {
+          return module.specifier;
+        }
+      }
+    }
+    return 'unknown';
+  }
+
+  /**
+   * Generates the manifest initialization code with tracking
+   */
+  private generateManifestInit(): string {
+    const manifestJson = JSON.stringify(this.manifest, null, 2);
+
+    return `// Proven Network manifest and tracking
+let __provenManifestSent = false;
+const __provenManifest = ${manifestJson};
+
+// Store manifest globally for compatibility
+window.__ProvenManifest__ = __provenManifest;
+
+// Initialize handler queue if not exists
+window.__ProvenHandlerQueue__ = window.__ProvenHandlerQueue__ || [];`;
+  }
+
+  /**
    * Generates a wrapper function for a single handler
    */
   private generateSingleHandlerWrapper(handler: HandlerInfo): string {
+    const handlerModulePath = this.getHandlerModulePath(handler);
     const parameterList = handler.parameters
       .map((param) => {
         if (param.optional && param.defaultValue !== undefined) {
@@ -86,17 +172,22 @@ export class DevWrapperGenerator {
     const parametersComment =
       handler.parameters.length > 0 ? this.generateParametersComment(handler.parameters) : '';
 
-    const typeAnnotation =
-      handler.parameters.length > 0
-        ? this.generateTypeAnnotation(handler.parameters)
-        : '(...args: any[])';
+    // Build handler specifier: file:///module.ts#handlerName
+    // The handlerModulePath should already be a proper file:// URL from the manifest
+    const handlerSpecifier = `${handlerModulePath}#${handler.name}`;
 
-    return `${parametersComment}export const ${handler.name}: ${typeAnnotation} => Promise<any> = (${parameterList}) => {
+    return `${parametersComment}export const ${handler.name} = (${parameterList}) => {
   const queue = window.__ProvenHandlerQueue__;
   return new Promise((resolve, reject) => {
+    const shouldSendManifest = !__provenManifestSent;
+    if (shouldSendManifest) {
+      __provenManifestSent = true;
+    }
+    
     queue.push({
-      manifestId: window.__ProvenManifest__.id,
-      handler: '${handler.name}',
+      manifestId: __provenManifest.id,
+      manifest: shouldSendManifest ? __provenManifest : undefined,
+      handler: '${handlerSpecifier}',
       args: [${handler.parameters.map((p) => p.name).join(', ')}],
       resolve,
       reject

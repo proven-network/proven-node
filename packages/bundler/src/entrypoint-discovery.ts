@@ -1,5 +1,5 @@
 import { parse } from '@babel/parser';
-import traverse from '@babel/traverse';
+import traverse, { type NodePath } from '@babel/traverse';
 import * as t from '@babel/types';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -120,13 +120,11 @@ export class EntrypointDiscovery {
    */
   private analyzeImport(node: t.ImportDeclaration): ImportInfo {
     const module = node.source.value;
-    const isProvenHandler =
-      module === '@proven-network/handler' || module.startsWith('@proven-network/');
+    const isProvenHandler = module === '@proven-network/handler';
 
     if (node.specifiers.length === 0) {
       return {
         module,
-        type: 'side-effect',
         isProvenHandler,
       };
     }
@@ -136,8 +134,6 @@ export class EntrypointDiscovery {
     if (defaultImport) {
       return {
         module,
-        type: 'default',
-        localName: defaultImport.local.name,
         isProvenHandler,
       };
     }
@@ -147,8 +143,6 @@ export class EntrypointDiscovery {
     if (namespaceImport) {
       return {
         module,
-        type: 'namespace',
-        localName: namespaceImport.local.name,
         isProvenHandler,
       };
     }
@@ -165,8 +159,6 @@ export class EntrypointDiscovery {
 
     return {
       module,
-      type: 'named',
-      imports: namedImports,
       isProvenHandler,
     };
   }
@@ -200,8 +192,6 @@ export class EntrypointDiscovery {
       type: handlerType,
       parameters,
       config,
-      line: node.loc?.start.line || 0,
-      column: node.loc?.start.column || 0,
     };
   }
 
