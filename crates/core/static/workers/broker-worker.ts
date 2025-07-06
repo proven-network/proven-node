@@ -131,6 +131,12 @@ self.addEventListener('connect', (event: Event) => {
 
     if (type === 'init' && iframeType) {
       broker.addConnection(port, iframeType);
+
+      // Send confirmation back to the iframe
+      port.postMessage({
+        type: 'init_confirmed',
+        iframeType: iframeType,
+      });
     } else {
       console.error('Broker Worker: Invalid init message:', initEvent.data);
       port.close();

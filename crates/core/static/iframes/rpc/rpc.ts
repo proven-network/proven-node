@@ -143,8 +143,28 @@ class RpcClient {
       });
 
       console.debug('RPC: Broker initialized successfully');
+
+      // Notify parent that RPC iframe is ready
+      parent.postMessage(
+        {
+          type: 'iframe_ready',
+          iframeType: 'rpc',
+        },
+        '*'
+      );
     } catch (error) {
       console.error('RPC: Failed to initialize broker:', error);
+
+      // Notify parent of initialization error
+      parent.postMessage(
+        {
+          type: 'iframe_error',
+          iframeType: 'rpc',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+        '*'
+      );
+
       throw new Error(
         `RPC: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

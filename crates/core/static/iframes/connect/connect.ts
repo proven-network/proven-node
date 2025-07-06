@@ -45,8 +45,30 @@ class ConnectClient {
           await this.handleSuccessfulAuth(message.data.prfResult);
         }
       });
+
+      console.debug('Connect: Broker initialized successfully');
+
+      // Notify parent that connect iframe is ready
+      parent.postMessage(
+        {
+          type: 'iframe_ready',
+          iframeType: 'connect',
+        },
+        '*'
+      );
     } catch (error) {
       console.error('Connect: Failed to initialize broker:', error);
+
+      // Notify parent of initialization error
+      parent.postMessage(
+        {
+          type: 'iframe_error',
+          iframeType: 'connect',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+        '*'
+      );
+
       throw new Error(
         `Connect: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
       );

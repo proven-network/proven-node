@@ -55,6 +55,14 @@ export const ProvenSDK = (options: {
   let rpcIframeReady = false;
   let connectIframeReady = false;
   let nonce = 0;
+
+  // Promises for iframe readiness
+  let bridgeReadyPromise: Promise<void> | null = null;
+  let rpcReadyPromise: Promise<void> | null = null;
+  let connectReadyPromise: Promise<void> | null = null;
+  let bridgeReadyResolve: (() => void) | null = null;
+  let rpcReadyResolve: (() => void) | null = null;
+  let connectReadyResolve: (() => void) | null = null;
   const pendingCallbacks = new Map<
     number,
     { resolve: (data: any) => void; reject: (error: Error) => void }
@@ -266,11 +274,16 @@ export const ProvenSDK = (options: {
   };
 
   const createBridgeIframe = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (bridgeIframe && bridgeIframeReady) {
-        resolve();
-        return;
-      }
+    if (bridgeIframe && bridgeIframeReady) {
+      return Promise.resolve();
+    }
+
+    if (bridgeReadyPromise) {
+      return bridgeReadyPromise;
+    }
+
+    bridgeReadyPromise = new Promise((resolve, reject) => {
+      bridgeReadyResolve = resolve;
 
       bridgeIframe = document.createElement('iframe');
       bridgeIframe.src = `${bridgeIframeUrl}?app=${applicationId}#window=${windowId}`;
@@ -291,29 +304,39 @@ export const ProvenSDK = (options: {
         visibility: hidden;
       `;
 
-      bridgeIframe.onload = () => {
-        // Wait a bit for iframe to initialize
-        setTimeout(() => {
-          bridgeIframeReady = true;
-          resolve();
-        }, 100);
-      };
-
       bridgeIframe.onerror = () => {
+        bridgeReadyPromise = null;
+        bridgeReadyResolve = null;
         reject(new Error('Failed to load bridge iframe'));
       };
+
+      // Set timeout as backup
+      setTimeout(() => {
+        if (!bridgeIframeReady) {
+          bridgeReadyPromise = null;
+          bridgeReadyResolve = null;
+          reject(new Error('Bridge iframe initialization timeout'));
+        }
+      }, 10000); // 10 second timeout
 
       // Append bridge iframe to document body (hidden)
       document.body.appendChild(bridgeIframe);
     });
+
+    return bridgeReadyPromise;
   };
 
   const createRpcIframe = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (rpcIframe && rpcIframeReady) {
-        resolve();
-        return;
-      }
+    if (rpcIframe && rpcIframeReady) {
+      return Promise.resolve();
+    }
+
+    if (rpcReadyPromise) {
+      return rpcReadyPromise;
+    }
+
+    rpcReadyPromise = new Promise((resolve, reject) => {
+      rpcReadyResolve = resolve;
 
       rpcIframe = document.createElement('iframe');
       rpcIframe.src = `${rpcIframeUrl}?app=${applicationId}#window=${windowId}`;
@@ -330,29 +353,39 @@ export const ProvenSDK = (options: {
         visibility: hidden;
       `;
 
-      rpcIframe.onload = () => {
-        // Wait a bit for iframe to initialize
-        setTimeout(() => {
-          rpcIframeReady = true;
-          resolve();
-        }, 100);
-      };
-
       rpcIframe.onerror = () => {
+        rpcReadyPromise = null;
+        rpcReadyResolve = null;
         reject(new Error('Failed to load RPC iframe'));
       };
+
+      // Set timeout as backup
+      setTimeout(() => {
+        if (!rpcIframeReady) {
+          rpcReadyPromise = null;
+          rpcReadyResolve = null;
+          reject(new Error('RPC iframe initialization timeout'));
+        }
+      }, 10000); // 10 second timeout
 
       // Append RPC iframe to document body (hidden)
       document.body.appendChild(rpcIframe);
     });
+
+    return rpcReadyPromise;
   };
 
   const createConnectIframe = (targetElement?: HTMLElement | string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (connectIframe && connectIframeReady) {
-        resolve();
-        return;
-      }
+    if (connectIframe && connectIframeReady) {
+      return Promise.resolve();
+    }
+
+    if (connectReadyPromise) {
+      return connectReadyPromise;
+    }
+
+    connectReadyPromise = new Promise((resolve, reject) => {
+      connectReadyResolve = resolve;
 
       connectIframe = document.createElement('iframe');
       connectIframe.src = `${connectIframeUrl}?app=${applicationId}#window=${windowId}`;
@@ -365,17 +398,20 @@ export const ProvenSDK = (options: {
       connectIframe.style.border = 'none';
       connectIframe.style.background = 'transparent';
 
-      connectIframe.onload = () => {
-        // Wait a bit for iframe to initialize
-        setTimeout(() => {
-          connectIframeReady = true;
-          resolve();
-        }, 100);
-      };
-
       connectIframe.onerror = () => {
+        connectReadyPromise = null;
+        connectReadyResolve = null;
         reject(new Error('Failed to load connect iframe'));
       };
+
+      // Set timeout as backup
+      setTimeout(() => {
+        if (!connectIframeReady) {
+          connectReadyPromise = null;
+          connectReadyResolve = null;
+          reject(new Error('Connect iframe initialization timeout'));
+        }
+      }, 10000); // 10 second timeout
 
       // Append iframe to target element or document body
       let target = document.body;
@@ -391,13 +427,57 @@ export const ProvenSDK = (options: {
       }
       target.appendChild(connectIframe);
     });
+
+    return connectReadyPromise;
   };
 
   const handleIframeMessage = (event: MessageEvent) => {
+    const message = event.data;
+
+    // Handle iframe readiness messages
+    if (message.type === 'iframe_ready') {
+      logger?.debug('SDK: Received iframe ready message:', message);
+
+      if (message.iframeType === 'bridge' && bridgeReadyResolve) {
+        bridgeIframeReady = true;
+        bridgeReadyResolve();
+        bridgeReadyResolve = null;
+      } else if (message.iframeType === 'rpc' && rpcReadyResolve) {
+        rpcIframeReady = true;
+        rpcReadyResolve();
+        rpcReadyResolve = null;
+      } else if (message.iframeType === 'connect' && connectReadyResolve) {
+        connectIframeReady = true;
+        connectReadyResolve();
+        connectReadyResolve = null;
+      }
+      return;
+    }
+
+    // Handle iframe error messages
+    if (message.type === 'iframe_error') {
+      logger?.error('SDK: Iframe initialization error:', message);
+
+      const error = new Error(`${message.iframeType} iframe error: ${message.error}`);
+
+      if (message.iframeType === 'bridge' && bridgeReadyResolve) {
+        bridgeReadyPromise = null;
+        bridgeReadyResolve = null;
+        // Reject would be handled by the timeout in createBridgeIframe
+      } else if (message.iframeType === 'rpc' && rpcReadyResolve) {
+        rpcReadyPromise = null;
+        rpcReadyResolve = null;
+        // Reject would be handled by the timeout in createRpcIframe
+      } else if (message.iframeType === 'connect' && connectReadyResolve) {
+        connectReadyPromise = null;
+        connectReadyResolve = null;
+        // Reject would be handled by the timeout in createConnectIframe
+      }
+      return;
+    }
+
     // Handle messages from bridge iframe
     if (bridgeIframe && event.source === bridgeIframe.contentWindow) {
-      const message = event.data;
-
       if (message.type === 'response') {
         // Handle API responses
         const callback = pendingCallbacks.get(message.nonce);
@@ -422,9 +502,9 @@ export const ProvenSDK = (options: {
 
     // Handle messages from button iframe (for backwards compatibility during transition)
     if (connectIframe && event.source === connectIframe.contentWindow) {
-      const message = event.data as OpenModalMessage;
+      const connectMessage = message as OpenModalMessage;
 
-      if (message.type === 'open_registration_modal') {
+      if (connectMessage.type === 'open_registration_modal') {
         openRegistrationModal();
       }
       return;
@@ -432,9 +512,9 @@ export const ProvenSDK = (options: {
 
     // Handle messages from modal iframe (for backwards compatibility during transition)
     if (modalIframe && event.source === modalIframe.contentWindow) {
-      const message = event.data as CloseModalMessage;
+      const modalMessage = message as CloseModalMessage;
 
-      if (message.type === 'close_registration_modal') {
+      if (modalMessage.type === 'close_registration_modal') {
         closeRegistrationModal();
       }
       return;
@@ -641,15 +721,7 @@ export const ProvenSDK = (options: {
     await createConnectIframe(targetElement);
   };
 
-  // Initialize bridge and RPC iframes immediately
-  Promise.all([
-    createBridgeIframe().catch((error) => {
-      logger?.error('Failed to initialize bridge iframe:', error);
-    }),
-    createRpcIframe().catch((error) => {
-      logger?.error('Failed to initialize RPC iframe:', error);
-    }),
-  ]);
+  // Initialization is now handled by initializeManifestSystem() to ensure proper coordination
 
   // Listen for messages from iframes
   window.addEventListener('message', handleIframeMessage);
@@ -662,19 +734,35 @@ export const ProvenSDK = (options: {
   });
 
   // Initialize manifest system
-  const initializeManifestSystem = () => {
-    // Process any pre-registered manifest
-    const preRegisteredManifest = (window as any).__ProvenManifest__;
-    if (preRegisteredManifest) {
-      registerManifest(preRegisteredManifest);
-    }
+  const initializeManifestSystem = async () => {
+    try {
+      // Wait for core iframes to be ready before initializing manifests
+      logger?.debug('SDK: Waiting for core iframes to be ready...');
+      await Promise.all([createBridgeIframe(), createRpcIframe()]);
 
-    // Connect to the handler queue
-    connectHandlerQueue();
+      logger?.debug('SDK: Core iframes ready, initializing manifest system...');
+
+      // Process any pre-registered manifest
+      const preRegisteredManifest = (window as any).__ProvenManifest__;
+      if (preRegisteredManifest) {
+        registerManifest(preRegisteredManifest);
+      }
+
+      // Connect to the handler queue
+      connectHandlerQueue();
+
+      logger?.debug('SDK: Manifest system initialized successfully');
+    } catch (error) {
+      logger?.error('SDK: Failed to initialize manifest system:', error);
+    }
   };
 
-  // Initialize after a short delay to allow for bundler initialization
-  setTimeout(initializeManifestSystem, 10);
+  // Initialize after a short delay to allow for bundler initialization, then wait for iframes
+  setTimeout(() => {
+    initializeManifestSystem().catch((error) => {
+      logger?.error('SDK: Manifest system initialization failed:', error);
+    });
+  }, 10);
 
   return {
     execute,

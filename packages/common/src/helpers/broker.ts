@@ -29,6 +29,14 @@ export class MessageBroker {
   private pendingRequests: Map<string, PendingRequest> = new Map();
   private isConnected: boolean = false;
   private readonly REQUEST_TIMEOUT = 30000; // 30 second timeout
+  private messageQueue: BrokerMessage[] = [];
+  private connectionPromise: Promise<void> | null = null;
+  private retryCount: number = 0;
+  private readonly MAX_RETRIES = 3;
+  private readonly INITIAL_RETRY_DELAY = 1000; // 1 second
+  private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
+  private lastActivityTime: number = Date.now();
 
   constructor(windowId: string, iframeType: string) {
     this.windowId = windowId;
@@ -40,41 +48,140 @@ export class MessageBroker {
       return;
     }
 
-    try {
-      // Create SharedWorker connection with windowId in query string
-      this.worker = new SharedWorker(`../workers/broker-worker.js?window=${this.windowId}`);
-      this.port = this.worker.port;
+    // Return existing connection promise if one is in progress
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
 
-      // Set up message handling
-      this.port.onmessage = (event) => {
-        this.handleIncomingMessage(event.data);
-      };
+    this.connectionPromise = this.doConnect();
+    return this.connectionPromise;
+  }
 
-      this.port.onmessageerror = (error) => {
-        console.error(`Broker: Connection error for ${this.iframeType}:`, error);
+  private async doConnect(): Promise<void> {
+    let lastError: Error | null = null;
+
+    for (this.retryCount = 0; this.retryCount <= this.MAX_RETRIES; this.retryCount++) {
+      try {
+        if (this.retryCount > 0) {
+          const delay = this.INITIAL_RETRY_DELAY * Math.pow(2, this.retryCount - 1);
+          console.debug(
+            `Broker: Retrying connection for ${this.iframeType} (attempt ${this.retryCount}/${this.MAX_RETRIES}) after ${delay}ms`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+
+        // Create SharedWorker connection with windowId in query string
+        this.worker = new SharedWorker(`../workers/broker-worker.js?window=${this.windowId}`);
+        this.port = this.worker.port;
+
+        // Set up message handling
+        this.port.onmessage = (event) => {
+          this.handleIncomingMessage(event.data);
+        };
+
+        this.port.onmessageerror = (error) => {
+          console.error(`Broker: Connection error for ${this.iframeType}:`, error);
+          this.isConnected = false;
+          this.connectionPromise = null; // Allow reconnection attempts
+        };
+
+        // Start the port
+        this.port.start();
+
+        // Send init message and wait for confirmation
+        await this.sendInitMessage();
+
+        this.isConnected = true;
+        this.retryCount = 0; // Reset retry count on successful connection
+        this.lastActivityTime = Date.now();
+        console.debug(`Broker: Connected ${this.iframeType}`);
+
+        // Start health checks
+        this.startHealthChecks();
+
+        // Flush any queued messages
+        this.flushMessageQueue();
+        return; // Success, exit retry loop
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.error(
+          `Broker: Connection attempt ${this.retryCount + 1} failed for ${this.iframeType}:`,
+          lastError
+        );
+
+        // Clean up on failure
         this.isConnected = false;
+        if (this.port) {
+          this.port.close();
+          this.port = null;
+        }
+        this.worker = null;
+
+        // Don't retry if this is the last attempt
+        if (this.retryCount === this.MAX_RETRIES) {
+          break;
+        }
+      }
+    }
+
+    // All retries failed
+    this.connectionPromise = null;
+    throw new Error(
+      `Failed to connect ${this.iframeType} after ${this.MAX_RETRIES + 1} attempts. Last error: ${lastError?.message}`
+    );
+  }
+
+  private async sendInitMessage(): Promise<void> {
+    if (!this.port) {
+      throw new Error('Port not available');
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error(`Init message timeout for ${this.iframeType}`));
+      }, 5000); // 5 second timeout for init
+
+      // Listen for init confirmation
+      const handleInitConfirmation = (event: MessageEvent) => {
+        if (event.data.type === 'init_confirmed') {
+          clearTimeout(timeout);
+          this.port!.removeEventListener('message', handleInitConfirmation);
+          resolve();
+        }
       };
 
-      // Start the port
-      this.port.start();
+      this.port!.addEventListener('message', handleInitConfirmation);
 
       // Send init message
-      this.port.postMessage({
+      this.port!.postMessage({
         type: 'init',
         iframeType: this.iframeType,
       });
+    });
+  }
 
-      this.isConnected = true;
-      console.debug(`Broker: Connected ${this.iframeType}`);
-    } catch (error) {
-      console.error(`Broker: Failed to connect ${this.iframeType}:`, error);
-      this.isConnected = false;
-      throw error;
+  private flushMessageQueue(): void {
+    if (this.messageQueue.length === 0) {
+      return;
     }
+
+    console.debug(
+      `Broker: Flushing ${this.messageQueue.length} queued messages for ${this.iframeType}`
+    );
+
+    const queuedMessages = [...this.messageQueue];
+    this.messageQueue = [];
+
+    queuedMessages.forEach((message) => {
+      if (this.port) {
+        this.port.postMessage(message);
+      }
+    });
   }
 
   private handleIncomingMessage(message: BrokerMessage) {
     console.debug(`Broker: ${this.iframeType} received message:`, message);
+    this.lastActivityTime = Date.now();
 
     // Handle responses to pending requests
     if (message.isResponse && message.messageId) {
@@ -168,20 +275,29 @@ export class MessageBroker {
   }
 
   async send(type: string, data: any, toIframe?: string): Promise<void> {
-    if (!this.isConnected) {
-      await this.connect();
-    }
-
-    if (!this.port) {
-      throw new Error('Broker: Not connected');
-    }
-
     const message: BrokerMessage = {
       type,
       fromIframe: this.iframeType,
       data,
       ...(toIframe !== undefined && { toIframe }),
     };
+
+    if (!this.isConnected) {
+      // Queue the message if not connected
+      console.debug(`Broker: ${this.iframeType} queuing message (not connected):`, message);
+      this.messageQueue.push(message);
+
+      // Try to connect in the background
+      this.connect().catch((error) => {
+        console.error(`Broker: Failed to connect while sending message:`, error);
+      });
+
+      return;
+    }
+
+    if (!this.port) {
+      throw new Error('Broker: Not connected');
+    }
 
     console.debug(`Broker: ${this.iframeType} sending message:`, message);
     this.port.postMessage(message);
@@ -192,6 +308,7 @@ export class MessageBroker {
       throw new Error('Broker: request() requires a target iframe type');
     }
 
+    // Always ensure we're connected before making a request
     if (!this.isConnected) {
       await this.connect();
     }
@@ -258,6 +375,9 @@ export class MessageBroker {
   }
 
   disconnect(): void {
+    // Stop health checks
+    this.stopHealthChecks();
+
     // Clear all pending requests
     this.pendingRequests.forEach((request) => {
       clearTimeout(request.timeout);
@@ -273,6 +393,53 @@ export class MessageBroker {
     this.isConnected = false;
     this.messageHandlers.clear();
     console.debug(`Broker: ${this.iframeType} disconnected`);
+  }
+
+  private startHealthChecks(): void {
+    this.stopHealthChecks(); // Ensure no duplicate intervals
+
+    this.healthCheckInterval = setInterval(() => {
+      this.performHealthCheck();
+    }, this.HEALTH_CHECK_INTERVAL);
+  }
+
+  private stopHealthChecks(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+  }
+
+  private async performHealthCheck(): Promise<void> {
+    if (!this.isConnected) {
+      return;
+    }
+
+    const timeSinceLastActivity = Date.now() - this.lastActivityTime;
+
+    // If no activity for twice the health check interval, consider connection stale
+    if (timeSinceLastActivity > this.HEALTH_CHECK_INTERVAL * 2) {
+      console.warn(
+        `Broker: No activity for ${timeSinceLastActivity}ms, testing connection for ${this.iframeType}`
+      );
+
+      try {
+        // Send a ping message to test the connection
+        await this.send('ping', { timestamp: Date.now() });
+        console.debug(`Broker: Health check passed for ${this.iframeType}`);
+      } catch (error) {
+        console.error(`Broker: Health check failed for ${this.iframeType}:`, error);
+
+        // Mark as disconnected and attempt reconnection
+        this.isConnected = false;
+        this.connectionPromise = null;
+
+        // Try to reconnect
+        this.connect().catch((reconnectError) => {
+          console.error(`Broker: Reconnection failed for ${this.iframeType}:`, reconnectError);
+        });
+      }
+    }
   }
 
   isReady(): boolean {

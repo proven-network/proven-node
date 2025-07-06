@@ -99,8 +99,22 @@ class BridgeClient {
       });
 
       console.debug('Bridge: Broker initialized successfully');
+
+      // Notify parent that bridge is ready
+      this.forwardToParent({
+        type: 'iframe_ready',
+        iframeType: 'bridge',
+      });
     } catch (error) {
       console.error('Bridge: Failed to initialize broker:', error);
+
+      // Notify parent of initialization error
+      this.forwardToParent({
+        type: 'iframe_error',
+        iframeType: 'bridge',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+
       throw new Error(
         `Bridge: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
