@@ -1,7 +1,7 @@
 use crate::FullContext;
 
 use axum::body::Body;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_typed_multipart::{TryFromMultipart, TypedMultipart};
@@ -18,21 +18,16 @@ use proven_sessions::{
     CreateAnonymousSessionOptions, CreateManagementSessionOptions, SessionManagement,
 };
 use tracing::info;
+use uuid::Uuid;
 
 #[derive(TryFromMultipart)]
 pub struct CreateSessionRequest {
-    application_id: String,
-    nonce: Bytes,
-    public_key: Bytes,
-}
-
-#[derive(TryFromMultipart)]
-pub struct CreateManagementSessionRequest {
     nonce: Bytes,
     public_key: Bytes,
 }
 
 pub(crate) async fn create_session_handler<AM, RM, IM, PM, SM, A, G>(
+    Path(application_id): Path<Uuid>,
     State(FullContext {
         sessions_manager, ..
     }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
@@ -77,7 +72,7 @@ where
 
     match sessions_manager
         .create_anonymous_session(CreateAnonymousSessionOptions {
-            application_id: &data.application_id,
+            application_id: &application_id,
             nonce: &data.nonce,
             origin: &origin,
             verifying_key: &verifying_key,
@@ -102,7 +97,7 @@ pub(crate) async fn create_management_session_handler<AM, RM, IM, PM, SM, A, G>(
         sessions_manager, ..
     }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
     origin_header: Option<TypedHeader<Origin>>,
-    data: TypedMultipart<CreateManagementSessionRequest>,
+    data: TypedMultipart<CreateSessionRequest>,
 ) -> impl IntoResponse
 where
     AM: ApplicationManagement,

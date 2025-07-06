@@ -21,7 +21,7 @@ class MessageBroker {
   private connections: IframeConnection[] = [];
 
   constructor() {
-    console.log('SharedWorker: Message broker initialized');
+    console.log('Broker Worker: Message broker initialized');
   }
 
   addConnection(port: MessagePort, iframeType: string) {
@@ -32,8 +32,8 @@ class MessageBroker {
 
     this.connections.push(connection);
 
-    console.log(`SharedWorker: Added ${iframeType} connection`);
-    console.log(`SharedWorker: Now has ${this.connections.length} connections`);
+    console.log(`Broker Worker: Added ${iframeType} connection`);
+    console.log(`Broker Worker: Now has ${this.connections.length} connections`);
 
     // Set up message handling for this connection
     port.onmessage = (event) => {
@@ -50,12 +50,12 @@ class MessageBroker {
     const index = this.connections.indexOf(connection);
     if (index > -1) {
       this.connections.splice(index, 1);
-      console.log(`SharedWorker: Removed ${connection.iframeType} connection`);
+      console.log(`Broker Worker: Removed ${connection.iframeType} connection`);
     }
   }
 
   handleMessage(message: BrokerMessage, fromConnection: IframeConnection) {
-    console.log(`SharedWorker: Message from ${fromConnection.iframeType}:`, message);
+    console.log(`Broker Worker: Message from ${fromConnection.iframeType}:`, message);
 
     // Handle responses - these should be routed back to the original requester
     if (message.isResponse && message.messageId) {
@@ -102,10 +102,10 @@ class MessageBroker {
           fromIframe: fromConnection.iframeType,
         });
         console.log(
-          `SharedWorker: Forwarded ${isResponse ? 'response' : 'message'} to ${connection.iframeType}`
+          `Broker Worker: Forwarded ${isResponse ? 'response' : 'message'} to ${connection.iframeType}`
         );
       } catch (error) {
-        console.error(`SharedWorker: Failed to send message to ${connection.iframeType}:`, error);
+        console.error(`Broker Worker: Failed to send message to ${connection.iframeType}:`, error);
         // Remove dead connection
         this.removeConnection(connection);
       }
@@ -120,6 +120,11 @@ self.addEventListener('connect', (event: Event) => {
   const connectEvent = event as MessageEvent;
   const port = connectEvent.ports[0];
 
+  if (!port) {
+    console.error('Broker Worker: No port found');
+    return;
+  }
+
   // Wait for initial message with iframe type
   port.onmessage = (initEvent) => {
     const { type, iframeType } = initEvent.data;
@@ -127,7 +132,7 @@ self.addEventListener('connect', (event: Event) => {
     if (type === 'init' && iframeType) {
       broker.addConnection(port, iframeType);
     } else {
-      console.error('SharedWorker: Invalid init message:', initEvent.data);
+      console.error('Broker Worker: Invalid init message:', initEvent.data);
       port.close();
     }
   };

@@ -182,6 +182,11 @@ self.addEventListener('connect', (event: Event) => {
   const connectEvent = event as MessageEvent;
   const port = connectEvent.ports[0];
 
+  if (!port) {
+    console.error('RPC Worker: No port found');
+    return;
+  }
+
   worker.ports.add(port);
   worker.updateLastActivity();
 

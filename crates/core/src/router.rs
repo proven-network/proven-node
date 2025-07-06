@@ -29,21 +29,18 @@ use tower_http::cors::CorsLayer;
 /// Route constants for API endpoints
 pub mod routes {
     /// Management session creation endpoint
-    pub const SESSION_MANAGEMENT: &str = "/session-management";
-
+    pub const NEW_MANAGEMENT_SESSION: &str = "/session";
     /// Management RPC endpoint
-    pub const MANAGEMENT_RPC: &str = "/rpc";
+    pub const MANAGEMENT_HTTP_RPC: &str = "/rpc/http";
+    /// Websocket for management
+    pub const MANAGEMENT_WS_RPC: &str = "/rpc/ws";
 
     /// Application session creation endpoint
-    pub const SESSION: &str = "/session";
-
+    pub const NEW_APPLICATION_SESSION: &str = "/app/{application_id}/session";
     /// Application RPC endpoint
-    pub const APP_RPC: &str = "/app/rpc";
-
-    /// Websocket for mana
-    pub const MANAGEMENT_WS: &str = "/ws";
+    pub const APPLICATION_HTTP_RPC: &str = "/app/{application_id}/rpc/http";
     /// Application WebSocket endpoint
-    pub const APP_WS: &str = "/app/ws";
+    pub const APPLICATION_WS_RPC: &str = "/app/{application_id}/rpc/ws";
 
     /// `WebAuthn` endpoints
     pub const WEBAUTHN_REGISTER_START: &str = "/webauthn/register/start";
@@ -130,16 +127,22 @@ impl RouterBuilder {
     {
         let stateful_router = Router::new()
             // ** Sessions **
-            .route(routes::SESSION, post(create_session_handler))
             .route(
-                routes::SESSION_MANAGEMENT,
+                routes::NEW_APPLICATION_SESSION,
+                post(create_session_handler),
+            )
+            .route(
+                routes::NEW_MANAGEMENT_SESSION,
                 post(create_management_session_handler),
             )
             // ** RPC **
-            .route(routes::MANAGEMENT_RPC, post(management_http_rpc_handler))
-            .route(routes::MANAGEMENT_WS, get(management_ws_rpc_handler))
-            .route(routes::APP_RPC, post(http_rpc_handler))
-            .route(routes::APP_WS, get(ws_rpc_handler))
+            .route(
+                routes::MANAGEMENT_HTTP_RPC,
+                post(management_http_rpc_handler),
+            )
+            .route(routes::MANAGEMENT_WS_RPC, get(management_ws_rpc_handler))
+            .route(routes::APPLICATION_HTTP_RPC, post(http_rpc_handler))
+            .route(routes::APPLICATION_WS_RPC, get(ws_rpc_handler))
             // ** WebAuthn **
             .route(
                 routes::WEBAUTHN_REGISTER_START,

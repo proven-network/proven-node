@@ -11,17 +11,17 @@
   },
   "dependencies": {
     "@proven-network/handler": "file:../../../handler",
-    "@proven-network/session": "file:../../../session",
-    "@proven-network/sdk": "file:../../../sdk"
+    "@proven-network/sdk": "file:../../../sdk",
+    "@proven-network/session": "file:../../../session"
   },
   "devDependencies": {
     "@proven-network/bundler-webpack": "file:../../",
-    "webpack": "^5.89.0",
-    "webpack-cli": "^5.1.4",
-    "typescript": "^5.3.3",
+    "@types/node": "^20.10.4",
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
-    "@types/node": "^20.10.4"
+    "typescript": "^5.3.3",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
   },
   "keywords": [
     "proven-network",

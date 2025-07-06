@@ -37,9 +37,8 @@ export const createSession = async (applicationId: string) => {
   const body = new FormData();
   body.append('public_key', new Blob([publicKeyInput], { type: 'application/octet-stream' }));
   body.append('nonce', new Blob([nonceInput], { type: 'application/octet-stream' }));
-  body.append('application_id', applicationId);
 
-  const response = await fetch(`/session`, {
+  const response = await fetch(`/app/${applicationId}/session`, {
     method: 'POST',
     body,
   });

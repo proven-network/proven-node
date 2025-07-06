@@ -351,7 +351,7 @@ impl RpcClient {
         let url = format!(
             "{}{}",
             node_url.trim_end_matches('/'),
-            routes::SESSION_MANAGEMENT
+            routes::NEW_MANAGEMENT_SESSION
         );
 
         let response = self
@@ -476,7 +476,7 @@ impl RpcClient {
         let url = format!(
             "{}{}?session={}",
             node_url.trim_end_matches('/'),
-            routes::MANAGEMENT_RPC,
+            routes::MANAGEMENT_HTTP_RPC,
             session_id
         );
 

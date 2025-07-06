@@ -35,7 +35,7 @@ where
 /// Options for creating a new anonymous application session.
 pub struct CreateAnonymousSessionOptions<'a> {
     /// The application ID.
-    pub application_id: &'a str,
+    pub application_id: &'a Uuid,
 
     /// Challenge used in remote attestation.
     pub nonce: &'a Bytes,
@@ -217,14 +217,12 @@ where
         }: CreateAnonymousSessionOptions<'_>,
     ) -> Result<Bytes, Error> {
         let session_id = Uuid::new_v4();
-        let parsed_application_id = Uuid::parse_str(application_id)
-            .map_err(|e| Error::SessionStore(format!("Invalid application ID: {e}")))?;
 
         let server_signing_key = SigningKey::generate(&mut thread_rng());
         let server_public_key = server_signing_key.verifying_key();
 
         let session = Session::Application(ApplicationSession::Anonymous {
-            application_id: parsed_application_id,
+            application_id: *application_id,
             origin: origin.to_string(),
             session_id,
             signing_key: server_signing_key.clone(),
@@ -237,7 +235,7 @@ where
         );
 
         self.sessions_store
-            .scope(application_id)
+            .scope(application_id.to_string())
             .put(session_id.to_string(), session.clone())
             .await
             .map_err(|e| Error::SessionStore(e.to_string()))?;
