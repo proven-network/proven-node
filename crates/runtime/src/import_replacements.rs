@@ -29,19 +29,6 @@ static IMPORT_REPLACEMENTS: LazyLock<HashMap<String, String>> = LazyLock::new(||
 
     map.insert("@proven-network/sql".to_string(), "proven:sql".to_string());
 
-    // Vendor packages
-
-    map.insert(
-        "@radixdlt/radix-engine-toolkit".to_string(),
-        "proven:radix_engine_toolkit".to_string(),
-    );
-
-    map.insert("openai".to_string(), "proven:openai".to_string());
-
-    map.insert("uuid".to_string(), "proven:uuid".to_string());
-
-    map.insert("zod".to_string(), "proven:zod".to_string());
-
     map
 });
 

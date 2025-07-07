@@ -50,14 +50,6 @@ impl Resolver for CodePackageResolver {
             "@proven-network/session" => Ok(ModuleSpecifier::parse("proven:session").unwrap()),
             "@proven-network/sql" => Ok(ModuleSpecifier::parse("proven:sql").unwrap()),
 
-            // Vendor packages
-            // TODO: Load dynamically from registry
-            "@radixdlt/radix-engine-toolkit" => {
-                Ok(ModuleSpecifier::parse("proven:radix_engine_toolkit").unwrap())
-            }
-            "openai" => Ok(ModuleSpecifier::parse("proven:openai").unwrap()),
-            "uuid" => Ok(ModuleSpecifier::parse("proven:uuid").unwrap()),
-            "zod" => Ok(ModuleSpecifier::parse("proven:zod").unwrap()),
             _ => Ok(resolve_import(specifier_text, &referrer_range.specifier)?),
         }
     }
@@ -140,13 +132,6 @@ impl Resolver for ManifestAwareResolver {
             "@proven-network/session" => Ok(ModuleSpecifier::parse("proven:session").unwrap()),
             "@proven-network/sql" => Ok(ModuleSpecifier::parse("proven:sql").unwrap()),
 
-            // Vendor packages
-            "@radixdlt/radix-engine-toolkit" => {
-                Ok(ModuleSpecifier::parse("proven:radix_engine_toolkit").unwrap())
-            }
-            "openai" => Ok(ModuleSpecifier::parse("proven:openai").unwrap()),
-            "uuid" => Ok(ModuleSpecifier::parse("proven:uuid").unwrap()),
-            "zod" => Ok(ModuleSpecifier::parse("proven:zod").unwrap()),
             _ => {
                 // First try the standard resolution
                 let resolved = resolve_import(specifier_text, &referrer_range.specifier)?;

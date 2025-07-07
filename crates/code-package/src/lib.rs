@@ -227,13 +227,6 @@ impl CodePackage {
             ("proven:rpc", Source::External("proven:rpc")),
             ("proven:session", Source::External("proven:session")),
             ("proven:sql", Source::External("proven:sql")),
-            ("proven:openai", Source::External("proven:openai")),
-            (
-                "proven:radix_engine_toolkit",
-                Source::External("proven:radix_engine_toolkit"),
-            ),
-            ("proven:uuid", Source::External("proven:uuid")),
-            ("proven:zod", Source::External("proven:zod")),
         ]);
 
         let loader = MemoryLoader::new(sources, Vec::new());
@@ -377,13 +370,6 @@ impl CodePackage {
             ("proven:rpc", Source::External("proven:rpc")),
             ("proven:session", Source::External("proven:session")),
             ("proven:sql", Source::External("proven:sql")),
-            ("proven:openai", Source::External("proven:openai")),
-            (
-                "proven:radix_engine_toolkit",
-                Source::External("proven:radix_engine_toolkit"),
-            ),
-            ("proven:uuid", Source::External("proven:uuid")),
-            ("proven:zod", Source::External("proven:zod")),
         ]);
 
         let loader = MemoryLoader::new(sources, Vec::new());
@@ -645,13 +631,6 @@ impl CodePackage {
             ("proven:rpc", Source::External("proven:rpc")),
             ("proven:session", Source::External("proven:session")),
             ("proven:sql", Source::External("proven:sql")),
-            ("proven:openai", Source::External("proven:openai")),
-            (
-                "proven:radix_engine_toolkit",
-                Source::External("proven:radix_engine_toolkit"),
-            ),
-            ("proven:uuid", Source::External("proven:uuid")),
-            ("proven:zod", Source::External("proven:zod")),
         ]);
 
         // Create and setup NPM resolver
