@@ -1,34 +1,7 @@
 /// <reference lib="DOM" />
 import { MessageBroker, getWindowIdFromUrl } from '../../helpers/broker';
 
-// Generic state operation types
-interface StateGetRequest {
-  type: 'get_state';
-  key: string;
-  tabId: string;
-}
-
-interface StateSetRequest {
-  type: 'set_state';
-  key: string;
-  value: any;
-  tabId: string;
-}
-
-interface StateGetResponse {
-  type: 'state_value';
-  key: string;
-  value: any;
-  exists: boolean;
-  tabId: string;
-}
-
-interface StateSetResponse {
-  type: 'state_set';
-  key: string;
-  value: any;
-  tabId: string;
-}
+import type { StateGetRequest, StateSetRequest, StateValueResponse } from '../../types';
 
 class StateClient {
   applicationId: string;
@@ -68,7 +41,7 @@ class StateClient {
         if (respond) {
           try {
             const result = await this.getStateFromWorker(request.key);
-            const response: StateGetResponse = {
+            const response: StateValueResponse = {
               type: 'state_value',
               key: request.key,
               value: result.value,
@@ -93,13 +66,11 @@ class StateClient {
         if (respond) {
           try {
             const result = await this.setStateInWorker(request.key, request.value);
-            const response: StateSetResponse = {
-              type: 'state_set',
-              key: request.key,
-              value: result.value,
-              tabId: request.tabId,
-            };
-            respond(response);
+            // For set operations, we return success response
+            respond({
+              success: true,
+              data: result.value,
+            });
           } catch (error) {
             respond({
               success: false,
@@ -172,8 +143,9 @@ class StateClient {
   private handleStateWorkerMessage(message: any) {
     console.debug('State: Received message from state worker:', message);
 
-    if (message.type === 'value' && message.key) {
-      // Forward state update notifications to bridge via broker
+    // Forward state update notifications to bridge for both value queries and set operations
+    if ((message.type === 'value' || message.type === 'set_complete') && message.key) {
+      console.debug('State: Forwarding state update to bridge:', message.key, message.value);
       this.broker.send(
         'state_updated',
         {

@@ -14,5 +14,5 @@
     { "path": "./packages/sql" }
   ],
   "files": [],
-  "include": []
+  "include": ["crates/core/static/**/*.ts"]
 }

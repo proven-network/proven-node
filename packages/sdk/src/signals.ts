@@ -37,9 +37,8 @@ export class AuthSignalManager {
     // Create computed signal for authentication status
     this.isAuthenticatedSignal = computed(() => {
       const state = this.authStateSignal.value;
-      const userInfo = this.userInfoSignal.value;
 
-      return state === 'authenticated' && userInfo?.result === 'identified';
+      return state === 'authenticated';
     });
   }
 

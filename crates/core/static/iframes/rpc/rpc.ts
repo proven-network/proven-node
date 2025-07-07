@@ -2,14 +2,14 @@
 import { createSession, getSession } from '../../helpers/sessions';
 import { CoseSign1Decoder, CoseSign1Encoder } from '../../helpers/cose';
 import { MessageBroker, getWindowIdFromUrl } from '../../helpers/broker';
-
 import { hexToBytes } from '@noble/curves/abstract/utils';
 
-type RpcResponse = {
+// Define a proper typed RPC response interface
+interface TypedRpcResponse<T = any> {
   success: boolean;
-  data?: any;
+  data?: T;
   error?: string;
-};
+}
 
 class RpcClient {
   worker: SharedWorker | null = null;
@@ -27,7 +27,7 @@ class RpcClient {
   private isInitialized = false;
   private queuedRequests: Array<{
     rpcCallData: any;
-    resolve: (response: RpcResponse) => void;
+    resolve: (response: TypedRpcResponse) => void;
     reject: (error: Error) => void;
   }> = [];
 
@@ -170,7 +170,7 @@ class RpcClient {
     return ++this.requestCounter;
   }
 
-  async handleRpcRequest(rpcCallData: any): Promise<RpcResponse> {
+  async handleRpcRequest(rpcCallData: any): Promise<TypedRpcResponse> {
     // Check if we're initialized
     if (!this.isInitialized) {
       // If not initialized, either queue the request or start initialization
@@ -199,7 +199,7 @@ class RpcClient {
     return this.executeRpcRequest(rpcCallData);
   }
 
-  private async executeRpcRequest(rpcCallData: any): Promise<RpcResponse> {
+  private async executeRpcRequest(rpcCallData: any): Promise<TypedRpcResponse> {
     try {
       const requestId = this.getNextRequestId();
 

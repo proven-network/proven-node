@@ -8,5 +8,5 @@
     "emitDeclarationOnly": true,
     "outDir": "./types"
   },
-  "include": ["static/**/*.ts", "vite.config.ts"]
+  "include": ["src/**/*.ts", "vite.config.ts"]
 }

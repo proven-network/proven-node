@@ -2,10 +2,12 @@
 import { register } from '../../helpers/webauthn';
 import { generateMnemonic } from '../../helpers/bip32';
 import { MessageBroker, getWindowIdFromUrl } from '../../helpers/broker';
+import { createAllAccessors, type BrokerAccessors } from '../../helpers/accessors';
 
 class RegisterClient {
   broker: MessageBroker;
   windowId: string;
+  brokerAccessors: BrokerAccessors;
   username: string = '';
   private currentScreen: 'registration' | 'seed' = 'registration';
 
@@ -16,6 +18,9 @@ class RegisterClient {
     // Initialize broker synchronously - will throw if it fails
     this.broker = new MessageBroker(this.windowId, 'register');
 
+    // Initialize broker accessors
+    this.brokerAccessors = createAllAccessors(this.broker, this.windowId);
+
     this.initializeBroker();
     this.setupEventListeners();
   }
@@ -25,8 +30,28 @@ class RegisterClient {
       await this.broker.connect();
 
       console.debug('Register: Broker initialized successfully');
+
+      // Notify parent that register iframe is ready
+      parent.postMessage(
+        {
+          type: 'iframe_ready',
+          iframeType: 'register',
+        },
+        '*'
+      );
     } catch (error) {
       console.error('Register: Failed to initialize broker:', error);
+
+      // Notify parent of initialization error
+      parent.postMessage(
+        {
+          type: 'iframe_error',
+          iframeType: 'register',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        },
+        '*'
+      );
+
       throw new Error(
         `Register: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -206,7 +231,7 @@ class RegisterClient {
 
   closeModal() {
     // Send message directly to sdk via broker
-    this.broker.send('close_registration_modal', null, 'sdk');
+    this.broker.send('close_registration_modal', null, 'bridge');
   }
 
   async handleRegistration(event: Event) {

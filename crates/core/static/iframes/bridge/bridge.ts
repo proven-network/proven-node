@@ -1,40 +1,33 @@
 /// <reference lib="DOM" />
 import { MessageBroker, getWindowIdFromUrl } from '../../helpers/broker';
-import { BridgeRequest, BridgeResponse, ExecuteRequest } from '@proven-network/common';
+import { StateManager, createAuthStateAccessors } from '../../helpers/state-manager';
+import { createAllAccessors, type BrokerAccessors } from '../../helpers/accessors';
+import {
+  BridgeRequest,
+  BridgeResponse,
+  ExecuteRequest,
+  RequestAuthSignalRequest,
+  UpdateAuthSignalRequest,
+  WhoAmIRequest,
+  SuccessResponse,
+  ErrorResponse,
+  // Type-safe postMessage imports
+  SdkToBridgeMessage,
+  TypeSafeBridgeMessenger,
+  isWhoAmIMessage,
+  isExecuteMessage,
+  isRequestAuthSignalMessage,
+  isUpdateAuthSignalMessage,
+  createAuthSignalUpdateMessage,
+  createOpenModalMessage,
+  createCloseModalMessage,
+  createIframeReadyMessage,
+  createIframeErrorMessage,
+} from '@proven-network/common';
 import { bytesToHex } from '@noble/curves/abstract/utils';
-import { WhoAmIResult } from '../../types';
-import type {
-  WhoAmI,
-  ExecuteHash,
-  ExecuteLog,
-  ExecutionResult,
-  ExecuteResult,
-  ExecuteHashResult,
-  RpcResponse,
-} from '../../types';
+import type { ExecuteLog, ExecutionResult, ExecuteResult, RpcResponse } from '../../types';
 
-// WhoAmIMessage is still local to the bridge
-export type WhoAmIMessage = {
-  type: 'whoAmI';
-  nonce: number;
-};
-
-// Auth signal request messages (SDK-facing)
-export type RequestAuthSignalMessage = {
-  type: 'request_auth_signal';
-  nonce: number;
-  signalKey: string;
-};
-
-export type UpdateAuthSignalMessage = {
-  type: 'update_auth_signal';
-  nonce: number;
-  signalKey: string;
-  signalValue: any;
-};
-
-// Local type that combines imported BridgeRequest with local messages
-type LocalParentToBridgeMessage = BridgeRequest;
+// Use the types from common package - no local types needed
 
 // Whitelist of signals that can be accessed by SDK
 const ALLOWED_SIGNAL_KEYS = new Set(['auth.state', 'auth.userInfo', 'auth.isAuthenticated']);
@@ -43,49 +36,13 @@ function isSignalKeyAllowed(key: string): boolean {
   return ALLOWED_SIGNAL_KEYS.has(key);
 }
 
-function isParentMessage(data: unknown): data is LocalParentToBridgeMessage {
-  if (
-    typeof data !== 'object' ||
-    data === null ||
-    !('type' in data) ||
-    !('nonce' in data) ||
-    typeof (data as any).nonce !== 'number'
-  ) {
-    return false;
-  }
-
-  const message = data as any;
-
-  if (message.type === 'whoAmI') {
-    return true;
-  }
-
-  if (message.type === 'request_auth_signal') {
-    return 'signalKey' in message && typeof message.signalKey === 'string';
-  }
-
-  if (message.type === 'update_auth_signal') {
-    return (
-      'signalKey' in message && typeof message.signalKey === 'string' && 'signalValue' in message
-    );
-  }
-
-  if (message.type === 'execute') {
-    return (
-      'data' in message &&
-      typeof message.data === 'object' &&
-      message.data !== null &&
-      typeof message.data.manifestId === 'string' &&
-      typeof message.data.handler === 'string'
-    );
-  }
-
-  return false;
-}
-
 class BridgeClient {
   broker: MessageBroker;
   windowId: string;
+  stateManager: StateManager;
+  authState: ReturnType<typeof createAuthStateAccessors>;
+  brokerAccessors: BrokerAccessors;
+  typeSafeMessenger: TypeSafeBridgeMessenger;
   manifestCache: Map<string, any>; // Cache for manifests
   hashMapping: Map<string, string>; // Map from manifest hash to CodePackage hash
 
@@ -94,7 +51,15 @@ class BridgeClient {
     this.windowId = getWindowIdFromUrl() || 'unknown';
 
     // Initialize broker synchronously - will throw if it fails
-    this.broker = new MessageBroker(this.windowId, 'sdk');
+    this.broker = new MessageBroker(this.windowId, 'bridge');
+
+    // Initialize state manager and broker accessors
+    this.stateManager = new StateManager(this.broker, this.windowId);
+    this.authState = createAuthStateAccessors(this.stateManager);
+    this.brokerAccessors = createAllAccessors(this.broker, this.windowId);
+
+    // Initialize type-safe messenger for postMessage communication
+    this.typeSafeMessenger = new TypeSafeBridgeMessenger(this.handleTypedParentMessage.bind(this));
 
     // Initialize caches
     this.manifestCache = new Map();
@@ -113,15 +78,11 @@ class BridgeClient {
 
       // Set up message handlers for modal events
       this.broker.on('open_registration_modal', (_message) => {
-        this.forwardToParent({
-          type: 'open_registration_modal',
-        });
+        this.typeSafeMessenger.sendMessage(createOpenModalMessage());
       });
 
       this.broker.on('close_registration_modal', (_message) => {
-        this.forwardToParent({
-          type: 'close_registration_modal',
-        });
+        this.typeSafeMessenger.sendMessage(createCloseModalMessage());
       });
 
       // Set up state update listener for auth state changes
@@ -131,26 +92,14 @@ class BridgeClient {
 
       console.debug('Bridge: Broker initialized successfully');
 
-      // Notify parent that bridge is ready
-      parent.postMessage(
-        {
-          type: 'iframe_ready',
-          iframeType: 'bridge',
-        },
-        '*'
-      );
+      // Notify parent that bridge is ready using type-safe messaging
+      this.typeSafeMessenger.sendMessage(createIframeReadyMessage('bridge'));
     } catch (error) {
       console.error('Bridge: Failed to initialize broker:', error);
 
-      // Notify parent of initialization error
-      parent.postMessage(
-        {
-          type: 'iframe_error',
-          iframeType: 'bridge',
-          error: error instanceof Error ? error.message : 'Unknown error',
-        },
-        '*'
-      );
+      // Notify parent of initialization error using type-safe messaging
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.typeSafeMessenger.sendMessage(createIframeErrorMessage('bridge', errorMessage));
 
       throw new Error(
         `Bridge: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -159,16 +108,156 @@ class BridgeClient {
   }
 
   setupParentListener() {
-    // Listen for messages from parent SDK
-    window.addEventListener('message', (event: MessageEvent) => {
-      // Only handle messages from parent window
-      if (event.source === parent && isParentMessage(event.data)) {
-        this.handleParentMessage(event.data);
-      }
-    });
+    // Note: Type-safe messaging is now handled by TypeSafeBridgeMessenger
+    // This method is kept for compatibility but could be removed
+    console.debug('Bridge: Parent listener setup (using TypeSafeBridgeMessenger)');
   }
 
-  async handleParentMessage(message: LocalParentToBridgeMessage) {
+  /**
+   * Handle typed messages from parent SDK using the new type-safe system
+   */
+  async handleTypedParentMessage(message: SdkToBridgeMessage): Promise<any> {
+    console.debug('Bridge: Received typed message from parent:', message);
+
+    if (isWhoAmIMessage(message)) {
+      return await this.handleTypedWhoAmI(message);
+    } else if (isExecuteMessage(message)) {
+      return await this.handleTypedExecute(message);
+    } else if (isRequestAuthSignalMessage(message)) {
+      return await this.handleTypedRequestAuthSignal(message);
+    } else if (isUpdateAuthSignalMessage(message)) {
+      return await this.handleTypedUpdateAuthSignal(message);
+    } else {
+      throw new Error(`Unknown message type: ${(message as any).type}`);
+    }
+  }
+
+  /**
+   * Typed WhoAmI handler - returns data directly (response creation handled by messenger)
+   */
+  async handleTypedWhoAmI(_message: SdkToBridgeMessage & { type: 'whoAmI' }): Promise<any> {
+    return await this.brokerAccessors.rpc.whoAmI();
+  }
+
+  /**
+   * Typed Execute handler - returns data directly
+   */
+  async handleTypedExecute(message: SdkToBridgeMessage & { type: 'execute' }): Promise<any> {
+    const { manifestId, manifest, handler, args } = message.data;
+
+    if (!manifestId || !handler) {
+      throw new Error('ManifestId and handler are required for execute');
+    }
+
+    // Cache manifest if provided
+    if (manifest) {
+      console.debug('Bridge: Caching manifest', manifestId);
+      this.manifestCache.set(manifestId, manifest);
+    }
+
+    // Get manifest from cache
+    const cachedManifest = this.manifestCache.get(manifestId);
+    if (!cachedManifest) {
+      throw new Error(`Manifest ${manifestId} not found in cache`);
+    }
+
+    // Calculate manifest hash for hash mapping lookup
+    const manifestHash = await this.hashManifest(cachedManifest);
+    const storedCodePackageHash = this.getCodePackageHash(manifestHash);
+
+    // Try ExecuteHash first if we have a stored CodePackage hash
+    if (storedCodePackageHash) {
+      console.debug('Bridge: Trying ExecuteHash with stored CodePackage hash');
+
+      const executionResult = await this.brokerAccessors.rpc.executeHash(
+        storedCodePackageHash,
+        handler,
+        args || []
+      );
+
+      if (executionResult === 'HashUnknown') {
+        console.debug('Bridge: ExecuteHash returned HashUnknown, falling back to Execute');
+      } else {
+        // Success - return the ExecutionResult directly
+        return executionResult;
+      }
+    } else {
+      console.debug('Bridge: No stored CodePackage hash, using Execute directly');
+    }
+
+    // Fall back to full Execute
+    return await this.executeTypedWithFullManifest(
+      cachedManifest,
+      handler,
+      args || [],
+      manifestHash
+    );
+  }
+
+  /**
+   * Execute with full manifest for typed handlers - returns result directly
+   */
+  async executeTypedWithFullManifest(
+    manifest: any,
+    handler: string,
+    args: any[],
+    manifestHash: string
+  ): Promise<any> {
+    const result = await this.brokerAccessors.rpc.execute(manifest, handler, args);
+
+    // Store the hash mapping for future ExecuteHash calls if available
+    if (result.codePackageHash) {
+      this.storeHashMapping(manifestHash, result.codePackageHash);
+      console.debug('Bridge: Stored hash mapping', {
+        manifestHash,
+        codePackageHash: result.codePackageHash,
+      });
+    }
+
+    return result.executionResult;
+  }
+
+  /**
+   * Typed auth signal request handler - returns data directly
+   */
+  async handleTypedRequestAuthSignal(
+    message: SdkToBridgeMessage & { type: 'request_auth_signal' }
+  ): Promise<any> {
+    // Check if signal key is whitelisted
+    if (!isSignalKeyAllowed(message.signalKey)) {
+      throw new Error(`Auth signal key '${message.signalKey}' is not allowed`);
+    }
+
+    // Get state using the StateManager
+    const stateKey = this.authSignalToStateKey(message.signalKey);
+    const value = await this.stateManager.get(stateKey);
+
+    return { value };
+  }
+
+  /**
+   * Typed auth signal update handler - returns data directly
+   */
+  async handleTypedUpdateAuthSignal(
+    message: SdkToBridgeMessage & { type: 'update_auth_signal' }
+  ): Promise<any> {
+    // Check if signal key is whitelisted
+    if (!isSignalKeyAllowed(message.signalKey)) {
+      throw new Error(`Auth signal key '${message.signalKey}' is not allowed`);
+    }
+
+    // Set state using the StateManager
+    const stateKey = this.authSignalToStateKey(message.signalKey);
+    const success = await this.stateManager.set(stateKey, message.signalValue);
+
+    if (!success) {
+      throw new Error('Failed to update state');
+    }
+
+    return null; // Success with no data
+  }
+
+  async handleParentMessage(message: BridgeRequest) {
     try {
       console.debug('Bridge: Received message from parent:', message);
 
@@ -187,12 +276,13 @@ class BridgeClient {
       }
     } catch (error) {
       console.error('Bridge: Error handling parent message:', error);
-      this.forwardToParent({
+      const errorResponse: ErrorResponse = {
         type: 'response',
         nonce: message.nonce,
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      };
+      this.forwardToParent(errorResponse);
     }
   }
 
@@ -237,168 +327,124 @@ class BridgeClient {
       try {
         const authSignalKey = this.stateKeyToAuthSignal(stateKey);
 
-        // Forward auth state update to SDK
-        this.forwardToParent({
-          type: 'response',
-          data: {
-            type: 'auth_signal_update',
-            signalKey: authSignalKey,
-            signalValue: value,
-          },
-        } as any);
+        // Forward auth state update to SDK using type-safe messaging
+        this.typeSafeMessenger.sendMessage(createAuthSignalUpdateMessage(authSignalKey, value));
       } catch {
         console.warn('Bridge: Unknown auth state key:', stateKey);
       }
     }
   }
 
-  async handleRequestAuthSignal(message: RequestAuthSignalMessage) {
+  async handleRequestAuthSignal(message: RequestAuthSignalRequest) {
     console.debug('Bridge: Handling auth signal request:', message.signalKey);
 
     // Check if signal key is whitelisted
     if (!isSignalKeyAllowed(message.signalKey)) {
       console.warn('Bridge: Auth signal key not allowed:', message.signalKey);
-      this.forwardToParent({
+      const errorResponse: ErrorResponse = {
         type: 'response',
         nonce: message.nonce,
         success: false,
         error: `Auth signal key '${message.signalKey}' is not allowed`,
-      });
+      };
+      this.forwardToParent(errorResponse);
       return;
     }
 
     try {
-      // Translate auth signal request to generic state request
+      // Get state using the StateManager
       const stateKey = this.authSignalToStateKey(message.signalKey);
-      const response = await this.broker.request<{
-        success: boolean;
-        data?: any;
-        error?: string;
-      }>(
-        'get_state',
-        {
-          key: stateKey,
-          tabId: this.windowId,
-        },
-        'state'
-      );
+      const value = await this.stateManager.get(stateKey);
 
-      if (response.success) {
-        this.forwardToParent({
-          type: 'response',
-          nonce: message.nonce,
-          success: true,
-          data: response.data,
-        });
-      } else {
-        this.forwardToParent({
-          type: 'response',
-          nonce: message.nonce,
-          success: false,
-          error: response.error || 'Unknown error',
-        });
-      }
+      const successResponse: SuccessResponse = {
+        type: 'response',
+        nonce: message.nonce,
+        success: true,
+        data: { value },
+      };
+      this.forwardToParent(successResponse);
     } catch (error) {
       console.error('Bridge: Error requesting signal:', error);
-      this.forwardToParent({
+      const errorResponse: ErrorResponse = {
         type: 'response',
         nonce: message.nonce,
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      };
+      this.forwardToParent(errorResponse);
     }
   }
 
-  async handleUpdateAuthSignal(message: UpdateAuthSignalMessage) {
+  async handleUpdateAuthSignal(message: UpdateAuthSignalRequest) {
     console.debug('Bridge: Handling auth signal update:', message.signalKey, message.signalValue);
 
     // Check if signal key is whitelisted
     if (!isSignalKeyAllowed(message.signalKey)) {
       console.warn('Bridge: Auth signal key not allowed:', message.signalKey);
-      this.forwardToParent({
+      const errorResponse: ErrorResponse = {
         type: 'response',
         nonce: message.nonce,
         success: false,
         error: `Auth signal key '${message.signalKey}' is not allowed`,
-      });
+      };
+      this.forwardToParent(errorResponse);
       return;
     }
 
     try {
-      // Translate auth signal update to generic state update
+      // Set state using the StateManager
       const stateKey = this.authSignalToStateKey(message.signalKey);
-      const response = await this.broker.request<{
-        success: boolean;
-        data?: any;
-        error?: string;
-      }>(
-        'set_state',
-        {
-          key: stateKey,
-          value: message.signalValue,
-          tabId: this.windowId,
-        },
-        'state'
-      );
+      const success = await this.stateManager.set(stateKey, message.signalValue);
 
-      if (response.success) {
-        this.forwardToParent({
+      if (success) {
+        const successResponse: SuccessResponse = {
           type: 'response',
           nonce: message.nonce,
           success: true,
-          data: response.data,
-        });
+          data: null,
+        };
+        this.forwardToParent(successResponse);
       } else {
-        this.forwardToParent({
+        const errorResponse: ErrorResponse = {
           type: 'response',
           nonce: message.nonce,
           success: false,
-          error: response.error || 'Unknown error',
-        });
+          error: 'Failed to update state',
+        };
+        this.forwardToParent(errorResponse);
       }
     } catch (error) {
       console.error('Bridge: Error updating signal:', error);
-      this.forwardToParent({
+      const errorResponse: ErrorResponse = {
         type: 'response',
         nonce: message.nonce,
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-      });
+      };
+      this.forwardToParent(errorResponse);
     }
   }
 
-  async handleWhoAmI(message: WhoAmIMessage) {
+  async handleWhoAmI(message: WhoAmIRequest) {
     try {
-      const rpcCall: WhoAmI = { type: 'WhoAmI', data: null };
+      // Use the typed RPC accessor for cleaner code
+      const whoAmIResult = await this.brokerAccessors.rpc.whoAmI();
 
-      const response = await this.broker.request<{
-        success: boolean;
-        data?: RpcResponse<WhoAmIResult>;
-        error?: string;
-      }>('rpc_request', rpcCall, 'rpc');
-
-      if (response.success && response.data?.type === 'WhoAmI') {
-        this.forwardToParent({
-          type: 'response',
-          nonce: message.nonce,
-          success: true,
-          data: response.data.data, // Extract the WhoAmIResult from the tagged response
-        });
-      } else {
-        this.forwardToParent({
-          type: 'response',
-          nonce: message.nonce,
-          success: false,
-          error: response.error || 'WhoAmI response is missing or malformed',
-        });
-      }
+      const successResponse: SuccessResponse = {
+        type: 'response',
+        nonce: message.nonce,
+        success: true,
+        data: whoAmIResult,
+      };
+      this.forwardToParent(successResponse);
     } catch (error) {
-      this.forwardToParent({
+      const errorResponse: ErrorResponse = {
         type: 'response',
         nonce: message.nonce,
         success: false,
         error: error instanceof Error ? error.message : 'Failed to execute WhoAmI',
-      });
+      };
+      this.forwardToParent(errorResponse);
     }
   }
 
@@ -430,41 +476,31 @@ class BridgeClient {
       if (storedCodePackageHash) {
         console.debug('Bridge: Trying ExecuteHash with stored CodePackage hash');
 
-        const hashRpcCall: ExecuteHash = {
-          type: 'ExecuteHash',
-          data: {
-            args: args || [],
-            handler_specifier: handler,
-            module_hash: storedCodePackageHash,
-          },
-        };
+        try {
+          const executionResult = await this.brokerAccessors.rpc.executeHash(
+            storedCodePackageHash,
+            handler,
+            args || []
+          );
 
-        const hashResponse = await this.broker.request<{
-          success: boolean;
-          data?: RpcResponse<ExecuteHashResult>;
-          error?: string;
-        }>('rpc_request', hashRpcCall, 'rpc');
-
-        if (hashResponse.success && hashResponse.data?.type === 'ExecuteHash') {
-          const executeHashResult = hashResponse.data.data;
-
-          if (executeHashResult.result === 'success') {
-            const executionResult = executeHashResult.data as ExecutionResult;
+          if (executionResult === 'HashUnknown') {
+            console.debug('Bridge: ExecuteHash returned HashUnknown, falling back to Execute');
+          } else {
+            // Success - we got an ExecutionResult
             this.handleExecutionResult(executionResult, message.nonce);
             return;
-          } else if (executeHashResult.result === 'failure') {
-            this.forwardToParent({
-              type: 'response',
-              nonce: message.nonce,
-              success: false,
-              error: executeHashResult.data as string,
-            });
-            return;
           }
-          // If result is "error" (HashUnknown), fall through to Execute
+        } catch (error) {
+          // ExecuteHash failed with an error
+          const errorResponse: ErrorResponse = {
+            type: 'response',
+            nonce: message.nonce,
+            success: false,
+            error: error instanceof Error ? error.message : 'ExecuteHash failed',
+          };
+          this.forwardToParent(errorResponse);
+          return;
         }
-
-        console.debug('Bridge: ExecuteHash failed or unknown, falling back to Execute');
       } else {
         console.debug('Bridge: No stored CodePackage hash, using Execute directly');
       }
@@ -478,17 +514,18 @@ class BridgeClient {
         manifestHash
       );
     } catch (error) {
-      this.forwardToParent({
+      const errorResponse: ErrorResponse = {
         type: 'response',
         nonce: message.nonce,
         success: false,
         error: error instanceof Error ? error.message : 'Failed to execute handler',
-      });
+      };
+      this.forwardToParent(errorResponse);
     }
   }
 
   async executeWithFullManifest(
-    originalMessage: LocalParentToBridgeMessage,
+    originalMessage: BridgeRequest,
     manifest: any,
     handler: string,
     args: any[],
@@ -551,38 +588,42 @@ class BridgeClient {
           this.handleExecutionResult(successData, originalMessage.nonce);
         }
       } else if (executeResult.result === 'failure' || executeResult.result === 'error') {
-        this.forwardToParent({
+        const errorResponse: ErrorResponse = {
           type: 'response',
           nonce: originalMessage.nonce,
           success: false,
           error: executeResult.data as string,
-        });
+        };
+        this.forwardToParent(errorResponse);
       } else {
-        this.forwardToParent({
+        const errorResponse: ErrorResponse = {
           type: 'response',
           nonce: originalMessage.nonce,
           success: false,
           error: 'Unexpected response format from Execute',
-        });
+        };
+        this.forwardToParent(errorResponse);
       }
     } catch (error) {
-      this.forwardToParent({
+      const errorResponse: ErrorResponse = {
         type: 'response',
         nonce: originalMessage.nonce,
         success: false,
         error: error instanceof Error ? error.message : 'Failed to retry with full script',
-      });
+      };
+      this.forwardToParent(errorResponse);
     }
   }
 
   handleExecutionResult(result: ExecutionResult, nonce: number) {
     // Send the full ExecutionResult back to the SDK to handle
-    this.forwardToParent({
+    const successResponse: SuccessResponse = {
       type: 'response',
       nonce: nonce,
       success: true,
       data: result,
-    });
+    };
+    this.forwardToParent(successResponse);
   }
 
   async hashManifest(manifest: any): Promise<string> {

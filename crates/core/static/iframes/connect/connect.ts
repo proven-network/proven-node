@@ -1,16 +1,9 @@
 /// <reference lib="DOM" />
 import { authenticate } from '../../helpers/webauthn';
 import { MessageBroker, getWindowIdFromUrl } from '../../helpers/broker';
+import { createAllAccessors, type BrokerAccessors } from '../../helpers/accessors';
 import { hexToBytes } from '@noble/curves/abstract/utils';
-import { WhoAmIResult } from '../../types';
-import {
-  Anonymize,
-  Identify,
-  WhoAmI,
-  AnonymizeResponse,
-  IdentifyResponse,
-  RpcResponse,
-} from '../../types';
+import type { Anonymize, Identify, AnonymizeResponse, IdentifyResponse } from '../../types';
 import { signAsync, getPublicKeyAsync } from '@noble/ed25519';
 import { getSession } from '../../helpers/sessions';
 
@@ -18,6 +11,7 @@ class ConnectClient {
   applicationId: string;
   broker: MessageBroker;
   windowId: string;
+  brokerAccessors: BrokerAccessors;
 
   constructor() {
     // Extract application ID from URL path
@@ -28,6 +22,9 @@ class ConnectClient {
 
     // Initialize broker synchronously - will throw if it fails
     this.broker = new MessageBroker(this.windowId, 'connect');
+
+    // Initialize broker accessors
+    this.brokerAccessors = createAllAccessors(this.broker, this.windowId);
 
     this.initializeBroker();
   }
@@ -139,31 +136,15 @@ class ConnectClient {
     try {
       console.debug('Connect: Updating auth state in state system:', authenticated);
 
-      if (authenticated) {
-        // Send authenticated state with user info to state iframe
-        await this.broker.request(
-          'set_state',
-          {
-            key: 'auth_state',
-            value: 'authenticated',
-            tabId: this.windowId,
-          },
-          'state'
-        );
-      } else {
-        // Send unauthenticated state
-        await this.broker.request(
-          'set_state',
-          {
-            key: 'auth_state',
-            value: 'unauthenticated',
-            tabId: this.windowId,
-          },
-          'state'
-        );
-      }
+      // Use the typed state accessor for safer state operations
+      const authState = authenticated ? 'authenticated' : 'unauthenticated';
+      const success = await this.brokerAccessors.state.set('auth_state', authState);
 
-      console.debug('Connect: Auth state updated in state system successfully');
+      if (success) {
+        console.debug('Connect: Auth state updated in state system successfully');
+      } else {
+        console.warn('Connect: Failed to update auth state in state system');
+      }
     } catch (error) {
       console.error('Connect: Failed to update auth state in state system:', error);
     }
@@ -172,24 +153,8 @@ class ConnectClient {
   // Auth state methods
   async isSignedIn(): Promise<boolean> {
     try {
-      const whoAmIRequest: WhoAmI = { type: 'WhoAmI', data: null };
-      const response = await this.broker.request<{
-        success: boolean;
-        data?: RpcResponse<WhoAmIResult>;
-        error?: string;
-      }>('rpc_request', whoAmIRequest, 'rpc');
-
-      if (!response.success) {
-        console.error('Connect: WhoAmI request failed:', response.error);
-        return false;
-      }
-
-      if (!response.data || response.data.type !== 'WhoAmI') {
-        console.error('Connect: Invalid WhoAmI response format');
-        return false;
-      }
-
-      const whoAmIResult = response.data.data;
+      // Use the typed RPC accessor for safer WhoAmI calls
+      const whoAmIResult = await this.brokerAccessors.rpc.whoAmI();
       console.debug('Connect: WhoAmI response:', whoAmIResult);
 
       // Check if the user is identified (signed in)
@@ -280,7 +245,7 @@ class ConnectClient {
       if (isNoCredentialsError) {
         console.debug('No credentials found, opening registration modal');
         // Send message directly to sdk via broker
-        await this.broker.send('open_registration_modal', null, 'sdk');
+        await this.broker.send('open_registration_modal', null, 'bridge');
         this.resetSignInButton();
       } else {
         // Other error (user cancelled, PRF not available, etc.)

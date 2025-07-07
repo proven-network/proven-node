@@ -12,7 +12,7 @@
     "build:rpc-worker": "VITE_ENTRY=rpc-worker vite build",
     "build:state-worker": "VITE_ENTRY=state-worker vite build",
     "test": "jest",
-    "lint": "echo 'Linting handled by root workspace'",
+    "lint": "eslint static --ext .ts",
     "test:iframe": "node test/server.js"
   },
   "dependencies": {

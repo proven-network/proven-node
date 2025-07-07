@@ -68,6 +68,20 @@ function setupReactiveAuth() {
       updateStats().catch(console.error);
     }
   });
+
+  // Debug: Print auth signal status every 5 seconds
+  setInterval(() => {
+    const authState = sdk.authState.value;
+    const userInfo = sdk.userInfo.value;
+    const isAuthenticated = sdk.isAuthenticated.value;
+
+    console.log('🔄 Auth Status Check (every 5s):', {
+      authState,
+      isAuthenticated,
+      userInfo,
+      timestamp: new Date().toISOString(),
+    });
+  }, 5000);
 }
 
 export async function addTodo(title: string, description?: string) {

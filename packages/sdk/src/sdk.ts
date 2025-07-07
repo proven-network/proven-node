@@ -1,10 +1,18 @@
 import {
   SdkExecutionResult,
   SdkExecuteError,
-  BridgeRequest,
   BundleManifest,
   QueuedHandler,
-  ExecuteRequest,
+  // Type-safe messaging imports
+  TypeSafeSdkMessenger,
+  SdkToBridgeMessage,
+  BridgeToSdkMessage,
+  addSdkMessageListener,
+  isAuthSignalUpdateMessage,
+  isSuccessResponse,
+  isErrorResponse,
+  isIframeReadyMessage,
+  isIframeErrorMessage,
 } from '@proven-network/common';
 import { AuthSignalManager, type AuthStateSignals } from './signals';
 
@@ -59,7 +67,8 @@ export const ProvenSDK = (options: {
   let rpcIframeReady = false;
   let connectIframeReady = false;
   let stateIframeReady = false;
-  let nonce = 0;
+  let typeSafeMessenger: TypeSafeSdkMessenger | null = null;
+  let messageListenerCleanup: (() => void) | null = null;
 
   // Promises for iframe readiness
   let bridgeReadyPromise: Promise<void> | null = null;
@@ -74,6 +83,84 @@ export const ProvenSDK = (options: {
     number,
     { resolve: (data: any) => void; reject: (error: Error) => void }
   >();
+
+  // Setup type-safe message listener
+  const setupTypeSafeMessageListener = (): void => {
+    if (messageListenerCleanup) {
+      messageListenerCleanup();
+    }
+
+    messageListenerCleanup = addSdkMessageListener((message) => {
+      handleTypeSafeMessage(message);
+    });
+  };
+
+  const handleTypeSafeMessage = (message: BridgeToSdkMessage): void => {
+    logger?.debug('SDK: Received typed message:', message);
+
+    if (isIframeReadyMessage(message)) {
+      handleIframeReady(message);
+    } else if (isIframeErrorMessage(message)) {
+      handleIframeError(message);
+    } else if (isAuthSignalUpdateMessage(message)) {
+      authSignalManager.handleAuthSignalUpdate(message.signalKey, message.signalValue);
+    } else if (message.type === 'open_registration_modal') {
+      openRegistrationModal();
+    } else if (message.type === 'close_registration_modal') {
+      closeRegistrationModal();
+    } else if (isSuccessResponse(message) || isErrorResponse(message)) {
+      // Response messages are handled by TypeSafeSdkMessenger
+      // No need to handle them here
+    }
+  };
+
+  const handleIframeReady = (message: BridgeToSdkMessage & { type: 'iframe_ready' }): void => {
+    logger?.debug('SDK: Received iframe ready message:', message);
+
+    if (message.iframeType === 'bridge' && bridgeReadyResolve) {
+      bridgeIframeReady = true;
+
+      // Initialize type-safe messenger
+      if (bridgeIframe) {
+        typeSafeMessenger = new TypeSafeSdkMessenger(bridgeIframe);
+        // Initialize signal manager with type-safe messenger
+        authSignalManager.setSendMessage(sendTypeSafeMessage);
+      }
+
+      bridgeReadyResolve();
+      bridgeReadyResolve = null;
+    } else if (message.iframeType === 'rpc' && rpcReadyResolve) {
+      rpcIframeReady = true;
+      rpcReadyResolve();
+      rpcReadyResolve = null;
+    } else if (message.iframeType === 'connect' && connectReadyResolve) {
+      connectIframeReady = true;
+      connectReadyResolve();
+      connectReadyResolve = null;
+    } else if (message.iframeType === 'state' && stateReadyResolve) {
+      stateIframeReady = true;
+      stateReadyResolve();
+      stateReadyResolve = null;
+    }
+  };
+
+  const handleIframeError = (message: BridgeToSdkMessage & { type: 'iframe_error' }): void => {
+    logger?.error('SDK: Iframe initialization error:', message);
+
+    if (message.iframeType === 'bridge' && bridgeReadyResolve) {
+      bridgeReadyPromise = null;
+      bridgeReadyResolve = null;
+    } else if (message.iframeType === 'rpc' && rpcReadyResolve) {
+      rpcReadyPromise = null;
+      rpcReadyResolve = null;
+    } else if (message.iframeType === 'connect' && connectReadyResolve) {
+      connectReadyPromise = null;
+      connectReadyResolve = null;
+    } else if (message.iframeType === 'state' && stateReadyResolve) {
+      stateReadyPromise = null;
+      stateReadyResolve = null;
+    }
+  };
 
   // Manifest management
   const manifests = new Map<string, BundleManifest>();
@@ -174,9 +261,8 @@ export const ProvenSDK = (options: {
         hasManifest: !!handler.manifest,
       });
 
-      const executeMessage: ExecuteRequest = {
-        type: 'execute',
-        nonce: 0, // Will be set by sendMessage
+      const executeMessage = {
+        type: 'execute' as const,
         data: {
           manifestId: handler.manifestId,
           ...(handler.manifest && { manifest: handler.manifest }),
@@ -185,7 +271,7 @@ export const ProvenSDK = (options: {
         },
       };
 
-      const response = await sendMessage(executeMessage);
+      const response = await sendTypeSafeMessage(executeMessage);
 
       // Process the response same as before
       let result: SdkExecutionResult;
@@ -487,127 +573,17 @@ export const ProvenSDK = (options: {
     return stateReadyPromise;
   };
 
-  const handleIframeMessage = (event: MessageEvent) => {
-    const message = event.data;
-
-    // Handle iframe readiness messages
-    if (message.type === 'iframe_ready') {
-      logger?.debug('SDK: Received iframe ready message:', message);
-
-      if (message.iframeType === 'bridge' && bridgeReadyResolve) {
-        bridgeIframeReady = true;
-
-        // Initialize signal manager with sendMessage function
-        authSignalManager.setSendMessage(sendMessage);
-
-        bridgeReadyResolve();
-        bridgeReadyResolve = null;
-      } else if (message.iframeType === 'rpc' && rpcReadyResolve) {
-        rpcIframeReady = true;
-        rpcReadyResolve();
-        rpcReadyResolve = null;
-      } else if (message.iframeType === 'connect' && connectReadyResolve) {
-        connectIframeReady = true;
-        connectReadyResolve();
-        connectReadyResolve = null;
-      } else if (message.iframeType === 'state' && stateReadyResolve) {
-        stateIframeReady = true;
-        stateReadyResolve();
-        stateReadyResolve = null;
-
-        // Signal manager is initialized when bridge is ready
-      }
-      return;
-    }
-
-    // Connect iframe no longer sends direct messages - all auth updates go through state system
-
-    // Handle state updates from state iframe
-    if (stateIframe && event.source === stateIframe.contentWindow) {
-      // State updates are now handled via bridge auth signal updates
-      return;
-    }
-
-    // Handle iframe error messages
-    if (message.type === 'iframe_error') {
-      logger?.error('SDK: Iframe initialization error:', message);
-
-      if (message.iframeType === 'bridge' && bridgeReadyResolve) {
-        bridgeReadyPromise = null;
-        bridgeReadyResolve = null;
-        // Reject would be handled by the timeout in createBridgeIframe
-      } else if (message.iframeType === 'rpc' && rpcReadyResolve) {
-        rpcReadyPromise = null;
-        rpcReadyResolve = null;
-        // Reject would be handled by the timeout in createRpcIframe
-      } else if (message.iframeType === 'connect' && connectReadyResolve) {
-        connectReadyPromise = null;
-        connectReadyResolve = null;
-        // Reject would be handled by the timeout in createConnectIframe
-      } else if (message.iframeType === 'state' && stateReadyResolve) {
-        stateReadyPromise = null;
-        stateReadyResolve = null;
-        // Reject would be handled by the timeout in createStateIframe
-      }
-      return;
-    }
-
-    // Handle messages from bridge iframe
-    if (bridgeIframe && event.source === bridgeIframe.contentWindow) {
-      if (message.type === 'response') {
-        // Check for auth signal updates in response data
-        if (message.data?.type === 'auth_signal_update') {
-          authSignalManager.handleAuthSignalUpdate(
-            message.data.signalKey,
-            message.data.signalValue
-          );
-          return;
-        }
-
-        // Handle API responses
-        const callback = pendingCallbacks.get(message.nonce);
-        if (callback) {
-          pendingCallbacks.delete(message.nonce);
-
-          if (message.success) {
-            callback.resolve(message.data);
-          } else {
-            callback.reject(new Error(message.error || 'Unknown error'));
-          }
-        }
-      } else if (message.type === 'open_registration_modal') {
-        // Handle modal open requests from button iframe (via bridge)
-        openRegistrationModal();
-      } else if (message.type === 'close_registration_modal') {
-        // Handle modal close requests from registration iframe (via bridge)
-        closeRegistrationModal();
-      }
-      return;
-    }
-  };
-
-  const sendMessage = async (message: BridgeRequest): Promise<any> => {
+  const sendTypeSafeMessage = async (message: Omit<SdkToBridgeMessage, 'nonce'>): Promise<any> => {
     // Wait for bridge iframe to be ready if it's not already
     if (!bridgeIframeReady) {
       await createBridgeIframe();
     }
 
-    return new Promise((resolve, reject) => {
-      const currentNonce = nonce++;
-      message.nonce = currentNonce;
+    if (!typeSafeMessenger) {
+      throw new Error('Type-safe messenger not initialized');
+    }
 
-      pendingCallbacks.set(currentNonce, { resolve, reject });
-
-      // Set timeout for the request
-      setTimeout(() => {
-        if (pendingCallbacks.has(currentNonce)) {
-          pendingCallbacks.delete(currentNonce);
-          reject(new Error('Request timeout'));
-        }
-      }, 30000); // 30 second timeout
-
-      bridgeIframe!.contentWindow!.postMessage(message, '*');
-    });
+    return typeSafeMessenger.sendRequest(message);
   };
 
   /**
@@ -677,8 +653,7 @@ export const ProvenSDK = (options: {
       }
 
       executeMessage = {
-        type: 'execute',
-        nonce: 0, // Will be set by sendMessage
+        type: 'execute' as const,
         data: {
           manifestId: manifest.id,
           manifest: shouldSendManifest ? manifest : undefined,
@@ -693,7 +668,7 @@ export const ProvenSDK = (options: {
       }
     }
 
-    const response = await sendMessage(executeMessage);
+    const response = await sendTypeSafeMessage(executeMessage);
 
     // The response now contains either the full SdkExecutionResult (legacy) or ExecuteSuccessResponse (new)
     let result: SdkExecutionResult;
@@ -745,8 +720,8 @@ export const ProvenSDK = (options: {
 
   // Initialization is now handled by initializeManifestSystem() to ensure proper coordination
 
-  // Listen for messages from iframes
-  window.addEventListener('message', handleIframeMessage);
+  // Setup type-safe message listener
+  setupTypeSafeMessageListener();
 
   // Handle ESC key to close modal
   document.addEventListener('keydown', (event) => {
@@ -795,8 +770,17 @@ export const ProvenSDK = (options: {
     // Clean up signal manager
     authSignalManager.destroy();
 
-    // Remove event listeners
-    window.removeEventListener('message', handleIframeMessage);
+    // Clean up type-safe messenger
+    if (typeSafeMessenger) {
+      typeSafeMessenger.destroy();
+      typeSafeMessenger = null;
+    }
+
+    // Clean up message listener
+    if (messageListenerCleanup) {
+      messageListenerCleanup();
+      messageListenerCleanup = null;
+    }
 
     // Clean up iframes
     if (bridgeIframe && bridgeIframe.parentNode) {
