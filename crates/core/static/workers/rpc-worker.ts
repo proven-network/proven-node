@@ -52,7 +52,6 @@ class RpcWorker {
     };
 
     this.ws.onclose = () => {
-      console.log('WebSocket connection closed');
       this.ws = null;
       // Only reconnect if closure wasn't intentional
       if (!this.intentionallyClosed) {
@@ -166,10 +165,8 @@ class RpcWorker {
 
       // Decide transport: use WebSocket if already open, otherwise use HTTP
       if (this.ws?.readyState === WebSocket.OPEN) {
-        console.debug('RPC: Using WebSocket transport (already open)');
         this.sendViaWebSocket(message.data);
       } else {
-        console.debug('RPC: Using HTTP transport');
         await this.sendViaHttp(message.data, message.nonce);
       }
     }

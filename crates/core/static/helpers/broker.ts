@@ -1,10 +1,13 @@
 // Helper to communicate with the SharedWorker message broker
 // Provides a clean API for iframe-to-iframe communication
 
+// Valid iframe types
+export type IframeType = 'bridge' | 'connect' | 'register' | 'rpc' | 'state';
+
 interface BrokerMessage {
   type: string;
-  fromIframe: string;
-  toIframe?: string;
+  fromIframe: IframeType;
+  toIframe?: IframeType;
   data: any;
   messageId?: string; // For request-response correlation
   isResponse?: boolean; // To distinguish responses from regular messages
@@ -24,7 +27,7 @@ export class MessageBroker {
   private worker: SharedWorker | null = null;
   private port: MessagePort | null = null;
   private windowId: string;
-  private iframeType: string;
+  private iframeType: IframeType;
   private messageHandlers: Map<string, MessageHandler[]> = new Map();
   private pendingRequests: Map<string, PendingRequest> = new Map();
   private isConnected: boolean = false;
@@ -38,7 +41,7 @@ export class MessageBroker {
   private readonly HEALTH_CHECK_INTERVAL = 30000; // 30 seconds
   private lastActivityTime: number = Date.now();
 
-  constructor(windowId: string, iframeType: string) {
+  constructor(windowId: string, iframeType: IframeType) {
     this.windowId = windowId;
     this.iframeType = iframeType;
   }
@@ -234,7 +237,6 @@ export class MessageBroker {
         }
       });
     } else {
-      console.warn(`Broker: No handlers registered for message type: ${message.type}`);
       // If this was a request with no handler, send error response
       if (message.messageId) {
         this.sendResponse(
@@ -249,7 +251,7 @@ export class MessageBroker {
 
   private async sendResponse(
     messageId: string,
-    respondingTo: string,
+    respondingTo: IframeType,
     responseData: any,
     error?: string
   ): Promise<void> {
@@ -274,12 +276,12 @@ export class MessageBroker {
     this.port.postMessage(response);
   }
 
-  async send(type: string, data: any, toIframe?: string): Promise<void> {
+  async send(type: string, data: any, toIframe: IframeType): Promise<void> {
     const message: BrokerMessage = {
       type,
       fromIframe: this.iframeType,
+      toIframe,
       data,
-      ...(toIframe !== undefined && { toIframe }),
     };
 
     if (!this.isConnected) {
@@ -299,11 +301,40 @@ export class MessageBroker {
       throw new Error('Broker: Not connected');
     }
 
-    console.debug(`Broker: ${this.iframeType} sending message:`, message);
+    console.debug(`Broker: ${this.iframeType} sending message to ${toIframe}:`, message);
     this.port.postMessage(message);
   }
 
-  async request<T = any>(type: string, data: any, toIframe: string): Promise<T> {
+  async broadcast(type: string, data: any): Promise<void> {
+    const message: BrokerMessage = {
+      type,
+      fromIframe: this.iframeType,
+      data,
+      // No toIframe - this will be broadcast to all iframes
+    };
+
+    if (!this.isConnected) {
+      // Queue the message if not connected
+      console.debug(`Broker: ${this.iframeType} queuing broadcast (not connected):`, message);
+      this.messageQueue.push(message);
+
+      // Try to connect in the background
+      this.connect().catch((error) => {
+        console.error(`Broker: Failed to connect while broadcasting:`, error);
+      });
+
+      return;
+    }
+
+    if (!this.port) {
+      throw new Error('Broker: Not connected');
+    }
+
+    console.debug(`Broker: ${this.iframeType} broadcasting message:`, message);
+    this.port.postMessage(message);
+  }
+
+  async request<T = any>(type: string, data: any, toIframe: IframeType): Promise<T> {
     if (!toIframe) {
       throw new Error('Broker: request() requires a target iframe type');
     }
@@ -425,7 +456,7 @@ export class MessageBroker {
 
       try {
         // Send a ping message to test the connection
-        await this.send('ping', { timestamp: Date.now() });
+        await this.broadcast('ping', { timestamp: Date.now() });
         console.debug(`Broker: Health check passed for ${this.iframeType}`);
       } catch (error) {
         console.error(`Broker: Health check failed for ${this.iframeType}:`, error);

@@ -31,11 +31,7 @@ export type UpdateAuthSignalRequest = {
   signalValue: any;
 };
 
-export type BridgeRequest =
-  | WhoAmIRequest
-  | ExecuteRequest
-  | RequestAuthSignalRequest
-  | UpdateAuthSignalRequest;
+export type BridgeRequest = ExecuteRequest | RequestAuthSignalRequest | UpdateAuthSignalRequest;
 
 // Bridge -> SDK Response Messages
 export type SuccessResponse = {

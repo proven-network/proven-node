@@ -26,15 +26,10 @@ class StateWorker {
   private ports: Set<MessagePort> = new Set();
   private storage: Map<string, any> = new Map();
 
-  constructor() {
-    console.log('State Worker: Initializing simple state storage');
-  }
+  constructor() {}
 
-  addPort(port: MessagePort, tabId: string) {
+  addPort(port: MessagePort) {
     this.ports.add(port);
-    console.log(
-      `State Worker: Added port for tab ${tabId}, now has ${this.ports.size} connections`
-    );
 
     // Set up message handling
     port.onmessage = (event) => {
@@ -50,13 +45,10 @@ class StateWorker {
   removePort(port: MessagePort) {
     if (this.ports.has(port)) {
       this.ports.delete(port);
-      console.log(`State Worker: Removed port, now has ${this.ports.size} connections`);
     }
   }
 
   private handleMessage(message: WorkerMessage, fromPort: MessagePort) {
-    console.log('State Worker: Received message:', message);
-
     switch (message.type) {
       case 'get':
         if (message.key) {
@@ -92,8 +84,6 @@ class StateWorker {
   }
 
   private handleGetValue(key: string, fromPort: MessagePort, tabId?: string) {
-    console.log(`State Worker: Getting value for key '${key}'`);
-
     const exists = this.storage.has(key);
     const value = exists ? this.storage.get(key) : undefined;
 
@@ -110,8 +100,6 @@ class StateWorker {
   }
 
   private handleSetValue(key: string, value: any, fromPort: MessagePort, tabId?: string) {
-    console.log(`State Worker: Setting value for key '${key}':`, value);
-
     // Store the value
     this.storage.set(key, value);
 
@@ -131,10 +119,6 @@ class StateWorker {
   }
 
   private broadcastUpdate(key: string, value: any, excludePort: MessagePort) {
-    console.log(
-      `State Worker: Broadcasting update for key '${key}' to ${this.ports.size - 1} other ports`
-    );
-
     this.ports.forEach((port) => {
       if (port !== excludePort) {
         try {
@@ -180,8 +164,6 @@ class StateWorker {
 
     this.ports.clear();
     this.storage.clear();
-
-    console.log('State Worker: Cleaned up all connections and storage');
   }
 }
 
@@ -202,7 +184,7 @@ self.addEventListener('connect', (event: Event) => {
     const { type, tabId } = initEvent.data;
 
     if (type === 'init' && tabId) {
-      stateWorker.addPort(port, tabId);
+      stateWorker.addPort(port);
     } else {
       console.error('State Worker: Invalid init message:', initEvent.data);
       port.close();

@@ -55,7 +55,6 @@ export const ProvenSDK = (options: {
 
   // Generate unique window ID for this SDK instance
   const windowId = crypto.randomUUID();
-  logger?.debug('SDK: Generated window ID:', windowId);
 
   let bridgeIframe: HTMLIFrameElement | null = null;
   let connectIframe: HTMLIFrameElement | null = null;
@@ -96,8 +95,6 @@ export const ProvenSDK = (options: {
   };
 
   const handleTypeSafeMessage = (message: BridgeToSdkMessage): void => {
-    logger?.debug('SDK: Received typed message:', message);
-
     if (isIframeReadyMessage(message)) {
       handleIframeReady(message);
     } else if (isIframeErrorMessage(message)) {
@@ -115,8 +112,6 @@ export const ProvenSDK = (options: {
   };
 
   const handleIframeReady = (message: BridgeToSdkMessage & { type: 'iframe_ready' }): void => {
-    logger?.debug('SDK: Received iframe ready message:', message);
-
     if (message.iframeType === 'bridge' && bridgeReadyResolve) {
       bridgeIframeReady = true;
 
@@ -170,7 +165,6 @@ export const ProvenSDK = (options: {
    * Register a manifest with the SDK
    */
   const registerManifest = (manifest: BundleManifest): void => {
-    logger?.debug('SDK: Registering manifest', manifest.id);
     manifests.set(manifest.id, manifest);
 
     // Process any queued handlers waiting for this manifest
@@ -181,7 +175,6 @@ export const ProvenSDK = (options: {
    * Update an existing manifest (for hot-reload)
    */
   const updateManifest = (manifest: BundleManifest): void => {
-    logger?.debug('SDK: Updating manifest', manifest.id);
     manifests.set(manifest.id, manifest);
 
     // Mark as not sent so it gets resent to bridge
@@ -192,30 +185,22 @@ export const ProvenSDK = (options: {
    * Connect to the global handler queue and process queued calls
    */
   const connectHandlerQueue = (): void => {
-    logger?.debug('SDK: Attempting to connect to handler queue...');
-
     // Get reference to the global queue
     const existingQueue = (window as any).__ProvenHandlerQueue__;
-    logger?.debug('SDK: Found existing queue:', existingQueue);
 
     if (!existingQueue) {
-      logger?.debug('SDK: Creating new global queue object with push method');
       // Create queue object directly with push method
       (window as any).__ProvenHandlerQueue__ = {
         push: (handler: QueuedHandler) => {
-          logger?.debug('SDK: Executing handler directly:', handler);
           executeHandler(handler);
           return 0; // Not meaningful for object, but maintaining array-like interface
         },
       };
     } else if (Array.isArray(existingQueue)) {
-      logger?.debug(`SDK: Processing ${existingQueue.length} existing queued calls...`);
-
       // Process existing queued calls
       while (existingQueue.length > 0) {
         const handler = existingQueue.shift();
         if (handler) {
-          logger?.debug('SDK: Processing queued handler:', handler);
           executeHandler(handler);
         }
       }
@@ -231,14 +216,11 @@ export const ProvenSDK = (options: {
       // Replace with queue object
       (window as any).__ProvenHandlerQueue__ = {
         push: (handler: QueuedHandler) => {
-          logger?.debug('SDK: Executing handler directly:', handler);
           executeHandler(handler);
           return 0;
         },
       };
     }
-
-    logger?.debug('SDK: Successfully connected to handler queue');
   };
 
   /**
@@ -254,13 +236,6 @@ export const ProvenSDK = (options: {
    */
   const executeHandler = async (handler: QueuedHandler): Promise<void> => {
     try {
-      logger?.debug('SDK: Executing handler from queue', {
-        manifestId: handler.manifestId,
-        handler: handler.handler,
-        args: handler.args,
-        hasManifest: !!handler.manifest,
-      });
-
       const executeMessage = {
         type: 'execute' as const,
         data: {
@@ -275,8 +250,8 @@ export const ProvenSDK = (options: {
 
       // Process the response same as before
       let result: SdkExecutionResult;
-      if (response && typeof response === 'object' && 'execution_result' in response) {
-        result = response.execution_result as SdkExecutionResult;
+      if (response && typeof response === 'object' && 'data' in response) {
+        result = response.data as SdkExecutionResult;
       } else {
         result = response as SdkExecutionResult;
       }
@@ -318,8 +293,6 @@ export const ProvenSDK = (options: {
       return;
     }
 
-    logger?.debug('SDK: Opening registration modal');
-
     // Create overlay
     modalOverlay = createModalOverlay();
 
@@ -356,8 +329,6 @@ export const ProvenSDK = (options: {
   };
 
   const closeRegistrationModal = (): void => {
-    logger?.debug('SDK: Closing registration modal');
-
     if (modalOverlay && modalOverlay.parentNode) {
       modalOverlay.parentNode.removeChild(modalOverlay);
     }
@@ -629,8 +600,6 @@ export const ProvenSDK = (options: {
     handler: string,
     args: any[] = []
   ): Promise<ExecuteOutput> => {
-    logger?.debug('SDK: Executing handler', { manifestIdOrScript, handler, args });
-
     // Check if this is a manifest ID
     const manifest = manifests.get(manifestIdOrScript);
 
@@ -639,18 +608,6 @@ export const ProvenSDK = (options: {
     if (manifest) {
       // Manifest-based execution
       const shouldSendManifest = !sentManifests.has(manifest.id);
-
-      // Log the manifest structure before sending
-      if (shouldSendManifest) {
-        logger?.debug('SDK: Sending manifest structure:', {
-          id: manifest.id,
-          version: manifest.version,
-          modules: manifest.modules?.length || 0,
-          dependencies: manifest.dependencies,
-          metadata: manifest.metadata,
-          fullManifest: manifest,
-        });
-      }
 
       executeMessage = {
         type: 'execute' as const,
@@ -673,11 +630,10 @@ export const ProvenSDK = (options: {
     // The response now contains either the full SdkExecutionResult (legacy) or ExecuteSuccessResponse (new)
     let result: SdkExecutionResult;
 
-    // Check if this is the new format with code_package_hash
-    if (response && typeof response === 'object' && 'execution_result' in response) {
-      // New format: { execution_result: SdkExecutionResult, code_package_hash: string }
-      result = response.execution_result as SdkExecutionResult;
-      // The bridge already handles storing the hash mapping, so we don't need to do anything with it here
+    // Check if this is the new format with response envelope
+    if (response && typeof response === 'object' && 'data' in response) {
+      // New format: { type: "response", nonce: X, success: true, data: SdkExecutionResult }
+      result = response.data as SdkExecutionResult;
     } else {
       // Legacy format: direct SdkExecutionResult
       result = response as SdkExecutionResult;
@@ -714,7 +670,6 @@ export const ProvenSDK = (options: {
   };
 
   const initConnectButton = async (targetElement?: HTMLElement | string): Promise<void> => {
-    logger?.debug('SDK: Initializing button iframe');
     await createConnectIframe(targetElement);
   };
 
@@ -734,10 +689,7 @@ export const ProvenSDK = (options: {
   const initializeManifestSystem = async () => {
     try {
       // Wait for core iframes to be ready before initializing manifests
-      logger?.debug('SDK: Waiting for core iframes to be ready...');
       await Promise.all([createBridgeIframe(), createRpcIframe(), createStateIframe()]);
-
-      logger?.debug('SDK: Core iframes ready, initializing manifest system...');
 
       // Process any pre-registered manifest
       const preRegisteredManifest = (window as any).__ProvenManifest__;
@@ -747,8 +699,6 @@ export const ProvenSDK = (options: {
 
       // Connect to the handler queue
       connectHandlerQueue();
-
-      logger?.debug('SDK: Manifest system initialized successfully');
     } catch (error) {
       logger?.error('SDK: Failed to initialize manifest system:', error);
     }
@@ -765,8 +715,6 @@ export const ProvenSDK = (options: {
    * Destroy the SDK and clean up all resources
    */
   const destroy = (): void => {
-    logger?.debug('SDK: Destroying SDK instance');
-
     // Clean up signal manager
     authSignalManager.destroy();
 
@@ -807,14 +755,10 @@ export const ProvenSDK = (options: {
 
     // Clear pending callbacks
     pendingCallbacks.clear();
-
-    logger?.debug('SDK: SDK instance destroyed');
   };
 
-  // Get auth signals (simplified API)
-  const getSignals = (): AuthStateSignals => {
-    return authSignalManager.getSignals();
-  };
+  // Get the signals object for destructuring
+  const signals = authSignalManager.getSignals();
 
   return {
     execute,
@@ -823,7 +767,10 @@ export const ProvenSDK = (options: {
     registerManifest,
     updateManifest,
     destroy,
-    ...getSignals(),
+    // Expose the actual signal objects directly
+    authState: signals.authState,
+    userInfo: signals.userInfo,
+    isAuthenticated: signals.isAuthenticated,
   };
 };
 

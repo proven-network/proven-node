@@ -143,17 +143,14 @@ class StateClient {
   private handleStateWorkerMessage(message: any) {
     console.debug('State: Received message from state worker:', message);
 
-    // Forward state update notifications to bridge for both value queries and set operations
+    // Broadcast state update notifications to all iframes for both value queries and set operations
     if ((message.type === 'value' || message.type === 'set_complete') && message.key) {
-      console.debug('State: Forwarding state update to bridge:', message.key, message.value);
-      this.broker.send(
-        'state_updated',
-        {
-          key: message.key,
-          value: message.value,
-        },
-        'bridge'
-      );
+      console.debug('State: Broadcasting state update to all iframes:', message.key, message.value);
+      // Broadcast to all iframes by not specifying a target
+      this.broker.broadcast('state_updated', {
+        key: message.key,
+        value: message.value,
+      });
     }
   }
 

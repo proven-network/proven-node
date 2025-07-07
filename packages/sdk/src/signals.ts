@@ -37,8 +37,14 @@ export class AuthSignalManager {
     // Create computed signal for authentication status
     this.isAuthenticatedSignal = computed(() => {
       const state = this.authStateSignal.value;
-
+      console.debug('AuthSignalManager: Computing isAuthenticated from state:', state);
       return state === 'authenticated';
+    });
+
+    console.debug('AuthSignalManager: Initialized with default values:', {
+      authState: this.authStateSignal.value,
+      userInfo: this.userInfoSignal.value,
+      isAuthenticated: this.isAuthenticatedSignal.value,
     });
   }
 
@@ -69,6 +75,8 @@ export class AuthSignalManager {
   private async requestInitialValues(): Promise<void> {
     if (!this.sendMessage) return;
 
+    console.debug('AuthSignalManager: Requesting initial auth values...');
+
     try {
       // Request auth state
       const authStateResponse = await this.sendMessage({
@@ -76,8 +84,11 @@ export class AuthSignalManager {
         signalKey: 'auth.state',
       });
 
+      console.debug('AuthSignalManager: Auth state response:', authStateResponse);
+
       if (authStateResponse?.data?.value !== undefined) {
         this.authStateSignal.value = authStateResponse.data.value;
+        console.debug('AuthSignalManager: Set auth state to:', authStateResponse.data.value);
       }
 
       // Request user info
@@ -86,8 +97,11 @@ export class AuthSignalManager {
         signalKey: 'auth.userInfo',
       });
 
+      console.debug('AuthSignalManager: User info response:', userInfoResponse);
+
       if (userInfoResponse?.data?.value !== undefined) {
         this.userInfoSignal.value = userInfoResponse.data.value;
+        console.debug('AuthSignalManager: Set user info to:', userInfoResponse.data.value);
       }
     } catch (error) {
       console.warn('Failed to request initial auth values:', error);
@@ -102,13 +116,26 @@ export class AuthSignalManager {
 
     switch (signalKey) {
       case 'auth.state':
+        console.debug(
+          'AuthSignalManager: Updating auth state from',
+          this.authStateSignal.value,
+          'to',
+          value
+        );
         this.authStateSignal.value = value;
         break;
       case 'auth.userInfo':
+        console.debug(
+          'AuthSignalManager: Updating user info from',
+          this.userInfoSignal.value,
+          'to',
+          value
+        );
         this.userInfoSignal.value = value;
         break;
       case 'auth.isAuthenticated':
         // This is computed, so we don't update it directly
+        console.debug('AuthSignalManager: Ignoring computed signal update for isAuthenticated');
         break;
       default:
         console.warn('Unknown auth signal key:', signalKey);

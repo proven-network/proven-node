@@ -8,8 +8,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "experimentalDecorators": true,
-    "useDefineForClassFields": false,
-    "noEmit": true
+    "useDefineForClassFields": false
   },
   "include": ["src/**/*.ts", "test_esm/**/*.ts"]
 }

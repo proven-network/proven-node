@@ -20,9 +20,7 @@ interface IframeConnection {
 class MessageBroker {
   private connections: IframeConnection[] = [];
 
-  constructor() {
-    console.log('Broker Worker: Message broker initialized');
-  }
+  constructor() {}
 
   addConnection(port: MessagePort, iframeType: string) {
     const connection: IframeConnection = {
@@ -31,9 +29,6 @@ class MessageBroker {
     };
 
     this.connections.push(connection);
-
-    console.log(`Broker Worker: Added ${iframeType} connection`);
-    console.log(`Broker Worker: Now has ${this.connections.length} connections`);
 
     // Set up message handling for this connection
     port.onmessage = (event) => {
@@ -50,13 +45,10 @@ class MessageBroker {
     const index = this.connections.indexOf(connection);
     if (index > -1) {
       this.connections.splice(index, 1);
-      console.log(`Broker Worker: Removed ${connection.iframeType} connection`);
     }
   }
 
   handleMessage(message: BrokerMessage, fromConnection: IframeConnection) {
-    console.log(`Broker Worker: Message from ${fromConnection.iframeType}:`, message);
-
     // Handle responses - these should be routed back to the original requester
     if (message.isResponse && message.messageId) {
       // For responses, we need to route back to the original sender
@@ -78,22 +70,21 @@ class MessageBroker {
   ) {
     // Route message to appropriate iframe(s)
     for (const connection of this.connections) {
-      // Don't send message back to sender (unless it's a response being routed)
-      if (connection === fromConnection && !isResponse) {
+      // Always exclude sender from receiving their own messages/broadcasts
+      if (connection === fromConnection) {
         continue;
       }
 
       // For responses, broadcast to all other connections and let client handle correlation
       if (isResponse) {
-        if (connection === fromConnection) {
-          continue; // Don't send response back to the responder
-        }
+        // Already excluded sender above, so continue to all other connections
       } else {
-        // For regular messages/requests, apply normal routing rules
+        // For regular messages/requests, apply routing rules
         // If toIframe is specified, only send to that iframe type
         if (message.toIframe && connection.iframeType !== message.toIframe) {
           continue;
         }
+        // If no toIframe (broadcast), send to all other connections (sender already excluded)
       }
 
       try {
@@ -101,9 +92,6 @@ class MessageBroker {
           ...message,
           fromIframe: fromConnection.iframeType,
         });
-        console.log(
-          `Broker Worker: Forwarded ${isResponse ? 'response' : 'message'} to ${connection.iframeType}`
-        );
       } catch (error) {
         console.error(`Broker Worker: Failed to send message to ${connection.iframeType}:`, error);
         // Remove dead connection

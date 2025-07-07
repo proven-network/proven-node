@@ -35,15 +35,21 @@ class ConnectClient {
 
       // Set up message handlers
       this.broker.on('registration_complete', async (message) => {
-        console.debug('Connect: Registration completed', message.data);
-
         // Handle successful registration
         if (message.data.prfResult) {
           await this.handleSuccessfulAuth(message.data.prfResult);
         }
       });
 
-      console.debug('Connect: Broker initialized successfully');
+      // Listen for state updates from state iframe
+      this.broker.on('state_updated', async (message) => {
+        // Update UI when auth state changes
+        if (message.data.key === 'auth_state') {
+          // Use the value from the broadcast instead of fetching again
+          const isAuthenticated = message.data.value === 'authenticated';
+          await this.updateAuthUIWithValue(isAuthenticated);
+        }
+      });
 
       // Notify parent that connect iframe is ready
       parent.postMessage(
@@ -73,8 +79,6 @@ class ConnectClient {
   }
 
   async handleSuccessfulAuth(prfResult: Uint8Array) {
-    console.debug('Connect: Authentication successful, sending identify RPC');
-
     // Send identify RPC request
     try {
       const session = await getSession(this.applicationId);
@@ -105,8 +109,6 @@ class ConnectClient {
         error?: string;
       }>('rpc_request', identifyRequest, 'rpc');
 
-      console.debug('Connect: Identify RPC response:', response);
-
       if (!response.success) {
         throw new Error(response.error || 'Identify request failed');
       }
@@ -121,7 +123,6 @@ class ConnectClient {
       }
 
       // Only update UI after successful identify RPC
-      console.debug('Connect: Identify successful, updating UI');
       await this.updateAuthUI();
 
       // Update auth state in the state system via broker
@@ -134,15 +135,11 @@ class ConnectClient {
   // Update auth state in the state system via broker
   async updateAuthStateInStateSystem(authenticated: boolean): Promise<void> {
     try {
-      console.debug('Connect: Updating auth state in state system:', authenticated);
-
       // Use the typed state accessor for safer state operations
       const authState = authenticated ? 'authenticated' : 'unauthenticated';
       const success = await this.brokerAccessors.state.set('auth_state', authState);
 
-      if (success) {
-        console.debug('Connect: Auth state updated in state system successfully');
-      } else {
+      if (!success) {
         console.warn('Connect: Failed to update auth state in state system');
       }
     } catch (error) {
@@ -153,12 +150,11 @@ class ConnectClient {
   // Auth state methods
   async isSignedIn(): Promise<boolean> {
     try {
-      // Use the typed RPC accessor for safer WhoAmI calls
-      const whoAmIResult = await this.brokerAccessors.rpc.whoAmI();
-      console.debug('Connect: WhoAmI response:', whoAmIResult);
+      // Read auth state from state system instead of doing WhoAmI
+      const authState = await this.brokerAccessors.state.get<string>('auth_state');
 
-      // Check if the user is identified (signed in)
-      return whoAmIResult.result === 'identified';
+      // Check if the user is authenticated
+      return authState === 'authenticated';
     } catch (error) {
       console.error('Connect: Failed to check auth status:', error);
       return false;
@@ -173,8 +169,6 @@ class ConnectClient {
         data?: AnonymizeResponse;
         error?: string;
       }>('rpc_request', anonymizeRequest, 'rpc');
-
-      console.debug('Connect: Anonymize RPC response:', response);
 
       if (!response.success) {
         throw new Error(response.error || 'Anonymize request failed');
@@ -200,11 +194,15 @@ class ConnectClient {
 
   async updateAuthUI() {
     const userSignedIn = await this.isSignedIn();
+    this.updateAuthUIWithValue(userSignedIn);
+  }
+
+  updateAuthUIWithValue(isAuthenticated: boolean) {
     const signedOutView = document.getElementById('signed-out-view');
     const signedInView = document.getElementById('signed-in-view');
     const container = document.getElementById('auth-container');
 
-    if (userSignedIn) {
+    if (isAuthenticated) {
       signedOutView!.style.display = 'none';
       signedInView!.style.display = 'block';
     } else {
@@ -232,7 +230,6 @@ class ConnectClient {
 
     try {
       const prfResult = await authenticate();
-      console.debug('Authentication successful with PRF result');
       await this.handleSuccessfulAuth(prfResult);
     } catch (error) {
       console.error('Authentication error:', error);
@@ -243,7 +240,6 @@ class ConnectClient {
         (error as Error).name === 'NotAllowedError' && errorMessage.includes('immediate');
 
       if (isNoCredentialsError) {
-        console.debug('No credentials found, opening registration modal');
         // Send message directly to sdk via broker
         await this.broker.send('open_registration_modal', null, 'bridge');
         this.resetSignInButton();
