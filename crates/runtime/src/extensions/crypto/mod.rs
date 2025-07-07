@@ -145,44 +145,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_ed25519_signing_radix_transaction() {
-        let runtime_options =
-            RuntimeOptions::for_test_code("crypto/test_ed25519_signing_radix_transaction").await;
-        let mut worker = Worker::new(runtime_options).await.unwrap();
-
-        let request =
-            ExecutionRequest::for_identified_session_rpc_test("file:///main.ts#test", vec![]);
-
-        match worker.execute(request).await {
-            Ok(ExecutionResult::Ok { output, .. }) => {
-                let output = output.as_array().unwrap();
-
-                // First element is compiled notorized transaction in hex
-                assert!(output[0].is_string());
-                let raw_transaction: RawNotarizedTransaction =
-                    hex::decode(output[0].as_str().unwrap()).unwrap().into();
-
-                let parse_result =
-                    radix_transactions::model::NotarizedTransactionV1::from_raw(&raw_transaction);
-
-                assert!(parse_result.is_ok());
-
-                // Second element is notary public key in hex
-                assert!(output[1].is_string());
-
-                // Third element is signer public key in hex
-                assert!(output[2].is_string());
-            }
-            Ok(ExecutionResult::Error { error, .. }) => {
-                panic!("Unexpected js error: {error:?}");
-            }
-            Err(error) => {
-                panic!("Unexpected error: {error:?}");
-            }
-        }
-    }
-
-    #[tokio::test]
     async fn test_ed25519_storage() {
         let runtime_options = RuntimeOptions::for_test_code("crypto/test_ed25519_storage").await;
         let mut worker = Worker::new(runtime_options.clone()).await.unwrap();

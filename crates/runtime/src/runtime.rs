@@ -1,8 +1,7 @@
 use crate::extensions::{
     ApplicationSqlConnectionManager, ConsoleState, CryptoState, HandlerOutput, IdentityState,
     PersonalSqlConnectionManager, SqlParamListManager, SqlQueryResultsManager, console_ext,
-    crypto_ext, handler_runtime_ext, kv_runtime_ext, openai_ext, radix_engine_toolkit_ext,
-    session_ext, sql_runtime_ext, uuid_ext, zod_ext,
+    crypto_ext, handler_runtime_ext, kv_runtime_ext, session_ext, sql_runtime_ext,
 };
 use crate::file_system::{FileSystem, StoredEntry};
 use crate::module_loader::{ModuleLoader, ProcessingMode};
@@ -363,11 +362,6 @@ where
                     NSS::Scoped,
                     RNV,
                 >(),
-                // Vendered modules
-                openai_ext::init(),
-                radix_engine_toolkit_ext::init(),
-                uuid_ext::init(),
-                zod_ext::init(),
             ],
             extension_options: ExtensionOptions {
                 filesystem: Arc::new(FileSystem::new(file_system_store)),

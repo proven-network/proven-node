@@ -29,7 +29,7 @@ fn read_file_content(compile_time_content: &'static str, runtime_path: &str) -> 
 
         match fs::read_to_string(&file_path) {
             Ok(content) => content,
-            Err(e) => compile_time_content.to_string(),
+            Err(_) => compile_time_content.to_string(),
         }
     }
     #[cfg(not(debug_assertions))]

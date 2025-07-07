@@ -1,6 +1,6 @@
 use crate::extensions::{
-    ConsoleState, console_ext, crypto_ext, handler_options_ext, kv_options_ext, openai_ext,
-    radix_engine_toolkit_ext, session_ext, sql_migrations_ext, sql_options_ext, uuid_ext, zod_ext,
+    ConsoleState, console_ext, crypto_ext, handler_options_ext, kv_options_ext, session_ext,
+    sql_migrations_ext, sql_options_ext,
 };
 use crate::module_loader::{ModuleLoader, ProcessingMode};
 use crate::options::{
@@ -41,11 +41,6 @@ impl OptionsParser {
                 kv_options_ext::init(),
                 sql_options_ext::init(),
                 sql_migrations_ext::init(),
-                // Vendered modules
-                openai_ext::init(),
-                radix_engine_toolkit_ext::init(),
-                uuid_ext::init(),
-                zod_ext::init(),
             ],
             extension_options: ExtensionOptions {
                 web: WebOptions {
