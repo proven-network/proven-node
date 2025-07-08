@@ -200,6 +200,74 @@ impl AllocationManager {
             .map(|m| m.id)
     }
 
+    /// Update the message rate for a consensus group
+    pub fn update_group_message_rate(
+        &mut self,
+        group_id: ConsensusGroupId,
+        message_rate: f64,
+    ) -> Result<(), String> {
+        if let Some(metadata) = self.groups.get_mut(&group_id) {
+            metadata.message_rate = message_rate;
+            Ok(())
+        } else {
+            Err(format!("Group {:?} not found", group_id))
+        }
+    }
+
+    /// Update storage size for a consensus group
+    pub fn update_group_storage_size(
+        &mut self,
+        group_id: ConsensusGroupId,
+        storage_size: u64,
+    ) -> Result<(), String> {
+        if let Some(metadata) = self.groups.get_mut(&group_id) {
+            metadata.storage_size = storage_size;
+            Ok(())
+        } else {
+            Err(format!("Group {:?} not found", group_id))
+        }
+    }
+
+    /// Reallocate a stream to a different consensus group
+    pub fn reallocate_stream(
+        &mut self,
+        stream_name: &str,
+        new_group_id: ConsensusGroupId,
+    ) -> Result<(), String> {
+        // Check if the stream exists
+        let old_group_id = match self.allocations.get(stream_name) {
+            Some(allocation) => allocation.group_id,
+            None => return Err(format!("Stream '{}' not found", stream_name)),
+        };
+
+        // Check if the new group exists
+        if !self.groups.contains_key(&new_group_id) {
+            return Err(format!("Group {:?} not found", new_group_id));
+        }
+
+        // Update the allocation
+        if let Some(allocation) = self.allocations.get_mut(stream_name) {
+            allocation.group_id = new_group_id;
+            allocation.last_migrated = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+            );
+        }
+
+        // Update stream counts
+        if let Some(old_metadata) = self.groups.get_mut(&old_group_id) {
+            old_metadata.stream_count = old_metadata.stream_count.saturating_sub(1);
+        }
+
+        if let Some(new_metadata) = self.groups.get_mut(&new_group_id) {
+            new_metadata.stream_count += 1;
+        }
+
+        Ok(())
+    }
+
     // Allocation strategies
 
     fn consistent_hash_allocation(
@@ -258,16 +326,11 @@ impl AllocationManager {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::time::Duration;
 
-    fn test_node_id(seed: u8) -> crate::NodeId {
-        use ed25519_dalek::{SigningKey, VerifyingKey};
-        let mut key_bytes = [0u8; 32];
-        key_bytes[0] = seed;
-        let signing_key = SigningKey::from_bytes(&key_bytes);
-        let verifying_key: VerifyingKey = signing_key.verifying_key();
-        crate::NodeId::new(verifying_key)
-    }
+    use crate::NodeId;
+
+    use super::*;
 
     #[test]
     fn test_allocation_manager() {
@@ -276,11 +339,19 @@ mod tests {
         // Add groups
         manager.add_group(
             ConsensusGroupId::new(1),
-            vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+            vec![
+                NodeId::from_seed(1),
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+            ],
         );
         manager.add_group(
             ConsensusGroupId::new(2),
-            vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+            vec![
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+            ],
         );
 
         // Allocate streams
@@ -305,15 +376,27 @@ mod tests {
 
         manager.add_group(
             ConsensusGroupId::new(1),
-            vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+            vec![
+                NodeId::from_seed(1),
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+            ],
         );
         manager.add_group(
             ConsensusGroupId::new(2),
-            vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+            vec![
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+            ],
         );
         manager.add_group(
             ConsensusGroupId::new(3),
-            vec![test_node_id(3), test_node_id(4), test_node_id(5)],
+            vec![
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+                NodeId::from_seed(5),
+            ],
         );
 
         // Same stream should always map to same group
@@ -336,15 +419,27 @@ mod tests {
         // Add groups
         manager.add_group(
             ConsensusGroupId::new(0),
-            vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+            vec![
+                NodeId::from_seed(1),
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+            ],
         );
         manager.add_group(
             ConsensusGroupId::new(1),
-            vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+            vec![
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+            ],
         );
         manager.add_group(
             ConsensusGroupId::new(2),
-            vec![test_node_id(3), test_node_id(4), test_node_id(5)],
+            vec![
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+                NodeId::from_seed(5),
+            ],
         );
 
         // Allocate streams
@@ -369,11 +464,19 @@ mod tests {
 
         manager.add_group(
             ConsensusGroupId::new(0),
-            vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+            vec![
+                NodeId::from_seed(1),
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+            ],
         );
         manager.add_group(
             ConsensusGroupId::new(1),
-            vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+            vec![
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+            ],
         );
 
         // Same stream should always map to same group
@@ -398,11 +501,19 @@ mod tests {
 
         manager.add_group(
             group0,
-            vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+            vec![
+                NodeId::from_seed(1),
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+            ],
         );
         manager.add_group(
             group1,
-            vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+            vec![
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+            ],
         );
 
         // Allocate stream to group0
@@ -419,6 +530,8 @@ mod tests {
 
         // Migrate to group1
         manager.migrate_stream("stream1", group1, 200).unwrap();
+
+        tokio::time::sleep(Duration::from_millis(1000)).await;
 
         // Verify migration
         assert_eq!(manager.get_stream_group("stream1"), Some(group1));
@@ -447,7 +560,11 @@ mod tests {
         for i in 0..3 {
             manager.add_group(
                 ConsensusGroupId::new(i),
-                vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+                vec![
+                    NodeId::from_seed(1),
+                    NodeId::from_seed(2),
+                    NodeId::from_seed(3),
+                ],
             );
         }
 
@@ -481,11 +598,19 @@ mod tests {
 
         allocation_manager.add_group(
             group0,
-            vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+            vec![
+                NodeId::from_seed(1),
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+            ],
         );
         allocation_manager.add_group(
             group1,
-            vec![test_node_id(4), test_node_id(5), test_node_id(6)],
+            vec![
+                NodeId::from_seed(4),
+                NodeId::from_seed(5),
+                NodeId::from_seed(6),
+            ],
         );
 
         // Allocate a stream (round-robin will choose the first available group)
@@ -544,9 +669,9 @@ mod tests {
             manager.add_group(
                 ConsensusGroupId::new(i),
                 vec![
-                    test_node_id((i * 3 + 1) as u8),
-                    test_node_id((i * 3 + 2) as u8),
-                    test_node_id((i * 3 + 3) as u8),
+                    NodeId::from_seed((i * 3 + 1) as u8),
+                    NodeId::from_seed((i * 3 + 2) as u8),
+                    NodeId::from_seed((i * 3 + 3) as u8),
                 ],
             );
         }

@@ -15,8 +15,8 @@ use tracing::{debug, error, info};
 
 use crate::NodeId;
 use crate::global::{GlobalManager, GlobalState, PubSubMessageSource};
-use crate::hierarchical_orchestrator::HierarchicalOrchestrator;
-use crate::operations::LocalStreamOperation;
+use crate::local::LocalStreamOperation;
+use crate::orchestrator::Orchestrator;
 use crate::subscription::SubscriptionInvoker;
 use proven_governance::Governance;
 
@@ -49,7 +49,7 @@ where
     /// Global state for registering handlers
     global_state: Arc<GlobalState>,
     /// Hierarchical orchestrator
-    hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
+    hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
     /// Stream subscriptions: stream_name -> (subject_pattern -> subscription_handle)
     stream_subscriptions: Arc<RwLock<HashMap<String, HashMap<String, StreamSubscriptionHandle>>>>,
     /// Background task handle
@@ -66,7 +66,7 @@ where
         pubsub_manager: Arc<PubSubManager<G, A>>,
         global_manager: Arc<GlobalManager<G, A>>,
         global_state: Arc<GlobalState>,
-        hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
+        hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
     ) -> Self {
         Self {
             pubsub_manager,
@@ -194,7 +194,7 @@ where
     /// Global manager for consensus operations
     _global_manager: Arc<GlobalManager<G, A>>,
     /// Hierarchical orchestrator
-    hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
+    hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
 }
 
 impl<G, A> StreamSubscriptionHandler<G, A>
@@ -207,7 +207,7 @@ where
         stream_name: String,
         subject_pattern: String,
         global_manager: Arc<GlobalManager<G, A>>,
-        hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
+        hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
     ) -> Self {
         let subscription_id = format!("{}-{}", stream_name, subject_pattern);
         Self {

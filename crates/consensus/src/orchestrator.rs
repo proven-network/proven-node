@@ -19,7 +19,7 @@ use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 /// Orchestrator for the hierarchical consensus system
-pub struct HierarchicalOrchestrator<G, A>
+pub struct Orchestrator<G, A>
 where
     G: proven_governance::Governance + Send + Sync + 'static,
     A: proven_attestation::Attestor + Send + Sync + 'static,
@@ -36,7 +36,7 @@ where
     shutdown: Arc<tokio::sync::Notify>,
 }
 
-impl<G, A> HierarchicalOrchestrator<G, A>
+impl<G, A> Orchestrator<G, A>
 where
     G: proven_governance::Governance + Send + Sync + 'static,
     A: proven_attestation::Attestor + Send + Sync + 'static,
@@ -116,17 +116,6 @@ where
         })
     }
 
-    /// Create a test NodeId with a valid ed25519 key
-    fn create_test_node_id(seed: u32) -> crate::NodeId {
-        use ed25519_dalek::{SigningKey, VerifyingKey};
-        let mut key_bytes = [0u8; 32];
-        // Use the seed to create different keys
-        key_bytes[..4].copy_from_slice(&seed.to_le_bytes());
-        let signing_key = SigningKey::from_bytes(&key_bytes);
-        let verifying_key: VerifyingKey = signing_key.verifying_key();
-        crate::NodeId::new(verifying_key)
-    }
-
     /// Initialize local consensus groups based on configuration
     async fn initialize_local_groups(
         _local_manager: &Arc<LocalConsensusManager<G, A>>,
@@ -158,9 +147,9 @@ where
             // TODO: Replace with actual node IDs from topology
             // For now, create placeholder NodeIds using valid ed25519 keys
             let members: Vec<crate::NodeId> = vec![
-                Self::create_test_node_id(i * 3 + 1),
-                Self::create_test_node_id(i * 3 + 2),
-                Self::create_test_node_id(i * 3 + 3),
+                NodeId::from_seed((i * 3 + 1) as u8),
+                NodeId::from_seed((i * 3 + 2) as u8),
+                NodeId::from_seed((i * 3 + 3) as u8),
             ];
             alloc_mgr.add_group(group_id, members);
 

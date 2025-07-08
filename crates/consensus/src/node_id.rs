@@ -53,6 +53,17 @@ impl NodeId {
     pub fn to_hex(&self) -> String {
         hex::encode(self.0.to_bytes())
     }
+
+    /// Generate a deterministic NodeId from a seed
+    #[cfg(any(test, feature = "test-helpers"))]
+    pub fn from_seed(seed: u8) -> crate::NodeId {
+        use ed25519_dalek::{SigningKey, VerifyingKey};
+        let mut key_bytes = [0u8; 32];
+        key_bytes[0] = seed;
+        let signing_key = SigningKey::from_bytes(&key_bytes);
+        let verifying_key: VerifyingKey = signing_key.verifying_key();
+        crate::NodeId::new(verifying_key)
+    }
 }
 
 impl From<VerifyingKey> for NodeId {

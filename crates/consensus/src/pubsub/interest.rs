@@ -229,21 +229,11 @@ impl InterestTracker {
 mod tests {
     use super::*;
 
-    /// Create a test NodeId from a seed value
-    fn test_node_id(seed: u8) -> NodeId {
-        use ed25519_dalek::{SigningKey, VerifyingKey};
-        let mut key_bytes = [0u8; 32];
-        key_bytes[0] = seed;
-        let signing_key = SigningKey::from_bytes(&key_bytes);
-        let verifying_key: VerifyingKey = signing_key.verifying_key();
-        NodeId::new(verifying_key)
-    }
-
     #[test]
     fn test_interest_tracker() {
         let tracker = InterestTracker::new();
-        let node1 = test_node_id(1);
-        let node2 = test_node_id(2);
+        let node1 = NodeId::from_seed(1);
+        let node2 = NodeId::from_seed(2);
 
         // Add interests
         tracker.add_remote_interest(node1.clone(), "foo.*").unwrap();
@@ -281,7 +271,7 @@ mod tests {
     #[test]
     fn test_update_node_interests() {
         let tracker = InterestTracker::new();
-        let node = test_node_id(1);
+        let node = NodeId::from_seed(1);
 
         // Initial interests
         let interests1: HashSet<_> = ["foo.*", "bar.>"].iter().map(|s| s.to_string()).collect();
