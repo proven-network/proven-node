@@ -1,4 +1,4 @@
-use crate::types::NodeId;
+use crate::NodeId;
 
 /// Reason for becoming cluster initiator
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1989,19 +1989,19 @@ mod tests {
         // Publish to subjects directly via consensus manager
         let _order_seq = orders_stream
             .consensus()
-            .publish("orders.new".to_string(), order_message.clone())
+            .publish_message("orders.new".to_string(), order_message.clone())
             .await
             .unwrap();
         let _user_seq = users_stream
             .consensus()
-            .publish("users.profile.update".to_string(), user_message.clone())
+            .publish_message("users.profile.update".to_string(), user_message.clone())
             .await
             .unwrap();
 
         // Test that publishing to unsubscribed subject succeeds (no streams get the message)
         let unmatched_result = all_stream
             .consensus()
-            .publish("products.new".to_string(), unmatched_message.clone())
+            .publish_message("products.new".to_string(), unmatched_message.clone())
             .await;
         assert!(
             unmatched_result.is_ok(),
@@ -2087,17 +2087,17 @@ mod tests {
         // Publish directly through consensus manager
         single_stream
             .consensus()
-            .publish("orders.new".to_string(), msg1.clone())
+            .publish_message("orders.new".to_string(), msg1.clone())
             .await
             .unwrap();
         single_stream
             .consensus()
-            .publish("orders.cancelled".to_string(), msg2.clone())
+            .publish_message("orders.cancelled".to_string(), msg2.clone())
             .await
             .unwrap();
         single_stream
             .consensus()
-            .publish("orders.new.urgent".to_string(), msg3.clone())
+            .publish_message("orders.new.urgent".to_string(), msg3.clone())
             .await
             .unwrap();
 
@@ -2180,7 +2180,7 @@ mod tests {
         let notification = Bytes::from("important notification");
         stream1
             .consensus()
-            .publish("notifications.email".to_string(), notification.clone())
+            .publish_message("notifications.email".to_string(), notification.clone())
             .await
             .unwrap();
 
@@ -2227,7 +2227,7 @@ mod tests {
         let message = Bytes::from("User registration event");
         let result = stream
             .consensus()
-            .publish("user_events".to_string(), message.clone())
+            .publish_message("user_events".to_string(), message.clone())
             .await;
         assert!(
             result.is_ok(),

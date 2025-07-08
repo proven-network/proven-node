@@ -21,9 +21,9 @@ use std::error::Error;
 
 use super::apply_request_to_state_machine;
 use crate::error::ConsensusResult;
-use crate::snapshot::SnapshotData;
-use crate::state_machine::StreamStore;
-use crate::types::{MessagingResponse, TypeConfig};
+use crate::global::SnapshotData;
+use crate::global::StreamStore;
+use crate::global::{GlobalResponse, GlobalTypeConfig};
 
 /// RocksDB-backed storage for consensus
 #[derive(Debug, Clone)]
@@ -38,19 +38,19 @@ pub struct RocksConsensusStorage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RocksStateMachine {
     /// Last applied log ID
-    pub last_applied_log: Option<LogId<TypeConfig>>,
+    pub last_applied_log: Option<LogId<GlobalTypeConfig>>,
     /// State machine data (simplified)
     pub data: BTreeMap<String, String>,
     /// Stream store snapshot data
     pub stream_store_snapshot: Option<SnapshotData>,
     /// Last membership
-    pub last_membership: StoredMembership<TypeConfig>,
+    pub last_membership: StoredMembership<GlobalTypeConfig>,
 }
 
 /// Snapshot builder for rocks storage
 pub struct RocksSnapshotBuilder {
-    last_applied: Option<LogId<TypeConfig>>,
-    last_membership: StoredMembership<TypeConfig>,
+    last_applied: Option<LogId<GlobalTypeConfig>>,
+    last_membership: StoredMembership<GlobalTypeConfig>,
     stream_store: Option<Arc<StreamStore>>,
 }
 
@@ -109,9 +109,9 @@ impl RocksConsensusStorage {
     }
 
     /// Get a store metadata.
-    fn get_meta<M: meta::StoreMeta<TypeConfig>>(
+    fn get_meta<M: meta::StoreMeta<GlobalTypeConfig>>(
         &self,
-    ) -> Result<Option<M::Value>, Box<StorageError<TypeConfig>>> {
+    ) -> Result<Option<M::Value>, Box<StorageError<GlobalTypeConfig>>> {
         let bytes = self
             .db
             .get_cf(self.cf_meta(), M::KEY)
@@ -126,10 +126,10 @@ impl RocksConsensusStorage {
     }
 
     /// Save a store metadata.
-    fn put_meta<M: meta::StoreMeta<TypeConfig>>(
+    fn put_meta<M: meta::StoreMeta<GlobalTypeConfig>>(
         &self,
         value: &M::Value,
-    ) -> Result<(), Box<StorageError<TypeConfig>>> {
+    ) -> Result<(), Box<StorageError<GlobalTypeConfig>>> {
         let json_value = serde_json::to_vec(value).map_err(|e| Box::new(M::write_err(value, e)))?;
 
         self.db
@@ -152,11 +152,11 @@ impl RocksConsensusStorage {
     }
 }
 
-impl RaftLogReader<TypeConfig> for RocksConsensusStorage {
+impl RaftLogReader<GlobalTypeConfig> for RocksConsensusStorage {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<TypeConfig>>, StorageError<TypeConfig>> {
+    ) -> Result<Vec<Entry<GlobalTypeConfig>>, StorageError<GlobalTypeConfig>> {
         let start = match range.start_bound() {
             std::ops::Bound::Included(x) => id_to_bin(*x),
             std::ops::Bound::Excluded(x) => id_to_bin(*x + 1),
@@ -177,7 +177,8 @@ impl RaftLogReader<TypeConfig> for RocksConsensusStorage {
                 break;
             }
 
-            let entry: Entry<TypeConfig> = serde_json::from_slice(&val).map_err(read_logs_err)?;
+            let entry: Entry<GlobalTypeConfig> =
+                serde_json::from_slice(&val).map_err(read_logs_err)?;
 
             assert_eq!(id, entry.index());
 
@@ -186,15 +187,19 @@ impl RaftLogReader<TypeConfig> for RocksConsensusStorage {
         Ok(res)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn read_vote(
+        &mut self,
+    ) -> Result<Option<Vote<GlobalTypeConfig>>, StorageError<GlobalTypeConfig>> {
         self.get_meta::<meta::Vote>().map_err(|e| *e)
     }
 }
 
-impl RaftLogStorage<TypeConfig> for RocksConsensusStorage {
+impl RaftLogStorage<GlobalTypeConfig> for RocksConsensusStorage {
     type LogReader = Self;
 
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<TypeConfig>> {
+    async fn get_log_state(
+        &mut self,
+    ) -> Result<LogState<GlobalTypeConfig>, StorageError<GlobalTypeConfig>> {
         let last = self
             .db
             .iterator_cf(self.cf_logs(), rocksdb::IteratorMode::End)
@@ -203,7 +208,7 @@ impl RaftLogStorage<TypeConfig> for RocksConsensusStorage {
         let last_log_id = match last {
             Some(res) => {
                 let (_log_index, entry_bytes) = res.map_err(read_logs_err)?;
-                let ent = serde_json::from_slice::<Entry<TypeConfig>>(&entry_bytes)
+                let ent = serde_json::from_slice::<Entry<GlobalTypeConfig>>(&entry_bytes)
                     .map_err(read_logs_err)?;
                 Some(ent.log_id())
             }
@@ -224,7 +229,10 @@ impl RaftLogStorage<TypeConfig> for RocksConsensusStorage {
         self.clone()
     }
 
-    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(
+        &mut self,
+        vote: &Vote<GlobalTypeConfig>,
+    ) -> Result<(), StorageError<GlobalTypeConfig>> {
         self.put_meta::<meta::Vote>(vote).map_err(|e| *e)?;
         self.db
             .flush_wal(true)
@@ -235,10 +243,10 @@ impl RaftLogStorage<TypeConfig> for RocksConsensusStorage {
     async fn append<I>(
         &mut self,
         entries: I,
-        callback: IOFlushed<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>>
+        callback: IOFlushed<GlobalTypeConfig>,
+    ) -> Result<(), StorageError<GlobalTypeConfig>>
     where
-        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
+        I: IntoIterator<Item = Entry<GlobalTypeConfig>> + Send,
     {
         for entry in entries {
             let id = id_to_bin(entry.index());
@@ -263,8 +271,8 @@ impl RaftLogStorage<TypeConfig> for RocksConsensusStorage {
 
     async fn truncate(
         &mut self,
-        log_id: LogId<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>> {
+        log_id: LogId<GlobalTypeConfig>,
+    ) -> Result<(), StorageError<GlobalTypeConfig>> {
         tracing::debug!("truncate: [{:?}, +oo)", log_id);
 
         let from = id_to_bin(log_id.index);
@@ -279,7 +287,10 @@ impl RaftLogStorage<TypeConfig> for RocksConsensusStorage {
         Ok(())
     }
 
-    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(
+        &mut self,
+        log_id: LogId<GlobalTypeConfig>,
+    ) -> Result<(), StorageError<GlobalTypeConfig>> {
         tracing::debug!("delete_log: [0, {:?}]", log_id);
 
         // Write the last-purged log id before purging the logs.
@@ -295,13 +306,18 @@ impl RaftLogStorage<TypeConfig> for RocksConsensusStorage {
     }
 }
 
-impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
+impl RaftStateMachine<GlobalTypeConfig> for RocksConsensusStorage {
     type SnapshotBuilder = RocksSnapshotBuilder;
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>>
-    {
+    ) -> Result<
+        (
+            Option<LogId<GlobalTypeConfig>>,
+            StoredMembership<GlobalTypeConfig>,
+        ),
+        StorageError<GlobalTypeConfig>,
+    > {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.last_applied_log.clone(),
@@ -312,9 +328,9 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
     async fn apply<I>(
         &mut self,
         entries: I,
-    ) -> Result<Vec<MessagingResponse>, StorageError<TypeConfig>>
+    ) -> Result<Vec<GlobalResponse>, StorageError<GlobalTypeConfig>>
     where
-        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
+        I: IntoIterator<Item = Entry<GlobalTypeConfig>> + Send,
         I::IntoIter: Send,
     {
         let mut responses = Vec::new();
@@ -326,7 +342,7 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
 
             match entry.payload {
                 EntryPayload::Blank => {
-                    responses.push(MessagingResponse {
+                    responses.push(GlobalResponse {
                         sequence: log_id.index,
                         success: true,
                         error: None,
@@ -352,7 +368,7 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
                 EntryPayload::Membership(membership) => {
                     state_machine.last_membership =
                         StoredMembership::new(Some(log_id.clone()), membership);
-                    responses.push(MessagingResponse {
+                    responses.push(GlobalResponse {
                         sequence: log_id.index,
                         success: true,
                         error: None,
@@ -366,15 +382,15 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
 
     async fn begin_receiving_snapshot(
         &mut self,
-    ) -> Result<Cursor<Vec<u8>>, StorageError<TypeConfig>> {
+    ) -> Result<Cursor<Vec<u8>>, StorageError<GlobalTypeConfig>> {
         Ok(Cursor::new(Vec::new()))
     }
 
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<TypeConfig>,
+        meta: &SnapshotMeta<GlobalTypeConfig>,
         snapshot: Cursor<Vec<u8>>,
-    ) -> Result<(), StorageError<TypeConfig>> {
+    ) -> Result<(), StorageError<GlobalTypeConfig>> {
         let mut state_machine = self.state_machine.write().await;
         state_machine.last_applied_log = meta.last_log_id.clone();
         state_machine.last_membership = meta.last_membership.clone();
@@ -410,7 +426,7 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
 
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
+    ) -> Result<Option<Snapshot<GlobalTypeConfig>>, StorageError<GlobalTypeConfig>> {
         let state_machine = self.state_machine.read().await;
 
         // Create snapshot even if no logs have been applied yet
@@ -459,8 +475,10 @@ impl RaftStateMachine<TypeConfig> for RocksConsensusStorage {
     }
 }
 
-impl RaftSnapshotBuilder<TypeConfig> for RocksSnapshotBuilder {
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
+impl RaftSnapshotBuilder<GlobalTypeConfig> for RocksSnapshotBuilder {
+    async fn build_snapshot(
+        &mut self,
+    ) -> Result<Snapshot<GlobalTypeConfig>, StorageError<GlobalTypeConfig>> {
         let meta = SnapshotMeta {
             last_log_id: self.last_applied.clone(),
             last_membership: self.last_membership.clone(),
@@ -489,7 +507,7 @@ impl RaftSnapshotBuilder<TypeConfig> for RocksSnapshotBuilder {
 mod meta {
     use openraft::{AnyError, ErrorSubject, ErrorVerb, StorageError};
 
-    use crate::types::TypeConfig;
+    use crate::global::GlobalTypeConfig;
 
     /// Defines metadata key and value
     pub trait StoreMeta<C: openraft::RaftTypeConfig> {
@@ -514,20 +532,20 @@ mod meta {
     pub struct LastPurged {}
     pub struct Vote {}
 
-    impl StoreMeta<TypeConfig> for LastPurged {
+    impl StoreMeta<GlobalTypeConfig> for LastPurged {
         const KEY: &'static str = "last_purged_log_id";
-        type Value = openraft::LogId<TypeConfig>;
+        type Value = openraft::LogId<GlobalTypeConfig>;
 
-        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<TypeConfig> {
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<GlobalTypeConfig> {
             ErrorSubject::Store
         }
     }
 
-    impl StoreMeta<TypeConfig> for Vote {
+    impl StoreMeta<GlobalTypeConfig> for Vote {
         const KEY: &'static str = "vote";
-        type Value = openraft::Vote<TypeConfig>;
+        type Value = openraft::Vote<GlobalTypeConfig>;
 
-        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<TypeConfig> {
+        fn subject(_v: Option<&Self::Value>) -> ErrorSubject<GlobalTypeConfig> {
             ErrorSubject::Vote
         }
     }
@@ -545,16 +563,16 @@ fn bin_to_id(buf: &[u8]) -> u64 {
     (&buf[0..8]).read_u64::<BigEndian>().unwrap()
 }
 
-fn read_logs_err(e: impl Error + 'static) -> StorageError<TypeConfig> {
+fn read_logs_err(e: impl Error + 'static) -> StorageError<GlobalTypeConfig> {
     StorageError::read_logs(&e)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state_machine::StreamStore;
-    use crate::storage::create_rocks_storage_with_stream_store;
-    use crate::types::MessagingOperation;
+    use crate::global::GlobalOperation;
+    use crate::global::StreamStore;
+    use crate::global::storage::create_rocks_storage_with_stream_store;
     use bytes::Bytes;
     use std::sync::Arc;
     use tempfile::tempdir;
@@ -572,9 +590,10 @@ mod tests {
         let data = Bytes::from("rocks test message");
         let response = stream_store
             .apply_operation(
-                &MessagingOperation::PublishToStream {
+                &GlobalOperation::PublishToStream {
                     stream: "rocks-stream".to_string(),
                     data: data.clone(),
+                    metadata: None,
                 },
                 1,
             )
@@ -620,9 +639,10 @@ mod tests {
         let data = Bytes::from("rocks builder test");
         let response = stream_store
             .apply_operation(
-                &MessagingOperation::PublishToStream {
+                &GlobalOperation::PublishToStream {
                     stream: "rocks-builder-stream".to_string(),
                     data: data.clone(),
+                    metadata: None,
                 },
                 1,
             )

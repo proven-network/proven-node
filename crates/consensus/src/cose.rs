@@ -8,7 +8,7 @@ use coset::{
 use ed25519_dalek::{Signature, Signer, SigningKey};
 use uuid::Uuid;
 
-use crate::{error::ConsensusError, types::NodeId};
+use crate::{NodeId, error::ConsensusError};
 
 /// COSE-signed message wrapper
 #[derive(Debug, Clone)]

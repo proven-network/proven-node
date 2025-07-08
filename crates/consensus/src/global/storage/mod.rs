@@ -8,8 +8,8 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::error::ConsensusResult;
-use crate::state_machine::StreamStore;
-use crate::types::{MessagingRequest, MessagingResponse, TypeConfig};
+use crate::global::StreamStore;
+use crate::global::{GlobalRequest, GlobalResponse, GlobalTypeConfig};
 use openraft::storage::{RaftLogStorage, RaftStateMachine};
 
 pub mod memory;
@@ -21,7 +21,13 @@ pub use rocksdb::RocksConsensusStorage;
 
 /// Trait alias for consensus storage requirements
 pub trait ConsensusStorage:
-    RaftLogStorage<TypeConfig> + RaftStateMachine<TypeConfig> + Debug + Send + Sync + Clone + 'static
+    RaftLogStorage<GlobalTypeConfig>
+    + RaftStateMachine<GlobalTypeConfig>
+    + Debug
+    + Send
+    + Sync
+    + Clone
+    + 'static
 {
 }
 
@@ -32,9 +38,9 @@ impl ConsensusStorage for RocksConsensusStorage {}
 /// Apply a messaging request to the state machine data
 pub fn apply_request_to_state_machine(
     data: &mut std::collections::BTreeMap<String, String>,
-    request: &MessagingRequest,
+    request: &GlobalRequest,
     sequence: u64,
-) -> MessagingResponse {
+) -> GlobalResponse {
     // For now, we'll store a simple representation in the BTreeMap
     // In a real implementation, this would integrate with StreamStore
 
@@ -45,7 +51,7 @@ pub fn apply_request_to_state_machine(
 
     // Return a response indicating the operation was stored
     // The actual processing would happen when applied to StreamStore
-    MessagingResponse {
+    GlobalResponse {
         sequence,
         success: true,
         error: None,
@@ -55,9 +61,9 @@ pub fn apply_request_to_state_machine(
 /// Apply a messaging request to a StreamStore
 pub async fn apply_request_to_stream_store(
     stream_store: &Arc<StreamStore>,
-    request: &MessagingRequest,
+    request: &GlobalRequest,
     sequence: u64,
-) -> MessagingResponse {
+) -> GlobalResponse {
     // Apply the operation to the stream store
     stream_store
         .apply_operation(&request.operation, sequence)

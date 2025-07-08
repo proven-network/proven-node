@@ -4,10 +4,10 @@
 //! no COSE handling, no attestation verification. All of that is handled by
 //! the consensus layer.
 
+use crate::NodeId;
 use crate::error::{NetworkError, NetworkResult};
 use crate::topology::TopologyManager;
 use crate::transport::{MessageHandler, NetworkTransport, PeerConnection};
-use crate::types::NodeId;
 use crate::verification::ConnectionVerification;
 
 use std::any::Any;
@@ -565,7 +565,7 @@ where
         }
 
         // Get socket address using the Node's tcp_socket_addr method
-        let node_wrapper = crate::types::Node::from(node.clone());
+        let node_wrapper = crate::Node::from(node.clone());
         let address = node_wrapper
             .tcp_socket_addr()
             .await

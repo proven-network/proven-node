@@ -104,7 +104,6 @@ mod tests {
     use crate::{ExecutionRequest, ExecutionResult, RuntimeOptions, Worker};
 
     use ed25519_dalek::Verifier;
-    use radix_transactions::model::{RawNotarizedTransaction, TransactionPayload};
 
     #[tokio::test]
     async fn test_ed25519_signing() {

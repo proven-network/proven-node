@@ -4,7 +4,7 @@
 //! OpenRaft with our transport layer.
 
 use crate::Node;
-use crate::types::{NodeId, TypeConfig};
+use crate::{GlobalTypeConfig, NodeId};
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,16 +24,24 @@ type RaftResponseReceiver = mpsc::UnboundedReceiver<(NodeId, Uuid, Box<RaftAdapt
 type ResponseSender = oneshot::Sender<Box<RaftAdapterResponse>>;
 type ResponseReceiver = oneshot::Receiver<Box<RaftAdapterResponse>>;
 
-pub(crate) enum RaftAdapterRequest {
-    AppendEntries(AppendEntriesRequest<TypeConfig>),
-    InstallSnapshot(InstallSnapshotRequest<TypeConfig>),
-    Vote(VoteRequest<TypeConfig>),
+/// Raft adapter request types
+pub enum RaftAdapterRequest {
+    /// Append entries request
+    AppendEntries(AppendEntriesRequest<GlobalTypeConfig>),
+    /// Install snapshot request
+    InstallSnapshot(InstallSnapshotRequest<GlobalTypeConfig>),
+    /// Vote request
+    Vote(VoteRequest<GlobalTypeConfig>),
 }
 
-pub(crate) enum RaftAdapterResponse {
-    AppendEntries(AppendEntriesResponse<TypeConfig>),
-    InstallSnapshot(InstallSnapshotResponse<TypeConfig>),
-    Vote(Box<VoteResponse<TypeConfig>>),
+/// Raft adapter response types
+pub enum RaftAdapterResponse {
+    /// Append entries response
+    AppendEntries(AppendEntriesResponse<GlobalTypeConfig>),
+    /// Install snapshot response
+    InstallSnapshot(InstallSnapshotResponse<GlobalTypeConfig>),
+    /// Vote response
+    Vote(Box<VoteResponse<GlobalTypeConfig>>),
 }
 
 /// RaftCorrelator manages correlation IDs and their associated response channels
@@ -129,7 +137,7 @@ impl NetworkFactory {
     }
 }
 
-impl RaftNetworkFactory<TypeConfig> for NetworkFactory {
+impl RaftNetworkFactory<GlobalTypeConfig> for NetworkFactory {
     type Network = RaftAdapter;
 
     async fn new_client(&mut self, target: NodeId, _node: &Node) -> Self::Network {
@@ -155,13 +163,15 @@ pub struct RaftAdapter {
     target_node_id: NodeId,
 }
 
-impl RaftNetwork<TypeConfig> for RaftAdapter {
+impl RaftNetwork<GlobalTypeConfig> for RaftAdapter {
     async fn append_entries(
         &mut self,
-        rpc: AppendEntriesRequest<TypeConfig>,
+        rpc: AppendEntriesRequest<GlobalTypeConfig>,
         option: RPCOption,
-    ) -> Result<AppendEntriesResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>>
-    {
+    ) -> Result<
+        AppendEntriesResponse<GlobalTypeConfig>,
+        RPCError<GlobalTypeConfig, RaftError<GlobalTypeConfig>>,
+    > {
         let correlation_id = Uuid::new_v4();
         let timeout = option.hard_ttl();
 
@@ -211,11 +221,11 @@ impl RaftNetwork<TypeConfig> for RaftAdapter {
 
     async fn install_snapshot(
         &mut self,
-        rpc: InstallSnapshotRequest<TypeConfig>,
+        rpc: InstallSnapshotRequest<GlobalTypeConfig>,
         option: RPCOption,
     ) -> Result<
-        InstallSnapshotResponse<TypeConfig>,
-        RPCError<TypeConfig, RaftError<TypeConfig, InstallSnapshotError>>,
+        InstallSnapshotResponse<GlobalTypeConfig>,
+        RPCError<GlobalTypeConfig, RaftError<GlobalTypeConfig, InstallSnapshotError>>,
     > {
         let correlation_id = Uuid::new_v4();
         let timeout = option.hard_ttl();
@@ -266,9 +276,12 @@ impl RaftNetwork<TypeConfig> for RaftAdapter {
 
     async fn vote(
         &mut self,
-        rpc: VoteRequest<TypeConfig>,
+        rpc: VoteRequest<GlobalTypeConfig>,
         option: RPCOption,
-    ) -> Result<VoteResponse<TypeConfig>, RPCError<TypeConfig, RaftError<TypeConfig>>> {
+    ) -> Result<
+        VoteResponse<GlobalTypeConfig>,
+        RPCError<GlobalTypeConfig, RaftError<GlobalTypeConfig>>,
+    > {
         let correlation_id = Uuid::new_v4();
         let timeout = option.hard_ttl();
 

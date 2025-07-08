@@ -7,7 +7,8 @@
 use proven_governance::GovernanceNode;
 use serde::{Deserialize, Serialize};
 
-use crate::types::{MessagingRequest, MessagingResponse, NodeId};
+use crate::NodeId;
+use crate::global::{GlobalRequest, GlobalResponse};
 
 /// Message types for consensus operations
 /// Top-level message enum with two main categories
@@ -48,9 +49,11 @@ pub enum ApplicationMessage {
     /// Cluster join response
     ClusterJoinResponse(ClusterJoinResponse),
     /// Consensus messaging request
-    ConsensusRequest(MessagingRequest),
+    ConsensusRequest(GlobalRequest),
     /// Consensus messaging response
-    ConsensusResponse(MessagingResponse),
+    ConsensusResponse(GlobalResponse),
+    /// PubSub message
+    PubSub(Box<crate::pubsub::PubSubMessage>),
 }
 
 /// Request to discover existing clusters
@@ -168,13 +171,13 @@ impl TryFrom<Message> for ClusterJoinResponse {
     }
 }
 
-impl From<MessagingRequest> for Message {
-    fn from(request: MessagingRequest) -> Self {
+impl From<GlobalRequest> for Message {
+    fn from(request: GlobalRequest) -> Self {
         Message::Application(Box::new(ApplicationMessage::ConsensusRequest(request)))
     }
 }
 
-impl TryFrom<Message> for MessagingResponse {
+impl TryFrom<Message> for GlobalResponse {
     type Error = &'static str;
 
     fn try_from(message: Message) -> Result<Self, Self::Error> {

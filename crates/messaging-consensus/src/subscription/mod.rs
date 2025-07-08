@@ -556,7 +556,7 @@ mod tests {
         // Simulate message publishing to the subject
         let test_message = Bytes::from("orders.new test message");
         let consensus_result = consensus
-            .publish("orders.new".to_string(), test_message.clone())
+            .pubsub_publish("orders.new", test_message.clone())
             .await;
 
         // Since we're testing the subscription framework without full integration,
@@ -584,9 +584,7 @@ mod tests {
 
         // Publish a message that doesn't match the pattern
         let test_message = Bytes::from("users.new test message");
-        let _result = consensus
-            .publish("users.new".to_string(), test_message)
-            .await;
+        let _result = consensus.pubsub_publish("users.new", test_message).await;
 
         // Give some time for processing
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -628,7 +626,7 @@ mod tests {
         // Publish a message
         let test_message = Bytes::from("orders.new test message");
         let _result = consensus
-            .publish("orders.new".to_string(), test_message)
+            .publish_message("orders.new".to_string(), test_message)
             .await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -663,9 +661,7 @@ mod tests {
 
         for (subject_name, _should_match) in test_cases {
             let test_message = Bytes::from(format!("{subject_name} message"));
-            let _result = consensus
-                .publish(subject_name.to_string(), test_message)
-                .await;
+            let _result = consensus.pubsub_publish(subject_name, test_message).await;
         }
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -699,9 +695,7 @@ mod tests {
 
         for (subject_name, _should_match) in test_cases {
             let test_message = Bytes::from(format!("{subject_name} message"));
-            let _result = consensus
-                .publish(subject_name.to_string(), test_message)
-                .await;
+            let _result = consensus.pubsub_publish(subject_name, test_message).await;
         }
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -728,9 +722,7 @@ mod tests {
 
             // Publish a test message
             let test_message = Bytes::from("cleanup test message");
-            let _result = consensus
-                .publish("cleanup.test".to_string(), test_message)
-                .await;
+            let _result = consensus.pubsub_publish("cleanup.test", test_message).await;
 
             id
         }; // subscription is dropped here
@@ -743,9 +735,7 @@ mod tests {
 
         // Publish another message - should not be received by the dropped subscription
         let test_message = Bytes::from("post-cleanup message");
-        let _result = consensus
-            .publish("cleanup.test".to_string(), test_message)
-            .await;
+        let _result = consensus.pubsub_publish("cleanup.test", test_message).await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
@@ -776,9 +766,7 @@ mod tests {
         for msg in messages {
             let subject_name = msg.split_whitespace().next().unwrap();
             let test_message = Bytes::from(msg);
-            let _result = consensus
-                .publish(subject_name.to_string(), test_message)
-                .await;
+            let _result = consensus.pubsub_publish(subject_name, test_message).await;
         }
 
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -819,9 +807,7 @@ mod tests {
 
         // Publish a message
         let test_message = Bytes::from("clone test message");
-        let _result = consensus
-            .publish("clone.test".to_string(), test_message)
-            .await;
+        let _result = consensus.pubsub_publish("clone.test", test_message).await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 

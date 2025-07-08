@@ -4,18 +4,29 @@ use std::collections::{HashMap, HashSet};
 
 use crate::error::{ConsensusError, ConsensusResult};
 
-/// Validates a stream name
-pub fn validate_stream_name(name: &str) -> ConsensusResult<()> {
-    if name.is_empty() {
-        return Err(ConsensusError::InvalidStreamName(
-            "Stream name cannot be empty".to_string(),
+/// Validates a literal subject (no wildcards allowed)
+pub fn validate_subject(subject: &str) -> ConsensusResult<()> {
+    if subject.is_empty() {
+        return Err(ConsensusError::InvalidSubjectPattern(
+            "Subject cannot be empty".to_string(),
         ));
     }
-    if name.contains(['*', '>', '.']) {
-        return Err(ConsensusError::InvalidStreamName(
-            "Stream name cannot contain wildcards or dots".to_string(),
+
+    if subject.contains(['*', '>']) {
+        return Err(ConsensusError::InvalidSubjectPattern(
+            "Subject cannot contain wildcards (use for patterns only)".to_string(),
         ));
     }
+
+    let tokens: Vec<&str> = subject.split('.').collect();
+    for token in tokens {
+        if token.is_empty() {
+            return Err(ConsensusError::InvalidSubjectPattern(
+                "Subject token cannot be empty".to_string(),
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -209,6 +220,24 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_subject() {
+        // Valid literal subjects
+        assert!(validate_subject("foo.bar").is_ok());
+        assert!(validate_subject("foo.bar.baz").is_ok());
+        assert!(validate_subject("events.user.login").is_ok());
+        assert!(validate_subject("a").is_ok());
+
+        // Invalid subjects
+        assert!(validate_subject("").is_err()); // Empty
+        assert!(validate_subject("foo..bar").is_err()); // Empty token
+        assert!(validate_subject("foo.*").is_err()); // Contains wildcard
+        assert!(validate_subject("foo.>").is_err()); // Contains wildcard
+        assert!(validate_subject("*.bar").is_err()); // Contains wildcard
+        assert!(validate_subject("foo.bar.").is_err()); // Trailing dot
+        assert!(validate_subject(".foo.bar").is_err()); // Leading dot
+    }
+
+    #[test]
     fn test_validate_subject_pattern() {
         assert!(validate_subject_pattern("foo.bar").is_ok());
         assert!(validate_subject_pattern("foo.*").is_ok());
@@ -219,18 +248,6 @@ mod tests {
         assert!(validate_subject_pattern("foo..bar").is_err());
         assert!(validate_subject_pattern("foo.>.bar").is_err());
         assert!(validate_subject_pattern("foo.>.>").is_err());
-    }
-
-    #[test]
-    fn test_validate_stream_name() {
-        assert!(validate_stream_name("foo").is_ok());
-        assert!(validate_stream_name("foo_bar").is_ok());
-        assert!(validate_stream_name("stream-123").is_ok());
-
-        assert!(validate_stream_name("").is_err());
-        assert!(validate_stream_name("foo.bar").is_err());
-        assert!(validate_stream_name("foo*").is_err());
-        assert!(validate_stream_name("foo>").is_err());
     }
 
     #[test]

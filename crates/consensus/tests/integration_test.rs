@@ -5,12 +5,12 @@ use tempfile::tempdir;
 
 use bytes::Bytes;
 use openraft::storage::RaftStateMachine;
-use proven_consensus::snapshot::SnapshotData;
-use proven_consensus::state_machine::StreamStore;
-use proven_consensus::storage::{
+use proven_consensus::global::GlobalOperation;
+use proven_consensus::global::SnapshotData;
+use proven_consensus::global::StreamStore;
+use proven_consensus::global::{
     create_memory_storage_with_stream_store, create_rocks_storage_with_stream_store,
 };
-use proven_consensus::types::MessagingOperation;
 
 #[tokio::test]
 async fn test_end_to_end_snapshot_workflow_memory() {
@@ -19,25 +19,33 @@ async fn test_end_to_end_snapshot_workflow_memory() {
 
     // Add some test data
     let operations = vec![
-        MessagingOperation::PublishToStream {
+        GlobalOperation::PublishToStream {
             stream: "test-stream-1".to_string(),
             data: Bytes::from("Message 1"),
+            metadata: None,
         },
-        MessagingOperation::PublishToStream {
+        GlobalOperation::PublishToStream {
             stream: "test-stream-1".to_string(),
             data: Bytes::from("Message 2"),
+            metadata: None,
         },
-        MessagingOperation::SubscribeToSubject {
+        GlobalOperation::SubscribeToSubject {
             stream_name: "test-stream-1".to_string(),
             subject_pattern: "test.*".to_string(),
         },
-        MessagingOperation::PublishToStream {
+        GlobalOperation::PublishToStream {
             stream: "test-stream-2".to_string(),
             data: Bytes::from("Message 3"),
+            metadata: None,
         },
-        MessagingOperation::Publish {
+        GlobalOperation::PublishFromPubSub {
+            stream_name: "test-stream-1".to_string(),
             subject: "test.foo".to_string(),
             data: Bytes::from("Subject message"),
+            source: proven_consensus::global::PubSubMessageSource {
+                node_id: None,
+                timestamp_secs: 1234567890,
+            },
         },
     ];
 
@@ -123,21 +131,28 @@ async fn test_end_to_end_snapshot_workflow_rocks() {
 
     // Add some test data
     let operations = vec![
-        MessagingOperation::PublishToStream {
+        GlobalOperation::PublishToStream {
             stream: "rocks-stream-1".to_string(),
             data: Bytes::from("Rocks Message 1"),
+            metadata: None,
         },
-        MessagingOperation::PublishToStream {
+        GlobalOperation::PublishToStream {
             stream: "rocks-stream-1".to_string(),
             data: Bytes::from("Rocks Message 2"),
+            metadata: None,
         },
-        MessagingOperation::SubscribeToSubject {
+        GlobalOperation::SubscribeToSubject {
             stream_name: "rocks-stream-1".to_string(),
             subject_pattern: "rocks.*".to_string(),
         },
-        MessagingOperation::Publish {
+        GlobalOperation::PublishFromPubSub {
+            stream_name: "rocks-stream-1".to_string(),
             subject: "rocks.test".to_string(),
             data: Bytes::from("Rocks Subject message"),
+            source: proven_consensus::global::PubSubMessageSource {
+                node_id: None,
+                timestamp_secs: 1234567890,
+            },
         },
     ];
 
@@ -200,9 +215,10 @@ async fn test_snapshot_builder_workflow() {
     // Add some data
     let response = stream_store
         .apply_operation(
-            &MessagingOperation::PublishToStream {
+            &GlobalOperation::PublishToStream {
                 stream: "builder-test".to_string(),
                 data: Bytes::from("Builder test message"),
+                metadata: None,
             },
             1,
         )
@@ -231,39 +247,52 @@ async fn test_snapshot_with_complex_data() {
 
     // Create a more complex scenario with multiple streams, subscriptions, and data
     let operations = vec![
-        MessagingOperation::PublishToStream {
+        GlobalOperation::PublishToStream {
             stream: "stream-a".to_string(),
             data: Bytes::from("Stream A Message 1"),
+            metadata: None,
         },
-        MessagingOperation::PublishToStream {
+        GlobalOperation::PublishToStream {
             stream: "stream-a".to_string(),
             data: Bytes::from("Stream A Message 2"),
+            metadata: None,
         },
-        MessagingOperation::PublishToStream {
+        GlobalOperation::PublishToStream {
             stream: "stream-b".to_string(),
             data: Bytes::from("Stream B Message 1"),
+            metadata: None,
         },
-        MessagingOperation::SubscribeToSubject {
+        GlobalOperation::SubscribeToSubject {
             stream_name: "stream-a".to_string(),
             subject_pattern: "events.*".to_string(),
         },
-        MessagingOperation::SubscribeToSubject {
+        GlobalOperation::SubscribeToSubject {
             stream_name: "stream-b".to_string(),
             subject_pattern: "notifications.>".to_string(),
         },
-        MessagingOperation::BulkSubscribeToSubjects {
+        GlobalOperation::BulkSubscribeToSubjects {
             stream_name: "stream-a".to_string(),
             subject_patterns: vec!["alerts.*".to_string(), "logs.error".to_string()],
         },
-        MessagingOperation::Publish {
+        GlobalOperation::PublishFromPubSub {
+            stream_name: "stream-a".to_string(),
             subject: "events.user.login".to_string(),
             data: Bytes::from("User login event"),
+            source: proven_consensus::global::PubSubMessageSource {
+                node_id: None,
+                timestamp_secs: 1234567890,
+            },
         },
-        MessagingOperation::Publish {
+        GlobalOperation::PublishFromPubSub {
+            stream_name: "stream-b".to_string(),
             subject: "notifications.email.sent".to_string(),
             data: Bytes::from("Email sent notification"),
+            source: proven_consensus::global::PubSubMessageSource {
+                node_id: None,
+                timestamp_secs: 1234567890,
+            },
         },
-        MessagingOperation::DeleteFromStream {
+        GlobalOperation::DeleteFromStream {
             stream: "stream-a".to_string(),
             sequence: 2,
         },

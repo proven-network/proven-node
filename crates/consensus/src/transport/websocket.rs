@@ -4,10 +4,10 @@
 //! capabilities. Like the TCP transport, it only handles raw networking -
 //! no business logic, COSE, or attestation verification.
 
+use crate::NodeId;
 use crate::error::{NetworkError, NetworkResult};
 use crate::topology::TopologyManager;
 use crate::transport::{HttpIntegratedTransport, MessageHandler, NetworkTransport, PeerConnection};
-use crate::types::NodeId;
 use crate::verification::ConnectionVerification;
 
 use std::any::Any;
@@ -643,7 +643,7 @@ where
         }
 
         // Get WebSocket URL using the Node's websocket_url method
-        let node_wrapper = crate::types::Node::from(node.clone());
+        let node_wrapper = crate::Node::from(node.clone());
         let ws_url = node_wrapper
             .websocket_url()
             .map_err(NetworkError::ConnectionFailed)?;

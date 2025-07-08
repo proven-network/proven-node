@@ -17,10 +17,10 @@ use tracing::warn;
 use proven_attestation::{AttestationParams, Attestor};
 use proven_governance::Governance;
 
+use crate::NodeId;
 use crate::attestation::AttestationVerifier;
 use crate::cose::CoseHandler;
 use crate::error::{ConsensusError, ConsensusResult};
-use crate::types::NodeId;
 
 /// Trait for connection verification to avoid generic complexity
 #[async_trait::async_trait]

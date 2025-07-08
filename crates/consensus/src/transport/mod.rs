@@ -7,8 +7,8 @@
 pub mod tcp;
 pub mod websocket;
 
+use crate::NodeId;
 use crate::error::NetworkResult;
-use crate::types::NodeId;
 
 use async_trait::async_trait;
 use axum::Router;

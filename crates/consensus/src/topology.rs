@@ -11,8 +11,8 @@ use tracing::{debug, info, warn};
 
 use crate::Node;
 use crate::{
+    NodeId,
     error::{ConsensusError, ConsensusResult},
-    types::NodeId,
 };
 
 /// Duration to wait before allowing another forced refresh for a missing peer
@@ -83,7 +83,7 @@ where
                 ))
             })?;
 
-            peers.push(crate::types::Node::from(node));
+            peers.push(crate::Node::from(node));
         }
 
         debug!("Found {} peers in topology", peers.len());
@@ -242,7 +242,7 @@ where
 
         for node in topology {
             if self.node_id == node.public_key {
-                return Ok(crate::types::Node::from(node));
+                return Ok(crate::Node::from(node));
             }
         }
 

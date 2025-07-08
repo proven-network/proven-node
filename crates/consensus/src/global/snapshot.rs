@@ -8,7 +8,7 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::state_machine::{
+use super::state_machine::{
     MessageData as InternalMessageData, StreamData as InternalStreamData, StreamStore,
 };
 
@@ -122,6 +122,7 @@ impl SnapshotData {
                             data: Bytes::from(data),
                             metadata: snapshot_msg.metadata.clone(),
                             timestamp: snapshot_msg.timestamp,
+                            source: super::state_machine::MessageSource::Consensus, // Default to consensus source for restored messages
                         };
                         (*seq, msg)
                     })
@@ -165,8 +166,8 @@ impl SnapshotData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state_machine::StreamStore;
-    use crate::types::MessagingOperation;
+    use crate::global::GlobalOperation;
+    use crate::global::state_machine::StreamStore;
     use bytes::Bytes;
 
     #[tokio::test]
@@ -177,9 +178,10 @@ mod tests {
         let data = Bytes::from("test message");
         let response = store
             .apply_operation(
-                &MessagingOperation::PublishToStream {
+                &GlobalOperation::PublishToStream {
                     stream: "test-stream".to_string(),
                     data: data.clone(),
+                    metadata: None,
                 },
                 1,
             )
@@ -189,7 +191,7 @@ mod tests {
         // Subscribe to a subject
         let response = store
             .apply_operation(
-                &MessagingOperation::SubscribeToSubject {
+                &GlobalOperation::SubscribeToSubject {
                     stream_name: "test-stream".to_string(),
                     subject_pattern: "foo.*".to_string(),
                 },
@@ -226,9 +228,10 @@ mod tests {
         let data = Bytes::from("test message");
         let response = original_store
             .apply_operation(
-                &MessagingOperation::PublishToStream {
+                &GlobalOperation::PublishToStream {
                     stream: "test-stream".to_string(),
                     data: data.clone(),
+                    metadata: None,
                 },
                 1,
             )
@@ -238,7 +241,7 @@ mod tests {
         // Subscribe to a subject
         let response = original_store
             .apply_operation(
-                &MessagingOperation::SubscribeToSubject {
+                &GlobalOperation::SubscribeToSubject {
                     stream_name: "test-stream".to_string(),
                     subject_pattern: "foo.*".to_string(),
                 },

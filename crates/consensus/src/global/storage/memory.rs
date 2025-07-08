@@ -15,21 +15,21 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use super::apply_request_to_state_machine;
-use crate::snapshot::SnapshotData;
-use crate::state_machine::StreamStore;
-use crate::types::{MessagingResponse, TypeConfig};
+use crate::global::SnapshotData;
+use crate::global::StreamStore;
+use crate::global::{GlobalResponse, GlobalTypeConfig};
 
 /// Simple in-memory storage for consensus
 #[derive(Debug, Clone)]
 pub struct MemoryConsensusStorage {
     /// Current vote state
-    vote: Arc<RwLock<Option<Vote<TypeConfig>>>>,
+    vote: Arc<RwLock<Option<Vote<GlobalTypeConfig>>>>,
     /// Log entries
-    log: Arc<RwLock<BTreeMap<u64, Entry<TypeConfig>>>>,
+    log: Arc<RwLock<BTreeMap<u64, Entry<GlobalTypeConfig>>>>,
     /// State machine data
     state_machine: Arc<RwLock<MemoryStateMachine>>,
     /// Last purged log ID
-    last_purged: Arc<RwLock<Option<LogId<TypeConfig>>>>,
+    last_purged: Arc<RwLock<Option<LogId<GlobalTypeConfig>>>>,
     /// Stream store reference for snapshot building
     stream_store: Option<Arc<StreamStore>>,
 }
@@ -38,19 +38,19 @@ pub struct MemoryConsensusStorage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryStateMachine {
     /// Last applied log ID
-    pub last_applied_log: Option<LogId<TypeConfig>>,
+    pub last_applied_log: Option<LogId<GlobalTypeConfig>>,
     /// State machine data (simplified)
     pub data: BTreeMap<String, String>,
     /// Stream store snapshot data
     pub stream_store_snapshot: Option<SnapshotData>,
     /// Last membership
-    pub last_membership: StoredMembership<TypeConfig>,
+    pub last_membership: StoredMembership<GlobalTypeConfig>,
 }
 
 /// Snapshot builder for memory storage
 pub struct MemorySnapshotBuilder {
-    last_applied: Option<LogId<TypeConfig>>,
-    last_membership: StoredMembership<TypeConfig>,
+    last_applied: Option<LogId<GlobalTypeConfig>>,
+    last_membership: StoredMembership<GlobalTypeConfig>,
     stream_store: Option<Arc<StreamStore>>,
 }
 
@@ -92,11 +92,11 @@ impl Default for MemoryConsensusStorage {
     }
 }
 
-impl RaftLogReader<TypeConfig> for MemoryConsensusStorage {
+impl RaftLogReader<GlobalTypeConfig> for MemoryConsensusStorage {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &mut self,
         range: RB,
-    ) -> Result<Vec<Entry<TypeConfig>>, StorageError<TypeConfig>> {
+    ) -> Result<Vec<Entry<GlobalTypeConfig>>, StorageError<GlobalTypeConfig>> {
         let log = self.log.read().await;
         let mut entries = Vec::new();
 
@@ -107,15 +107,19 @@ impl RaftLogReader<TypeConfig> for MemoryConsensusStorage {
         Ok(entries)
     }
 
-    async fn read_vote(&mut self) -> Result<Option<Vote<TypeConfig>>, StorageError<TypeConfig>> {
+    async fn read_vote(
+        &mut self,
+    ) -> Result<Option<Vote<GlobalTypeConfig>>, StorageError<GlobalTypeConfig>> {
         Ok(self.vote.read().await.clone())
     }
 }
 
-impl RaftLogStorage<TypeConfig> for MemoryConsensusStorage {
+impl RaftLogStorage<GlobalTypeConfig> for MemoryConsensusStorage {
     type LogReader = Self;
 
-    async fn get_log_state(&mut self) -> Result<LogState<TypeConfig>, StorageError<TypeConfig>> {
+    async fn get_log_state(
+        &mut self,
+    ) -> Result<LogState<GlobalTypeConfig>, StorageError<GlobalTypeConfig>> {
         let log = self.log.read().await;
         let last_purged_log_id = self.last_purged.read().await.clone();
 
@@ -131,7 +135,10 @@ impl RaftLogStorage<TypeConfig> for MemoryConsensusStorage {
         self.clone()
     }
 
-    async fn save_vote(&mut self, vote: &Vote<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn save_vote(
+        &mut self,
+        vote: &Vote<GlobalTypeConfig>,
+    ) -> Result<(), StorageError<GlobalTypeConfig>> {
         *self.vote.write().await = Some(vote.clone());
         Ok(())
     }
@@ -139,10 +146,10 @@ impl RaftLogStorage<TypeConfig> for MemoryConsensusStorage {
     async fn append<I>(
         &mut self,
         entries: I,
-        callback: IOFlushed<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>>
+        callback: IOFlushed<GlobalTypeConfig>,
+    ) -> Result<(), StorageError<GlobalTypeConfig>>
     where
-        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
+        I: IntoIterator<Item = Entry<GlobalTypeConfig>> + Send,
     {
         let mut log = self.log.write().await;
 
@@ -157,8 +164,8 @@ impl RaftLogStorage<TypeConfig> for MemoryConsensusStorage {
 
     async fn truncate(
         &mut self,
-        log_id: LogId<TypeConfig>,
-    ) -> Result<(), StorageError<TypeConfig>> {
+        log_id: LogId<GlobalTypeConfig>,
+    ) -> Result<(), StorageError<GlobalTypeConfig>> {
         let mut log = self.log.write().await;
 
         // Remove all entries after log_id
@@ -176,7 +183,10 @@ impl RaftLogStorage<TypeConfig> for MemoryConsensusStorage {
         Ok(())
     }
 
-    async fn purge(&mut self, log_id: LogId<TypeConfig>) -> Result<(), StorageError<TypeConfig>> {
+    async fn purge(
+        &mut self,
+        log_id: LogId<GlobalTypeConfig>,
+    ) -> Result<(), StorageError<GlobalTypeConfig>> {
         let mut log = self.log.write().await;
         let mut last_purged = self.last_purged.write().await;
 
@@ -197,13 +207,18 @@ impl RaftLogStorage<TypeConfig> for MemoryConsensusStorage {
     }
 }
 
-impl RaftStateMachine<TypeConfig> for MemoryConsensusStorage {
+impl RaftStateMachine<GlobalTypeConfig> for MemoryConsensusStorage {
     type SnapshotBuilder = MemorySnapshotBuilder;
 
     async fn applied_state(
         &mut self,
-    ) -> Result<(Option<LogId<TypeConfig>>, StoredMembership<TypeConfig>), StorageError<TypeConfig>>
-    {
+    ) -> Result<
+        (
+            Option<LogId<GlobalTypeConfig>>,
+            StoredMembership<GlobalTypeConfig>,
+        ),
+        StorageError<GlobalTypeConfig>,
+    > {
         let state_machine = self.state_machine.read().await;
         Ok((
             state_machine.last_applied_log.clone(),
@@ -214,9 +229,9 @@ impl RaftStateMachine<TypeConfig> for MemoryConsensusStorage {
     async fn apply<I>(
         &mut self,
         entries: I,
-    ) -> Result<Vec<MessagingResponse>, StorageError<TypeConfig>>
+    ) -> Result<Vec<GlobalResponse>, StorageError<GlobalTypeConfig>>
     where
-        I: IntoIterator<Item = Entry<TypeConfig>> + Send,
+        I: IntoIterator<Item = Entry<GlobalTypeConfig>> + Send,
         I::IntoIter: Send,
     {
         let mut responses = Vec::new();
@@ -228,7 +243,7 @@ impl RaftStateMachine<TypeConfig> for MemoryConsensusStorage {
 
             match entry.payload {
                 EntryPayload::Blank => {
-                    responses.push(MessagingResponse {
+                    responses.push(GlobalResponse {
                         sequence: log_id.index,
                         success: true,
                         error: None,
@@ -254,7 +269,7 @@ impl RaftStateMachine<TypeConfig> for MemoryConsensusStorage {
                 EntryPayload::Membership(membership) => {
                     state_machine.last_membership =
                         StoredMembership::new(Some(log_id.clone()), membership);
-                    responses.push(MessagingResponse {
+                    responses.push(GlobalResponse {
                         sequence: log_id.index,
                         success: true,
                         error: None,
@@ -268,15 +283,15 @@ impl RaftStateMachine<TypeConfig> for MemoryConsensusStorage {
 
     async fn begin_receiving_snapshot(
         &mut self,
-    ) -> Result<Cursor<Vec<u8>>, StorageError<TypeConfig>> {
+    ) -> Result<Cursor<Vec<u8>>, StorageError<GlobalTypeConfig>> {
         Ok(Cursor::new(Vec::new()))
     }
 
     async fn install_snapshot(
         &mut self,
-        meta: &SnapshotMeta<TypeConfig>,
+        meta: &SnapshotMeta<GlobalTypeConfig>,
         snapshot: Cursor<Vec<u8>>,
-    ) -> Result<(), StorageError<TypeConfig>> {
+    ) -> Result<(), StorageError<GlobalTypeConfig>> {
         let mut state_machine = self.state_machine.write().await;
         state_machine.last_applied_log = meta.last_log_id.clone();
         state_machine.last_membership = meta.last_membership.clone();
@@ -303,7 +318,7 @@ impl RaftStateMachine<TypeConfig> for MemoryConsensusStorage {
 
     async fn get_current_snapshot(
         &mut self,
-    ) -> Result<Option<Snapshot<TypeConfig>>, StorageError<TypeConfig>> {
+    ) -> Result<Option<Snapshot<GlobalTypeConfig>>, StorageError<GlobalTypeConfig>> {
         let state_machine = self.state_machine.read().await;
 
         // Create snapshot even if no logs have been applied yet
@@ -347,8 +362,10 @@ impl RaftStateMachine<TypeConfig> for MemoryConsensusStorage {
     }
 }
 
-impl RaftSnapshotBuilder<TypeConfig> for MemorySnapshotBuilder {
-    async fn build_snapshot(&mut self) -> Result<Snapshot<TypeConfig>, StorageError<TypeConfig>> {
+impl RaftSnapshotBuilder<GlobalTypeConfig> for MemorySnapshotBuilder {
+    async fn build_snapshot(
+        &mut self,
+    ) -> Result<Snapshot<GlobalTypeConfig>, StorageError<GlobalTypeConfig>> {
         let meta = SnapshotMeta {
             last_log_id: self.last_applied.clone(),
             last_membership: self.last_membership.clone(),
@@ -376,8 +393,8 @@ impl RaftSnapshotBuilder<TypeConfig> for MemorySnapshotBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state_machine::StreamStore;
-    use crate::types::MessagingOperation;
+    use crate::global::GlobalOperation;
+    use crate::global::StreamStore;
     use bytes::Bytes;
 
     #[tokio::test]
@@ -389,9 +406,10 @@ mod tests {
         let data = Bytes::from("test message");
         let response = stream_store
             .apply_operation(
-                &MessagingOperation::PublishToStream {
+                &GlobalOperation::PublishToStream {
                     stream: "test-stream".to_string(),
                     data: data.clone(),
+                    metadata: None,
                 },
                 1,
             )
@@ -429,9 +447,10 @@ mod tests {
         let data = Bytes::from("builder test");
         let response = stream_store
             .apply_operation(
-                &MessagingOperation::PublishToStream {
+                &GlobalOperation::PublishToStream {
                     stream: "builder-stream".to_string(),
                     data: data.clone(),
+                    metadata: None,
                 },
                 1,
             )
