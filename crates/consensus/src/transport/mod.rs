@@ -15,7 +15,6 @@ use axum::Router;
 use bytes::Bytes;
 use std::any::Any;
 use std::fmt::Debug;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -24,6 +23,9 @@ pub type MessageHandler = Arc<dyn Fn(NodeId, Bytes) + Send + Sync>;
 
 pub use tcp::TcpTransport;
 pub use websocket::WebSocketTransport;
+
+// Re-export TransportConfig from config module for convenience
+pub use crate::config::TransportConfig;
 
 /// Information about a peer connection
 #[derive(Debug, Clone)]
@@ -71,23 +73,4 @@ pub trait HttpIntegratedTransport: NetworkTransport {
     /// Create an Axum router for HTTP integration
     /// Note: The actual business logic will be provided by consensus layer
     fn create_router_integration(&self) -> NetworkResult<Router>;
-}
-
-/// Configuration for different transport types
-#[derive(Debug, Clone)]
-pub enum TransportConfig {
-    /// TCP transport configuration
-    Tcp {
-        /// Address to listen on
-        listen_addr: SocketAddr,
-    },
-    /// WebSocket transport configuration
-    WebSocket,
-}
-
-impl TransportConfig {
-    /// Check if this transport supports HTTP integration
-    pub fn supports_http(&self) -> bool {
-        matches!(self, TransportConfig::WebSocket)
-    }
 }

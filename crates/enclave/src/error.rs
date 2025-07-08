@@ -44,6 +44,10 @@ pub enum Error {
     #[error(transparent)]
     Cidr(#[from] cidr::errors::NetworkParseError),
 
+    /// Consensus error.
+    #[error("Consensus error: {0}")]
+    Consensus(String),
+
     /// `Core` error.
     #[error(transparent)]
     Core(#[from] proven_core::Error),

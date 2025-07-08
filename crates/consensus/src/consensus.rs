@@ -19,14 +19,16 @@ use proven_governance::Governance;
 
 use crate::NodeId;
 use crate::config::ConsensusConfig;
-use crate::error::{ConsensusError, ConsensusResult};
+use crate::error::{ConsensusResult, Error};
 use crate::global::GlobalManager;
 use crate::global::{
-    GlobalOperation, GlobalRequest, GlobalResponse, GlobalTypeConfig, StreamStore,
+    GlobalOperation, GlobalRequest, GlobalResponse, GlobalState, GlobalTypeConfig,
 };
+use crate::hierarchical_orchestrator::HierarchicalOrchestrator;
 use crate::network::messages::{ApplicationMessage, ClusterDiscoveryResponse};
 use crate::network::network_manager::NetworkManager;
 use crate::network::{ClusterState, InitiatorReason};
+use crate::operations::{ConsensusOperation, ConsensusRequest, LocalStreamOperation};
 
 // Type aliases for complex handler types
 type AppMessageHandlerType =
@@ -38,9 +40,9 @@ type RaftMessageHandlerType =
 #[derive(Debug, Clone)]
 pub enum StorageWrapper {
     /// Memory storage
-    Memory(crate::global::MemoryConsensusStorage),
+    Memory(crate::global::GlobalConsensusMemoryStorage),
     /// RocksDB storage
-    RocksDB(crate::global::RocksConsensusStorage),
+    RocksDB(crate::global::GlobalConsensusRocksStorage),
 }
 
 /// Main consensus system that coordinates application-level logic
@@ -56,12 +58,14 @@ where
     global_manager: Arc<GlobalManager<G, A>>,
     /// Node identifier (public key)
     node_id: NodeId,
-    /// Stream store for local state
-    stream_store: Arc<StreamStore>,
+    /// Global state store
+    global_state: Arc<GlobalState>,
     /// PubSub manager for messaging
     pubsub_manager: Arc<crate::pubsub::PubSubManager<G, A>>,
     /// Stream bridge for PubSub->Stream integration
     stream_bridge: Arc<crate::pubsub::StreamBridge<G, A>>,
+    /// Hierarchical consensus orchestrator
+    hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
     /// Background task handles
     task_handles: Arc<std::sync::Mutex<Vec<JoinHandle<()>>>>,
 }
@@ -78,17 +82,27 @@ where
 
         info!("Creating consensus instance for node {}", node_id);
 
-        // Create stream store
-        let stream_store = Arc::new(StreamStore::new());
+        // Create global state store
+        let global_state = Arc::new(GlobalState::new());
 
-        // Create storage based on configuration
-        let storage = match config.storage_config {
-            crate::config::StorageConfig::Memory => {
-                StorageWrapper::Memory(crate::global::create_memory_storage()?)
-            }
-            crate::config::StorageConfig::RocksDB { path } => StorageWrapper::RocksDB(
-                crate::global::create_rocks_storage(&path.to_string_lossy())?,
+        // Clone config values we'll need later
+        let hierarchical_config = config.hierarchical_config.clone();
+        let transport_config_clone = config.transport_config.clone();
+        let raft_config_clone = config.raft_config.clone();
+        let storage_config_clone = config.storage_config.clone();
+        let cluster_join_retry_config_clone = config.cluster_join_retry_config.clone();
+
+        // Create storage based on configuration with StreamStore
+        let storage = match &config.storage_config {
+            crate::config::StorageConfig::Memory => StorageWrapper::Memory(
+                crate::global::create_memory_storage_with_global_state(global_state.clone())?,
             ),
+            crate::config::StorageConfig::RocksDB { path } => {
+                StorageWrapper::RocksDB(crate::global::create_rocks_storage_with_global_state(
+                    &path.to_string_lossy(),
+                    global_state.clone(),
+                )?)
+            }
         };
 
         // Create topology manager first (shared between managers)
@@ -111,7 +125,7 @@ where
             topology.clone(),
         )
         .await
-        .map_err(|e| ConsensusError::Raft(format!("Failed to create NetworkManager: {e}")))?;
+        .map_err(|e| Error::Raft(format!("Failed to create NetworkManager: {e}")))?;
 
         // Wrap network manager in Arc for sharing
         let network_manager = Arc::new(network_manager);
@@ -141,6 +155,7 @@ where
                     network_factory,
                     network_manager.clone(),
                     topology.clone(),
+                    global_state.clone(),
                     raft_adapter_request_rx,
                     raft_adapter_response_tx,
                 )
@@ -156,13 +171,14 @@ where
                     network_factory,
                     network_manager.clone(),
                     topology.clone(),
+                    global_state.clone(),
                     raft_adapter_request_rx,
                     raft_adapter_response_tx,
                 )
                 .await
             }
         }
-        .map_err(|e| ConsensusError::Raft(format!("Failed to create GlobalManager: {e}")))?;
+        .map_err(|e| Error::Raft(format!("Failed to create GlobalManager: {e}")))?;
 
         // Wrap global manager in Arc
         let global_manager = Arc::new(global_manager);
@@ -174,21 +190,46 @@ where
             topology.clone(),
         ));
 
-        // Create StreamBridge
+        // Create hierarchical orchestrator
+        info!("Creating hierarchical consensus orchestrator");
+        // Create a new config for the orchestrator to avoid borrowing issues
+        let orchestrator_config = ConsensusConfig {
+            signing_key: config.signing_key.clone(),
+            governance: config.governance.clone(),
+            attestor: config.attestor.clone(),
+            transport_config: transport_config_clone,
+            raft_config: raft_config_clone,
+            storage_config: storage_config_clone,
+            cluster_discovery_timeout: config.cluster_discovery_timeout,
+            cluster_join_retry_config: cluster_join_retry_config_clone,
+            hierarchical_config: hierarchical_config.clone(),
+        };
+        let orchestrator = HierarchicalOrchestrator::new(
+            orchestrator_config,
+            hierarchical_config,
+            global_manager.clone(),
+            node_id.clone(),
+        )
+        .await?;
+        let hierarchical_orchestrator = Arc::new(orchestrator);
+
+        // Create StreamBridge with hierarchical orchestrator
         let stream_bridge = Arc::new(crate::pubsub::StreamBridge::new(
             pubsub_manager.clone(),
             global_manager.clone(),
-            stream_store.clone(),
+            global_state.clone(),
+            hierarchical_orchestrator.clone(),
         ));
 
         // Create consensus instance
         let mut consensus = Self {
             node_id: node_id.clone(),
-            stream_store,
+            global_state,
             network_manager: network_manager.clone(),
             global_manager: global_manager.clone(),
             pubsub_manager,
             stream_bridge,
+            hierarchical_orchestrator,
             task_handles: Arc::new(std::sync::Mutex::new(Vec::new())),
         };
 
@@ -318,7 +359,7 @@ where
         if let Some(router) = self.network_manager.create_router() {
             Ok(router)
         } else {
-            Err(ConsensusError::Configuration(
+            Err(Error::Configuration(
                 "HTTP integration not supported by current transport".to_string(),
             ))
         }
@@ -326,24 +367,23 @@ where
 
     /// Submit a messaging request for consensus
     pub async fn submit_request(&self, request: GlobalRequest) -> ConsensusResult<GlobalResponse> {
-        // Submit to Raft for consensus through NetworkManager
-        match self.global_manager.submit_request(request.clone()).await {
-            Ok(raft_response) => {
-                // If Raft successfully committed the operation, also apply it to the StreamStore
-                if raft_response.success {
-                    let stream_response = self
-                        .stream_store
-                        .apply_operation(&request.operation, raft_response.sequence)
-                        .await;
+        // Route through hierarchical system
+        let consensus_request = ConsensusRequest {
+            operation: ConsensusOperation::GlobalAdmin(request.operation),
+            request_id: None,
+        };
 
-                    // Use the StreamStore response as the final result since it has the actual state changes
-                    Ok(stream_response)
-                } else {
-                    Ok(raft_response)
-                }
-            }
-            Err(e) => Err(e),
-        }
+        let response = self
+            .hierarchical_orchestrator
+            .router()
+            .route_request(consensus_request)
+            .await?;
+
+        Ok(GlobalResponse {
+            success: response.success,
+            sequence: response.sequence.unwrap_or(0),
+            error: response.error,
+        })
     }
 
     /// Internal method to propose a request through Raft consensus
@@ -357,15 +397,28 @@ where
     ///
     /// Returns an error if the Raft instance is not initialized or if consensus fails.
     pub async fn publish_message(&self, stream: String, data: Bytes) -> ConsensusResult<u64> {
-        let request = GlobalRequest {
-            operation: GlobalOperation::PublishToStream {
-                stream,
-                data,
-                metadata: None,
-            },
+        // Use hierarchical routing
+        let operation = LocalStreamOperation::PublishToStream {
+            stream: stream.clone(),
+            data,
+            metadata: None,
         };
 
-        self.propose_request(&request).await
+        let response = self
+            .hierarchical_orchestrator
+            .router()
+            .route_stream_operation(&stream, operation, None)
+            .await?;
+
+        if response.success {
+            Ok(response.sequence.unwrap_or(0))
+        } else {
+            Err(Error::ConsensusFailed(
+                response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            ))
+        }
     }
 
     /// Publish a message with metadata through consensus
@@ -379,15 +432,28 @@ where
         data: Bytes,
         metadata: std::collections::HashMap<String, String>,
     ) -> ConsensusResult<u64> {
-        let request = GlobalRequest {
-            operation: GlobalOperation::PublishToStream {
-                stream,
-                data,
-                metadata: Some(metadata),
-            },
+        // Use hierarchical routing
+        let operation = LocalStreamOperation::PublishToStream {
+            stream: stream.clone(),
+            data,
+            metadata: Some(metadata),
         };
 
-        self.propose_request(&request).await
+        let response = self
+            .hierarchical_orchestrator
+            .router()
+            .route_stream_operation(&stream, operation, None)
+            .await?;
+
+        if response.success {
+            Ok(response.sequence.unwrap_or(0))
+        } else {
+            Err(Error::ConsensusFailed(
+                response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            ))
+        }
     }
 
     /// Publish multiple messages as a batch through consensus
@@ -400,11 +466,27 @@ where
         stream: String,
         messages: Vec<Bytes>,
     ) -> ConsensusResult<u64> {
-        let request = GlobalRequest {
-            operation: GlobalOperation::PublishBatchToStream { stream, messages },
+        // Use hierarchical routing
+        let operation = LocalStreamOperation::PublishBatchToStream {
+            stream: stream.clone(),
+            messages,
         };
 
-        self.propose_request(&request).await
+        let response = self
+            .hierarchical_orchestrator
+            .router()
+            .route_stream_operation(&stream, operation, None)
+            .await?;
+
+        if response.success {
+            Ok(response.sequence.unwrap_or(0))
+        } else {
+            Err(Error::ConsensusFailed(
+                response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            ))
+        }
     }
 
     /// Rollup operation through consensus
@@ -418,15 +500,28 @@ where
         data: Bytes,
         expected_seq: u64,
     ) -> ConsensusResult<u64> {
-        let request = GlobalRequest {
-            operation: GlobalOperation::RollupStream {
-                stream,
-                data,
-                expected_seq,
-            },
+        // Use hierarchical routing
+        let operation = LocalStreamOperation::RollupStream {
+            stream: stream.clone(),
+            data,
+            expected_seq,
         };
 
-        self.propose_request(&request).await
+        let response = self
+            .hierarchical_orchestrator
+            .router()
+            .route_stream_operation(&stream, operation, None)
+            .await?;
+
+        if response.success {
+            Ok(response.sequence.unwrap_or(0))
+        } else {
+            Err(Error::ConsensusFailed(
+                response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            ))
+        }
     }
 
     /// Delete a message from a stream through consensus
@@ -435,11 +530,27 @@ where
     ///
     /// Returns an error if the Raft instance is not initialized or if consensus fails.
     pub async fn delete_message(&self, stream: String, sequence: u64) -> ConsensusResult<u64> {
-        let request = GlobalRequest {
-            operation: GlobalOperation::DeleteFromStream { stream, sequence },
+        // Use hierarchical routing
+        let operation = LocalStreamOperation::DeleteFromStream {
+            stream: stream.clone(),
+            sequence,
         };
 
-        self.propose_request(&request).await
+        let response = self
+            .hierarchical_orchestrator
+            .router()
+            .route_stream_operation(&stream, operation, None)
+            .await?;
+
+        if response.success {
+            Ok(response.sequence.unwrap_or(0))
+        } else {
+            Err(Error::ConsensusFailed(
+                response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            ))
+        }
     }
 
     /// Subscribe a stream to a subject pattern through consensus
@@ -555,7 +666,7 @@ where
     ///
     /// Currently always returns `Ok` but may return errors in future implementations.
     pub async fn get_message(&self, stream: &str, seq: u64) -> ConsensusResult<Option<Bytes>> {
-        Ok(self.stream_store.get_message(stream, seq).await)
+        Ok(self.global_state.get_message(stream, seq).await)
     }
 
     /// Get the last sequence number for a stream
@@ -564,14 +675,14 @@ where
     ///
     /// Currently always returns `Ok` but may return errors in future implementations.
     pub async fn last_sequence(&self, stream: &str) -> ConsensusResult<u64> {
-        Ok(self.stream_store.last_sequence(stream).await)
+        Ok(self.global_state.last_sequence(stream).await)
     }
 
     /// Get all streams that should receive messages for a given subject
     ///
     /// This reads from the consensus-synchronized routing table.
     pub async fn route_subject(&self, subject: &str) -> std::collections::HashSet<String> {
-        self.stream_store.route_subject(subject).await
+        self.global_state.route_subject(subject).await
     }
 
     /// Get all subject patterns that a stream is subscribed to
@@ -622,14 +733,29 @@ where
         stream_name: impl Into<String>,
         config: crate::global::StreamConfig,
     ) -> ConsensusResult<u64> {
-        let request = GlobalRequest {
-            operation: GlobalOperation::CreateStream {
-                stream_name: stream_name.into(),
-                config,
-            },
+        let stream_name = stream_name.into();
+
+        // Use hierarchical system - this will allocate the stream to a group
+        let operation = GlobalOperation::CreateStream {
+            stream_name,
+            config,
         };
 
-        self.propose_request(&request).await
+        let response = self
+            .hierarchical_orchestrator
+            .router()
+            .route_global_operation(operation)
+            .await?;
+
+        if response.success {
+            Ok(response.sequence.unwrap_or(0))
+        } else {
+            Err(Error::ConsensusFailed(
+                response
+                    .error
+                    .unwrap_or_else(|| "Unknown error".to_string()),
+            ))
+        }
     }
 
     /// Update stream configuration
@@ -880,9 +1006,9 @@ where
         &self.node_id
     }
 
-    /// Get the stream store
-    pub fn stream_store(&self) -> &Arc<StreamStore> {
-        &self.stream_store
+    /// Get the global state
+    pub fn global_state(&self) -> &Arc<GlobalState> {
+        &self.global_state
     }
 
     /// Publish a message to a subject using PubSub (bypasses consensus)
@@ -897,7 +1023,7 @@ where
         self.pubsub_manager
             .publish(subject, payload)
             .await
-            .map_err(|e| ConsensusError::InvalidMessage(e.to_string()))
+            .map_err(|e| Error::InvalidMessage(e.to_string()))
     }
 
     /// Subscribe to a subject pattern using PubSub
@@ -915,7 +1041,7 @@ where
         self.pubsub_manager
             .subscribe(subject)
             .await
-            .map_err(|e| ConsensusError::InvalidMessage(e.to_string()))
+            .map_err(|e| Error::InvalidMessage(e.to_string()))
     }
 
     /// Make a request and wait for a response using PubSub
@@ -932,7 +1058,7 @@ where
         self.pubsub_manager
             .request(subject, payload, timeout)
             .await
-            .map_err(|e| ConsensusError::InvalidMessage(e.to_string()))
+            .map_err(|e| Error::InvalidMessage(e.to_string()))
     }
 
     /// Subscribe a consensus stream to receive PubSub messages
@@ -956,9 +1082,7 @@ where
         self.stream_bridge
             .subscribe_stream_to_subject(stream_name, subject_pattern)
             .await
-            .map_err(|e| {
-                ConsensusError::InvalidMessage(format!("Failed to bridge subscription: {}", e))
-            })
+            .map_err(|e| Error::InvalidMessage(format!("Failed to bridge subscription: {}", e)))
     }
 }
 

@@ -4,7 +4,7 @@ use thiserror::Error;
 
 /// Main consensus error type
 #[derive(Error, Debug, Clone)]
-pub enum ConsensusError {
+pub enum Error {
     /// Network-related error
     #[error("Network error: {0}")]
     Network(#[from] NetworkError),
@@ -96,6 +96,46 @@ pub enum ConsensusError {
     /// Stream name validation error
     #[error("Invalid stream name: {0}")]
     InvalidStreamName(String),
+
+    /// Resource already exists
+    #[error("Already exists: {0}")]
+    AlreadyExists(String),
+
+    /// Resource not found
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    /// Invalid operation
+    #[error("Invalid operation: {0}")]
+    InvalidOperation(String),
+
+    /// Migration failed
+    #[error("Migration failed: {0}")]
+    MigrationFailed(String),
+
+    /// Invalid state
+    #[error("Invalid state: {0}")]
+    InvalidState(String),
+
+    /// Compression failed
+    #[error("Compression failed: {0}")]
+    CompressionFailed(String),
+
+    /// Decompression failed
+    #[error("Decompression failed: {0}")]
+    DecompressionFailed(String),
+
+    /// Checksum mismatch
+    #[error("Checksum mismatch: {0}")]
+    ChecksumMismatch(String),
+
+    /// Invalid checkpoint
+    #[error("Invalid checkpoint: {0}")]
+    InvalidCheckpoint(String),
+
+    /// Deserialization error
+    #[error("Deserialization error: {0}")]
+    Deserialization(String),
 }
 
 /// Network-specific error type
@@ -139,7 +179,7 @@ pub enum NetworkError {
 }
 
 /// Result type for consensus operations
-pub type ConsensusResult<T> = Result<T, ConsensusError>;
+pub type ConsensusResult<T> = Result<T, Error>;
 
 /// Result type for network operations
 pub type NetworkResult<T> = Result<T, NetworkError>;
@@ -156,20 +196,20 @@ impl From<tokio::time::error::Elapsed> for NetworkError {
     }
 }
 
-impl From<serde_json::Error> for ConsensusError {
+impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
-        ConsensusError::Serialization(err.to_string())
+        Error::Serialization(err.to_string())
     }
 }
 
-impl From<ciborium::de::Error<std::io::Error>> for ConsensusError {
+impl From<ciborium::de::Error<std::io::Error>> for Error {
     fn from(err: ciborium::de::Error<std::io::Error>) -> Self {
-        ConsensusError::Serialization(err.to_string())
+        Error::Serialization(err.to_string())
     }
 }
 
-impl From<ciborium::ser::Error<std::io::Error>> for ConsensusError {
+impl From<ciborium::ser::Error<std::io::Error>> for Error {
     fn from(err: ciborium::ser::Error<std::io::Error>) -> Self {
-        ConsensusError::Serialization(err.to_string())
+        Error::Serialization(err.to_string())
     }
 }

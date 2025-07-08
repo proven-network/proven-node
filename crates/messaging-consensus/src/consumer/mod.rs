@@ -343,7 +343,8 @@ mod tests {
     use std::sync::Arc;
 
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::config::{ClusterJoinRetryConfig, ConsensusConfig};
+    use proven_consensus::HierarchicalConsensusConfig;
+    use proven_consensus::config::{ClusterJoinRetryConfig, ConsensusConfigBuilder};
     use proven_consensus::{Consensus, RaftConfig, StorageConfig, TransportConfig};
     use proven_governance::GovernanceNode;
     use proven_governance_mock::MockGovernance;
@@ -450,18 +451,19 @@ mod tests {
         let attestor = Arc::new(MockAttestor::new());
 
         // Create config
-        let config = ConsensusConfig {
-            governance,
-            attestor,
-            signing_key,
-            raft_config: RaftConfig::default(),
-            transport_config: TransportConfig::Tcp {
+        let config = ConsensusConfigBuilder::new()
+            .governance(governance)
+            .attestor(attestor)
+            .signing_key(signing_key)
+            .raft_config(RaftConfig::default())
+            .transport_config(TransportConfig::Tcp {
                 listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            },
-            storage_config: StorageConfig::Memory,
-            cluster_discovery_timeout: None,
-            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
-        };
+            })
+            .storage_config(StorageConfig::Memory)
+            .cluster_join_retry_config(ClusterJoinRetryConfig::default())
+            .hierarchical_config(HierarchicalConsensusConfig::default())
+            .build()
+            .expect("Failed to build consensus config");
 
         // Create consensus
         let consensus = Consensus::new(config).await.unwrap();
@@ -753,7 +755,7 @@ mod tests {
     #[tokio::test]
     async fn test_consumer_error_handling() {
         // Test consumer error types
-        let consensus_error = proven_consensus::ConsensusError::Raft("test error".to_string());
+        let consensus_error = proven_consensus::Error::Raft("test error".to_string());
         let messaging_consensus_error = MessagingConsensusError::from(consensus_error);
         let consumer_error = ConsensusConsumerError::Consensus(messaging_consensus_error);
 

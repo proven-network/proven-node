@@ -12,7 +12,7 @@ use tracing::{debug, info, warn};
 use crate::Node;
 use crate::{
     NodeId,
-    error::{ConsensusError, ConsensusResult},
+    error::{ConsensusResult, Error},
 };
 
 /// Duration to wait before allowing another forced refresh for a missing peer
@@ -65,7 +65,7 @@ where
             .governance
             .get_topology()
             .await
-            .map_err(|e| ConsensusError::Governance(format!("Failed to get topology: {e}")))?;
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
 
         let mut peers = Vec::new();
 
@@ -77,10 +77,7 @@ where
 
             // Validate the origin URL
             url::Url::parse(&node.origin).map_err(|e| {
-                ConsensusError::Configuration(format!(
-                    "Invalid origin URL '{}': {}",
-                    node.origin, e
-                ))
+                Error::Configuration(format!("Invalid origin URL '{}': {}", node.origin, e))
             })?;
 
             peers.push(crate::Node::from(node));
@@ -238,7 +235,7 @@ where
             .governance
             .get_topology()
             .await
-            .map_err(|e| ConsensusError::Governance(format!("Failed to get topology: {e}")))?;
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
 
         for node in topology {
             if self.node_id == node.public_key {
@@ -246,7 +243,7 @@ where
             }
         }
 
-        Err(ConsensusError::Configuration(format!(
+        Err(Error::Configuration(format!(
             "Own node with public key {} not found in topology",
             hex::encode(self.node_id.to_bytes())
         )))

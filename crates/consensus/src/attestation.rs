@@ -6,7 +6,7 @@ use proven_governance::{Governance, Version};
 use std::fmt::Debug;
 use tracing::warn;
 
-use crate::error::{ConsensusError, ConsensusResult};
+use crate::error::{ConsensusResult, Error};
 
 /// Handles attestation verification for consensus peers
 pub struct AttestationVerifier<G, A>
@@ -34,14 +34,17 @@ where
     /// Verify attestation from a peer and determine if they should be authorized
     pub async fn authorize_peer(&self, attestation: Bytes) -> ConsensusResult<bool> {
         // First, verify the attestation document cryptographically
-        let verified_attestation = self.attestor.verify(attestation).map_err(|e| {
-            ConsensusError::Attestation(format!("Failed to verify attestation: {e:?}"))
-        })?;
+        let verified_attestation = self
+            .attestor
+            .verify(attestation)
+            .map_err(|e| Error::Attestation(format!("Failed to verify attestation: {e:?}")))?;
 
         // Get allowed versions from governance
-        let allowed_versions = self.governance.get_active_versions().await.map_err(|e| {
-            ConsensusError::Governance(format!("Failed to get allowed versions: {e}"))
-        })?;
+        let allowed_versions = self
+            .governance
+            .get_active_versions()
+            .await
+            .map_err(|e| Error::Governance(format!("Failed to get allowed versions: {e}")))?;
 
         // Check if PCRs match any known version
         let (pcr_match, _matching_version) =
@@ -72,9 +75,10 @@ where
             public_key: None,
         };
 
-        let attestation = self.attestor.attest(params).await.map_err(|e| {
-            ConsensusError::Attestation(format!("Failed to generate attestation: {e:?}"))
-        })?;
+        let attestation =
+            self.attestor.attest(params).await.map_err(|e| {
+                Error::Attestation(format!("Failed to generate attestation: {e:?}"))
+            })?;
 
         Ok(attestation)
     }

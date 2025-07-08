@@ -6,7 +6,7 @@ mod pubsub_tests {
     use ed25519_dalek::SigningKey;
     use openraft::Config as RaftConfig;
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::{Consensus, ConsensusConfig};
+    use proven_consensus::{Consensus, ConsensusConfig, HierarchicalConsensusConfig};
     use proven_governance::{GovernanceNode, Version};
     use proven_governance_mock::MockGovernance;
     use rand::rngs::OsRng;
@@ -84,6 +84,7 @@ mod pubsub_tests {
                 cluster_discovery_timeout: None,
                 cluster_join_retry_config:
                     proven_consensus::config::ClusterJoinRetryConfig::default(),
+                hierarchical_config: HierarchicalConsensusConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();
@@ -354,6 +355,7 @@ mod pubsub_tests {
                 cluster_discovery_timeout: None,
                 cluster_join_retry_config:
                     proven_consensus::config::ClusterJoinRetryConfig::default(),
+                hierarchical_config: HierarchicalConsensusConfig::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();

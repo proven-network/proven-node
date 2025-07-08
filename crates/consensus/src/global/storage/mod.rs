@@ -8,7 +8,7 @@ use std::fmt::Debug;
 use std::sync::Arc;
 
 use crate::error::ConsensusResult;
-use crate::global::StreamStore;
+use crate::global::GlobalState;
 use crate::global::{GlobalRequest, GlobalResponse, GlobalTypeConfig};
 use openraft::storage::{RaftLogStorage, RaftStateMachine};
 
@@ -16,8 +16,12 @@ pub mod memory;
 pub mod rocksdb;
 
 // Re-export for convenience
-pub use memory::MemoryConsensusStorage;
-pub use rocksdb::RocksConsensusStorage;
+pub use memory::GlobalConsensusMemoryStorage;
+pub use rocksdb::GlobalConsensusRocksStorage;
+
+// Compatibility aliases - to be removed
+pub use create_memory_storage as create_memory_storage_with_global_state;
+pub use create_rocks_storage as create_rocks_storage_with_global_state;
 
 /// Trait alias for consensus storage requirements
 pub trait ConsensusStorage:
@@ -32,8 +36,8 @@ pub trait ConsensusStorage:
 }
 
 // Implement the trait alias for our storage types
-impl ConsensusStorage for MemoryConsensusStorage {}
-impl ConsensusStorage for RocksConsensusStorage {}
+impl ConsensusStorage for GlobalConsensusMemoryStorage {}
+impl ConsensusStorage for GlobalConsensusRocksStorage {}
 
 /// Apply a messaging request to the state machine data
 pub fn apply_request_to_state_machine(
@@ -58,43 +62,29 @@ pub fn apply_request_to_state_machine(
     }
 }
 
-/// Apply a messaging request to a StreamStore
-pub async fn apply_request_to_stream_store(
-    stream_store: &Arc<StreamStore>,
+/// Apply a messaging request to GlobalState
+pub async fn apply_request_to_global_state(
+    global_state: &Arc<GlobalState>,
     request: &GlobalRequest,
     sequence: u64,
 ) -> GlobalResponse {
-    // Apply the operation to the stream store
-    stream_store
+    // Apply the operation to the global state
+    global_state
         .apply_operation(&request.operation, sequence)
         .await
 }
 
-/// Create a new memory storage instance
-pub fn create_memory_storage() -> ConsensusResult<MemoryConsensusStorage> {
-    Ok(MemoryConsensusStorage::new())
+/// Create a new memory storage instance with GlobalState
+pub fn create_memory_storage(
+    global_state: Arc<GlobalState>,
+) -> ConsensusResult<GlobalConsensusMemoryStorage> {
+    Ok(GlobalConsensusMemoryStorage::new(global_state))
 }
 
-/// Create a new memory storage instance with StreamStore
-pub fn create_memory_storage_with_stream_store(
-    stream_store: Arc<StreamStore>,
-) -> ConsensusResult<MemoryConsensusStorage> {
-    Ok(MemoryConsensusStorage::new_with_stream_store(stream_store))
-}
-
-/// Create a new RocksDB storage instance
-pub fn create_rocks_storage(db_path: &str) -> ConsensusResult<RocksConsensusStorage> {
-    RocksConsensusStorage::new_with_path(db_path)
-}
-
-/// Create a new RocksDB storage instance with StreamStore
-pub fn create_rocks_storage_with_stream_store(
+/// Create a new RocksDB storage instance with GlobalState
+pub fn create_rocks_storage(
     db_path: &str,
-    stream_store: Arc<StreamStore>,
-) -> ConsensusResult<RocksConsensusStorage> {
-    let storage = RocksConsensusStorage::new_with_path(db_path)?;
-    Ok(RocksConsensusStorage::new_with_stream_store(
-        storage.db.clone(),
-        stream_store,
-    ))
+    global_state: Arc<GlobalState>,
+) -> ConsensusResult<GlobalConsensusRocksStorage> {
+    GlobalConsensusRocksStorage::new_with_path(db_path, global_state)
 }

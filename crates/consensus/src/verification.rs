@@ -20,7 +20,7 @@ use proven_governance::Governance;
 use crate::NodeId;
 use crate::attestation::AttestationVerifier;
 use crate::cose::CoseHandler;
-use crate::error::{ConsensusError, ConsensusResult};
+use crate::error::{ConsensusResult, Error};
 
 /// Trait for connection verification to avoid generic complexity
 #[async_trait::async_trait]
@@ -333,9 +333,7 @@ where
             .attestor()
             .attest(params)
             .await
-            .map_err(|e| {
-                ConsensusError::Attestation(format!("Failed to generate attestation: {e:?}"))
-            })?;
+            .map_err(|e| Error::Attestation(format!("Failed to generate attestation: {e:?}")))?;
 
         Ok(attestation)
     }
@@ -348,7 +346,7 @@ where
         // Serialize the verification message
         let mut message_data = Vec::new();
         ciborium::ser::into_writer(&message, &mut message_data).map_err(|e| {
-            ConsensusError::InvalidMessage(format!("Failed to serialize verification message: {e}"))
+            Error::InvalidMessage(format!("Failed to serialize verification message: {e}"))
         })?;
 
         // Sign with COSE using the new API
@@ -371,14 +369,12 @@ where
         let payload_bytes = sign1
             .payload
             .as_ref()
-            .ok_or_else(|| ConsensusError::InvalidMessage("Missing payload".to_string()))?;
+            .ok_or_else(|| Error::InvalidMessage("Missing payload".to_string()))?;
 
         // Deserialize the verification message directly from payload bytes
         let verification_message: VerificationMessage =
             ciborium::de::from_reader(payload_bytes.as_slice()).map_err(|e| {
-                ConsensusError::InvalidMessage(format!(
-                    "Failed to deserialize verification message: {e}"
-                ))
+                Error::InvalidMessage(format!("Failed to deserialize verification message: {e}"))
             })?;
 
         Ok(verification_message)
@@ -442,7 +438,7 @@ where
                     our_challenge.clone()
                 }
                 _ => {
-                    return Err(ConsensusError::InvalidMessage(
+                    return Err(Error::InvalidMessage(
                         "No challenge found for connection".to_string(),
                     ));
                 }
@@ -496,7 +492,7 @@ where
                     our_challenge.clone()
                 }
                 _ => {
-                    return Err(ConsensusError::InvalidMessage(
+                    return Err(Error::InvalidMessage(
                         "No challenge found for completion verification".to_string(),
                     ));
                 }
@@ -535,7 +531,7 @@ where
             .await?;
 
         if !authorized {
-            return Err(ConsensusError::Attestation(
+            return Err(Error::Attestation(
                 "Peer not authorized by attestation".to_string(),
             ));
         }
@@ -545,9 +541,7 @@ where
             .attestation_verifier
             .attestor()
             .verify(attestation_document)
-            .map_err(|e| {
-                ConsensusError::Attestation(format!("Failed to verify attestation: {e:?}"))
-            })?;
+            .map_err(|e| Error::Attestation(format!("Failed to verify attestation: {e:?}")))?;
 
         // Verify the nonce matches if we expect one
         if !expected_nonce.is_empty() {
@@ -557,14 +551,14 @@ where
                 .unwrap_or_else(Bytes::new);
 
             if attestation_nonce != expected_nonce {
-                return Err(ConsensusError::Attestation(
+                return Err(Error::Attestation(
                     "Attestation nonce does not match expected challenge".to_string(),
                 ));
             }
         }
 
         let public_key = verified_attestation.public_key.ok_or_else(|| {
-            ConsensusError::Attestation("No public key in attestation document".to_string())
+            Error::Attestation("No public key in attestation document".to_string())
         })?;
         let public_key_bytes = public_key.to_vec();
         let public_key_bytes: [u8; 32] = public_key_bytes.try_into().unwrap();

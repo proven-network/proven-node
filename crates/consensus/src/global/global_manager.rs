@@ -5,7 +5,7 @@
 
 use super::{GlobalRequest, GlobalResponse, GlobalTypeConfig};
 use crate::NodeId;
-use crate::error::ConsensusError;
+use crate::error::Error;
 use crate::network::adaptor::RaftAdapterResponse;
 use crate::network::messages::{
     ApplicationMessage, ClusterDiscoveryRequest, ClusterDiscoveryResponse, ClusterJoinRequest,
@@ -74,8 +74,11 @@ where
     raft_adapter_response_tx: tokio::sync::mpsc::UnboundedSender<(
         NodeId,
         Uuid,
-        Box<crate::network::adaptor::RaftAdapterResponse>,
+        Box<crate::network::adaptor::RaftAdapterResponse<GlobalTypeConfig>>,
     )>,
+
+    /// Global state reference for querying state
+    global_state: Arc<super::GlobalState>,
 }
 
 impl<G, A> GlobalManager<G, A>
@@ -96,18 +99,19 @@ where
         + 'static,
         raft_config: Arc<openraft::Config>,
         cluster_join_retry_config: crate::config::ClusterJoinRetryConfig,
-        network_factory: crate::network::adaptor::NetworkFactory,
+        network_factory: crate::network::adaptor::NetworkFactory<GlobalTypeConfig>,
         network_manager: Arc<crate::network::network_manager::NetworkManager<G, A>>,
         topology: Arc<crate::topology::TopologyManager<G>>,
+        global_state: Arc<super::GlobalState>,
         raft_adapter_request_rx: tokio::sync::mpsc::UnboundedReceiver<(
             NodeId,
             Uuid,
-            Box<crate::network::adaptor::RaftAdapterRequest>,
+            Box<crate::network::adaptor::RaftAdapterRequest<GlobalTypeConfig>>,
         )>,
         raft_adapter_response_tx: tokio::sync::mpsc::UnboundedSender<(
             NodeId,
             Uuid,
-            Box<crate::network::adaptor::RaftAdapterResponse>,
+            Box<crate::network::adaptor::RaftAdapterResponse<GlobalTypeConfig>>,
         )>,
     ) -> Result<Self, openraft::error::RaftError<GlobalTypeConfig>> {
         // Use the shared topology manager
@@ -168,6 +172,7 @@ where
             network_manager,
             response_tx,
             raft_adapter_response_tx,
+            global_state,
         })
     }
 
@@ -183,6 +188,19 @@ where
         self.topology.clone()
     }
 
+    /// Query consensus groups that a node belongs to
+    pub async fn query_node_groups(
+        &self,
+        node_id: &NodeId,
+    ) -> Vec<super::state_machine::ConsensusGroupInfo> {
+        self.global_state.get_node_groups(node_id).await
+    }
+
+    /// Get all consensus groups
+    pub async fn get_all_groups(&self) -> Vec<super::state_machine::ConsensusGroupInfo> {
+        self.global_state.get_all_groups().await
+    }
+
     /// Check if this node is the current leader
     pub fn is_leader(&self) -> bool {
         let metrics_ref = self.raft_instance.metrics();
@@ -191,24 +209,18 @@ where
     }
 
     /// Submit a request to the Raft consensus engine
-    pub async fn submit_request(
-        &self,
-        request: GlobalRequest,
-    ) -> Result<GlobalResponse, ConsensusError> {
+    pub async fn submit_request(&self, request: GlobalRequest) -> Result<GlobalResponse, Error> {
         match self.raft_instance.client_write(request.clone()).await {
             Ok(response) => Ok(response.data),
             Err(e) => {
                 error!("Failed to submit request to Raft: {}", e);
-                Err(ConsensusError::Raft(format!(
-                    "Raft client write failed: {}",
-                    e
-                )))
+                Err(Error::Raft(format!("Raft client write failed: {}", e)))
             }
         }
     }
 
     /// Propose a request and get the sequence number
-    pub async fn propose_request(&self, request: &GlobalRequest) -> Result<u64, ConsensusError> {
+    pub async fn propose_request(&self, request: &GlobalRequest) -> Result<u64, Error> {
         let response = self.raft_instance.client_write(request.clone()).await;
         match response {
             Ok(client_write_response) => {
@@ -217,7 +229,7 @@ where
             }
             Err(e) => {
                 error!("Failed to propose request: {}", e);
-                Err(ConsensusError::Raft(format!("Raft proposal failed: {}", e)))
+                Err(Error::Raft(format!("Raft proposal failed: {}", e)))
             }
         }
     }
@@ -254,10 +266,10 @@ where
     }
 
     /// Shutdown the Raft instance
-    pub async fn shutdown_raft(&self) -> Result<(), ConsensusError> {
+    pub async fn shutdown_raft(&self) -> Result<(), Error> {
         if let Err(e) = self.raft_instance.shutdown().await {
             error!("Error shutting down Raft: {}", e);
-            Err(ConsensusError::Raft(format!("Raft shutdown failed: {}", e)))
+            Err(Error::Raft(format!("Raft shutdown failed: {}", e)))
         } else {
             Ok(())
         }
@@ -268,7 +280,7 @@ where
         &self,
         node_id: NodeId,
         reason: InitiatorReason,
-    ) -> Result<(), ConsensusError> {
+    ) -> Result<(), Error> {
         info!("Initializing single-node cluster for node {}", node_id);
 
         // Set cluster state to initiator
@@ -280,17 +292,18 @@ where
 
         // Initialize Raft with just this node
         // Get our own GovernanceNode from topology
-        let own_node =
-            self.topology.get_own_node().await.map_err(|e| {
-                ConsensusError::InvalidMessage(format!("Failed to get own node: {e}"))
-            })?;
+        let own_node = self
+            .topology
+            .get_own_node()
+            .await
+            .map_err(|e| Error::InvalidMessage(format!("Failed to get own node: {e}")))?;
 
         let membership = std::collections::BTreeMap::from([(node_id.clone(), own_node)]);
 
         self.raft_instance
             .initialize(membership)
             .await
-            .map_err(|e| ConsensusError::Raft(format!("Failed to initialize Raft: {e}")))?;
+            .map_err(|e| Error::Raft(format!("Failed to initialize Raft: {e}")))?;
 
         info!("Successfully initialized single-node cluster");
         Ok(())
@@ -301,7 +314,7 @@ where
         &self,
         node_id: NodeId,
         _peers: Vec<crate::Node>,
-    ) -> Result<(), ConsensusError> {
+    ) -> Result<(), Error> {
         info!(
             "Initializing multi-node cluster as leader for node {}",
             node_id
@@ -316,17 +329,18 @@ where
 
         // For now, start as single node - peers will join later
         // Get our own GovernanceNode from topology
-        let own_node =
-            self.topology.get_own_node().await.map_err(|e| {
-                ConsensusError::InvalidMessage(format!("Failed to get own node: {e}"))
-            })?;
+        let own_node = self
+            .topology
+            .get_own_node()
+            .await
+            .map_err(|e| Error::InvalidMessage(format!("Failed to get own node: {e}")))?;
 
         let membership = std::collections::BTreeMap::from([(node_id.clone(), own_node)]);
 
         self.raft_instance
             .initialize(membership)
             .await
-            .map_err(|e| ConsensusError::Raft(format!("Failed to initialize leader Raft: {e}")))?;
+            .map_err(|e| Error::Raft(format!("Failed to initialize leader Raft: {e}")))?;
 
         info!("Successfully initialized multi-node cluster as leader");
         Ok(())
@@ -337,7 +351,7 @@ where
         &self,
         node_id: NodeId,
         existing_cluster: &ClusterDiscoveryResponse,
-    ) -> Result<(), ConsensusError> {
+    ) -> Result<(), Error> {
         // Get retry configuration
         let retry_config = &self.cluster_join_retry_config;
 
@@ -346,7 +360,7 @@ where
             .current_leader
             .as_ref()
             .ok_or_else(|| {
-                ConsensusError::InvalidMessage(
+                Error::InvalidMessage(
                     "Cannot join cluster: no leader reported in discovery response".to_string(),
                 )
             })?
@@ -365,10 +379,11 @@ where
         .await;
 
         // Get our own node information for the join request
-        let requester_node =
-            self.topology().get_own_node().await.map_err(|e| {
-                ConsensusError::InvalidMessage(format!("Failed to get own node: {e}"))
-            })?;
+        let requester_node = self
+            .topology()
+            .get_own_node()
+            .await
+            .map_err(|e| Error::InvalidMessage(format!("Failed to get own node: {e}")))?;
 
         // Create join request
         let join_request = ClusterJoinRequest {
@@ -414,7 +429,7 @@ where
                 }
                 Err(e) => {
                     warn!("Failed to send join request on attempt {}: {}", attempt, e);
-                    last_error = Some(ConsensusError::InvalidMessage(format!(
+                    last_error = Some(Error::InvalidMessage(format!(
                         "Failed to send join request: {}",
                         e
                     )));
@@ -434,9 +449,8 @@ where
                     Ok(Ok(response)) => response,
                     Ok(Err(_)) => {
                         warn!("Join request channel was cancelled on attempt {}", attempt);
-                        last_error = Some(ConsensusError::InvalidMessage(
-                            "Join request cancelled".to_string(),
-                        ));
+                        last_error =
+                            Some(Error::InvalidMessage("Join request cancelled".to_string()));
 
                         // Wait before retrying, unless this is the last attempt
                         if attempt < retry_config.max_attempts {
@@ -447,9 +461,8 @@ where
                     }
                     Err(_) => {
                         warn!("Join request timeout on attempt {}", attempt);
-                        last_error = Some(ConsensusError::InvalidMessage(
-                            "Join request timeout".to_string(),
-                        ));
+                        last_error =
+                            Some(Error::InvalidMessage("Join request timeout".to_string()));
 
                         // Wait before retrying, unless this is the last attempt
                         if attempt < retry_config.max_attempts {
@@ -500,7 +513,7 @@ where
                     }
                 }
 
-                last_error = Some(ConsensusError::InvalidMessage(format!(
+                last_error = Some(Error::InvalidMessage(format!(
                     "Join request failed: {}",
                     error_msg
                 )));
@@ -515,7 +528,7 @@ where
 
         // All attempts failed
         let final_error = last_error.unwrap_or_else(|| {
-            ConsensusError::InvalidMessage("Unknown error after all retry attempts".to_string())
+            Error::InvalidMessage("Unknown error after all retry attempts".to_string())
         });
 
         warn!(
@@ -536,7 +549,7 @@ where
     }
 
     /// Wait for the cluster to be ready (either Initiator or Joined state)
-    pub async fn wait_for_leader(&self, timeout: Option<Duration>) -> Result<(), ConsensusError> {
+    pub async fn wait_for_leader(&self, timeout: Option<Duration>) -> Result<(), Error> {
         let timeout = timeout.unwrap_or(Duration::from_secs(30));
         let start_time = Instant::now();
 
@@ -549,7 +562,7 @@ where
                     return Ok(());
                 }
                 ClusterState::Failed { error, .. } => {
-                    return Err(ConsensusError::InvalidMessage(format!(
+                    return Err(Error::InvalidMessage(format!(
                         "Cluster failed to initialize: {}",
                         error
                     )));
@@ -557,7 +570,7 @@ where
                 _ => {
                     // Continue waiting
                     if start_time.elapsed() > timeout {
-                        return Err(ConsensusError::InvalidMessage(format!(
+                        return Err(Error::InvalidMessage(format!(
                             "Timeout waiting for cluster to be ready. Current state: {:?}",
                             state
                         )));
@@ -580,14 +593,12 @@ where
     }
 
     /// Start topology manager
-    pub async fn start_topology(&self) -> Result<(), ConsensusError> {
+    pub async fn start_topology(&self) -> Result<(), Error> {
         self.topology.start().await
     }
 
     /// Discover existing clusters using the network callback
-    pub async fn discover_existing_clusters(
-        &self,
-    ) -> Result<Vec<ClusterDiscoveryResponse>, ConsensusError> {
+    pub async fn discover_existing_clusters(&self) -> Result<Vec<ClusterDiscoveryResponse>, Error> {
         // Get all peers from topology
         let all_peers = self.topology.get_all_peers().await;
         debug!("Discovering clusters among {} peers", all_peers.len());
@@ -702,7 +713,7 @@ where
     }
 
     /// Comprehensive shutdown of all GlobalManager components
-    pub async fn shutdown_all(&self) -> Result<(), ConsensusError> {
+    pub async fn shutdown_all(&self) -> Result<(), Error> {
         info!(
             "Shutting down GlobalManager for node {}",
             self.local_node_id
@@ -760,7 +771,7 @@ where
         &self,
         correlation_id: Uuid,
         response: T,
-    ) -> Result<(), ConsensusError> {
+    ) -> Result<(), Error> {
         let mut pending = self.pending_requests.write().await;
 
         if let Some(boxed_request) = pending.remove(&correlation_id) {
@@ -770,12 +781,10 @@ where
                 let _ = pending_request.response_tx.send(response);
                 Ok(())
             } else {
-                Err(ConsensusError::InvalidMessage(
-                    "Response type mismatch".to_string(),
-                ))
+                Err(Error::InvalidMessage("Response type mismatch".to_string()))
             }
         } else {
-            Err(ConsensusError::InvalidMessage(
+            Err(Error::InvalidMessage(
                 "No pending request found".to_string(),
             ))
         }
@@ -860,7 +869,7 @@ where
         node_id: NodeId,
         message: Message,
         correlation_id: Option<Uuid>,
-    ) -> Result<(), ConsensusError> {
+    ) -> Result<(), Error> {
         match message {
             Message::Application(app_msg) => {
                 match *app_msg {
@@ -1103,11 +1112,11 @@ where
         raft: &openraft::Raft<GlobalTypeConfig>,
         node_id: NodeId,
         node_info: crate::Node,
-    ) -> Result<(), ConsensusError> {
+    ) -> Result<(), Error> {
         // First add as learner
         raft.add_learner(node_id.clone(), node_info, true)
             .await
-            .map_err(|e| ConsensusError::Raft(format!("Failed to add learner: {}", e)))?;
+            .map_err(|e| Error::Raft(format!("Failed to add learner: {}", e)))?;
 
         // Then promote to voter
         let membership = raft.metrics().borrow().membership_config.clone();
@@ -1116,7 +1125,7 @@ where
 
         raft.change_membership(voter_ids, false)
             .await
-            .map_err(|e| ConsensusError::Raft(format!("Failed to change membership: {}", e)))?;
+            .map_err(|e| Error::Raft(format!("Failed to change membership: {}", e)))?;
 
         Ok(())
     }
@@ -1260,7 +1269,7 @@ where
         correlation_id: Option<Uuid>,
         sender_id: &NodeId,
         response_type: &str,
-        wrapper: impl FnOnce(T) -> RaftAdapterResponse,
+        wrapper: impl FnOnce(T) -> RaftAdapterResponse<GlobalTypeConfig>,
     ) where
         T: for<'de> serde::Deserialize<'de>,
     {
@@ -1293,7 +1302,7 @@ where
         mut request_rx: tokio::sync::mpsc::UnboundedReceiver<(
             NodeId,
             Uuid,
-            Box<crate::network::adaptor::RaftAdapterRequest>,
+            Box<crate::network::adaptor::RaftAdapterRequest<GlobalTypeConfig>>,
         )>,
         network_manager: Arc<crate::network::network_manager::NetworkManager<G, A>>,
     ) {
@@ -1351,7 +1360,7 @@ where
         _raft_adapter_response_tx: tokio::sync::mpsc::UnboundedSender<(
             NodeId,
             Uuid,
-            Box<crate::network::adaptor::RaftAdapterResponse>,
+            Box<crate::network::adaptor::RaftAdapterResponse<GlobalTypeConfig>>,
         )>,
         _raft_instance: Arc<openraft::Raft<GlobalTypeConfig>>,
         _network_manager: Arc<crate::network::network_manager::NetworkManager<G, A>>,

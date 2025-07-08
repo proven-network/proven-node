@@ -4,26 +4,28 @@
 //! including state machine, storage implementations, and snapshot functionality.
 
 pub mod global_manager;
+pub mod global_state;
 pub mod snapshot;
 pub mod state_machine;
 pub mod storage;
 
 use crate::node::Node;
 use crate::node_id::NodeId;
+use crate::{allocation::ConsensusGroupId, operations::MigrationState};
 
-use bytes::Bytes;
 use openraft::Entry;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 
 // Re-export main types
 pub use global_manager::{GlobalManager, PendingRequest};
+pub use global_state::{ConsensusGroupInfo, GlobalState, MessageData, StreamData};
 pub use snapshot::SnapshotData;
-pub use state_machine::{MessageData, StreamData, StreamStore};
+pub use state_machine::StreamStore;
 pub use storage::{
-    ConsensusStorage, MemoryConsensusStorage, RocksConsensusStorage, create_memory_storage,
-    create_memory_storage_with_stream_store, create_rocks_storage,
-    create_rocks_storage_with_stream_store,
+    ConsensusStorage, GlobalConsensusMemoryStorage, GlobalConsensusRocksStorage,
+    create_memory_storage, create_memory_storage_with_global_state, create_rocks_storage,
+    create_rocks_storage_with_global_state,
 };
 
 openraft::declare_raft_types!(
@@ -39,53 +41,77 @@ openraft::declare_raft_types!(
 );
 
 /// Operations that can be performed through consensus
+/// This enum supports both legacy operations and new hierarchical operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum GlobalOperation {
-    /// Publish a message to a stream
-    PublishToStream {
-        /// Stream name to publish to
-        stream: String,
-        /// Message data
-        data: Bytes,
-        /// Optional metadata
-        metadata: Option<std::collections::HashMap<String, String>>,
+    /// Create a new stream with configuration
+    CreateStream {
+        /// Stream name to create
+        stream_name: String,
+        /// Stream configuration
+        config: StreamConfig,
     },
 
-    /// Publish multiple messages to a stream
-    PublishBatchToStream {
-        /// Stream name to publish to
-        stream: String,
-
-        /// Messages to publish
-        messages: Vec<Bytes>,
+    /// Update stream configuration
+    UpdateStreamConfig {
+        /// Stream name to update
+        stream_name: String,
+        /// New stream configuration
+        config: StreamConfig,
     },
 
-    /// Rollup operation on a stream
-    RollupStream {
-        /// Stream name to rollup
-        stream: String,
-
-        /// Message data
-        data: Bytes,
-
-        /// Expected sequence number
-        expected_seq: u64,
+    /// Delete a stream
+    DeleteStream {
+        /// Stream name to delete
+        stream_name: String,
     },
 
-    /// Delete a message from a stream
-    DeleteFromStream {
-        /// Stream name to delete from
-        stream: String,
+    /// Allocate a stream to a consensus group
+    AllocateStream {
+        /// Stream name to allocate
+        stream_name: String,
+        /// Target consensus group
+        group_id: ConsensusGroupId,
+    },
 
-        /// Sequence number of the message to delete
-        sequence: u64,
+    /// Migrate a stream to a different consensus group
+    MigrateStream {
+        /// Stream name to migrate
+        stream_name: String,
+        /// Source consensus group
+        from_group: ConsensusGroupId,
+        /// Target consensus group
+        to_group: ConsensusGroupId,
+        /// Migration state
+        state: MigrationState,
+    },
+
+    /// Update stream allocation after migration
+    UpdateStreamAllocation {
+        /// Stream name
+        stream_name: String,
+        /// New consensus group
+        new_group: ConsensusGroupId,
+    },
+
+    /// Add a new consensus group
+    AddConsensusGroup {
+        /// Group identifier
+        group_id: ConsensusGroupId,
+        /// Member node IDs
+        members: Vec<crate::NodeId>,
+    },
+
+    /// Remove a consensus group (must be empty)
+    RemoveConsensusGroup {
+        /// Group identifier
+        group_id: ConsensusGroupId,
     },
 
     /// Subscribe a stream to a subject pattern
     SubscribeToSubject {
         /// Stream name to subscribe to
         stream_name: String,
-
         /// Subject pattern to subscribe to
         subject_pattern: String,
     },
@@ -94,7 +120,6 @@ pub enum GlobalOperation {
     UnsubscribeFromSubject {
         /// Stream name to unsubscribe from
         stream_name: String,
-
         /// Subject pattern to unsubscribe from
         subject_pattern: String,
     },
@@ -119,40 +144,6 @@ pub enum GlobalOperation {
         stream_name: String,
         /// Subject patterns to unsubscribe from
         subject_patterns: Vec<String>,
-    },
-
-    /// Create a new stream with configuration
-    CreateStream {
-        /// Stream name to create
-        stream_name: String,
-        /// Stream configuration
-        config: StreamConfig,
-    },
-
-    /// Update stream configuration
-    UpdateStreamConfig {
-        /// Stream name to update
-        stream_name: String,
-        /// New stream configuration
-        config: StreamConfig,
-    },
-
-    /// Delete a stream
-    DeleteStream {
-        /// Stream name to delete
-        stream_name: String,
-    },
-
-    /// Publish from PubSub to a stream
-    PublishFromPubSub {
-        /// Stream name to publish to
-        stream_name: String,
-        /// Subject that triggered this
-        subject: String,
-        /// Message data
-        data: Bytes,
-        /// Source information
-        source: PubSubMessageSource,
     },
 }
 
@@ -189,6 +180,8 @@ pub struct StreamConfig {
     pub retention_policy: RetentionPolicy,
     /// Enable PubSub bridge for this stream
     pub pubsub_bridge_enabled: bool,
+    /// Assigned consensus group (None means not yet allocated)
+    pub consensus_group: Option<ConsensusGroupId>,
 }
 
 impl Default for StreamConfig {
@@ -200,6 +193,7 @@ impl Default for StreamConfig {
             storage_type: StorageType::Memory,
             retention_policy: RetentionPolicy::Limits,
             pubsub_bridge_enabled: false,
+            consensus_group: None,
         }
     }
 }

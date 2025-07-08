@@ -8,34 +8,52 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
+/// Stream allocation and consensus group management
+pub mod allocation;
 pub mod attestation;
 pub mod config;
 pub mod consensus;
 pub mod cose;
 pub mod error;
 pub mod global;
+/// Hierarchical consensus orchestrator
+pub mod hierarchical_orchestrator;
+/// Local consensus management
+pub mod local;
+/// Stream migration protocol
+pub mod migration;
+/// Monitoring and metrics
+pub mod monitoring;
 pub mod network;
 pub mod node;
 pub mod node_id;
+/// Hierarchical consensus operations
+pub mod operations;
 pub mod pubsub;
+/// Consensus routing
+pub mod router;
 pub mod subscription;
+pub mod test_helpers;
 pub mod topology;
 pub mod transport;
 pub mod verification;
 
 // Re-export main types
 pub use consensus::Consensus;
-pub use error::{ConsensusError, ConsensusResult};
+pub use error::{ConsensusResult, Error};
 pub use global::{
-    ConsensusStorage, GlobalTypeConfig, MemoryConsensusStorage, RocksConsensusStorage,
+    ConsensusStorage, GlobalConsensusMemoryStorage, GlobalConsensusRocksStorage, GlobalTypeConfig,
 };
 pub use node::Node;
 pub use node_id::NodeId;
 pub use openraft::Config as RaftConfig;
-pub use transport::{HttpIntegratedTransport, NetworkTransport, TransportConfig};
+pub use transport::{HttpIntegratedTransport, NetworkTransport};
 
 // Re-export config types
-pub use config::{ConsensusConfig, StorageConfig};
+pub use config::{
+    ClusterJoinRetryConfig, ConsensusConfig, ConsensusConfigBuilder, HierarchicalConsensusConfig,
+    StorageConfig, TransportConfig,
+};
 
 // Re-export subscription types
 pub use subscription::SubscriptionInvoker;
@@ -46,4 +64,12 @@ pub use topology::TopologyManager;
 // Re-export verification types
 pub use verification::{
     ConnectionState, ConnectionVerification, ConnectionVerifier, VerificationMessage,
+};
+
+// Re-export test helpers (test-only)
+#[cfg(any(test, feature = "test-helpers"))]
+pub use test_helpers::{
+    TestCluster, create_multi_node_governance, create_single_node_governance,
+    test_multi_node_cluster, test_single_node_memory, test_single_node_rocksdb,
+    test_single_node_tcp, test_websocket_node,
 };

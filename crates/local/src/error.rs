@@ -11,13 +11,13 @@ pub enum Error {
     #[error(transparent)]
     ApplicationManager(#[from] proven_applications::Error),
 
-    /// Shutdown requested
-    #[error("shutdown requested")]
-    Shutdown,
-
     /// Attestation error
     #[error("attestation error: {0}")]
     Attestation(String),
+
+    /// Consensus error
+    #[error("consensus error: {0}")]
+    Consensus(String),
 
     /// Bitcoin node error
     #[error(transparent)]
@@ -82,6 +82,10 @@ pub enum Error {
     /// Babylon node error.
     #[error(transparent)]
     RadixNode(#[from] proven_radix_node::Error),
+
+    /// Shutdown requested
+    #[error("shutdown requested")]
+    Shutdown,
 
     /// Stream error
     #[error("stream error: {0}")]

@@ -2,18 +2,18 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::error::{ConsensusError, ConsensusResult};
+use crate::error::{ConsensusResult, Error};
 
 /// Validates a literal subject (no wildcards allowed)
 pub fn validate_subject(subject: &str) -> ConsensusResult<()> {
     if subject.is_empty() {
-        return Err(ConsensusError::InvalidSubjectPattern(
+        return Err(Error::InvalidSubjectPattern(
             "Subject cannot be empty".to_string(),
         ));
     }
 
     if subject.contains(['*', '>']) {
-        return Err(ConsensusError::InvalidSubjectPattern(
+        return Err(Error::InvalidSubjectPattern(
             "Subject cannot contain wildcards (use for patterns only)".to_string(),
         ));
     }
@@ -21,7 +21,7 @@ pub fn validate_subject(subject: &str) -> ConsensusResult<()> {
     let tokens: Vec<&str> = subject.split('.').collect();
     for token in tokens {
         if token.is_empty() {
-            return Err(ConsensusError::InvalidSubjectPattern(
+            return Err(Error::InvalidSubjectPattern(
                 "Subject token cannot be empty".to_string(),
             ));
         }
@@ -33,7 +33,7 @@ pub fn validate_subject(subject: &str) -> ConsensusResult<()> {
 /// Validates a subject pattern
 pub fn validate_subject_pattern(pattern: &str) -> ConsensusResult<()> {
     if pattern.is_empty() {
-        return Err(ConsensusError::InvalidSubjectPattern(
+        return Err(Error::InvalidSubjectPattern(
             "Subject pattern cannot be empty".to_string(),
         ));
     }
@@ -43,19 +43,19 @@ pub fn validate_subject_pattern(pattern: &str) -> ConsensusResult<()> {
 
     for (i, token) in tokens.iter().enumerate() {
         if token.is_empty() {
-            return Err(ConsensusError::InvalidSubjectPattern(
+            return Err(Error::InvalidSubjectPattern(
                 "Subject token cannot be empty".to_string(),
             ));
         }
 
         if *token == ">" {
             if found_gt {
-                return Err(ConsensusError::InvalidSubjectPattern(
+                return Err(Error::InvalidSubjectPattern(
                     "Only one '>' wildcard allowed".to_string(),
                 ));
             }
             if i != tokens.len() - 1 {
-                return Err(ConsensusError::InvalidSubjectPattern(
+                return Err(Error::InvalidSubjectPattern(
                     "'>' wildcard must be at the end".to_string(),
                 ));
             }

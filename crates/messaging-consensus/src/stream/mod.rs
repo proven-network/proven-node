@@ -359,7 +359,7 @@ where
     async fn publish(&self, message: T) -> Result<u64, Self::Error> {
         // Convert message to bytes
         let bytes = message.clone().try_into().map_err(|e| {
-            MessagingConsensusError::from(proven_consensus::ConsensusError::Serialization(format!(
+            MessagingConsensusError::from(proven_consensus::Error::Serialization(format!(
                 "Failed to serialize message: {e:?}"
             )))
         })?;
@@ -390,9 +390,9 @@ where
         let mut bytes_messages = Vec::new();
         for message in &messages {
             let bytes = message.clone().try_into().map_err(|e| {
-                MessagingConsensusError::from(proven_consensus::ConsensusError::Serialization(
-                    format!("Failed to serialize batch message: {e:?}"),
-                ))
+                MessagingConsensusError::from(proven_consensus::Error::Serialization(format!(
+                    "Failed to serialize batch message: {e:?}"
+                )))
             })?;
             bytes_messages.push(bytes);
         }
@@ -423,7 +423,7 @@ where
     async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error> {
         // Convert message to bytes
         let bytes = message.clone().try_into().map_err(|e| {
-            MessagingConsensusError::from(proven_consensus::ConsensusError::Serialization(format!(
+            MessagingConsensusError::from(proven_consensus::Error::Serialization(format!(
                 "Failed to serialize rollup message: {e:?}"
             )))
         })?;
@@ -629,7 +629,8 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
     use proven_consensus::{
-        ConsensusConfig, RaftConfig, StorageConfig, TransportConfig, config::ClusterJoinRetryConfig,
+        HierarchicalConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
+        config::{ClusterJoinRetryConfig, ConsensusConfigBuilder},
     };
     use proven_governance_mock::MockGovernance;
     use rand::rngs::OsRng;
@@ -686,18 +687,19 @@ mod tests {
         ));
 
         // Create consensus config with temporary directory for tests
-        let config = ConsensusConfig {
-            governance,
-            attestor,
-            signing_key,
-            raft_config: RaftConfig::default(),
-            transport_config: TransportConfig::Tcp {
+        let config = ConsensusConfigBuilder::new()
+            .governance(governance)
+            .attestor(attestor)
+            .signing_key(signing_key)
+            .raft_config(RaftConfig::default())
+            .transport_config(TransportConfig::Tcp {
                 listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            },
-            storage_config: StorageConfig::Memory,
-            cluster_discovery_timeout: None,
-            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
-        };
+            })
+            .storage_config(StorageConfig::Memory)
+            .cluster_join_retry_config(ClusterJoinRetryConfig::default())
+            .hierarchical_config(HierarchicalConsensusConfig::default())
+            .build()
+            .expect("Failed to build consensus config");
 
         let consensus = Consensus::new(config).await.unwrap();
 
@@ -1168,18 +1170,19 @@ mod tests {
         // Create consensus systems for each node with SHARED governance
         for i in 0..node_count {
             // Create consensus config with temporary directory for each node
-            let config = ConsensusConfig {
-                governance: shared_governance.clone(),
-                attestor: Arc::new(attestor.clone()),
-                signing_key: signing_keys[i].clone(),
-                raft_config: RaftConfig::default(),
-                transport_config: TransportConfig::Tcp {
+            let config = ConsensusConfigBuilder::new()
+                .governance(shared_governance.clone())
+                .attestor(Arc::new(attestor.clone()))
+                .signing_key(signing_keys[i].clone())
+                .raft_config(RaftConfig::default())
+                .transport_config(TransportConfig::Tcp {
                     listen_addr: format!("127.0.0.1:{}", node_ports[i]).parse().unwrap(),
-                },
-                storage_config: StorageConfig::Memory,
-                cluster_discovery_timeout: None,
-                cluster_join_retry_config: ClusterJoinRetryConfig::default(),
-            };
+                })
+                .storage_config(StorageConfig::Memory)
+                .cluster_join_retry_config(ClusterJoinRetryConfig::default())
+                .hierarchical_config(HierarchicalConsensusConfig::default())
+                .build()
+                .expect("Failed to build consensus config");
 
             let consensus = Consensus::new(config).await.unwrap();
 

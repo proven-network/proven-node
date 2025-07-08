@@ -224,11 +224,12 @@ mod tests {
     use proven_attestation_mock::MockAttestor;
     use proven_bootable::Bootable;
     use proven_consensus::Consensus;
+    use proven_consensus::HierarchicalConsensusConfig;
     use proven_consensus::RaftConfig;
     use proven_consensus::StorageConfig;
     use proven_consensus::TransportConfig;
     use proven_consensus::config::ClusterJoinRetryConfig;
-    use proven_consensus::config::ConsensusConfig;
+    use proven_consensus::config::ConsensusConfigBuilder;
     use proven_governance_mock::MockGovernance;
     use proven_messaging::stream::{InitializedStream, Stream};
     use serde::{Deserialize, Serialize};
@@ -446,18 +447,19 @@ mod tests {
         ));
 
         // Create config
-        let config = ConsensusConfig {
-            governance,
-            attestor,
-            signing_key,
-            raft_config: RaftConfig::default(),
-            transport_config: TransportConfig::Tcp {
+        let config = ConsensusConfigBuilder::new()
+            .governance(governance)
+            .attestor(attestor)
+            .signing_key(signing_key)
+            .raft_config(RaftConfig::default())
+            .transport_config(TransportConfig::Tcp {
                 listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            },
-            storage_config: StorageConfig::Memory,
-            cluster_discovery_timeout: None,
-            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
-        };
+            })
+            .storage_config(StorageConfig::Memory)
+            .cluster_join_retry_config(ClusterJoinRetryConfig::default())
+            .hierarchical_config(HierarchicalConsensusConfig::default())
+            .build()
+            .expect("Failed to build consensus config");
 
         // Create consensus
         let consensus = Consensus::new(config).await.unwrap();

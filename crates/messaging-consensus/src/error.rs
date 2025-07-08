@@ -8,7 +8,7 @@ use proven_messaging::{
 /// Messaging-specific error wrapper for consensus errors.
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
-pub struct MessagingConsensusError(#[from] pub proven_consensus::ConsensusError);
+pub struct MessagingConsensusError(#[from] pub proven_consensus::Error);
 
 impl StreamError for MessagingConsensusError {}
 impl SubjectError for MessagingConsensusError {}
@@ -17,5 +17,5 @@ impl SubscriptionError for MessagingConsensusError {}
 impl SubscriptionResponderError for MessagingConsensusError {}
 
 // Re-export the underlying consensus error for convenience
-pub use proven_consensus::ConsensusError;
+pub use proven_consensus::Error;
 pub use proven_consensus::error::ConsensusResult;

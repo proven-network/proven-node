@@ -8,7 +8,7 @@ use coset::{
 use ed25519_dalek::{Signature, Signer, SigningKey};
 use uuid::Uuid;
 
-use crate::{NodeId, error::ConsensusError};
+use crate::{NodeId, error::Error};
 
 /// COSE-signed message wrapper
 #[derive(Debug, Clone)]
@@ -51,7 +51,7 @@ impl CoseHandler {
         message_data: &[u8],
         message_type: &str,
         correlation_id: Option<Uuid>,
-    ) -> Result<CoseMessage, ConsensusError> {
+    ) -> Result<CoseMessage, Error> {
         // Build protected headers with algorithm
         let protected_header = HeaderBuilder::new()
             .algorithm(iana::Algorithm::EdDSA)
@@ -108,33 +108,33 @@ impl CoseHandler {
         &self,
         cose_message: &CoseMessage,
         sender_node_id: NodeId,
-    ) -> Result<(Bytes, CoseMetadata), ConsensusError> {
+    ) -> Result<(Bytes, CoseMetadata), Error> {
         let sign1 = &cose_message.cose_sign1;
 
         // Verify the signature
         let to_verify = sign1.tbs_data(b"");
         let signature_bytes = if sign1.signature.is_empty() {
-            return Err(ConsensusError::InvalidMessage(
-                "Missing signature".to_string(),
-            ));
+            return Err(Error::InvalidMessage("Missing signature".to_string()));
         } else {
             &sign1.signature
         };
 
-        let signature =
-            Signature::from_bytes(signature_bytes.as_slice().try_into().map_err(|_| {
-                ConsensusError::InvalidMessage("Invalid signature length".to_string())
-            })?);
+        let signature = Signature::from_bytes(
+            signature_bytes
+                .as_slice()
+                .try_into()
+                .map_err(|_| Error::InvalidMessage("Invalid signature length".to_string()))?,
+        );
 
-        sender_node_id.verify(&to_verify, &signature).map_err(|e| {
-            ConsensusError::InvalidMessage(format!("Signature verification failed: {e}"))
-        })?;
+        sender_node_id
+            .verify(&to_verify, &signature)
+            .map_err(|e| Error::InvalidMessage(format!("Signature verification failed: {e}")))?;
 
         // Extract payload
         let payload_bytes = sign1
             .payload
             .as_ref()
-            .ok_or_else(|| ConsensusError::InvalidMessage("Missing payload".to_string()))?;
+            .ok_or_else(|| Error::InvalidMessage("Missing payload".to_string()))?;
 
         // Extract metadata from headers
         let metadata = self.extract_metadata_from_headers(sign1)?;
@@ -143,10 +143,7 @@ impl CoseHandler {
     }
 
     /// Extract metadata from COSE headers (both protected and unprotected)
-    fn extract_metadata_from_headers(
-        &self,
-        sign1: &CoseSign1,
-    ) -> Result<CoseMetadata, ConsensusError> {
+    fn extract_metadata_from_headers(&self, sign1: &CoseSign1) -> Result<CoseMetadata, Error> {
         let mut timestamp = None;
         let mut correlation_id = None;
         let mut message_type = None;
@@ -188,26 +185,20 @@ impl CoseHandler {
     }
 
     /// Serialize a COSE message to bytes for transmission
-    pub fn serialize_cose_message(
-        &self,
-        cose_message: &CoseMessage,
-    ) -> Result<Vec<u8>, ConsensusError> {
+    pub fn serialize_cose_message(&self, cose_message: &CoseMessage) -> Result<Vec<u8>, Error> {
         let cbor_bytes = cose_message
             .cose_sign1
             .clone()
             .to_tagged_vec()
-            .map_err(|e| {
-                ConsensusError::InvalidMessage(format!("COSE serialization failed: {e}"))
-            })?;
+            .map_err(|e| Error::InvalidMessage(format!("COSE serialization failed: {e}")))?;
 
         Ok(cbor_bytes)
     }
 
     /// Deserialize bytes into a COSE message
-    pub fn deserialize_cose_message(&self, bytes: &[u8]) -> Result<CoseMessage, ConsensusError> {
-        let cose_sign1 = CoseSign1::from_tagged_slice(bytes).map_err(|e| {
-            ConsensusError::InvalidMessage(format!("COSE deserialization failed: {e}"))
-        })?;
+    pub fn deserialize_cose_message(&self, bytes: &[u8]) -> Result<CoseMessage, Error> {
+        let cose_sign1 = CoseSign1::from_tagged_slice(bytes)
+            .map_err(|e| Error::InvalidMessage(format!("COSE deserialization failed: {e}")))?;
 
         Ok(CoseMessage { cose_sign1 })
     }

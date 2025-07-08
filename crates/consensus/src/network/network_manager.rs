@@ -7,7 +7,7 @@
 use crate::NodeId;
 use crate::attestation::AttestationVerifier;
 use crate::cose::CoseHandler;
-use crate::error::{ConsensusError, NetworkError};
+use crate::error::{Error, NetworkError};
 use crate::network::messages::{ApplicationMessage, Message, RaftMessage};
 use crate::transport::{NetworkTransport, tcp::TcpTransport, websocket::WebSocketTransport};
 use crate::verification::{ConnectionVerification, ConnectionVerifier};
@@ -128,7 +128,7 @@ where
         governance: Arc<G>,
         attestor: Arc<A>,
         local_node_id: NodeId,
-        transport_config: crate::transport::TransportConfig,
+        transport_config: crate::config::TransportConfig,
         topology: Arc<crate::topology::TopologyManager<G>>,
     ) -> Result<Self, NetworkError> {
         let local_public_key = local_node_id.clone();
@@ -148,16 +148,17 @@ where
         );
 
         // Create transport based on configuration
-        let transport: Arc<dyn NetworkTransport> =
-            match transport_config {
-                crate::transport::TransportConfig::Tcp { listen_addr } => Arc::new(
-                    TcpTransport::new(listen_addr, connection_verifier, topology.clone()),
-                ),
-                crate::transport::TransportConfig::WebSocket => Arc::new(WebSocketTransport::new(
-                    connection_verifier,
-                    topology.clone(),
-                )),
-            };
+        let transport: Arc<dyn NetworkTransport> = match transport_config {
+            crate::config::TransportConfig::Tcp { listen_addr } => Arc::new(TcpTransport::new(
+                listen_addr,
+                connection_verifier,
+                topology.clone(),
+            )),
+            crate::config::TransportConfig::WebSocket => Arc::new(WebSocketTransport::new(
+                connection_verifier,
+                topology.clone(),
+            )),
+        };
 
         // Create network channels
         let network_channels = NetworkChannels::new();
@@ -300,13 +301,11 @@ where
         &self,
         target_node_id: NodeId,
         message: Message,
-    ) -> Result<(), ConsensusError> {
+    ) -> Result<(), Error> {
         self.network_channels
             .outgoing_message_tx
             .send((target_node_id, message, None))
-            .map_err(|_| {
-                ConsensusError::InvalidMessage("Outgoing message channel closed".to_string())
-            })
+            .map_err(|_| Error::InvalidMessage("Outgoing message channel closed".to_string()))
     }
 
     /// Send a message with correlation ID
@@ -315,23 +314,19 @@ where
         target_node_id: NodeId,
         message: Message,
         correlation_id: Uuid,
-    ) -> Result<(), ConsensusError> {
+    ) -> Result<(), Error> {
         self.network_channels
             .outgoing_message_tx
             .send((target_node_id, message, Some(correlation_id)))
-            .map_err(|_| {
-                ConsensusError::InvalidMessage("Outgoing message channel closed".to_string())
-            })
+            .map_err(|_| Error::InvalidMessage("Outgoing message channel closed".to_string()))
     }
 
     /// Get connected peers from transport
-    pub async fn get_connected_peers(
-        &self,
-    ) -> Result<Vec<(NodeId, bool, SystemTime)>, ConsensusError> {
+    pub async fn get_connected_peers(&self) -> Result<Vec<(NodeId, bool, SystemTime)>, Error> {
         self.transport
             .get_connected_peers()
             .await
-            .map_err(ConsensusError::Network)
+            .map_err(Error::Network)
     }
 
     /// Shutdown the underlying transport
@@ -462,7 +457,7 @@ where
         data: &[u8],
         sender_node_id: &NodeId,
         cose_handler: &CoseHandler,
-    ) -> Result<(Message, crate::cose::CoseMetadata), ConsensusError> {
+    ) -> Result<(Message, crate::cose::CoseMetadata), Error> {
         // Deserialize and verify COSE message
         let cose_message = cose_handler.deserialize_cose_message(data)?;
 
@@ -472,9 +467,8 @@ where
             .await?;
 
         // Deserialize the actual message
-        let message: Message = ciborium::de::from_reader(payload_bytes.as_ref()).map_err(|e| {
-            ConsensusError::InvalidMessage(format!("Failed to deserialize message: {e}"))
-        })?;
+        let message: Message = ciborium::de::from_reader(payload_bytes.as_ref())
+            .map_err(|e| Error::InvalidMessage(format!("Failed to deserialize message: {e}")))?;
 
         Ok((message, metadata))
     }
@@ -484,12 +478,11 @@ where
         message: &Message,
         correlation_id: Option<Uuid>,
         cose_handler: &CoseHandler,
-    ) -> Result<Bytes, ConsensusError> {
+    ) -> Result<Bytes, Error> {
         // Serialize the message using CBOR
         let mut message_data = Vec::new();
-        ciborium::ser::into_writer(message, &mut message_data).map_err(|e| {
-            ConsensusError::InvalidMessage(format!("Failed to serialize message: {e}"))
-        })?;
+        ciborium::ser::into_writer(message, &mut message_data)
+            .map_err(|e| Error::InvalidMessage(format!("Failed to serialize message: {e}")))?;
 
         // Determine message type
         let message_type = match message {

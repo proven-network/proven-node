@@ -3,12 +3,11 @@
 //! This module provides the RaftAdapter and NetworkFactory that bridge
 //! OpenRaft with our transport layer.
 
-use crate::Node;
-use crate::{GlobalTypeConfig, NodeId};
-
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
+use openraft::RaftTypeConfig;
 use openraft::error::{InstallSnapshotError, RPCError, RaftError};
 use openraft::network::{RPCOption, RaftNetwork, RaftNetworkFactory};
 use openraft::raft::{
@@ -19,40 +18,56 @@ use tokio::sync::{RwLock, mpsc, oneshot};
 use uuid::Uuid;
 
 // Type aliases for complex channel types
-type RaftRequestSender = mpsc::UnboundedSender<(NodeId, Uuid, Box<RaftAdapterRequest>)>;
-type RaftResponseReceiver = mpsc::UnboundedReceiver<(NodeId, Uuid, Box<RaftAdapterResponse>)>;
-type ResponseSender = oneshot::Sender<Box<RaftAdapterResponse>>;
-type ResponseReceiver = oneshot::Receiver<Box<RaftAdapterResponse>>;
+#[allow(type_alias_bounds)]
+type RaftRequestSender<C: RaftTypeConfig> =
+    mpsc::UnboundedSender<(C::NodeId, Uuid, Box<RaftAdapterRequest<C>>)>;
+#[allow(type_alias_bounds)]
+type RaftResponseReceiver<C: RaftTypeConfig> =
+    mpsc::UnboundedReceiver<(C::NodeId, Uuid, Box<RaftAdapterResponse<C>>)>;
+type ResponseSender<C> = oneshot::Sender<Box<RaftAdapterResponse<C>>>;
+type ResponseReceiver<C> = oneshot::Receiver<Box<RaftAdapterResponse<C>>>;
 
-/// Raft adapter request types
-pub enum RaftAdapterRequest {
+/// Raft adapter request
+pub enum RaftAdapterRequest<C>
+where
+    C: RaftTypeConfig,
+{
     /// Append entries request
-    AppendEntries(AppendEntriesRequest<GlobalTypeConfig>),
+    AppendEntries(AppendEntriesRequest<C>),
     /// Install snapshot request
-    InstallSnapshot(InstallSnapshotRequest<GlobalTypeConfig>),
+    InstallSnapshot(InstallSnapshotRequest<C>),
     /// Vote request
-    Vote(VoteRequest<GlobalTypeConfig>),
+    Vote(VoteRequest<C>),
 }
 
-/// Raft adapter response types
-pub enum RaftAdapterResponse {
+/// Raft adapter response
+pub enum RaftAdapterResponse<C>
+where
+    C: RaftTypeConfig,
+{
     /// Append entries response
-    AppendEntries(AppendEntriesResponse<GlobalTypeConfig>),
+    AppendEntries(AppendEntriesResponse<C>),
     /// Install snapshot response
-    InstallSnapshot(InstallSnapshotResponse<GlobalTypeConfig>),
+    InstallSnapshot(InstallSnapshotResponse<C>),
     /// Vote response
-    Vote(Box<VoteResponse<GlobalTypeConfig>>),
+    Vote(Box<VoteResponse<C>>),
 }
 
 /// RaftCorrelator manages correlation IDs and their associated response channels
 /// This eliminates contention by providing direct mapping from correlation ID to response sender
 #[derive(Clone)]
-pub struct RaftCorrelator {
+pub struct RaftCorrelator<C>
+where
+    C: RaftTypeConfig,
+{
     /// Map of correlation IDs to response senders
-    pending_responses: Arc<RwLock<HashMap<Uuid, ResponseSender>>>,
+    pending_responses: Arc<RwLock<HashMap<Uuid, ResponseSender<C>>>>,
 }
 
-impl RaftCorrelator {
+impl<C> RaftCorrelator<C>
+where
+    C: RaftTypeConfig,
+{
     /// Create a new RaftCorrelator
     pub fn new() -> Self {
         Self {
@@ -61,7 +76,7 @@ impl RaftCorrelator {
     }
 
     /// Register a correlation ID and return a oneshot receiver for the response
-    pub(crate) async fn register(&self, correlation_id: Uuid) -> ResponseReceiver {
+    pub(crate) async fn register(&self, correlation_id: Uuid) -> ResponseReceiver<C> {
         let (tx, rx) = oneshot::channel();
         let mut pending = self.pending_responses.write().await;
         pending.insert(correlation_id, tx);
@@ -72,7 +87,7 @@ impl RaftCorrelator {
     pub(crate) async fn send_response(
         &self,
         correlation_id: Uuid,
-        response: Box<RaftAdapterResponse>,
+        response: Box<RaftAdapterResponse<C>>,
     ) {
         let mut pending = self.pending_responses.write().await;
         if let Some(sender) = pending.remove(&correlation_id) {
@@ -95,22 +110,35 @@ impl RaftCorrelator {
     }
 }
 
-impl Default for RaftCorrelator {
+impl<C> Default for RaftCorrelator<C>
+where
+    C: RaftTypeConfig,
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
 /// Factory for creating Raft network instances
-pub struct NetworkFactory {
-    message_tx: RaftRequestSender,
+pub struct NetworkFactory<C>
+where
+    C: RaftTypeConfig,
+{
+    message_tx: RaftRequestSender<C>,
     /// Correlator for managing response correlation
-    correlator: RaftCorrelator,
+    correlator: RaftCorrelator<C>,
+    _marker: PhantomData<C>,
 }
 
-impl NetworkFactory {
+impl<C> NetworkFactory<C>
+where
+    C: RaftTypeConfig,
+{
     /// Create a new Raft network factory
-    pub(crate) fn new(message_tx: RaftRequestSender, message_rx: RaftResponseReceiver) -> Self {
+    pub(crate) fn new(
+        message_tx: RaftRequestSender<C>,
+        message_rx: RaftResponseReceiver<C>,
+    ) -> Self {
         let correlator = RaftCorrelator::new();
 
         // Spawn the central message processing loop
@@ -122,13 +150,14 @@ impl NetworkFactory {
         Self {
             message_tx,
             correlator,
+            _marker: PhantomData,
         }
     }
 
     /// Central message processing loop that distributes responses via correlator
     async fn message_processing_loop(
-        mut message_rx: RaftResponseReceiver,
-        correlator: RaftCorrelator,
+        mut message_rx: RaftResponseReceiver<C>,
+        correlator: RaftCorrelator<C>,
     ) {
         while let Some((_node_id, correlation_id, response)) = message_rx.recv().await {
             // Send response directly to the waiting correlation ID
@@ -137,14 +166,21 @@ impl NetworkFactory {
     }
 }
 
-impl RaftNetworkFactory<GlobalTypeConfig> for NetworkFactory {
-    type Network = RaftAdapter;
+impl<C> RaftNetworkFactory<C> for NetworkFactory<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Clone,
+    C::Entry: Clone,
+    C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+{
+    type Network = RaftAdapter<C>;
 
-    async fn new_client(&mut self, target: NodeId, _node: &Node) -> Self::Network {
+    async fn new_client(&mut self, target: C::NodeId, _node: &C::Node) -> Self::Network {
         RaftAdapter {
             correlator: self.correlator.clone(),
             message_tx: self.message_tx.clone(),
             target_node_id: target,
+            _marker: PhantomData,
         }
     }
 }
@@ -152,26 +188,38 @@ impl RaftNetworkFactory<GlobalTypeConfig> for NetworkFactory {
 /// Network interface for OpenRaft
 /// Adapter that handles Raft protocol messages for a specific target node
 /// This implements RaftNetwork and knows how to communicate with remote Raft instances
-pub struct RaftAdapter {
+pub struct RaftAdapter<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Clone,
+    C::Entry: Clone,
+    C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+{
     /// Correlator for handling response correlation
-    correlator: RaftCorrelator,
+    correlator: RaftCorrelator<C>,
 
     /// Channel for sending messages through transport
-    message_tx: RaftRequestSender,
+    message_tx: RaftRequestSender<C>,
 
     /// Target node ID
-    target_node_id: NodeId,
+    target_node_id: C::NodeId,
+
+    /// Marker for the type config
+    _marker: PhantomData<C>,
 }
 
-impl RaftNetwork<GlobalTypeConfig> for RaftAdapter {
+impl<C> RaftNetwork<C> for RaftAdapter<C>
+where
+    C: RaftTypeConfig,
+    C::NodeId: Clone,
+    C::Entry: Clone,
+    C::SnapshotData: tokio::io::AsyncRead + tokio::io::AsyncWrite + tokio::io::AsyncSeek + Unpin,
+{
     async fn append_entries(
         &mut self,
-        rpc: AppendEntriesRequest<GlobalTypeConfig>,
+        rpc: AppendEntriesRequest<C>,
         option: RPCOption,
-    ) -> Result<
-        AppendEntriesResponse<GlobalTypeConfig>,
-        RPCError<GlobalTypeConfig, RaftError<GlobalTypeConfig>>,
-    > {
+    ) -> Result<AppendEntriesResponse<C>, RPCError<C, RaftError<C>>> {
         let correlation_id = Uuid::new_v4();
         let timeout = option.hard_ttl();
 
@@ -221,12 +269,9 @@ impl RaftNetwork<GlobalTypeConfig> for RaftAdapter {
 
     async fn install_snapshot(
         &mut self,
-        rpc: InstallSnapshotRequest<GlobalTypeConfig>,
+        rpc: InstallSnapshotRequest<C>,
         option: RPCOption,
-    ) -> Result<
-        InstallSnapshotResponse<GlobalTypeConfig>,
-        RPCError<GlobalTypeConfig, RaftError<GlobalTypeConfig, InstallSnapshotError>>,
-    > {
+    ) -> Result<InstallSnapshotResponse<C>, RPCError<C, RaftError<C, InstallSnapshotError>>> {
         let correlation_id = Uuid::new_v4();
         let timeout = option.hard_ttl();
 
@@ -245,7 +290,7 @@ impl RaftNetwork<GlobalTypeConfig> for RaftAdapter {
         // Wait for response with timeout
         match tokio::time::timeout(timeout, response_rx).await {
             Ok(Ok(response)) => match *response {
-                RaftAdapterResponse::InstallSnapshot(resp) => return Ok(resp),
+                RaftAdapterResponse::<C>::InstallSnapshot(resp) => return Ok(resp),
                 _ => {
                     return Err(RPCError::Network(openraft::error::NetworkError::new(
                         &std::io::Error::new(
@@ -276,12 +321,9 @@ impl RaftNetwork<GlobalTypeConfig> for RaftAdapter {
 
     async fn vote(
         &mut self,
-        rpc: VoteRequest<GlobalTypeConfig>,
+        rpc: VoteRequest<C>,
         option: RPCOption,
-    ) -> Result<
-        VoteResponse<GlobalTypeConfig>,
-        RPCError<GlobalTypeConfig, RaftError<GlobalTypeConfig>>,
-    > {
+    ) -> Result<VoteResponse<C>, RPCError<C, RaftError<C>>> {
         let correlation_id = Uuid::new_v4();
         let timeout = option.hard_ttl();
 

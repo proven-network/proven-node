@@ -14,7 +14,6 @@ fdlimit.workspace = true
 futures.workspace = true
 hex.workspace = true
 http.workspace = true
-openraft.workspace = true
 proven-applications.workspace = true
 proven-attestation.workspace = true
 proven-attestation-nsm.workspace = true

@@ -386,8 +386,10 @@ mod tests {
     use tokio::sync::mpsc;
 
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::config::{ClusterJoinRetryConfig, ConsensusConfig};
-    use proven_consensus::{Consensus, RaftConfig, StorageConfig, TransportConfig};
+    use proven_consensus::config::{ClusterJoinRetryConfig, ConsensusConfigBuilder};
+    use proven_consensus::{
+        Consensus, HierarchicalConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
+    };
     use proven_governance_mock::MockGovernance;
 
     use crate::subject::ConsensusSubject;
@@ -480,19 +482,20 @@ mod tests {
         // Create attestor
         let attestor = Arc::new(MockAttestor::new());
 
-        // Create config
-        let config = ConsensusConfig {
-            governance,
-            attestor,
-            signing_key,
-            raft_config: RaftConfig::default(),
-            transport_config: TransportConfig::Tcp {
+        // Create config using builder
+        let config = ConsensusConfigBuilder::new()
+            .governance(governance)
+            .attestor(attestor)
+            .signing_key(signing_key)
+            .raft_config(RaftConfig::default())
+            .transport_config(TransportConfig::Tcp {
                 listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            },
-            storage_config: StorageConfig::Memory,
-            cluster_discovery_timeout: None,
-            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
-        };
+            })
+            .storage_config(StorageConfig::Memory)
+            .cluster_join_retry_config(ClusterJoinRetryConfig::default())
+            .hierarchical_config(HierarchicalConsensusConfig::default())
+            .build()
+            .expect("Failed to build consensus config");
 
         // Create consensus
         let consensus = Consensus::new(config).await.unwrap();

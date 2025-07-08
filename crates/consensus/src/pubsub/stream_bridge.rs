@@ -14,9 +14,9 @@ use parking_lot::RwLock;
 use tracing::{debug, error, info};
 
 use crate::NodeId;
-use crate::global::{
-    GlobalManager, GlobalOperation, GlobalRequest, PubSubMessageSource, StreamStore,
-};
+use crate::global::{GlobalManager, GlobalState, PubSubMessageSource};
+use crate::hierarchical_orchestrator::HierarchicalOrchestrator;
+use crate::operations::LocalStreamOperation;
 use crate::subscription::SubscriptionInvoker;
 use proven_governance::Governance;
 
@@ -46,8 +46,10 @@ where
     pubsub_manager: Arc<PubSubManager<G, A>>,
     /// Global manager for consensus operations
     global_manager: Arc<GlobalManager<G, A>>,
-    /// Stream store for registering handlers
-    stream_store: Arc<StreamStore>,
+    /// Global state for registering handlers
+    global_state: Arc<GlobalState>,
+    /// Hierarchical orchestrator
+    hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
     /// Stream subscriptions: stream_name -> (subject_pattern -> subscription_handle)
     stream_subscriptions: Arc<RwLock<HashMap<String, HashMap<String, StreamSubscriptionHandle>>>>,
     /// Background task handle
@@ -63,12 +65,14 @@ where
     pub fn new(
         pubsub_manager: Arc<PubSubManager<G, A>>,
         global_manager: Arc<GlobalManager<G, A>>,
-        stream_store: Arc<StreamStore>,
+        global_state: Arc<GlobalState>,
+        hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
     ) -> Self {
         Self {
             pubsub_manager,
             global_manager,
-            stream_store,
+            global_state,
+            hierarchical_orchestrator,
             stream_subscriptions: Arc::new(RwLock::new(HashMap::new())),
             task_handle: None,
         }
@@ -90,10 +94,11 @@ where
             stream_name.to_string(),
             subject_pattern.to_string(),
             self.global_manager.clone(),
+            self.hierarchical_orchestrator.clone(),
         );
 
-        // Register with the stream store's subscription handlers
-        self.stream_store
+        // Register with the global state's subscription handlers
+        self.global_state
             .register_subscription_handler(Arc::new(handler));
 
         // Track the subscription
@@ -125,8 +130,8 @@ where
 
         let subscription_id = format!("{}-{}", stream_name, subject_pattern);
 
-        // Unregister from stream store
-        self.stream_store
+        // Unregister from global state
+        self.global_state
             .unregister_subscription_handler(&subscription_id);
 
         // Remove from tracking
@@ -166,7 +171,7 @@ where
         let subscriptions = self.stream_subscriptions.write();
         for (_, stream_subs) in subscriptions.iter() {
             for handle in stream_subs.values() {
-                self.stream_store
+                self.global_state
                     .unregister_subscription_handler(&handle.subscription_id);
             }
         }
@@ -187,7 +192,9 @@ where
     /// Subscription ID
     subscription_id: String,
     /// Global manager for consensus operations
-    global_manager: Arc<GlobalManager<G, A>>,
+    _global_manager: Arc<GlobalManager<G, A>>,
+    /// Hierarchical orchestrator
+    hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
 }
 
 impl<G, A> StreamSubscriptionHandler<G, A>
@@ -200,13 +207,15 @@ where
         stream_name: String,
         subject_pattern: String,
         global_manager: Arc<GlobalManager<G, A>>,
+        hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
     ) -> Self {
         let subscription_id = format!("{}-{}", stream_name, subject_pattern);
         Self {
             stream_name,
             subject_pattern,
             subscription_id,
-            global_manager,
+            _global_manager: global_manager,
+            hierarchical_orchestrator,
         }
     }
 }
@@ -257,20 +266,24 @@ where
         };
 
         // Submit to consensus for persistent storage
-        let request = GlobalRequest {
-            operation: GlobalOperation::PublishFromPubSub {
-                stream_name: self.stream_name.clone(),
-                subject: subject.to_string(),
-                data: message,
-                source,
-            },
+        // Use hierarchical routing
+        let operation = LocalStreamOperation::PublishFromPubSub {
+            stream_name: self.stream_name.clone(),
+            subject: subject.to_string(),
+            data: message,
+            source,
         };
 
-        match self.global_manager.submit_request(request).await {
+        match self
+            .hierarchical_orchestrator
+            .router()
+            .route_stream_operation(&self.stream_name, operation, None)
+            .await
+        {
             Ok(response) => {
                 if response.success {
                     debug!(
-                        "Successfully stored PubSub message to stream '{}' at sequence {}",
+                        "Successfully stored PubSub message to stream '{}' at sequence {:?}",
                         self.stream_name, response.sequence
                     );
                 } else {
@@ -283,7 +296,7 @@ where
             }
             Err(e) => {
                 error!(
-                    "Failed to submit PubSub message to consensus for stream '{}': {}",
+                    "Failed to route PubSub message for stream '{}': {}",
                     self.stream_name, e
                 );
                 Err(Box::new(e))

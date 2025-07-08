@@ -18,15 +18,15 @@ use axum::routing::any;
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use http::StatusCode;
-use openraft::Config as RaftConfig;
 use proven_applications::ApplicationManager;
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
 use proven_cert_store::CertStore;
-use proven_consensus::config::ClusterJoinRetryConfig;
-use proven_consensus::{Consensus, TransportConfig};
-use proven_consensus::{ConsensusConfig, StorageConfig};
+use proven_consensus::config::{ClusterJoinRetryConfig, StorageConfig, TransportConfig};
+use proven_consensus::{
+    Consensus, ConsensusConfigBuilder, HierarchicalConsensusConfig, RaftConfig,
+};
 use proven_core::{BootstrapUpgrade, Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
@@ -1155,25 +1155,30 @@ impl Bootstrap {
         let node_key: [u8; 32] = node_key.try_into().unwrap();
         let node_key = SigningKey::from_bytes(&node_key);
 
-        let consensus = Arc::new(
-            Consensus::new(ConsensusConfig {
-                governance: Arc::new(governance.clone()),
-                attestor: Arc::new(attestor.clone()),
-                signing_key: node_key,
-                raft_config: RaftConfig {
-                    heartbeat_interval: 500,    // 500ms
-                    election_timeout_min: 1500, // 1.5s
-                    election_timeout_max: 3000, // 3s
-                    ..RaftConfig::default()
-                },
-                transport_config: TransportConfig::WebSocket,
-                storage_config: StorageConfig::Memory,
-                cluster_discovery_timeout: Some(Duration::from_secs(30)),
-                cluster_join_retry_config: ClusterJoinRetryConfig::default(),
+        let consensus_config = ConsensusConfigBuilder::new()
+            .governance(Arc::new(governance.clone()))
+            .attestor(Arc::new(attestor.clone()))
+            .signing_key(node_key.clone())
+            .raft_config(RaftConfig {
+                heartbeat_interval: 500,    // 500ms
+                election_timeout_min: 1500, // 1.5s
+                election_timeout_max: 3000, // 3s
+                ..RaftConfig::default()
             })
-            .await
-            .unwrap(),
-        );
+            .transport_config(TransportConfig::WebSocket)
+            .storage_config(StorageConfig::Memory)
+            .cluster_discovery_timeout(Duration::from_secs(30))
+            .cluster_join_retry_config(ClusterJoinRetryConfig {
+                max_attempts: 20,
+                initial_delay: Duration::from_secs(1),
+                max_delay: Duration::from_secs(10),
+                request_timeout: Duration::from_secs(5),
+            })
+            .hierarchical_config(HierarchicalConsensusConfig::default())
+            .build()
+            .map_err(|e| Error::Consensus(format!("Failed to build consensus config: {e}")))?;
+
+        let consensus = Arc::new(Consensus::new(consensus_config).await.unwrap());
 
         let core = Core::new(CoreOptions {
             consensus,

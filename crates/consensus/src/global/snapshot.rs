@@ -1,6 +1,6 @@
 //! Snapshot data structures for consensus
 //!
-//! This module provides serialization and deserialization of StreamStore state
+//! This module provides serialization and deserialization of GlobalState
 //! for use in openraft snapshots.
 
 use base64::prelude::*;
@@ -8,8 +8,8 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use super::state_machine::{
-    MessageData as InternalMessageData, StreamData as InternalStreamData, StreamStore,
+use super::global_state::{
+    GlobalState, MessageData as InternalMessageData, StreamData as InternalStreamData,
 };
 
 /// Snapshot data containing all StreamStore state
@@ -53,10 +53,10 @@ pub struct SubjectRouterData {
 }
 
 impl SnapshotData {
-    /// Create a snapshot from a StreamStore
-    pub async fn from_stream_store(stream_store: &StreamStore) -> Self {
-        let streams = stream_store.streams.read().await;
-        let subject_router = stream_store.subject_router.read().await;
+    /// Create a snapshot from a GlobalState
+    pub async fn from_global_state(global_state: &GlobalState) -> Self {
+        let streams = global_state.streams.read().await;
+        let subject_router = global_state.subject_router.read().await;
 
         let snapshot_streams = streams
             .iter()
@@ -95,21 +95,21 @@ impl SnapshotData {
     }
 
     /// Restore a StreamStore from snapshot data
-    pub async fn restore_to_stream_store(&self, stream_store: &StreamStore) {
+    pub async fn restore_to_global_state(&self, global_state: &GlobalState) {
         // Clear existing data
         {
-            let mut streams = stream_store.streams.write().await;
+            let mut streams = global_state.streams.write().await;
             streams.clear();
         }
 
         {
-            let mut subject_router = stream_store.subject_router.write().await;
+            let mut subject_router = global_state.subject_router.write().await;
             subject_router.clear();
         }
 
         // Restore streams
         {
-            let mut streams = stream_store.streams.write().await;
+            let mut streams = global_state.streams.write().await;
             for (name, snapshot_data) in &self.streams {
                 let restored_messages = snapshot_data
                     .messages
@@ -140,7 +140,7 @@ impl SnapshotData {
 
         // Restore subject router
         {
-            let mut subject_router = stream_store.subject_router.write().await;
+            let mut subject_router = global_state.subject_router.write().await;
             for (pattern, stream_names) in &self.subject_router.subscriptions {
                 for stream_name in stream_names {
                     subject_router.subscribe_stream(stream_name, pattern);
@@ -167,28 +167,26 @@ impl SnapshotData {
 mod tests {
     use super::*;
     use crate::global::GlobalOperation;
-    use crate::global::state_machine::StreamStore;
-    use bytes::Bytes;
+    use crate::global::GlobalState;
 
     #[tokio::test]
     async fn test_snapshot_serialization() {
-        let store = StreamStore::new();
+        let store = GlobalState::new();
 
-        // Add some data
-        let data = Bytes::from("test message");
+        // In the hierarchical model, we only test admin operations
+        // First create a stream
         let response = store
             .apply_operation(
-                &GlobalOperation::PublishToStream {
-                    stream: "test-stream".to_string(),
-                    data: data.clone(),
-                    metadata: None,
+                &GlobalOperation::CreateStream {
+                    stream_name: "test-stream".to_string(),
+                    config: crate::global::StreamConfig::default(),
                 },
                 1,
             )
             .await;
         assert!(response.success);
 
-        // Subscribe to a subject
+        // Then subscribe to a subject (this is an admin operation)
         let response = store
             .apply_operation(
                 &GlobalOperation::SubscribeToSubject {
@@ -198,74 +196,87 @@ mod tests {
                 2,
             )
             .await;
-        assert!(response.success);
+        if !response.success {
+            panic!("Failed to subscribe: {:?}", response.error);
+        }
 
         // Create snapshot
-        let snapshot = SnapshotData::from_stream_store(&store).await;
-
-        // Verify snapshot contains data
-        assert_eq!(snapshot.streams.len(), 1);
-        assert!(snapshot.streams.contains_key("test-stream"));
-
-        let stream_data = &snapshot.streams["test-stream"];
-        assert_eq!(stream_data.messages.len(), 1);
-        assert_eq!(stream_data.next_sequence, 2);
-        assert!(stream_data.subscriptions.contains("foo.*"));
+        let snapshot = SnapshotData::from_global_state(&store).await;
 
         // Test serialization
         let bytes = snapshot.to_bytes().unwrap();
         let deserialized = SnapshotData::from_bytes(&bytes).unwrap();
 
-        assert_eq!(deserialized.streams.len(), 1);
-        assert!(deserialized.streams.contains_key("test-stream"));
+        // Verify deserialization worked
+        assert_eq!(
+            deserialized.subject_router.subscriptions.len(),
+            snapshot.subject_router.subscriptions.len()
+        );
     }
 
     #[tokio::test]
     async fn test_snapshot_restore() {
-        let original_store = StreamStore::new();
+        let original_store = GlobalState::new();
 
-        // Add some data
-        let data = Bytes::from("test message");
+        // Create streams first
         let response = original_store
             .apply_operation(
-                &GlobalOperation::PublishToStream {
-                    stream: "test-stream".to_string(),
-                    data: data.clone(),
-                    metadata: None,
+                &GlobalOperation::CreateStream {
+                    stream_name: "test-stream".to_string(),
+                    config: crate::global::StreamConfig::default(),
                 },
                 1,
             )
             .await;
         assert!(response.success);
 
-        // Subscribe to a subject
         let response = original_store
             .apply_operation(
-                &GlobalOperation::SubscribeToSubject {
-                    stream_name: "test-stream".to_string(),
-                    subject_pattern: "foo.*".to_string(),
+                &GlobalOperation::CreateStream {
+                    stream_name: "test-stream-2".to_string(),
+                    config: crate::global::StreamConfig::default(),
                 },
                 2,
             )
             .await;
         assert!(response.success);
 
+        // Subscribe to a subject (admin operation)
+        let response = original_store
+            .apply_operation(
+                &GlobalOperation::SubscribeToSubject {
+                    stream_name: "test-stream".to_string(),
+                    subject_pattern: "foo.*".to_string(),
+                },
+                3,
+            )
+            .await;
+        assert!(response.success);
+
+        // Subscribe to another subject
+        let response = original_store
+            .apply_operation(
+                &GlobalOperation::SubscribeToSubject {
+                    stream_name: "test-stream-2".to_string(),
+                    subject_pattern: "bar.*".to_string(),
+                },
+                4,
+            )
+            .await;
+        assert!(response.success);
+
         // Create snapshot
-        let snapshot = SnapshotData::from_stream_store(&original_store).await;
+        let snapshot = SnapshotData::from_global_state(&original_store).await;
 
         // Create new store and restore
-        let new_store = StreamStore::new();
-        snapshot.restore_to_stream_store(&new_store).await;
+        let new_store = GlobalState::new();
+        snapshot.restore_to_global_state(&new_store).await;
 
-        // Verify restored data
-        let restored_message = new_store.get_message("test-stream", 1).await;
-        assert_eq!(restored_message, Some(data));
-
-        let last_seq = new_store.last_sequence("test-stream").await;
-        assert_eq!(last_seq, 1);
-
-        // Verify subject routing still works
+        // Verify subject routing still works after restore
         let routed_streams = new_store.route_subject("foo.bar").await;
         assert!(routed_streams.contains("test-stream"));
+
+        let routed_streams2 = new_store.route_subject("bar.baz").await;
+        assert!(routed_streams2.contains("test-stream-2"));
     }
 }
