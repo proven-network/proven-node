@@ -13,7 +13,7 @@ use tracing::debug;
 use super::{GlobalOperation, GlobalResponse, StreamConfig};
 use crate::allocation::ConsensusGroupId;
 use crate::error::{ConsensusResult, Error};
-use crate::operations::MigrationState;
+use crate::local::MigrationState;
 use crate::pubsub::{SubjectRouter, subject_matches_pattern};
 use crate::subscription::{SubscriptionHandlerMap, SubscriptionInvoker};
 
@@ -191,6 +191,17 @@ impl GlobalState {
                 self.bulk_unsubscribe_from_subjects(stream_name, subject_patterns, sequence)
                     .await
             }
+            GlobalOperation::AssignNodeToGroup { node_id, group_id } => {
+                self.assign_node_to_group(node_id, *group_id, sequence)
+                    .await
+            }
+            GlobalOperation::RemoveNodeFromGroup { node_id, group_id } => {
+                self.remove_node_from_group(node_id, *group_id, sequence)
+                    .await
+            }
+            GlobalOperation::UpdateNodeGroups { node_id, group_ids } => {
+                self.update_node_groups(node_id, group_ids, sequence).await
+            }
             _ => {
                 // Handle other admin operations that aren't implemented yet
                 GlobalResponse {
@@ -303,6 +314,134 @@ impl GlobalState {
     pub async fn get_group(&self, group_id: ConsensusGroupId) -> Option<ConsensusGroupInfo> {
         let groups = self.consensus_groups.read().await;
         groups.get(&group_id).cloned()
+    }
+
+    /// Assign a node to a consensus group
+    async fn assign_node_to_group(
+        &self,
+        node_id: &crate::NodeId,
+        group_id: ConsensusGroupId,
+        sequence: u64,
+    ) -> GlobalResponse {
+        let mut groups = self.consensus_groups.write().await;
+
+        if let Some(group) = groups.get_mut(&group_id) {
+            // Check if node is already in the group
+            if group.members.contains(node_id) {
+                return GlobalResponse {
+                    success: false,
+                    sequence,
+                    error: Some(format!(
+                        "Node {:?} is already in group {:?}",
+                        node_id, group_id
+                    )),
+                };
+            }
+
+            // Add node to group
+            group.members.push(node_id.clone());
+
+            debug!("Assigned node {:?} to group {:?}", node_id, group_id);
+
+            GlobalResponse {
+                success: true,
+                sequence,
+                error: None,
+            }
+        } else {
+            GlobalResponse {
+                success: false,
+                sequence,
+                error: Some(format!("Consensus group {:?} not found", group_id)),
+            }
+        }
+    }
+
+    /// Remove a node from a consensus group
+    async fn remove_node_from_group(
+        &self,
+        node_id: &crate::NodeId,
+        group_id: ConsensusGroupId,
+        sequence: u64,
+    ) -> GlobalResponse {
+        let mut groups = self.consensus_groups.write().await;
+
+        if let Some(group) = groups.get_mut(&group_id) {
+            // Remove node from group
+            let original_len = group.members.len();
+            group.members.retain(|id| id != node_id);
+
+            if group.members.len() < original_len {
+                debug!("Removed node {:?} from group {:?}", node_id, group_id);
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            } else {
+                GlobalResponse {
+                    success: false,
+                    sequence,
+                    error: Some(format!(
+                        "Node {:?} was not in group {:?}",
+                        node_id, group_id
+                    )),
+                }
+            }
+        } else {
+            GlobalResponse {
+                success: false,
+                sequence,
+                error: Some(format!("Consensus group {:?} not found", group_id)),
+            }
+        }
+    }
+
+    /// Update a node's group assignments (complete replacement)
+    async fn update_node_groups(
+        &self,
+        node_id: &crate::NodeId,
+        new_group_ids: &[ConsensusGroupId],
+        sequence: u64,
+    ) -> GlobalResponse {
+        let mut groups = self.consensus_groups.write().await;
+
+        // First, remove the node from all existing groups
+        for group in groups.values_mut() {
+            group.members.retain(|id| id != node_id);
+        }
+
+        // Then add to specified groups
+        let mut errors = Vec::new();
+        for group_id in new_group_ids {
+            if let Some(group) = groups.get_mut(group_id) {
+                if !group.members.contains(node_id) {
+                    group.members.push(node_id.clone());
+                }
+            } else {
+                errors.push(format!("Group {:?} not found", group_id));
+            }
+        }
+
+        if errors.is_empty() {
+            debug!(
+                "Updated node {:?} group assignments to {:?}",
+                node_id, new_group_ids
+            );
+
+            GlobalResponse {
+                success: true,
+                sequence,
+                error: None,
+            }
+        } else {
+            GlobalResponse {
+                success: false,
+                sequence,
+                error: Some(format!("Errors updating groups: {}", errors.join(", "))),
+            }
+        }
     }
 
     // ... Additional methods would be moved here from state_machine.rs ...

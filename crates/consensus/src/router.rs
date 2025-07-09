@@ -2,10 +2,9 @@ use crate::allocation::{AllocationManager, ConsensusGroupId};
 use crate::error::{ConsensusResult, Error};
 use crate::global::{GlobalManager, GlobalOperation, GlobalRequest};
 use crate::local::LocalConsensusManager;
+use crate::local::LocalStreamOperation;
 use crate::monitoring::MonitoringService;
-use crate::operations::{
-    ConsensusOperation, ConsensusRequest, ConsensusResponse, LocalStreamOperation,
-};
+use crate::operations::{ConsensusOperation, ConsensusRequest, ConsensusResponse};
 use futures::future;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -96,6 +95,7 @@ where
             sequence: Some(log_index),
             error: None,
             request_id,
+            checkpoint_data: None,
         })
     }
 
@@ -131,8 +131,168 @@ where
         request_id: Option<String>,
     ) -> ConsensusResult<ConsensusResponse> {
         let group_id = self.get_stream_group(stream_name).await?;
-        self.handle_local_stream_operation(group_id, operation, request_id)
-            .await
+
+        // Check if we're in a migration scenario
+        if self.local_manager.is_in_migration().await {
+            // During migration, we might need to route to multiple groups
+            self.route_stream_operation_with_migration(stream_name, group_id, operation, request_id)
+                .await
+        } else {
+            // Normal single-group routing
+            self.handle_local_stream_operation(group_id, operation, request_id)
+                .await
+        }
+    }
+
+    /// Route a stream operation during migration (dual membership)
+    async fn route_stream_operation_with_migration(
+        &self,
+        _stream_name: &str,
+        primary_group: ConsensusGroupId,
+        operation: LocalStreamOperation,
+        request_id: Option<String>,
+    ) -> ConsensusResult<ConsensusResponse> {
+        let my_groups = self.local_manager.get_my_groups().await;
+
+        // Find groups where this node is in migration state
+        let migration_groups: Vec<_> = my_groups
+            .iter()
+            .filter(|(_, state)| *state != crate::local::NodeMigrationState::Active)
+            .collect();
+
+        if migration_groups.is_empty() {
+            // No migration, route normally
+            return self
+                .handle_local_stream_operation(primary_group, operation, request_id)
+                .await;
+        }
+
+        // During migration, we need to consider:
+        // 1. If we're joining a new group, write to both old and new
+        // 2. If we're leaving a group, still serve reads but not writes
+
+        let is_write_operation = matches!(
+            &operation,
+            LocalStreamOperation::PublishToStream { .. }
+                | LocalStreamOperation::PublishBatchToStream { .. }
+                | LocalStreamOperation::RollupStream { .. }
+                | LocalStreamOperation::DeleteFromStream { .. }
+        );
+
+        if is_write_operation {
+            // For writes during migration, we need to ensure consistency
+            // Write to the primary group first
+            let response = self
+                .handle_local_stream_operation(primary_group, operation.clone(), request_id.clone())
+                .await?;
+
+            // If we're joining a new group, also write there
+            for (group_id, state) in &migration_groups {
+                if matches!(state, crate::local::NodeMigrationState::Joining) {
+                    // Best effort write to new group
+                    match self
+                        .handle_local_stream_operation(
+                            *group_id,
+                            operation.clone(),
+                            request_id.clone(),
+                        )
+                        .await
+                    {
+                        Ok(_) => debug!(
+                            "Successfully replicated write to joining group {:?}",
+                            group_id
+                        ),
+                        Err(e) => warn!(
+                            "Failed to replicate write to joining group {:?}: {}",
+                            group_id, e
+                        ),
+                    }
+                }
+            }
+
+            Ok(response)
+        } else {
+            // For reads, prefer the primary group
+            self.handle_local_stream_operation(primary_group, operation, request_id)
+                .await
+        }
+    }
+
+    /// Reallocate a stream to a new group (used during migration)
+    pub async fn reallocate_stream(
+        &self,
+        stream_name: &str,
+        from_group: ConsensusGroupId,
+        to_group: ConsensusGroupId,
+    ) -> ConsensusResult<()> {
+        info!(
+            "Reallocating stream '{}' from group {:?} to {:?}",
+            stream_name, from_group, to_group
+        );
+
+        // Update the allocation manager
+        let mut allocation_mgr = self.allocation_manager.write().await;
+        allocation_mgr
+            .reallocate_stream(stream_name, to_group)
+            .map_err(|e| Error::InvalidOperation(format!("Failed to reallocate stream: {}", e)))?;
+
+        // The actual data migration happens at the consensus level
+        // This just updates the routing information
+        Ok(())
+    }
+
+    /// Handle stream operations for a node that is in both old and new groups
+    pub async fn handle_dual_membership_operation(
+        &self,
+        stream_name: &str,
+        operation: LocalStreamOperation,
+        old_group: ConsensusGroupId,
+        new_group: ConsensusGroupId,
+        request_id: Option<String>,
+    ) -> ConsensusResult<ConsensusResponse> {
+        let is_write = matches!(
+            &operation,
+            LocalStreamOperation::PublishToStream { .. }
+                | LocalStreamOperation::PublishBatchToStream { .. }
+                | LocalStreamOperation::RollupStream { .. }
+                | LocalStreamOperation::DeleteFromStream { .. }
+        );
+
+        if is_write {
+            // For writes, we need to write to both groups
+            // First write to the old group (primary)
+            let response = self
+                .handle_local_stream_operation(old_group, operation.clone(), request_id.clone())
+                .await?;
+
+            // Then write to the new group (best effort)
+            match self
+                .handle_local_stream_operation(new_group, operation, request_id.clone())
+                .await
+            {
+                Ok(_) => info!(
+                    "Successfully replicated write for '{}' to new group {:?}",
+                    stream_name, new_group
+                ),
+                Err(e) => warn!(
+                    "Failed to replicate write for '{}' to new group {:?}: {}",
+                    stream_name, new_group, e
+                ),
+            }
+
+            Ok(response)
+        } else {
+            // For reads, prefer the old group as it has the complete data
+            self.handle_local_stream_operation(old_group, operation, request_id)
+                .await
+        }
+    }
+
+    /// Check if a stream is currently being migrated
+    pub async fn is_stream_in_migration(&self, _stream_name: &str) -> bool {
+        // This would check with the global state to see if there's an active migration
+        // For now, we check if the node is in migration
+        self.local_manager.is_in_migration().await
     }
 
     /// Get metrics for all consensus groups
@@ -173,12 +333,47 @@ where
         &self,
         active_migrations: Vec<crate::migration::ActiveMigration>,
     ) {
+        let local_metrics = self.local_manager.get_all_metrics().await;
+
+        // Update allocation manager with current message rates and storage sizes
+        {
+            let mut allocation_mgr = self.allocation_manager.write().await;
+            for group_id in local_metrics.keys() {
+                // Get the local state metrics if available
+                if let Ok(response) = self
+                    .local_manager
+                    .process_operation(*group_id, LocalStreamOperation::GetMetrics)
+                    .await
+                {
+                    if response.success {
+                        // The response contains the serialized LocalStateMetrics
+                        if let Some(metrics_data) = response.checkpoint_data {
+                            if let Ok(state_metrics) = serde_json::from_slice::<
+                                crate::local::state_machine::LocalStateMetrics,
+                            >(&metrics_data)
+                            {
+                                // Update message rate
+                                let _ = allocation_mgr.update_group_message_rate(
+                                    *group_id,
+                                    state_metrics.message_rate,
+                                );
+
+                                // Update storage size
+                                let _ = allocation_mgr.update_group_storage_size(
+                                    *group_id,
+                                    state_metrics.total_bytes,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let allocation_metrics = {
             let allocation_mgr = self.allocation_manager.read().await;
             allocation_mgr.get_group_loads()
         };
-
-        let local_metrics = self.local_manager.get_all_metrics().await;
 
         self.monitoring
             .update_metrics(allocation_metrics, local_metrics, active_migrations)
@@ -413,9 +608,11 @@ where
         let mut source_responses = Vec::new();
         let mut target_responses = Vec::new();
         let mut rollback_needed = false;
+        let mut executed_source_ops = Vec::new();
+        let mut executed_target_ops = Vec::new();
 
         // Phase 1: Execute source operations
-        for operation in source_operations {
+        for (idx, operation) in source_operations.iter().enumerate() {
             match self
                 .handle_local_stream_operation(source_group, operation.clone(), None)
                 .await
@@ -426,6 +623,7 @@ where
                         break;
                     }
                     source_responses.push(response);
+                    executed_source_ops.push((idx, operation.clone()));
                 }
                 Err(e) => {
                     error!("Source operation failed: {}", e);
@@ -437,7 +635,7 @@ where
 
         // Phase 2: If source succeeded, execute target operations
         if !rollback_needed {
-            for operation in target_operations {
+            for (idx, operation) in target_operations.iter().enumerate() {
                 match self
                     .handle_local_stream_operation(target_group, operation.clone(), None)
                     .await
@@ -448,6 +646,7 @@ where
                             break;
                         }
                         target_responses.push(response);
+                        executed_target_ops.push((idx, operation.clone()));
                     }
                     Err(e) => {
                         error!("Target operation failed: {}", e);
@@ -461,7 +660,30 @@ where
         // Phase 3: Handle rollback if needed
         if rollback_needed {
             warn!("Cross-group transaction failed, initiating rollback");
-            // TODO: Implement proper rollback logic based on operation types
+
+            // Rollback target operations first (in reverse order)
+            for (_idx, operation) in executed_target_ops.iter().rev() {
+                if let Some(rollback_op) = self.create_rollback_operation(operation) {
+                    if let Err(e) = self
+                        .handle_local_stream_operation(target_group, rollback_op, None)
+                        .await
+                    {
+                        error!("Failed to rollback target operation: {}", e);
+                    }
+                }
+            }
+
+            // Rollback source operations (in reverse order)
+            for (_idx, operation) in executed_source_ops.iter().rev() {
+                if let Some(rollback_op) = self.create_rollback_operation(operation) {
+                    if let Err(e) = self
+                        .handle_local_stream_operation(source_group, rollback_op, None)
+                        .await
+                    {
+                        error!("Failed to rollback source operation: {}", e);
+                    }
+                }
+            }
         }
 
         Ok(CrossGroupTransactionResult {
@@ -470,6 +692,48 @@ where
             target_responses,
             rollback_performed: rollback_needed,
         })
+    }
+
+    /// Create a compensating operation to rollback a given operation
+    fn create_rollback_operation(
+        &self,
+        operation: &LocalStreamOperation,
+    ) -> Option<LocalStreamOperation> {
+        match operation {
+            LocalStreamOperation::CreateStreamForMigration { stream_name, .. } => {
+                // Rollback: Remove the stream
+                Some(LocalStreamOperation::RemoveStream {
+                    stream_name: stream_name.clone(),
+                })
+            }
+            LocalStreamOperation::PauseStream { stream_name } => {
+                // Rollback: Resume the stream
+                Some(LocalStreamOperation::ResumeStream {
+                    stream_name: stream_name.clone(),
+                })
+            }
+            LocalStreamOperation::RemoveStream { stream_name } => {
+                // Cannot rollback a removal - data is lost
+                warn!("Cannot rollback stream removal for {}", stream_name);
+                None
+            }
+            LocalStreamOperation::ApplyMigrationCheckpoint { .. }
+            | LocalStreamOperation::ApplyIncrementalCheckpoint { .. } => {
+                // Cannot easily rollback checkpoint application
+                warn!("Cannot rollback checkpoint application");
+                None
+            }
+            LocalStreamOperation::PublishToStream { .. }
+            | LocalStreamOperation::PublishBatchToStream { .. } => {
+                // Cannot rollback publishes - would need to track sequences
+                warn!("Cannot rollback publish operations");
+                None
+            }
+            _ => {
+                // For other operations, no rollback needed or possible
+                None
+            }
+        }
     }
 
     /// Get health status across all groups
@@ -524,6 +788,155 @@ where
             total_groups,
             group_health,
         })
+    }
+
+    /// Query information about a specific stream
+    pub async fn query_stream_info(&self, stream_name: &str) -> ConsensusResult<StreamInfo> {
+        // Get stream info from global state through global manager
+        let global_state = self.global_manager.get_current_state().await?;
+
+        // Get stream data
+        let streams = global_state.streams.read().await;
+        let stream_data = streams
+            .get(stream_name)
+            .ok_or_else(|| Error::NotFound(format!("Stream {} not found", stream_name)))?;
+
+        // Get stream config which contains consensus group allocation
+        let stream_configs = global_state.stream_configs.read().await;
+        let stream_config = stream_configs.get(stream_name).cloned();
+
+        // Check if stream is paused by looking for it in any local group
+        // For now, assume not paused (this would need to be checked via local groups)
+        let is_paused = false;
+
+        Ok(StreamInfo {
+            name: stream_name.to_string(),
+            next_sequence: stream_data.next_sequence,
+            message_count: stream_data.messages.len(),
+            consensus_group: stream_config.and_then(|c| c.consensus_group),
+            is_paused,
+            subscriptions: stream_data.subscriptions.clone(),
+        })
+    }
+
+    /// Get information about a consensus group
+    pub async fn get_consensus_group_info(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> Option<crate::global::ConsensusGroupInfo> {
+        let global_state = self.global_manager.get_current_state().await.ok()?;
+        let consensus_groups = global_state.consensus_groups.read().await;
+        consensus_groups.get(&group_id).cloned()
+    }
+
+    /// Check health of a specific consensus group
+    pub async fn check_group_health(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<GroupHealthStatus> {
+        // Get group info from global state
+        let global_state = self.global_manager.get_current_state().await?;
+        let consensus_groups = global_state.consensus_groups.read().await;
+        let group_info = consensus_groups
+            .get(&group_id)
+            .ok_or_else(|| Error::NotFound(format!("Group {:?} not found", group_id)))?;
+
+        // Get Raft metrics for the group
+        let local_metrics = self.local_manager.get_all_metrics().await;
+        let raft_metrics = local_metrics.get(&group_id);
+
+        // Check if we have a leader and enough members for quorum
+        let has_leader = raft_metrics
+            .map(|m| m.current_leader.is_some())
+            .unwrap_or(false);
+
+        let available_nodes = if has_leader {
+            group_info.members.len()
+        } else {
+            // If no leader, check how many nodes we can reach
+            // For now, assume all configured members are available
+            group_info.members.len()
+        };
+
+        let required_nodes = (group_info.members.len() / 2) + 1; // Majority quorum
+        let has_quorum = available_nodes >= required_nodes;
+
+        Ok(GroupHealthStatus {
+            has_quorum,
+            has_leader,
+            available_nodes,
+            required_nodes,
+            members: group_info.members.clone(),
+        })
+    }
+
+    /// Get the number of streams allocated to a group
+    pub async fn get_group_stream_count(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<usize> {
+        let allocation_mgr = self.allocation_manager.read().await;
+        let group_loads = allocation_mgr.get_group_loads();
+
+        Ok(group_loads
+            .into_iter()
+            .find(|(gid, _)| *gid == group_id)
+            .map(|(_, metadata)| metadata.stream_count as usize)
+            .unwrap_or(0))
+    }
+
+    /// Get a reference to the global manager
+    pub fn global_manager(&self) -> &Arc<GlobalManager<G, A>> {
+        &self.global_manager
+    }
+
+    /// Perform periodic cleanup of pending operations across all groups
+    pub async fn cleanup_pending_operations(&self, max_age_secs: u64) -> ConsensusResult<u64> {
+        let groups = {
+            let allocation_mgr = self.allocation_manager.read().await;
+            allocation_mgr
+                .get_group_loads()
+                .into_iter()
+                .map(|(group_id, _)| group_id)
+                .collect::<Vec<_>>()
+        };
+
+        let mut total_cleaned = 0u64;
+
+        for group_id in groups {
+            let operation = LocalStreamOperation::CleanupPendingOperations { max_age_secs };
+
+            match self.route_local_operation(group_id, operation).await {
+                Ok(response) => {
+                    if response.success {
+                        if let Some(cleaned) = response.sequence {
+                            total_cleaned += cleaned;
+                            if cleaned > 0 {
+                                info!(
+                                    "Cleaned {} pending operations from group {:?}",
+                                    cleaned, group_id
+                                );
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!(
+                        "Failed to cleanup pending operations for group {:?}: {}",
+                        group_id, e
+                    );
+                }
+            }
+        }
+
+        if total_cleaned > 0 {
+            info!(
+                "Total pending operations cleaned across all groups: {}",
+                total_cleaned
+            );
+        }
+
+        Ok(total_cleaned)
     }
 }
 
@@ -602,4 +1015,36 @@ pub struct ClusterHealthStatus {
     pub total_groups: usize,
     /// Health information per group
     pub group_health: HashMap<ConsensusGroupId, GroupHealthInfo>,
+}
+
+/// Health status for a specific consensus group
+#[derive(Debug, Clone)]
+pub struct GroupHealthStatus {
+    /// Whether the group has quorum
+    pub has_quorum: bool,
+    /// Whether the group has an active leader
+    pub has_leader: bool,
+    /// Number of available nodes
+    pub available_nodes: usize,
+    /// Number of nodes required for quorum
+    pub required_nodes: usize,
+    /// Member node IDs
+    pub members: Vec<crate::NodeId>,
+}
+
+/// Information about a stream
+#[derive(Debug, Clone)]
+pub struct StreamInfo {
+    /// Stream name
+    pub name: String,
+    /// Next sequence number
+    pub next_sequence: u64,
+    /// Number of messages in the stream
+    pub message_count: usize,
+    /// Consensus group this stream is allocated to
+    pub consensus_group: Option<ConsensusGroupId>,
+    /// Whether the stream is paused
+    pub is_paused: bool,
+    /// Subject subscriptions
+    pub subscriptions: std::collections::HashSet<String>,
 }

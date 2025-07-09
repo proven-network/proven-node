@@ -494,16 +494,9 @@ pub fn is_group_healthy(raft_metrics: &RaftMetrics<LocalTypeConfig>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::NodeId;
 
-    fn test_node_id(seed: u8) -> crate::NodeId {
-        use ed25519_dalek::{SigningKey, VerifyingKey};
-        let mut key_bytes = [0u8; 32];
-        key_bytes[0] = seed;
-        let signing_key = SigningKey::from_bytes(&key_bytes);
-        let verifying_key: VerifyingKey = signing_key.verifying_key();
-        crate::NodeId::new(verifying_key)
-    }
+    use super::*;
 
     #[tokio::test]
     async fn test_monitoring_service() {
@@ -518,7 +511,11 @@ mod tests {
                     stream_count: 10,
                     message_rate: 100.0,
                     storage_size: 1024 * 1024,
-                    members: vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+                    members: vec![
+                        NodeId::from_seed(1),
+                        NodeId::from_seed(2),
+                        NodeId::from_seed(3),
+                    ],
                 },
             ),
             (
@@ -528,7 +525,11 @@ mod tests {
                     stream_count: 5,
                     message_rate: 50.0,
                     storage_size: 512 * 1024,
-                    members: vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+                    members: vec![
+                        NodeId::from_seed(2),
+                        NodeId::from_seed(3),
+                        NodeId::from_seed(4),
+                    ],
                 },
             ),
         ];
@@ -555,7 +556,11 @@ mod tests {
                     stream_count: 20,
                     message_rate: 200.0,
                     storage_size: 2048 * 1024,
-                    members: vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+                    members: vec![
+                        NodeId::from_seed(1),
+                        NodeId::from_seed(2),
+                        NodeId::from_seed(3),
+                    ],
                 },
             ),
             (
@@ -565,7 +570,11 @@ mod tests {
                     stream_count: 10,
                     message_rate: 100.0,
                     storage_size: 1024 * 1024,
-                    members: vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+                    members: vec![
+                        NodeId::from_seed(2),
+                        NodeId::from_seed(3),
+                        NodeId::from_seed(4),
+                    ],
                 },
             ),
             (
@@ -575,7 +584,11 @@ mod tests {
                     stream_count: 10,
                     message_rate: 100.0,
                     storage_size: 1024 * 1024,
-                    members: vec![test_node_id(3), test_node_id(4), test_node_id(5)],
+                    members: vec![
+                        NodeId::from_seed(3),
+                        NodeId::from_seed(4),
+                        NodeId::from_seed(5),
+                    ],
                 },
             ),
         ];
@@ -610,15 +623,27 @@ mod tests {
         // Add groups
         manager.add_group(
             ConsensusGroupId::new(0),
-            vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+            vec![
+                NodeId::from_seed(1),
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+            ],
         );
         manager.add_group(
             ConsensusGroupId::new(1),
-            vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+            vec![
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+            ],
         );
         manager.add_group(
             ConsensusGroupId::new(2),
-            vec![test_node_id(3), test_node_id(4), test_node_id(5)],
+            vec![
+                NodeId::from_seed(3),
+                NodeId::from_seed(4),
+                NodeId::from_seed(5),
+            ],
         );
 
         // Allocate streams unevenly
@@ -696,7 +721,11 @@ mod tests {
                     stream_count: 10,
                     message_rate: 100.0,
                     storage_size: 1024 * 1024,
-                    members: vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+                    members: vec![
+                        NodeId::from_seed(1),
+                        NodeId::from_seed(2),
+                        NodeId::from_seed(3),
+                    ],
                 },
             ),
             (
@@ -706,7 +735,11 @@ mod tests {
                     stream_count: 10,
                     message_rate: 100.0,
                     storage_size: 1024 * 1024,
-                    members: vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+                    members: vec![
+                        NodeId::from_seed(2),
+                        NodeId::from_seed(3),
+                        NodeId::from_seed(4),
+                    ],
                 },
             ),
             (
@@ -716,7 +749,11 @@ mod tests {
                     stream_count: 10,
                     message_rate: 100.0,
                     storage_size: 1024 * 1024,
-                    members: vec![test_node_id(3), test_node_id(4), test_node_id(5)],
+                    members: vec![
+                        NodeId::from_seed(3),
+                        NodeId::from_seed(4),
+                        NodeId::from_seed(5),
+                    ],
                 },
             ),
         ];
@@ -735,7 +772,11 @@ mod tests {
                     stream_count: 20,
                     message_rate: 200.0,
                     storage_size: 2048 * 1024,
-                    members: vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+                    members: vec![
+                        NodeId::from_seed(1),
+                        NodeId::from_seed(2),
+                        NodeId::from_seed(3),
+                    ],
                 },
             ),
             (
@@ -745,7 +786,11 @@ mod tests {
                     stream_count: 5,
                     message_rate: 50.0,
                     storage_size: 512 * 1024,
-                    members: vec![test_node_id(2), test_node_id(3), test_node_id(4)],
+                    members: vec![
+                        NodeId::from_seed(2),
+                        NodeId::from_seed(3),
+                        NodeId::from_seed(4),
+                    ],
                 },
             ),
             (
@@ -755,7 +800,11 @@ mod tests {
                     stream_count: 5,
                     message_rate: 50.0,
                     storage_size: 512 * 1024,
-                    members: vec![test_node_id(3), test_node_id(4), test_node_id(5)],
+                    members: vec![
+                        NodeId::from_seed(3),
+                        NodeId::from_seed(4),
+                        NodeId::from_seed(5),
+                    ],
                 },
             ),
         ];
@@ -781,7 +830,11 @@ mod tests {
         );
         manager.add_group(
             ConsensusGroupId::new(0),
-            vec![test_node_id(1), test_node_id(2), test_node_id(3)],
+            vec![
+                NodeId::from_seed(1),
+                NodeId::from_seed(2),
+                NodeId::from_seed(3),
+            ],
         );
         manager
             .allocate_stream("test-stream".to_string(), 1000)

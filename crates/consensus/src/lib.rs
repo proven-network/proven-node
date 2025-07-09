@@ -16,8 +16,8 @@ pub mod consensus;
 pub mod cose;
 pub mod error;
 pub mod global;
-/// Hierarchical consensus orchestrator
-pub mod hierarchical_orchestrator;
+/// Group allocation algorithm for managing consensus groups
+pub mod group_allocator;
 /// Local consensus management
 pub mod local;
 /// Stream migration protocol
@@ -29,6 +29,8 @@ pub mod node;
 pub mod node_id;
 /// Hierarchical consensus operations
 pub mod operations;
+/// Hierarchical consensus orchestrator
+pub mod orchestrator;
 pub mod pubsub;
 /// Consensus routing
 pub mod router;

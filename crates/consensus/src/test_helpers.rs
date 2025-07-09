@@ -346,3 +346,30 @@ pub fn create_multi_node_governance(ports: &[u16], keys: &[SigningKey]) -> MockG
 
     governance
 }
+
+/// Create a test TopologyManager for testing
+#[cfg(any(test, feature = "test-helpers"))]
+pub async fn create_test_topology_manager() -> crate::topology::TopologyManager<MockGovernance> {
+    use crate::NodeId;
+
+    let signing_key = SigningKey::generate(&mut OsRng);
+    let node_id = NodeId::new(signing_key.verifying_key());
+
+    // TODO: Probably need to allocate governance + topology together.
+    let ports = [
+        proven_util::port_allocator::allocate_port(),
+        proven_util::port_allocator::allocate_port(),
+        proven_util::port_allocator::allocate_port(),
+    ];
+
+    let governance = Arc::new(create_multi_node_governance(
+        &ports,
+        &[
+            signing_key,
+            SigningKey::generate(&mut OsRng),
+            SigningKey::generate(&mut OsRng),
+        ],
+    ));
+
+    crate::topology::TopologyManager::new(governance, node_id)
+}

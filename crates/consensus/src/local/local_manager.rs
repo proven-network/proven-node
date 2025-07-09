@@ -1,3 +1,4 @@
+use super::LocalStreamOperation;
 use super::network_factory::LocalNetworkRegistry;
 use super::storage::factory::{LocalStorageFactory, MemoryStorageFactory};
 use super::{LocalRequest, LocalTypeConfig};
@@ -6,12 +7,14 @@ use crate::error::{ConsensusResult, Error};
 use crate::global::GlobalManager;
 use crate::node::Node;
 use crate::node_id::NodeId;
-use crate::operations::{ConsensusResponse, LocalStreamOperation};
+use crate::operations::ConsensusResponse;
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use openraft::{Config, Raft, RaftMetrics};
 use proven_attestation::Attestor;
 use proven_governance::Governance;
-use std::collections::HashMap;
-use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Manages multiple local consensus groups on a single node
@@ -45,6 +48,19 @@ struct LocalConsensusGroup {
     _members: Vec<NodeId>,
     /// Metrics for monitoring
     _metrics: RaftMetrics<LocalTypeConfig>,
+    /// Migration state for this group
+    migration_state: MigrationState,
+}
+
+/// Migration state for a node in a group
+#[derive(Debug, Clone, PartialEq)]
+pub enum MigrationState {
+    /// Node is a regular member of this group
+    Active,
+    /// Node is joining this group (dual membership - new group)
+    Joining,
+    /// Node is leaving this group (dual membership - old group)
+    Leaving,
 }
 
 impl<G, A> LocalConsensusManager<G, A>
@@ -160,6 +176,7 @@ where
             _id: group_id,
             _members: members,
             _metrics: metrics,
+            migration_state: MigrationState::Active,
         };
 
         groups.insert(group_id, group);
@@ -225,6 +242,7 @@ where
             sequence: response.data.sequence,
             error: response.data.error,
             request_id: None,
+            checkpoint_data: response.data.checkpoint_data,
         })
     }
 
@@ -243,6 +261,102 @@ where
             .map_err(|e| Error::Raft(format!("Failed to add learner: {:?}", e)))?;
 
         Ok(())
+    }
+
+    /// Join a consensus group as part of a migration (dual membership)
+    pub async fn join_group_for_migration(
+        &self,
+        group_id: ConsensusGroupId,
+        members: Vec<NodeId>,
+    ) -> ConsensusResult<()> {
+        let mut groups = self.groups.write().await;
+
+        if groups.contains_key(&group_id) {
+            return Err(Error::AlreadyExists(format!(
+                "Already a member of group {:?}",
+                group_id
+            )));
+        }
+
+        // Create storage for this group using the factory
+        let storage = self.storage_factory.create_storage(group_id)?;
+
+        // Create a customized config for this group
+        let mut config = (*self.base_config).clone();
+        config.heartbeat_interval = 100;
+        config.election_timeout_min = 200;
+        config.election_timeout_max = 400;
+
+        // Get or create network factory for this group
+        let network_factory = self.network_registry.create_network_factory(group_id).await;
+
+        // Register all members with the network registry
+        for member in &members {
+            self.network_registry
+                .assign_node_to_group(member.clone(), group_id)
+                .await;
+        }
+
+        // Create the Raft instance
+        let raft = openraft::Raft::new(
+            self.node_id.clone(),
+            Arc::new(config),
+            network_factory,
+            storage.clone(),
+            storage,
+        )
+        .await
+        .map_err(|e| Error::Raft(format!("Failed to create Raft instance: {:?}", e)))?;
+
+        // Get initial metrics
+        let metrics = raft.metrics().borrow().clone();
+
+        let group = LocalConsensusGroup {
+            raft: Arc::new(raft),
+            _id: group_id,
+            _members: members,
+            _metrics: metrics,
+            migration_state: MigrationState::Joining,
+        };
+
+        groups.insert(group_id, group);
+        Ok(())
+    }
+
+    /// Update the migration state for a group
+    pub async fn update_migration_state(
+        &self,
+        group_id: ConsensusGroupId,
+        state: MigrationState,
+    ) -> ConsensusResult<()> {
+        let mut groups = self.groups.write().await;
+
+        if let Some(group) = groups.get_mut(&group_id) {
+            group.migration_state = state;
+            Ok(())
+        } else {
+            Err(Error::NotFound(format!(
+                "Consensus group {:?} not found",
+                group_id
+            )))
+        }
+    }
+
+    /// Get all groups this node is a member of
+    pub async fn get_my_groups(&self) -> Vec<(ConsensusGroupId, MigrationState)> {
+        let groups = self.groups.read().await;
+        groups
+            .iter()
+            .map(|(id, group)| (*id, group.migration_state.clone()))
+            .collect()
+    }
+
+    /// Check if node is in migration (member of multiple groups)
+    pub async fn is_in_migration(&self) -> bool {
+        let groups = self.groups.read().await;
+        groups
+            .values()
+            .any(|g| g.migration_state != MigrationState::Active)
     }
 
     /// Get metrics for all groups

@@ -11,7 +11,7 @@ pub mod storage;
 
 use crate::node::Node;
 use crate::node_id::NodeId;
-use crate::{allocation::ConsensusGroupId, operations::MigrationState};
+use crate::{allocation::ConsensusGroupId, local::MigrationState};
 
 use openraft::Entry;
 use serde::{Deserialize, Serialize};
@@ -106,6 +106,30 @@ pub enum GlobalOperation {
     RemoveConsensusGroup {
         /// Group identifier
         group_id: ConsensusGroupId,
+    },
+
+    /// Assign a node to a consensus group
+    AssignNodeToGroup {
+        /// Node identifier
+        node_id: crate::NodeId,
+        /// Group identifier
+        group_id: ConsensusGroupId,
+    },
+
+    /// Remove a node from a consensus group
+    RemoveNodeFromGroup {
+        /// Node identifier
+        node_id: crate::NodeId,
+        /// Group identifier
+        group_id: ConsensusGroupId,
+    },
+
+    /// Update node's group assignments (for rebalancing)
+    UpdateNodeGroups {
+        /// Node identifier
+        node_id: crate::NodeId,
+        /// New set of groups the node should belong to
+        group_ids: Vec<ConsensusGroupId>,
     },
 
     /// Subscribe a stream to a subject pattern

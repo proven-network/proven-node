@@ -2,7 +2,8 @@
 
 use ed25519_dalek::VerifyingKey;
 use proven_governance::Governance;
-use std::collections::HashMap;
+use proven_governance_mock::MockGovernance;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -268,6 +269,179 @@ where
                 (node_id.clone(), remaining)
             })
             .collect()
+    }
+
+    /// Get all regions in the topology
+    pub async fn get_regions(&self) -> ConsensusResult<Vec<String>> {
+        let topology = self
+            .governance
+            .get_topology()
+            .await
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
+
+        let mut regions = HashSet::new();
+        for node in topology {
+            regions.insert(node.region);
+        }
+
+        Ok(regions.into_iter().collect())
+    }
+
+    /// Get all availability zones in a specific region
+    pub async fn get_azs_in_region(&self, region: &str) -> ConsensusResult<Vec<String>> {
+        let topology = self
+            .governance
+            .get_topology()
+            .await
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
+
+        let mut azs = HashSet::new();
+        for node in topology {
+            if node.region == region {
+                azs.insert(node.availability_zone);
+            }
+        }
+
+        Ok(azs.into_iter().collect())
+    }
+
+    /// Get all nodes in a specific region
+    pub async fn get_nodes_by_region(&self, region: &str) -> ConsensusResult<Vec<crate::Node>> {
+        let topology = self
+            .governance
+            .get_topology()
+            .await
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
+
+        let nodes = topology
+            .into_iter()
+            .filter(|node| node.region == region)
+            .map(crate::Node::from)
+            .collect();
+
+        Ok(nodes)
+    }
+
+    /// Get all nodes in a specific region and availability zone
+    pub async fn get_nodes_by_region_and_az(
+        &self,
+        region: &str,
+        az: &str,
+    ) -> ConsensusResult<Vec<crate::Node>> {
+        let topology = self
+            .governance
+            .get_topology()
+            .await
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
+
+        let nodes = topology
+            .into_iter()
+            .filter(|node| node.region == region && node.availability_zone == az)
+            .map(crate::Node::from)
+            .collect();
+
+        Ok(nodes)
+    }
+
+    /// Get the count of nodes in a specific region
+    pub async fn get_node_count_by_region(&self, region: &str) -> ConsensusResult<usize> {
+        let topology = self
+            .governance
+            .get_topology()
+            .await
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
+
+        let count = topology.iter().filter(|node| node.region == region).count();
+
+        Ok(count)
+    }
+
+    /// Get the count of nodes in a specific region and optionally specific AZ
+    pub async fn get_node_count_by_region_az(
+        &self,
+        region: &str,
+        az: Option<&str>,
+    ) -> ConsensusResult<usize> {
+        let topology = self
+            .governance
+            .get_topology()
+            .await
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
+
+        let count = topology
+            .iter()
+            .filter(|node| {
+                let region_matches = node.region == region;
+                match az {
+                    Some(az) => region_matches && node.availability_zone == az,
+                    None => region_matches,
+                }
+            })
+            .count();
+
+        Ok(count)
+    }
+
+    /// Get governance node details by NodeId
+    pub async fn get_governance_node(
+        &self,
+        node_id: &NodeId,
+    ) -> ConsensusResult<Option<proven_governance::GovernanceNode>> {
+        let topology = self
+            .governance
+            .get_topology()
+            .await
+            .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
+
+        for node in topology {
+            if *node_id == node.public_key {
+                return Ok(Some(node));
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+impl TopologyManager<MockGovernance> {
+    /// Add a node to the topology.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a node with the same public key already exists.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the nodes cannot be locked.
+    pub fn add_node(&self, node: Node) -> Result<(), Error> {
+        self.governance
+            .add_node(node.into())
+            .map_err(|e| Error::Governance(e.to_string()))
+    }
+
+    /// Remove a node from the topology by public key.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if no node with the given public key is found.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the nodes cannot be locked.
+    pub fn remove_node(&self, node_id: NodeId) -> Result<(), Error> {
+        self.governance
+            .remove_node(*node_id.verifying_key())
+            .map_err(|e| Error::Governance(e.to_string()))
+    }
+
+    /// Check if a node exists by public key.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the nodes cannot be locked.
+    #[must_use]
+    pub fn has_node(&self, node_id: NodeId) -> bool {
+        self.governance.has_node(*node_id.verifying_key())
     }
 }
 

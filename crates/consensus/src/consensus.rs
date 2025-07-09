@@ -24,11 +24,12 @@ use crate::global::GlobalManager;
 use crate::global::{
     GlobalOperation, GlobalRequest, GlobalResponse, GlobalState, GlobalTypeConfig,
 };
-use crate::hierarchical_orchestrator::HierarchicalOrchestrator;
+use crate::local::LocalStreamOperation;
 use crate::network::messages::{ApplicationMessage, ClusterDiscoveryResponse};
 use crate::network::network_manager::NetworkManager;
 use crate::network::{ClusterState, InitiatorReason};
-use crate::operations::{ConsensusOperation, ConsensusRequest, LocalStreamOperation};
+use crate::operations::{ConsensusOperation, ConsensusRequest};
+use crate::orchestrator::Orchestrator;
 
 // Type aliases for complex handler types
 type AppMessageHandlerType =
@@ -65,7 +66,7 @@ where
     /// Stream bridge for PubSub->Stream integration
     stream_bridge: Arc<crate::pubsub::StreamBridge<G, A>>,
     /// Hierarchical consensus orchestrator
-    hierarchical_orchestrator: Arc<HierarchicalOrchestrator<G, A>>,
+    hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
     /// Background task handles
     task_handles: Arc<std::sync::Mutex<Vec<JoinHandle<()>>>>,
 }
@@ -148,7 +149,6 @@ where
             StorageWrapper::Memory(mem_storage) => {
                 GlobalManager::new(
                     node_id.clone(),
-                    config.governance.clone(),
                     mem_storage.clone(),
                     raft_config,
                     config.cluster_join_retry_config,
@@ -164,7 +164,6 @@ where
             StorageWrapper::RocksDB(rocks_storage) => {
                 GlobalManager::new(
                     node_id.clone(),
-                    config.governance.clone(),
                     rocks_storage.clone(),
                     raft_config,
                     config.cluster_join_retry_config,
@@ -204,7 +203,7 @@ where
             cluster_join_retry_config: cluster_join_retry_config_clone,
             hierarchical_config: hierarchical_config.clone(),
         };
-        let orchestrator = HierarchicalOrchestrator::new(
+        let orchestrator = Orchestrator::new(
             orchestrator_config,
             hierarchical_config,
             global_manager.clone(),

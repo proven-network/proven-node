@@ -3,9 +3,12 @@
 //! This module handles all global consensus concerns including Raft instance management,
 //! cluster discovery, topology management, and cluster state coordination.
 
-use super::{GlobalRequest, GlobalResponse, GlobalTypeConfig};
+use super::{GlobalOperation, GlobalRequest, GlobalResponse, GlobalTypeConfig};
 use crate::NodeId;
 use crate::error::Error;
+use crate::group_allocator::{
+    GroupAllocator, GroupAllocatorConfig, MigrationConfig, MigrationCoordinator, MigrationEvent,
+};
 use crate::network::adaptor::RaftAdapterResponse;
 use crate::network::messages::{
     ApplicationMessage, ClusterDiscoveryRequest, ClusterDiscoveryResponse, ClusterJoinRequest,
@@ -79,6 +82,12 @@ where
 
     /// Global state reference for querying state
     global_state: Arc<super::GlobalState>,
+
+    /// Group allocator for managing consensus group assignments
+    group_allocator: Arc<GroupAllocator<G>>,
+
+    /// Migration coordinator for managing group transitions
+    migration_coordinator: Arc<RwLock<MigrationCoordinator>>,
 }
 
 impl<G, A> GlobalManager<G, A>
@@ -90,7 +99,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         local_node_id: NodeId,
-        _governance: Arc<G>,
         storage: impl RaftLogStorage<GlobalTypeConfig>
         + RaftStateMachine<GlobalTypeConfig>
         + Clone
@@ -162,6 +170,18 @@ where
             warn!("Failed to get response receiver from NetworkManager");
         }
 
+        // Create the group allocator
+        let group_allocator_config = GroupAllocatorConfig::default();
+        let group_allocator = Arc::new(GroupAllocator::new(
+            group_allocator_config,
+            topology.clone(),
+        ));
+
+        // Create the migration coordinator
+        let migration_config = MigrationConfig::default();
+        let migration_coordinator =
+            Arc::new(RwLock::new(MigrationCoordinator::new(migration_config)));
+
         Ok(Self {
             local_node_id,
             raft_instance,
@@ -173,6 +193,8 @@ where
             response_tx,
             raft_adapter_response_tx,
             global_state,
+            group_allocator,
+            migration_coordinator,
         })
     }
 
@@ -273,6 +295,130 @@ where
         } else {
             Ok(())
         }
+    }
+
+    /// Get the group allocator reference
+    pub fn group_allocator(&self) -> Arc<GroupAllocator<G>> {
+        self.group_allocator.clone()
+    }
+
+    /// Refresh the GroupAllocator's topology (no-op since TopologyManager handles this)
+    pub async fn refresh_group_allocator_topology(&self) -> Result<(), Error> {
+        // TopologyManager handles topology updates automatically
+        Ok(())
+    }
+
+    /// Start migration coordination
+    pub async fn start_migration_coordination(&self) -> Result<(), Error> {
+        // Generate rebalancing plan
+        let plan = self
+            .group_allocator
+            .generate_rebalancing_plan()
+            .await
+            .map_err(|e| {
+                Error::InvalidOperation(format!("Failed to generate rebalancing plan: {:?}", e))
+            })?;
+
+        if let Some(plan) = plan {
+            let mut coordinator = self.migration_coordinator.write().await;
+
+            // Start coordination for each migration
+            for migration in plan.migrations {
+                coordinator
+                    .start_coordination(migration.clone())
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!("Failed to start coordination: {:?}", e))
+                    })?;
+
+                // Submit operation to add node to target group
+                let operation = GlobalOperation::AssignNodeToGroup {
+                    node_id: migration.node_id.clone(),
+                    group_id: migration.to_group,
+                };
+
+                let request = GlobalRequest { operation };
+                self.raft_instance
+                    .client_write(request)
+                    .await
+                    .map_err(|e| {
+                        Error::Raft(format!("Failed to submit assign operation: {}", e))
+                    })?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle migration event
+    pub async fn handle_migration_event(&self, event: MigrationEvent) -> Result<(), Error> {
+        match event {
+            MigrationEvent::NodeSyncedWithTarget { node_id, group_id } => {
+                info!("Node {:?} synced with target group {:?}", node_id, group_id);
+
+                // Update coordinator
+                let mut coordinator = self.migration_coordinator.write().await;
+                coordinator
+                    .mark_ready_to_leave(&node_id)
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!("Failed to mark ready to leave: {:?}", e))
+                    })?;
+
+                // Generate operation to remove from source group
+                let operations = coordinator.generate_migration_operations(&node_id);
+                for op in operations {
+                    let request = GlobalRequest { operation: op };
+                    self.raft_instance
+                        .client_write(request)
+                        .await
+                        .map_err(|e| {
+                            Error::Raft(format!("Failed to submit remove operation: {}", e))
+                        })?;
+                }
+            }
+            MigrationEvent::NodeRemovedFromSource { node_id, .. } => {
+                // Complete the migration
+                let mut coordinator = self.migration_coordinator.write().await;
+                coordinator
+                    .complete_migration(&node_id)
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!("Failed to complete migration: {:?}", e))
+                    })?;
+
+                // Also complete in allocator
+                self.group_allocator
+                    .complete_node_migration(&node_id)
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!(
+                            "Failed to complete allocator migration: {:?}",
+                            e
+                        ))
+                    })?;
+            }
+            MigrationEvent::MigrationFailed { node_id, reason } => {
+                warn!("Migration failed for node {:?}: {}", node_id, reason);
+                // TODO: Handle rollback
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    /// Check migration timeouts periodically
+    pub async fn check_migration_timeouts(&self) -> Result<(), Error> {
+        let mut coordinator = self.migration_coordinator.write().await;
+        let timed_out = coordinator.check_timeouts().await;
+
+        for node_id in timed_out {
+            warn!("Migration timed out for node {:?}", node_id);
+            // TODO: Handle timeout recovery
+        }
+
+        Ok(())
     }
 
     /// Initialize a single-node cluster
@@ -1034,8 +1180,10 @@ where
         let raft_clone = self.raft_instance.clone();
         let requester_id = request.requester_id.clone();
         let requester_node = crate::Node::from(request.requester_node.clone());
+        let requester_governance_node = request.requester_node.clone();
         let local_node_id_clone = self.local_node_id.clone();
         let network_manager = self.network_manager.clone();
+        let group_allocator = self.group_allocator.clone();
         let corr_id = correlation_id.unwrap_or_else(Uuid::new_v4);
 
         // Spawn a background task for async membership change handling
@@ -1049,6 +1197,40 @@ where
             {
                 Ok(()) => {
                     info!("Successfully added {} to cluster", requester_id);
+
+                    // Allocate groups for the new node
+                    match group_allocator
+                        .allocate_groups_for_node(&requester_id, &requester_governance_node)
+                        .await
+                    {
+                        Ok(assigned_groups) => {
+                            info!(
+                                "Allocated {} groups for node {}: {:?}",
+                                assigned_groups.len(),
+                                requester_id,
+                                assigned_groups
+                            );
+
+                            // Submit group assignments to global consensus
+                            for group_id in &assigned_groups {
+                                let operation = GlobalOperation::AssignNodeToGroup {
+                                    node_id: requester_id.clone(),
+                                    group_id: *group_id,
+                                };
+                                let request = GlobalRequest { operation };
+
+                                // Submit to global consensus (fire and forget for now)
+                                if let Err(e) = raft_clone.client_write(request).await {
+                                    error!("Failed to submit group assignment to consensus: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to allocate groups for node {}: {}", requester_id, e);
+                            // Continue anyway - node is still in the cluster
+                        }
+                    }
+
                     // Send success response
                     let metrics = raft_clone.metrics().borrow().clone();
                     let response = ClusterJoinResponse {
@@ -1398,6 +1580,12 @@ where
             }
         }
         debug!("Response correlation task exited");
+    }
+
+    /// Get the current global state
+    pub async fn get_current_state(&self) -> Result<super::GlobalState, Error> {
+        // Clone the current state
+        Ok((*self.global_state).clone())
     }
 
     /// Complete a pending request by sending the response through its channel

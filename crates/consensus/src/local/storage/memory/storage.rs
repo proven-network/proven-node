@@ -1,5 +1,5 @@
 use crate::local::state_machine::LocalState;
-use crate::local::{LocalResponse, LocalTypeConfig};
+use crate::local::{LocalResponse, LocalStreamOperation, LocalTypeConfig};
 use openraft::{
     Entry, EntryPayload, LogId, RaftLogReader, RaftSnapshotBuilder, SnapshotMeta, StorageError,
     StoredMembership, Vote,
@@ -180,11 +180,12 @@ impl RaftStateMachine<LocalTypeConfig> for LocalMemoryStorage {
                 success: false,
                 sequence: None,
                 error: None,
+                checkpoint_data: None,
             };
 
             match &entry.payload {
                 EntryPayload::Normal(req) => match &req.operation {
-                    crate::operations::LocalStreamOperation::PublishToStream {
+                    LocalStreamOperation::PublishToStream {
                         stream,
                         data,
                         metadata,
@@ -200,7 +201,7 @@ impl RaftStateMachine<LocalTypeConfig> for LocalMemoryStorage {
                             }
                         }
                     }
-                    crate::operations::LocalStreamOperation::CreateStreamForMigration {
+                    LocalStreamOperation::CreateStreamForMigration {
                         stream_name,
                         source_group,
                     } => {
@@ -208,31 +209,74 @@ impl RaftStateMachine<LocalTypeConfig> for LocalMemoryStorage {
                             .create_stream_for_migration(stream_name.clone(), *source_group);
                         resp.success = true;
                     }
-                    crate::operations::LocalStreamOperation::GetStreamCheckpoint {
+                    LocalStreamOperation::GetStreamCheckpoint { stream_name } => {
+                        match state_machine.create_migration_checkpoint(stream_name) {
+                            Ok(checkpoint) => {
+                                resp.success = true;
+                                resp.sequence = Some(checkpoint.sequence);
+                                // Serialize and return the checkpoint data
+                                match serde_json::to_vec(&checkpoint) {
+                                    Ok(data) => {
+                                        resp.checkpoint_data = Some(bytes::Bytes::from(data));
+                                    }
+                                    Err(e) => {
+                                        resp.error =
+                                            Some(format!("Failed to serialize checkpoint: {}", e));
+                                        resp.success = false;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                resp.error = Some(e);
+                            }
+                        }
+                    }
+                    LocalStreamOperation::GetIncrementalCheckpoint {
                         stream_name,
-                    } => match state_machine.create_migration_checkpoint(stream_name) {
+                        since_sequence,
+                    } => match state_machine
+                        .create_incremental_checkpoint(stream_name, *since_sequence)
+                    {
                         Ok(checkpoint) => {
                             resp.success = true;
                             resp.sequence = Some(checkpoint.sequence);
-                            // Store the checkpoint for retrieval
-                            // In a real implementation, we would store this in a temporary location
-                            // or return it directly via the response
+                            // Serialize and return the incremental checkpoint data
+                            match serde_json::to_vec(&checkpoint) {
+                                Ok(data) => {
+                                    resp.checkpoint_data = Some(bytes::Bytes::from(data));
+                                }
+                                Err(e) => {
+                                    resp.error =
+                                        Some(format!("Failed to serialize checkpoint: {}", e));
+                                    resp.success = false;
+                                }
+                            }
                         }
                         Err(e) => {
                             resp.error = Some(e);
                         }
                     },
-                    crate::operations::LocalStreamOperation::ApplyMigrationCheckpoint {
-                        checkpoint,
-                    } => match state_machine.apply_migration_checkpoint(checkpoint) {
-                        Ok(()) => {
-                            resp.success = true;
+                    LocalStreamOperation::ApplyMigrationCheckpoint { checkpoint } => {
+                        match state_machine.apply_migration_checkpoint(checkpoint) {
+                            Ok(()) => {
+                                resp.success = true;
+                            }
+                            Err(e) => {
+                                resp.error = Some(e);
+                            }
                         }
-                        Err(e) => {
-                            resp.error = Some(e);
+                    }
+                    LocalStreamOperation::ApplyIncrementalCheckpoint { checkpoint } => {
+                        match state_machine.apply_incremental_checkpoint(checkpoint) {
+                            Ok(()) => {
+                                resp.success = true;
+                            }
+                            Err(e) => {
+                                resp.error = Some(e);
+                            }
                         }
-                    },
-                    crate::operations::LocalStreamOperation::PauseStream { stream_name } => {
+                    }
+                    LocalStreamOperation::PauseStream { stream_name } => {
                         match state_machine.pause_stream(stream_name) {
                             Ok(last_seq) => {
                                 resp.success = true;
@@ -243,7 +287,7 @@ impl RaftStateMachine<LocalTypeConfig> for LocalMemoryStorage {
                             }
                         }
                     }
-                    crate::operations::LocalStreamOperation::ResumeStream { stream_name } => {
+                    LocalStreamOperation::ResumeStream { stream_name } => {
                         match state_machine.resume_stream(stream_name) {
                             Ok(applied_sequences) => {
                                 resp.success = true;
@@ -255,7 +299,7 @@ impl RaftStateMachine<LocalTypeConfig> for LocalMemoryStorage {
                             }
                         }
                     }
-                    crate::operations::LocalStreamOperation::RemoveStream { stream_name } => {
+                    LocalStreamOperation::RemoveStream { stream_name } => {
                         match state_machine.remove_stream_for_migration(stream_name) {
                             Ok(()) => {
                                 resp.success = true;
@@ -264,6 +308,23 @@ impl RaftStateMachine<LocalTypeConfig> for LocalMemoryStorage {
                                 resp.error = Some(e);
                             }
                         }
+                    }
+                    LocalStreamOperation::GetMetrics => {
+                        let metrics = state_machine.get_metrics();
+                        match serde_json::to_vec(&metrics) {
+                            Ok(data) => {
+                                resp.success = true;
+                                resp.checkpoint_data = Some(bytes::Bytes::from(data));
+                            }
+                            Err(e) => {
+                                resp.error = Some(format!("Failed to serialize metrics: {}", e));
+                            }
+                        }
+                    }
+                    LocalStreamOperation::CleanupPendingOperations { max_age_secs } => {
+                        let cleaned = state_machine.cleanup_old_pending_operations(*max_age_secs);
+                        resp.success = true;
+                        resp.sequence = Some(cleaned as u64);
                     }
                     _ => {
                         resp.error = Some("Operation not implemented".to_string());

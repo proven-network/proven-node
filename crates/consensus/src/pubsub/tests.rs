@@ -10,27 +10,17 @@ mod pubsub_tests {
     use crate::pubsub::interest::InterestTracker;
     use crate::pubsub::router::MessageRouter;
 
-    /// Create a test NodeId from a seed value
-    fn test_node_id(seed: u8) -> NodeId {
-        use ed25519_dalek::{SigningKey, VerifyingKey};
-        let mut key_bytes = [0u8; 32];
-        key_bytes[0] = seed;
-        let signing_key = SigningKey::from_bytes(&key_bytes);
-        let verifying_key: VerifyingKey = signing_key.verifying_key();
-        NodeId::new(verifying_key)
-    }
-
     #[tokio::test]
     async fn test_basic_pubsub_operations() {
         // This is a unit test for the interest tracker and router
         // Full integration tests would require setting up actual network connections
 
-        let node_id = test_node_id(1);
+        let node_id = NodeId::from_seed(1);
         let interest_tracker = Arc::new(InterestTracker::new());
         let router = MessageRouter::new(node_id.clone(), interest_tracker.clone());
 
         // Test adding interests
-        let remote_node = test_node_id(2);
+        let remote_node = NodeId::from_seed(2);
         interest_tracker
             .add_remote_interest(remote_node.clone(), "test.*")
             .unwrap();
@@ -74,7 +64,7 @@ mod pubsub_tests {
     #[tokio::test]
     async fn test_interest_updates() {
         let interest_tracker = InterestTracker::new();
-        let node = test_node_id(3);
+        let node = NodeId::from_seed(3);
 
         // Set initial interests
         let mut interests = std::collections::HashSet::new();
@@ -109,8 +99,8 @@ mod pubsub_tests {
     #[tokio::test]
     async fn test_pattern_matching() {
         let interest_tracker = InterestTracker::new();
-        let node1 = test_node_id(4);
-        let node2 = test_node_id(5);
+        let node1 = NodeId::from_seed(4);
+        let node2 = NodeId::from_seed(5);
 
         // Add different patterns
         interest_tracker
@@ -146,7 +136,7 @@ mod pubsub_tests {
 
     #[tokio::test]
     async fn test_deduplication() {
-        let node_id = test_node_id(6);
+        let node_id = NodeId::from_seed(6);
         let interest_tracker = Arc::new(InterestTracker::new());
         let router = MessageRouter::new(node_id, interest_tracker);
 
@@ -173,7 +163,7 @@ mod pubsub_tests {
     #[test]
     fn test_interest_update_acknowledgment_message() {
         // Test that InterestUpdateAck message type works correctly
-        let node_id = test_node_id(7);
+        let node_id = NodeId::from_seed(7);
 
         let ack_msg = PubSubMessage::InterestUpdateAck {
             node_id: node_id.clone(),
@@ -202,7 +192,7 @@ mod pubsub_tests {
 
     #[test]
     fn test_interest_update_requires_response() {
-        let node_id = test_node_id(8);
+        let node_id = NodeId::from_seed(8);
         let mut interests = std::collections::HashSet::new();
         interests.insert("test.*".to_string());
 
@@ -215,7 +205,7 @@ mod pubsub_tests {
     #[test]
     fn test_message_serialization() {
         // Test that all PubSub messages can be serialized/deserialized
-        let node_id = test_node_id(9);
+        let node_id = NodeId::from_seed(9);
 
         // Test InterestUpdate serialization
         let mut interests = std::collections::HashSet::new();
@@ -245,7 +235,7 @@ mod pubsub_tests {
     #[tokio::test]
     async fn test_pubsub_publish_delivery() {
         // Test that published messages are delivered to local subscribers
-        let node_id = test_node_id(10);
+        let node_id = NodeId::from_seed(10);
         let interest_tracker = Arc::new(InterestTracker::new());
         let router = Arc::new(MessageRouter::new(
             node_id.clone(),
@@ -276,12 +266,12 @@ mod pubsub_tests {
     #[tokio::test]
     async fn test_interest_propagation() {
         // Test that interests are properly propagated through the system
-        let _node_id = test_node_id(11);
+        let _node_id = NodeId::from_seed(11);
         let interest_tracker = Arc::new(InterestTracker::new());
 
         // Add multiple nodes with different interests
-        let node2 = test_node_id(12);
-        let node3 = test_node_id(13);
+        let node2 = NodeId::from_seed(12);
+        let node3 = NodeId::from_seed(13);
 
         interest_tracker
             .add_remote_interest(node2.clone(), "weather.*")
@@ -338,7 +328,7 @@ mod pubsub_tests {
         let response = PubSubMessage::Response {
             request_id,
             payload: Bytes::from("echo this"),
-            responder: test_node_id(14),
+            responder: NodeId::from_seed(14),
         };
 
         // Verify response doesn't require response

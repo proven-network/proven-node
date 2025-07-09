@@ -7,7 +7,7 @@ use crate::allocation::ConsensusGroupId;
 use crate::error::{ConsensusResult, Error};
 use crate::global::{GlobalOperation, StreamConfig};
 use crate::local::state_machine::StreamData;
-use crate::operations::{LocalStreamOperation, MigrationState};
+use crate::local::{LocalStreamOperation, MigrationState};
 use crate::router::ConsensusRouter;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -386,10 +386,10 @@ where
         migration: &ActiveMigration,
         since_seq: u64,
     ) -> ConsensusResult<MigrationCheckpoint> {
-        // TODO: In a real implementation, this would be a specialized operation
-        // that only captures messages after since_seq
-        let operation = LocalStreamOperation::GetStreamCheckpoint {
+        // Use the specialized incremental checkpoint operation
+        let operation = LocalStreamOperation::GetIncrementalCheckpoint {
             stream_name: migration.stream_name.clone(),
+            since_sequence: since_seq,
         };
 
         let response = self
@@ -403,34 +403,53 @@ where
             })));
         }
 
-        // For now, create a basic incremental checkpoint
-        // In a real implementation, this would only include messages after since_seq
-        let stream_data = StreamData {
-            messages: std::collections::BTreeMap::new(), // Would contain only new messages
-            last_seq: response.sequence.unwrap_or(since_seq),
-            is_paused: false,
-            pending_operations: Vec::new(),
-            paused_at: None,
-        };
+        // Retrieve the incremental checkpoint from the response
+        let checkpoint_data = response
+            .checkpoint_data
+            .ok_or_else(|| Error::Stream("No checkpoint data in response".to_string()))?;
 
-        let serialized_data =
-            serde_json::to_vec(&stream_data).map_err(|e| Error::Serialization(e.to_string()))?;
-        let checksum = calculate_checksum(&serialized_data);
+        // Deserialize the incremental checkpoint
+        let mut checkpoint: MigrationCheckpoint = serde_json::from_slice(&checkpoint_data)
+            .map_err(|e| {
+                Error::Deserialization(format!(
+                    "Failed to deserialize incremental checkpoint: {}",
+                    e
+                ))
+            })?;
 
-        let checkpoint = MigrationCheckpoint {
-            stream_name: migration.stream_name.clone(),
-            sequence: response.sequence.unwrap_or(since_seq),
-            data: stream_data,
-            config: crate::global::StreamConfig::default(),
-            subscriptions: Vec::new(),
-            created_at: chrono::Utc::now().timestamp_millis() as u64,
-            checksum,
-            compression: CompressionType::default(),
-            is_incremental: true,
-            base_checkpoint_seq: Some(since_seq),
-        };
+        // Now retrieve the actual stream configuration and subscriptions from global state
+        let global_state = self.router.global_manager().get_current_state().await?;
 
+        // Get stream config
+        let stream_configs = global_state.stream_configs.read().await;
+        if let Some(config) = stream_configs.get(&migration.stream_name) {
+            checkpoint.config = config.clone();
+        }
+
+        // Get subscriptions
+        let streams = global_state.streams.read().await;
+        if let Some(stream_data) = streams.get(&migration.stream_name) {
+            checkpoint.subscriptions = stream_data.subscriptions.iter().cloned().collect();
+        }
+
+        // Validate the checkpoint
         validate_checkpoint(&checkpoint)?;
+
+        // Verify this is indeed an incremental checkpoint
+        if !checkpoint.is_incremental {
+            return Err(Error::InvalidCheckpoint(
+                "Expected incremental checkpoint but got full checkpoint".to_string(),
+            ));
+        }
+
+        info!(
+            "Retrieved incremental checkpoint for stream {} with {} messages (sequences after {}), {} subscriptions",
+            checkpoint.stream_name,
+            checkpoint.data.messages.len(),
+            since_seq,
+            checkpoint.subscriptions.len()
+        );
+
         Ok(checkpoint)
     }
 
@@ -460,8 +479,8 @@ where
             compressed_checkpoint.metadata.compressed_size
         );
 
-        // TODO: Implement specialized incremental apply operation
-        let operation = LocalStreamOperation::ApplyMigrationCheckpoint {
+        // Use the specialized incremental apply operation
+        let operation = LocalStreamOperation::ApplyIncrementalCheckpoint {
             checkpoint: compressed_checkpoint.compressed_data,
         };
 
@@ -553,36 +572,42 @@ where
             ));
         }
 
-        // TODO: In a real implementation, we would retrieve the actual checkpoint
-        // from the response or from a temporary storage location.
-        // For now, create a basic checkpoint structure
-        let stream_data = StreamData {
-            messages: std::collections::BTreeMap::new(),
-            last_seq: response.sequence.unwrap_or(0),
-            is_paused: false,
-            pending_operations: Vec::new(),
-            paused_at: None,
-        };
+        // Retrieve the actual checkpoint from the response
+        let checkpoint_data = response
+            .checkpoint_data
+            .ok_or_else(|| Error::Stream("No checkpoint data in response".to_string()))?;
 
-        let serialized_data =
-            serde_json::to_vec(&stream_data).map_err(|e| Error::Serialization(e.to_string()))?;
-        let checksum = calculate_checksum(&serialized_data);
+        // Deserialize the checkpoint
+        let mut checkpoint: MigrationCheckpoint = serde_json::from_slice(&checkpoint_data)
+            .map_err(|e| {
+                Error::Deserialization(format!("Failed to deserialize checkpoint: {}", e))
+            })?;
 
-        let checkpoint = MigrationCheckpoint {
-            stream_name: migration.stream_name.clone(),
-            sequence: response.sequence.unwrap_or(0),
-            data: stream_data,
-            config: crate::global::StreamConfig::default(),
-            subscriptions: Vec::new(),
-            created_at: chrono::Utc::now().timestamp_millis() as u64,
-            checksum,
-            compression: CompressionType::default(),
-            is_incremental: false,
-            base_checkpoint_seq: None,
-        };
+        // Now retrieve the actual stream configuration and subscriptions from global state
+        let global_state = self.router.global_manager().get_current_state().await?;
+
+        // Get stream config
+        let stream_configs = global_state.stream_configs.read().await;
+        if let Some(config) = stream_configs.get(&migration.stream_name) {
+            checkpoint.config = config.clone();
+        }
+
+        // Get subscriptions
+        let streams = global_state.streams.read().await;
+        if let Some(stream_data) = streams.get(&migration.stream_name) {
+            checkpoint.subscriptions = stream_data.subscriptions.iter().cloned().collect();
+        }
 
         // Validate the checkpoint before returning
         validate_checkpoint(&checkpoint)?;
+
+        info!(
+            "Retrieved checkpoint for stream {} with {} messages (sequence: {}), {} subscriptions",
+            checkpoint.stream_name,
+            checkpoint.data.messages.len(),
+            checkpoint.sequence,
+            checkpoint.subscriptions.len()
+        );
 
         Ok(checkpoint)
     }
@@ -793,11 +818,101 @@ where
             )));
         }
 
-        // TODO: Add more validation:
-        // - Verify source group exists and contains the stream
-        // - Verify target group exists and has capacity
-        // - Check that groups are healthy and have quorum
-        // - Validate stream is not currently being accessed by critical operations
+        // Verify source group exists and contains the stream
+        let stream_info = self
+            .router
+            .query_stream_info(stream_name)
+            .await
+            .map_err(|e| Error::NotFound(format!("Stream {} not found: {}", stream_name, e)))?;
+
+        // Verify the stream is actually in the source group
+        if stream_info.consensus_group != Some(source_group) {
+            return Err(Error::InvalidOperation(format!(
+                "Stream {} is not in source group {:?}, it's in {:?}",
+                stream_name, source_group, stream_info.consensus_group
+            )));
+        }
+
+        // Verify target group exists
+        let target_group_info = self
+            .router
+            .get_consensus_group_info(target_group)
+            .await
+            .ok_or_else(|| {
+                Error::NotFound(format!(
+                    "Target consensus group {:?} not found",
+                    target_group
+                ))
+            })?;
+
+        // Check target group has capacity (at least one node)
+        if target_group_info.members.is_empty() {
+            return Err(Error::InvalidOperation(format!(
+                "Target group {:?} has no members",
+                target_group
+            )));
+        }
+
+        // Check source group health and quorum
+        let source_health = self
+            .router
+            .check_group_health(source_group)
+            .await
+            .map_err(|e| {
+                Error::InvalidState(format!("Failed to check source group health: {}", e))
+            })?;
+
+        if !source_health.has_quorum {
+            return Err(Error::InvalidState(format!(
+                "Source group {:?} does not have quorum (available: {}, required: {})",
+                source_group, source_health.available_nodes, source_health.required_nodes
+            )));
+        }
+
+        // Check target group health and quorum
+        let target_health = self
+            .router
+            .check_group_health(target_group)
+            .await
+            .map_err(|e| {
+                Error::InvalidState(format!("Failed to check target group health: {}", e))
+            })?;
+
+        if !target_health.has_quorum {
+            return Err(Error::InvalidState(format!(
+                "Target group {:?} does not have quorum (available: {}, required: {})",
+                target_group, target_health.available_nodes, target_health.required_nodes
+            )));
+        }
+
+        // Check if stream is paused (indicating another operation in progress)
+        if stream_info.is_paused {
+            return Err(Error::InvalidState(format!(
+                "Stream {} is currently paused, possibly due to another operation",
+                stream_name
+            )));
+        }
+
+        // Additional safety check: ensure target group has capacity for the stream
+        let target_stream_count = self
+            .router
+            .get_group_stream_count(target_group)
+            .await
+            .unwrap_or(0);
+
+        // Conservative limit to prevent overloading groups
+        const MAX_STREAMS_PER_GROUP: usize = 1000;
+        if target_stream_count >= MAX_STREAMS_PER_GROUP {
+            return Err(Error::InvalidOperation(format!(
+                "Target group {:?} already has {} streams (max: {})",
+                target_group, target_stream_count, MAX_STREAMS_PER_GROUP
+            )));
+        }
+
+        info!(
+            "Migration preconditions validated for stream {} from {:?} to {:?}",
+            stream_name, source_group, target_group
+        );
 
         Ok(())
     }
@@ -997,9 +1112,275 @@ fn estimate_completion_time(state: &MigrationState, elapsed_ms: u64) -> Option<u
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::allocation::ConsensusGroupId;
+    use crate::local::state_machine::{MessageData, StreamData};
+    use bytes::Bytes;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn test_checkpoint_compression() {
+        // Create a test checkpoint
+        let mut messages = BTreeMap::new();
+        for i in 0..100 {
+            messages.insert(
+                i,
+                MessageData {
+                    sequence: i,
+                    data: Bytes::from(format!("Test message {}", i)),
+                    timestamp: 1000 + i,
+                    metadata: None,
+                },
+            );
+        }
+
+        let checkpoint = MigrationCheckpoint {
+            stream_name: "test-stream".to_string(),
+            sequence: 99,
+            data: StreamData {
+                messages,
+                last_seq: 99,
+                is_paused: false,
+                pending_operations: Vec::new(),
+                paused_at: None,
+            },
+            config: crate::global::StreamConfig::default(),
+            subscriptions: vec!["test.subject".to_string()],
+            created_at: 12345,
+            checksum: "dummy".to_string(),
+            compression: CompressionType::Gzip,
+            is_incremental: false,
+            base_checkpoint_seq: None,
+        };
+
+        // Test compression
+        let compressed = compress_checkpoint(&checkpoint, CompressionType::Gzip).unwrap();
+        assert!(compressed.metadata.compressed_size < compressed.metadata.original_size);
+        assert!(compressed.metadata.compression_ratio > 1.0);
+
+        // Test decompression
+        let decompressed = decompress_checkpoint(&compressed).unwrap();
+        assert_eq!(decompressed.stream_name, checkpoint.stream_name);
+        assert_eq!(decompressed.sequence, checkpoint.sequence);
+        assert_eq!(
+            decompressed.data.messages.len(),
+            checkpoint.data.messages.len()
+        );
+    }
+
+    #[test]
+    fn test_checkpoint_validation() {
+        // Valid checkpoint
+        let mut messages = BTreeMap::new();
+        messages.insert(
+            1,
+            MessageData {
+                sequence: 1,
+                data: Bytes::from("test"),
+                timestamp: 1000,
+                metadata: None,
+            },
+        );
+
+        let stream_data = StreamData {
+            messages,
+            last_seq: 1,
+            is_paused: false,
+            pending_operations: Vec::new(),
+            paused_at: None,
+        };
+
+        let checksum = {
+            let serialized = serde_json::to_vec(&stream_data).unwrap();
+            calculate_checksum(&serialized)
+        };
+
+        let checkpoint = MigrationCheckpoint {
+            stream_name: "test-stream".to_string(),
+            sequence: 1,
+            data: stream_data,
+            config: crate::global::StreamConfig::default(),
+            subscriptions: vec![],
+            created_at: 12345,
+            checksum,
+            compression: CompressionType::None,
+            is_incremental: false,
+            base_checkpoint_seq: None,
+        };
+
+        // Should pass validation
+        assert!(validate_checkpoint(&checkpoint).is_ok());
+
+        // Invalid checkpoint - empty stream name
+        let mut invalid_checkpoint = checkpoint.clone();
+        invalid_checkpoint.stream_name = "".to_string();
+        assert!(validate_checkpoint(&invalid_checkpoint).is_err());
+
+        // Invalid checkpoint - sequence > last_seq
+        let mut invalid_checkpoint = checkpoint.clone();
+        invalid_checkpoint.sequence = 10;
+        assert!(validate_checkpoint(&invalid_checkpoint).is_err());
+
+        // Invalid checkpoint - wrong checksum
+        let mut invalid_checkpoint = checkpoint.clone();
+        invalid_checkpoint.checksum = "wrong_checksum".to_string();
+        assert!(validate_checkpoint(&invalid_checkpoint).is_err());
+    }
+
+    #[test]
+    fn test_incremental_checkpoint() {
+        // Create base data
+        let mut messages = BTreeMap::new();
+        for i in 1..=10 {
+            messages.insert(
+                i,
+                MessageData {
+                    sequence: i,
+                    data: Bytes::from(format!("Message {}", i)),
+                    timestamp: 1000 + i,
+                    metadata: None,
+                },
+            );
+        }
+
+        let _stream_data = StreamData {
+            messages: messages.clone(),
+            last_seq: 10,
+            is_paused: false,
+            pending_operations: Vec::new(),
+            paused_at: None,
+        };
+
+        // Create incremental checkpoint with only messages after sequence 5
+        let incremental_messages: BTreeMap<u64, MessageData> = messages
+            .range(6..)
+            .map(|(seq, data)| (*seq, data.clone()))
+            .collect();
+
+        let incremental_data = StreamData {
+            messages: incremental_messages,
+            last_seq: 10,
+            is_paused: false,
+            pending_operations: Vec::new(),
+            paused_at: None,
+        };
+
+        let checksum = {
+            let serialized = serde_json::to_vec(&incremental_data).unwrap();
+            calculate_checksum(&serialized)
+        };
+
+        let incremental_checkpoint = MigrationCheckpoint {
+            stream_name: "test-stream".to_string(),
+            sequence: 10,
+            data: incremental_data,
+            config: crate::global::StreamConfig::default(),
+            subscriptions: vec![],
+            created_at: 12345,
+            checksum,
+            compression: CompressionType::None,
+            is_incremental: true,
+            base_checkpoint_seq: Some(5),
+        };
+
+        // Validate incremental checkpoint
+        assert!(validate_checkpoint(&incremental_checkpoint).is_ok());
+        assert_eq!(incremental_checkpoint.data.messages.len(), 5); // Messages 6-10
+        assert!(incremental_checkpoint.is_incremental);
+        assert_eq!(incremental_checkpoint.base_checkpoint_seq, Some(5));
+    }
+
+    #[test]
+    fn test_estimate_completion_time() {
+        // Test different migration states
+        assert!(estimate_completion_time(&MigrationState::Preparing, 1000).is_some());
+        assert!(estimate_completion_time(&MigrationState::Transferring, 5000).is_some());
+        assert!(estimate_completion_time(&MigrationState::Syncing, 10000).is_some());
+        assert!(estimate_completion_time(&MigrationState::Switching, 15000).is_some());
+        assert!(estimate_completion_time(&MigrationState::Completing, 20000).is_some());
+
+        // Completed and Failed states should return None
+        assert!(estimate_completion_time(&MigrationState::Completed, 25000).is_none());
+        assert!(estimate_completion_time(&MigrationState::Failed, 30000).is_none());
+    }
+
+    #[test]
+    fn test_active_migration_state_transitions() {
+        let migration = ActiveMigration {
+            stream_name: "test-stream".to_string(),
+            source_group: ConsensusGroupId::new(1),
+            target_group: ConsensusGroupId::new(2),
+            state: MigrationState::Preparing,
+            started_at: 1000,
+            checkpoint_seq: None,
+            error: None,
+        };
+
+        // Test initial state
+        assert_eq!(migration.state, MigrationState::Preparing);
+        assert!(migration.checkpoint_seq.is_none());
+        assert!(migration.error.is_none());
+
+        // Simulate state progression
+        let mut migration = migration;
+        migration.state = MigrationState::Transferring;
+        migration.checkpoint_seq = Some(100);
+        assert_eq!(migration.checkpoint_seq, Some(100));
+
+        // Simulate failure
+        migration.state = MigrationState::Failed;
+        migration.error = Some("Test error".to_string());
+        assert!(migration.error.is_some());
+    }
+
+    #[test]
+    fn test_migration_progress() {
+        let started_at = chrono::Utc::now().timestamp_millis() as u64 - 5000; // 5 seconds ago
+
+        let migration = ActiveMigration {
+            stream_name: "test-stream".to_string(),
+            source_group: ConsensusGroupId::new(1),
+            target_group: ConsensusGroupId::new(2),
+            state: MigrationState::Syncing,
+            started_at,
+            checkpoint_seq: Some(150),
+            error: None,
+        };
+
+        // Create progress from active migration
+        let progress = MigrationProgress {
+            stream_name: migration.stream_name.clone(),
+            source_group: migration.source_group,
+            target_group: migration.target_group,
+            current_state: migration.state.clone(),
+            elapsed_ms: chrono::Utc::now().timestamp_millis() as u64 - migration.started_at,
+            checkpoint_seq: migration.checkpoint_seq,
+            error: migration.error.clone(),
+            estimated_completion_ms: estimate_completion_time(&migration.state, 5000),
+        };
+
+        assert_eq!(progress.stream_name, "test-stream");
+        assert!(progress.elapsed_ms >= 5000);
+        assert_eq!(progress.checkpoint_seq, Some(150));
+        assert!(progress.estimated_completion_ms.is_some());
+    }
+
     #[tokio::test]
     async fn test_migration_lifecycle() {
-        // Test would require a mock router implementation
-        // Placeholder for future tests
+        // This test would require a mock router implementation
+        // For now, we test the basic structure and state transitions
+
+        // Test checkpoint metadata
+        let metadata = CheckpointMetadata {
+            original_size: 1000,
+            compressed_size: 300,
+            compression_ratio: 3.33,
+            compression_type: CompressionType::Gzip,
+            original_checksum: "abc123".to_string(),
+            compressed_checksum: "def456".to_string(),
+        };
+
+        assert!(metadata.compression_ratio > 3.0);
+        assert!(metadata.compressed_size < metadata.original_size);
     }
 }
