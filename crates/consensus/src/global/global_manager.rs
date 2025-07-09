@@ -452,6 +452,46 @@ where
             .map_err(|e| Error::Raft(format!("Failed to initialize Raft: {e}")))?;
 
         info!("Successfully initialized single-node cluster");
+
+        // Wait a bit for Raft to stabilize before creating the group
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Create default consensus group
+        info!("Creating default consensus group");
+        let default_group_id = crate::allocation::ConsensusGroupId::new(1);
+        let add_group_op = GlobalOperation::AddConsensusGroup {
+            group_id: default_group_id,
+            members: vec![node_id.clone()],
+        };
+
+        let request = GlobalRequest {
+            operation: add_group_op,
+        };
+
+        info!(
+            "Submitting AddConsensusGroup request for group {:?}",
+            default_group_id
+        );
+        match self.submit_request(request).await {
+            Ok(response) => {
+                if response.success {
+                    info!(
+                        "Successfully submitted default consensus group {:?} creation (sequence: {})",
+                        default_group_id, response.sequence
+                    );
+                } else {
+                    warn!(
+                        "Failed to create default consensus group: {:?}",
+                        response.error
+                    );
+                }
+            }
+            Err(e) => {
+                warn!("Error creating default consensus group: {}", e);
+                // Not a critical error - cluster can still function
+            }
+        }
+
         Ok(())
     }
 
@@ -489,6 +529,46 @@ where
             .map_err(|e| Error::Raft(format!("Failed to initialize leader Raft: {e}")))?;
 
         info!("Successfully initialized multi-node cluster as leader");
+
+        // Wait a bit for Raft to stabilize before creating the group
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+        // Create default consensus group
+        info!("Creating default consensus group");
+        let default_group_id = crate::allocation::ConsensusGroupId::new(1);
+        let add_group_op = GlobalOperation::AddConsensusGroup {
+            group_id: default_group_id,
+            members: vec![node_id.clone()],
+        };
+
+        let request = GlobalRequest {
+            operation: add_group_op,
+        };
+
+        info!(
+            "Submitting AddConsensusGroup request for group {:?}",
+            default_group_id
+        );
+        match self.submit_request(request).await {
+            Ok(response) => {
+                if response.success {
+                    info!(
+                        "Successfully submitted default consensus group {:?} creation (sequence: {})",
+                        default_group_id, response.sequence
+                    );
+                } else {
+                    warn!(
+                        "Failed to create default consensus group: {:?}",
+                        response.error
+                    );
+                }
+            }
+            Err(e) => {
+                warn!("Error creating default consensus group: {}", e);
+                // Not a critical error - cluster can still function
+            }
+        }
+
         Ok(())
     }
 

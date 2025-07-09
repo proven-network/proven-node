@@ -34,19 +34,20 @@ pub mod orchestrator;
 pub mod pubsub;
 /// Consensus routing
 pub mod router;
+/// Storage adaptor layer for different backends
+pub mod storage;
 pub mod subscription;
-#[cfg(any(test, feature = "test-helpers"))]
-pub mod test_helpers;
 pub mod topology;
 pub mod transport;
 pub mod verification;
 
+#[cfg(any(test, feature = "test-helpers"))]
+pub mod test_helpers;
+
 // Re-export main types
 pub use consensus::Consensus;
 pub use error::{ConsensusResult, Error};
-pub use global::{
-    ConsensusStorage, GlobalConsensusMemoryStorage, GlobalConsensusRocksStorage, GlobalTypeConfig,
-};
+pub use global::{ConsensusStorage, GlobalTypeConfig};
 pub use node::Node;
 pub use node_id::NodeId;
 pub use openraft::Config as RaftConfig;

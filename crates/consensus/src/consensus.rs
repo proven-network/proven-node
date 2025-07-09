@@ -37,15 +37,6 @@ type AppMessageHandlerType =
 type RaftMessageHandlerType =
     Option<Arc<dyn Fn(NodeId, crate::network::messages::RaftMessage, Option<Uuid>) + Send + Sync>>;
 
-/// Storage wrapper to handle different storage types
-#[derive(Debug, Clone)]
-pub enum StorageWrapper {
-    /// Memory storage
-    Memory(crate::global::GlobalConsensusMemoryStorage),
-    /// RocksDB storage
-    RocksDB(crate::global::GlobalConsensusRocksStorage),
-}
-
 /// Main consensus system that coordinates application-level logic
 /// Uses both NetworkManager (pure networking) and GlobalManager (global consensus)
 pub struct Consensus<G, A>
@@ -93,18 +84,10 @@ where
         let storage_config_clone = config.storage_config.clone();
         let cluster_join_retry_config_clone = config.cluster_join_retry_config.clone();
 
-        // Create storage based on configuration with StreamStore
-        let storage = match &config.storage_config {
-            crate::config::StorageConfig::Memory => StorageWrapper::Memory(
-                crate::global::create_memory_storage_with_global_state(global_state.clone())?,
-            ),
-            crate::config::StorageConfig::RocksDB { path } => {
-                StorageWrapper::RocksDB(crate::global::create_rocks_storage_with_global_state(
-                    &path.to_string_lossy(),
-                    global_state.clone(),
-                )?)
-            }
-        };
+        // Create global storage factory based on configuration
+        let storage_factory =
+            crate::global::storage::create_global_storage_factory(&config.storage_config)?;
+        let storage = storage_factory.create_storage(global_state.clone()).await?;
 
         // Create topology manager first (shared between managers)
         // The topology manager needs to be shared between GlobalManager and NetworkManager because:
@@ -145,38 +128,19 @@ where
 
         // Create global manager (handles Raft, discovery, topology)
         let raft_config = Arc::new(config.raft_config);
-        let global_manager = match &storage {
-            StorageWrapper::Memory(mem_storage) => {
-                GlobalManager::new(
-                    node_id.clone(),
-                    mem_storage.clone(),
-                    raft_config,
-                    config.cluster_join_retry_config,
-                    network_factory,
-                    network_manager.clone(),
-                    topology.clone(),
-                    global_state.clone(),
-                    raft_adapter_request_rx,
-                    raft_adapter_response_tx,
-                )
-                .await
-            }
-            StorageWrapper::RocksDB(rocks_storage) => {
-                GlobalManager::new(
-                    node_id.clone(),
-                    rocks_storage.clone(),
-                    raft_config,
-                    config.cluster_join_retry_config,
-                    network_factory,
-                    network_manager.clone(),
-                    topology.clone(),
-                    global_state.clone(),
-                    raft_adapter_request_rx,
-                    raft_adapter_response_tx,
-                )
-                .await
-            }
-        }
+        let global_manager = GlobalManager::new(
+            node_id.clone(),
+            storage,
+            raft_config,
+            config.cluster_join_retry_config,
+            network_factory,
+            network_manager.clone(),
+            topology.clone(),
+            global_state.clone(),
+            raft_adapter_request_rx,
+            raft_adapter_response_tx,
+        )
+        .await
         .map_err(|e| Error::Raft(format!("Failed to create GlobalManager: {e}")))?;
 
         // Wrap global manager in Arc
@@ -202,11 +166,13 @@ where
             cluster_discovery_timeout: config.cluster_discovery_timeout,
             cluster_join_retry_config: cluster_join_retry_config_clone,
             hierarchical_config: hierarchical_config.clone(),
+            stream_storage_backend: config.stream_storage_backend.clone(),
         };
         let orchestrator = Orchestrator::new(
             orchestrator_config,
             hierarchical_config,
             global_manager.clone(),
+            global_state.clone(),
             node_id.clone(),
         )
         .await?;
@@ -734,10 +700,26 @@ where
     ) -> ConsensusResult<u64> {
         let stream_name = stream_name.into();
 
-        // Use hierarchical system - this will allocate the stream to a group
+        // Get the first available consensus group from global state
+        // In a real implementation, this would use a more sophisticated allocation strategy
+        let group_id = {
+            let global_state = self.global_state();
+            let groups = global_state.get_all_groups().await;
+            if groups.is_empty() {
+                return Err(Error::InvalidOperation(
+                    "No consensus groups available".to_string(),
+                ));
+            }
+            // For now, just use the first group
+            // TODO: Implement proper group selection strategy
+            groups.into_iter().next().unwrap().id
+        };
+
+        // Use hierarchical system - create the stream with the selected group
         let operation = GlobalOperation::CreateStream {
             stream_name,
             config,
+            group_id,
         };
 
         let response = self

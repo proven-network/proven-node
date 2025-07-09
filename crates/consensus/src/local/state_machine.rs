@@ -1,30 +1,71 @@
+//! Storage-backed state machine for local consensus groups
+//!
+//! This module provides a state machine implementation that uses per-stream
+//! storage instances. Each stream gets its own isolated storage backend,
+//! enabling easier migration and per-stream configuration.
+
+use crate::{
+    allocation::ConsensusGroupId,
+    local::stream_storage::{
+        log_types::{MessageSource, StreamLogEntry, StreamMetadata as StreamLogMetadata},
+        stream_manager::UnifiedStreamManager,
+        traits::StreamConfig,
+    },
+    storage::{StorageEngine, StorageIterator, StorageKey, StorageValue, keys, log::LogStorage},
+};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
-use tracing::info;
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-/// Stream data for local consensus groups
+/// Storage-backed state machine for local consensus groups with per-stream storage
+#[derive(Clone)]
+pub struct StorageBackedLocalState {
+    /// Group ID for this state machine
+    group_id: ConsensusGroupId,
+    /// Stream manager that handles per-stream storage instances
+    stream_manager: Arc<UnifiedStreamManager>,
+    /// Cached metrics (updated periodically)
+    cached_metrics: Arc<RwLock<CachedMetrics>>,
+}
+
+/// Cached metrics to avoid frequent storage queries
+#[derive(Default, Clone)]
+struct CachedMetrics {
+    /// Total messages across all streams
+    total_messages: u64,
+    /// Total bytes stored
+    total_bytes: u64,
+    /// Last update timestamp
+    #[allow(dead_code)]
+    last_update: u64,
+}
+
+/// Stream metadata stored in the stream's metadata namespace
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamData {
-    /// Messages in the stream
-    pub messages: BTreeMap<u64, MessageData>,
+pub struct StreamMetadata {
     /// Last sequence number
     pub last_seq: u64,
     /// Whether the stream is paused for migration
     pub is_paused: bool,
-    /// Pending operations while paused (for atomic resume)
-    pub pending_operations: Vec<PendingOperation>,
     /// Pause timestamp for migration coordination
     pub paused_at: Option<u64>,
+    /// Number of messages in the stream
+    pub message_count: u64,
+    /// Total bytes in the stream
+    pub total_bytes: u64,
 }
 
-/// Pending operation while stream is paused
+/// Pending operation stored in storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PendingOperation {
+pub struct StoredPendingOperation {
+    /// Operation ID (timestamp-based)
+    pub id: u64,
     /// Operation type
     pub operation_type: PendingOperationType,
     /// Data for the operation
-    pub data: bytes::Bytes,
+    pub data: Bytes,
     /// Metadata
     pub metadata: Option<HashMap<String, String>>,
     /// Timestamp when operation was attempted
@@ -45,1048 +86,619 @@ pub enum PendingOperationType {
     },
 }
 
-/// Message data in a stream
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageData {
-    /// Sequence number
-    pub sequence: u64,
-    /// Message content
-    pub data: Bytes,
-    /// Timestamp
-    pub timestamp: u64,
-    /// Optional metadata
-    pub metadata: Option<HashMap<String, String>>,
+/// Namespace constants for per-stream storage
+mod namespaces {
+    use crate::storage::StorageNamespace;
+
+    /// Messages namespace within a stream's storage
+    pub fn messages() -> StorageNamespace {
+        StorageNamespace::new("messages")
+    }
+
+    /// Metadata namespace within a stream's storage
+    pub fn metadata() -> StorageNamespace {
+        StorageNamespace::new("metadata")
+    }
+
+    /// Pending operations namespace within a stream's storage
+    pub fn pending() -> StorageNamespace {
+        StorageNamespace::new("pending")
+    }
 }
 
-/// Local state machine that manages streams assigned to this consensus group
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct LocalState {
-    /// Streams managed by this local consensus group
-    streams: HashMap<String, StreamData>,
-    /// Group ID for this store
-    group_id: Option<crate::allocation::ConsensusGroupId>,
-    /// Total messages across all streams
-    total_messages: u64,
-    /// Total bytes stored
-    total_bytes: u64,
-    /// Message rate tracking (messages per second over last minute)
-    #[serde(skip)]
-    rate_tracker: MessageRateTracker,
-}
-
-/// Track message rates over time
-#[derive(Debug, Clone, Default)]
-struct MessageRateTracker {
-    /// Ring buffer of message counts per second (last 60 seconds)
-    message_counts: Vec<u32>,
-    /// Current second index in the ring buffer
-    current_index: usize,
-    /// Timestamp of the current second
-    current_second: u64,
-    /// Total messages in the last minute
-    total_messages_per_minute: u64,
-}
-
-impl MessageRateTracker {
-    fn new() -> Self {
+impl StorageBackedLocalState {
+    /// Create a new storage-backed state machine with per-stream storage
+    pub fn new(group_id: ConsensusGroupId, stream_manager: Arc<UnifiedStreamManager>) -> Self {
         Self {
-            message_counts: vec![0; 60],
-            current_index: 0,
-            current_second: 0,
-            total_messages_per_minute: 0,
+            group_id,
+            stream_manager,
+            cached_metrics: Arc::new(RwLock::new(CachedMetrics::default())),
         }
     }
 
-    fn record_message(&mut self) {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+    /// Get stream metadata
+    async fn get_stream_metadata(&self, stream_id: &str) -> Result<Option<StreamMetadata>, String> {
+        let storage = match self.stream_manager.get_stream_storage(stream_id).await {
+            Ok(storage) => storage,
+            Err(_) => return Ok(None), // Stream doesn't exist
+        };
 
-        // If we've moved to a new second
-        if now != self.current_second {
-            // Calculate how many seconds have passed
-            let seconds_passed = now.saturating_sub(self.current_second).min(60) as usize;
-
-            // Clear the slots for the seconds that have passed
-            for i in 1..=seconds_passed {
-                let index = (self.current_index + i) % 60;
-                self.total_messages_per_minute = self
-                    .total_messages_per_minute
-                    .saturating_sub(self.message_counts[index] as u64);
-                self.message_counts[index] = 0;
+        let key = StorageKey::from("stream_meta");
+        match storage
+            .get(&namespaces::metadata(), &key)
+            .await
+            .map_err(|e| format!("Storage error: {}", e))?
+        {
+            Some(value) => {
+                let metadata: StreamMetadata = ciborium::from_reader(value.as_bytes())
+                    .map_err(|e| format!("Failed to deserialize metadata: {}", e))?;
+                Ok(Some(metadata))
             }
-
-            // Move to the new second
-            self.current_index = (self.current_index + seconds_passed) % 60;
-            self.current_second = now;
+            None => Ok(None),
         }
-
-        // Increment the count for the current second
-        self.message_counts[self.current_index] += 1;
-        self.total_messages_per_minute += 1;
     }
 
-    fn get_rate(&self) -> f64 {
-        // Return messages per second (average over the last minute)
-        self.total_messages_per_minute as f64 / 60.0
-    }
-}
+    /// Set stream metadata
+    async fn set_stream_metadata(
+        &self,
+        stream_id: &str,
+        metadata: &StreamMetadata,
+    ) -> Result<(), String> {
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
-impl LocalState {
-    /// Create a new local state machine
-    pub fn new(group_id: crate::allocation::ConsensusGroupId) -> Self {
-        Self {
-            streams: HashMap::new(),
-            group_id: Some(group_id),
-            total_messages: 0,
+        let key = StorageKey::from("stream_meta");
+        let mut buffer = Vec::new();
+        ciborium::into_writer(metadata, &mut buffer)
+            .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+
+        storage
+            .put(&namespaces::metadata(), key, StorageValue::new(buffer))
+            .await
+            .map_err(|e| format!("Storage error: {}", e))
+    }
+
+    /// Create a new stream with its own storage instance
+    pub async fn create_stream(&self, stream_id: &str, config: StreamConfig) -> Result<(), String> {
+        // Stream manager handles duplicate checking
+        self.stream_manager
+            .create_stream(stream_id.to_string(), config)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Initialize stream metadata
+        let metadata = StreamMetadata {
+            last_seq: 0,
+            is_paused: false,
+            paused_at: None,
+            message_count: 0,
             total_bytes: 0,
-            rate_tracker: MessageRateTracker::new(),
-        }
-    }
+        };
 
-    /// Add a stream to this store (during allocation or migration)
-    pub fn add_stream(&mut self, stream_name: String, data: StreamData) {
-        let message_count = data.messages.len() as u64;
-        let bytes = data
-            .messages
-            .values()
-            .map(|m| m.data.len() as u64)
-            .sum::<u64>();
+        self.set_stream_metadata(stream_id, &metadata).await?;
 
-        self.total_messages += message_count;
-        self.total_bytes += bytes;
+        // Create namespaces in the stream's storage
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
-        self.streams.insert(stream_name, data);
-    }
+        // Create the necessary namespaces
+        storage
+            .create_namespace(&namespaces::messages())
+            .await
+            .map_err(|e| format!("Failed to create messages namespace: {}", e))?;
 
-    /// Remove a stream from this store (during migration or deletion)
-    pub fn remove_stream(&mut self, stream_name: &str) -> Option<StreamData> {
-        if let Some(data) = self.streams.remove(stream_name) {
-            let message_count = data.messages.len() as u64;
-            let bytes = data
-                .messages
-                .values()
-                .map(|m| m.data.len() as u64)
-                .sum::<u64>();
+        storage
+            .create_namespace(&namespaces::metadata())
+            .await
+            .map_err(|e| format!("Failed to create metadata namespace: {}", e))?;
 
-            self.total_messages = self.total_messages.saturating_sub(message_count);
-            self.total_bytes = self.total_bytes.saturating_sub(bytes);
+        storage
+            .create_namespace(&namespaces::pending())
+            .await
+            .map_err(|e| format!("Failed to create pending namespace: {}", e))?;
 
-            Some(data)
-        } else {
-            None
-        }
-    }
-
-    /// Get a stream's data
-    pub fn get_stream(&self, stream_name: &str) -> Option<&StreamData> {
-        self.streams.get(stream_name)
-    }
-
-    /// Get a mutable reference to a stream's data
-    pub fn get_stream_mut(&mut self, stream_name: &str) -> Option<&mut StreamData> {
-        self.streams.get_mut(stream_name)
+        Ok(())
     }
 
     /// Publish a message to a stream
-    pub fn publish_message(
+    pub async fn publish_message(
         &mut self,
-        stream_name: &str,
+        stream_id: &str,
         data: Bytes,
-        metadata: Option<HashMap<String, String>>,
+        headers: Option<HashMap<String, String>>,
     ) -> Result<u64, String> {
-        // Check if stream is paused first
-        if let Some(stream) = self.streams.get(stream_name) {
-            if stream.is_paused {
-                // Queue the operation without holding a mutable reference
-                let pending_op = PendingOperation {
-                    operation_type: PendingOperationType::Publish,
-                    data: data.clone(),
-                    metadata: metadata.clone(),
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                };
+        // Get stream's storage
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| format!("Stream {} not found: {}", stream_id, e))?;
 
-                if let Some(stream) = self.streams.get_mut(stream_name) {
-                    stream.pending_operations.push(pending_op);
-                    // Return the next sequence that would be assigned
-                    return Ok(stream.last_seq + 1);
-                }
-            }
+        // Get current metadata
+        let mut metadata = self
+            .get_stream_metadata(stream_id)
+            .await?
+            .ok_or_else(|| format!("Stream {} not found", stream_id))?;
+
+        // Check if stream is paused
+        if metadata.is_paused {
+            // Store as pending operation
+            let pending_op = StoredPendingOperation {
+                id: chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64,
+                operation_type: PendingOperationType::Publish,
+                data: data.clone(),
+                metadata: headers.clone(),
+                timestamp: chrono::Utc::now().timestamp() as u64,
+            };
+
+            self.store_pending_operation(stream_id, &pending_op).await?;
+            return Err("Stream is paused for migration".to_string());
         }
 
-        // Stream not found or not paused, proceed with normal operation
-        let stream = self
-            .streams
-            .get_mut(stream_name)
-            .ok_or_else(|| format!("Stream '{}' not found in this group", stream_name))?;
+        // Increment sequence number
+        metadata.last_seq += 1;
+        let sequence = metadata.last_seq;
 
-        let sequence = stream.last_seq + 1;
-        stream.last_seq = sequence;
-
-        let message = MessageData {
-            sequence,
-            data: data.clone(),
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            metadata,
+        // Create log entry metadata
+        let log_metadata = StreamLogMetadata {
+            headers: headers.unwrap_or_default(),
+            compression: None,
+            source: MessageSource::Consensus,
         };
 
-        let message_size = data.len() as u64;
-        self.total_messages += 1;
-        self.total_bytes += message_size;
+        // Create LogStorage entry
+        let log_entry = crate::storage::log::LogEntry {
+            index: sequence,
+            timestamp: chrono::Utc::now().timestamp() as u64,
+            data: data.clone(),
+            metadata: log_metadata,
+        };
 
-        // Track message rate
-        self.rate_tracker.record_message();
+        // Use LogStorage to append the entry
+        storage
+            .append_entry(&namespaces::messages(), log_entry)
+            .await
+            .map_err(|e| format!("Storage error: {}", e))?;
 
-        stream.messages.insert(sequence, message);
+        // Update metadata
+        metadata.message_count += 1;
+        metadata.total_bytes += data.len() as u64;
+        self.set_stream_metadata(stream_id, &metadata).await?;
 
-        // Apply retention policies
-        self.apply_retention(stream_name);
+        // Update cached metrics
+        let mut metrics = self.cached_metrics.write().await;
+        metrics.total_messages += 1;
+        metrics.total_bytes += data.len() as u64;
 
         Ok(sequence)
     }
 
-    /// Apply retention policies to a stream
-    fn apply_retention(&mut self, stream_name: &str) {
-        // This is a simplified version - would need to check stream config
-        if let Some(stream) = self.streams.get_mut(stream_name) {
-            // Keep only last 10000 messages for now
-            if stream.messages.len() > 10000 {
-                let to_remove: Vec<_> = stream
-                    .messages
-                    .keys()
-                    .take(stream.messages.len() - 10000)
-                    .copied()
-                    .collect();
+    /// Delete a message from a stream
+    pub async fn delete_message(&mut self, stream_id: &str, sequence: u64) -> Result<(), String> {
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
-                for seq in to_remove {
-                    if let Some(msg) = stream.messages.remove(&seq) {
-                        self.total_messages = self.total_messages.saturating_sub(1);
-                        self.total_bytes = self.total_bytes.saturating_sub(msg.data.len() as u64);
-                    }
-                }
-            }
-        }
+        let key = keys::encode_log_key(sequence);
+        storage
+            .delete(&namespaces::messages(), &key)
+            .await
+            .map_err(|e| format!("Storage error: {}", e))
     }
 
-    /// Get metrics for this store
-    pub fn get_metrics(&self) -> LocalStateMetrics {
-        LocalStateMetrics {
-            group_id: self.group_id,
-            stream_count: self.streams.len() as u32,
-            total_messages: self.total_messages,
-            total_bytes: self.total_bytes,
-            message_rate: self.rate_tracker.get_rate(),
-            streams: self
-                .streams
-                .iter()
-                .map(|(name, data)| {
-                    let bytes = data.messages.values().map(|m| m.data.len() as u64).sum();
+    /// Pause a stream for migration
+    pub async fn pause_stream(&mut self, stream_id: &str) -> Result<(), String> {
+        let mut metadata = self
+            .get_stream_metadata(stream_id)
+            .await?
+            .ok_or_else(|| format!("Stream {} not found", stream_id))?;
 
-                    (
-                        name.clone(),
-                        StreamMetrics {
-                            message_count: data.messages.len() as u64,
-                            last_sequence: data.last_seq,
-                            total_bytes: bytes,
-                        },
-                    )
-                })
-                .collect(),
-        }
-    }
-
-    /// Get the current message rate (messages per second)
-    pub fn get_message_rate(&self) -> f64 {
-        self.rate_tracker.get_rate()
-    }
-
-    /// Create a snapshot of this store's state
-    pub fn snapshot(&self) -> LocalStateSnapshot {
-        LocalStateSnapshot {
-            group_id: self.group_id,
-            streams: self.streams.clone(),
-            total_messages: self.total_messages,
-            total_bytes: self.total_bytes,
-        }
-    }
-
-    /// Restore from a snapshot
-    pub fn restore_from_snapshot(&mut self, snapshot: LocalStateSnapshot) {
-        self.group_id = snapshot.group_id;
-        self.streams = snapshot.streams;
-        self.total_messages = snapshot.total_messages;
-        self.total_bytes = snapshot.total_bytes;
-    }
-
-    /// Create a stream for migration
-    pub fn create_stream_for_migration(
-        &mut self,
-        stream_name: String,
-        _source_group: crate::allocation::ConsensusGroupId,
-    ) {
-        self.add_stream(
-            stream_name,
-            StreamData {
-                messages: BTreeMap::new(),
-                last_seq: 0,
-                is_paused: false,
-                pending_operations: Vec::new(),
-                paused_at: None,
-            },
-        );
-    }
-
-    /// Get checkpoint data for a stream
-    pub fn get_stream_checkpoint(&self, stream_name: &str) -> Result<(StreamData, u64), String> {
-        self.streams
-            .get(stream_name)
-            .map(|stream| (stream.clone(), stream.last_seq))
-            .ok_or_else(|| format!("Stream {} not found", stream_name))
-    }
-
-    /// Create a comprehensive migration checkpoint for a stream
-    pub fn create_migration_checkpoint(
-        &self,
-        stream_name: &str,
-    ) -> Result<crate::migration::MigrationCheckpoint, String> {
-        let stream_data = self
-            .streams
-            .get(stream_name)
-            .cloned()
-            .ok_or_else(|| format!("Stream {} not found", stream_name))?;
-
-        // In a real implementation, we would:
-        // 1. Get stream configuration from global state
-        // 2. Get subscription list from subscription manager
-        // 3. Calculate proper checksum
-
-        let serialized_data = serde_json::to_vec(&stream_data)
-            .map_err(|e| format!("Failed to serialize stream data: {}", e))?;
-
-        let checksum = {
-            use sha2::{Digest, Sha256};
-            let mut hasher = Sha256::new();
-            hasher.update(&serialized_data);
-            format!("{:x}", hasher.finalize())
-        };
-
-        Ok(crate::migration::MigrationCheckpoint {
-            stream_name: stream_name.to_string(),
-            sequence: stream_data.last_seq,
-            data: stream_data,
-            config: crate::global::StreamConfig::default(), // TODO: Get from global state
-            subscriptions: Vec::new(),                      // TODO: Get from subscription manager
-            created_at: chrono::Utc::now().timestamp_millis() as u64,
-            checksum,
-            compression: crate::migration::CompressionType::default(),
-            is_incremental: false,
-            base_checkpoint_seq: None,
-        })
-    }
-
-    /// Create an incremental checkpoint containing only messages after a specific sequence
-    pub fn create_incremental_checkpoint(
-        &self,
-        stream_name: &str,
-        since_sequence: u64,
-    ) -> Result<crate::migration::MigrationCheckpoint, String> {
-        let stream = self
-            .streams
-            .get(stream_name)
-            .ok_or_else(|| format!("Stream {} not found", stream_name))?;
-
-        // Create a new StreamData with only messages after since_sequence
-        let incremental_messages: BTreeMap<u64, MessageData> = stream
-            .messages
-            .range((since_sequence + 1)..)
-            .map(|(seq, data)| (*seq, data.clone()))
-            .collect();
-
-        let incremental_stream_data = StreamData {
-            messages: incremental_messages.clone(),
-            last_seq: stream.last_seq,
-            is_paused: stream.is_paused,
-            pending_operations: stream.pending_operations.clone(),
-            paused_at: stream.paused_at,
-        };
-
-        // Calculate checksum for the incremental data
-        let serialized_data = serde_json::to_vec(&incremental_stream_data)
-            .map_err(|e| format!("Failed to serialize incremental data: {}", e))?;
-        let checksum = crate::migration::calculate_checksum(&serialized_data);
-
-        // Get message count for logging
-        let message_count = incremental_messages.len();
-        let sequence_range = if !incremental_messages.is_empty() {
-            let first_seq = *incremental_messages.keys().next().unwrap();
-            let last_seq = *incremental_messages.keys().last().unwrap();
-            format!("{}-{}", first_seq, last_seq)
-        } else {
-            "empty".to_string()
-        };
-
-        tracing::info!(
-            "Created incremental checkpoint for stream {} with {} messages (sequences: {})",
-            stream_name,
-            message_count,
-            sequence_range
-        );
-
-        Ok(crate::migration::MigrationCheckpoint {
-            stream_name: stream_name.to_string(),
-            sequence: stream.last_seq,
-            data: incremental_stream_data,
-            config: crate::global::StreamConfig::default(), // TODO: Get from global state
-            subscriptions: Vec::new(),                      // TODO: Get from subscription manager
-            created_at: chrono::Utc::now().timestamp_millis() as u64,
-            checksum,
-            compression: crate::migration::CompressionType::default(),
-            is_incremental: true,
-            base_checkpoint_seq: Some(since_sequence),
-        })
-    }
-
-    /// Apply a migration checkpoint
-    pub fn apply_migration_checkpoint(&mut self, checkpoint_data: &[u8]) -> Result<(), String> {
-        // Try to deserialize as compressed checkpoint first
-        let checkpoint = if let Ok(compressed) =
-            serde_json::from_slice::<crate::migration::CompressedCheckpoint>(checkpoint_data)
-        {
-            // Decompress the checkpoint
-            crate::migration::decompress_checkpoint(&compressed)
-                .map_err(|e| format!("Failed to decompress checkpoint: {}", e))?
-        } else {
-            // Fall back to uncompressed checkpoint
-            serde_json::from_slice::<crate::migration::MigrationCheckpoint>(checkpoint_data)
-                .map_err(|e| format!("Failed to deserialize checkpoint: {}", e))?
-        };
-
-        // Validate checkpoint integrity
-        crate::migration::validate_checkpoint(&checkpoint)
-            .map_err(|e| format!("Checkpoint validation failed: {}", e))?;
-
-        // Add or update the stream with checkpoint data
-        self.streams
-            .insert(checkpoint.stream_name.clone(), checkpoint.data);
-
-        // Update metrics
-        self.recalculate_metrics();
-
-        Ok(())
-    }
-
-    /// Apply an incremental migration checkpoint (merges with existing data)
-    pub fn apply_incremental_checkpoint(&mut self, checkpoint_data: &[u8]) -> Result<(), String> {
-        // Try to deserialize as compressed checkpoint first
-        let checkpoint = if let Ok(compressed) =
-            serde_json::from_slice::<crate::migration::CompressedCheckpoint>(checkpoint_data)
-        {
-            // Decompress the checkpoint
-            crate::migration::decompress_checkpoint(&compressed)
-                .map_err(|e| format!("Failed to decompress checkpoint: {}", e))?
-        } else {
-            // Fall back to uncompressed checkpoint
-            serde_json::from_slice::<crate::migration::MigrationCheckpoint>(checkpoint_data)
-                .map_err(|e| format!("Failed to deserialize checkpoint: {}", e))?
-        };
-
-        // Validate checkpoint integrity
-        crate::migration::validate_checkpoint(&checkpoint)
-            .map_err(|e| format!("Checkpoint validation failed: {}", e))?;
-
-        // Verify this is an incremental checkpoint
-        if !checkpoint.is_incremental {
-            return Err("Expected incremental checkpoint but got full checkpoint".to_string());
+        if metadata.is_paused {
+            return Err("Stream is already paused".to_string());
         }
 
-        // Get or create the stream
-        let stream = self
-            .streams
-            .entry(checkpoint.stream_name.clone())
-            .or_insert_with(|| StreamData {
-                messages: BTreeMap::new(),
-                last_seq: 0,
-                is_paused: false,
-                pending_operations: Vec::new(),
-                paused_at: None,
-            });
+        metadata.is_paused = true;
+        metadata.paused_at = Some(chrono::Utc::now().timestamp() as u64);
 
-        // Merge incremental messages into existing stream
-        let mut messages_added = 0;
-        let mut bytes_added = 0u64;
-
-        for (seq, message) in checkpoint.data.messages {
-            // Only add messages that we don't already have
-            if let std::collections::btree_map::Entry::Vacant(e) = stream.messages.entry(seq) {
-                bytes_added += message.data.len() as u64;
-                e.insert(message);
-                messages_added += 1;
-            }
-        }
-
-        // Update last_seq if the checkpoint has a higher sequence
-        if checkpoint.data.last_seq > stream.last_seq {
-            stream.last_seq = checkpoint.data.last_seq;
-        }
-
-        // Merge pause state and pending operations if needed
-        if checkpoint.data.is_paused && !stream.is_paused {
-            stream.is_paused = checkpoint.data.is_paused;
-            stream.paused_at = checkpoint.data.paused_at;
-        }
-
-        // Append any new pending operations (avoiding duplicates)
-        for pending_op in checkpoint.data.pending_operations {
-            if !stream
-                .pending_operations
-                .iter()
-                .any(|op| op.timestamp == pending_op.timestamp && op.data == pending_op.data)
-            {
-                stream.pending_operations.push(pending_op);
-            }
-        }
-
-        // Update metrics
-        self.total_messages += messages_added as u64;
-        self.total_bytes += bytes_added;
-
-        info!(
-            "Applied incremental checkpoint for stream {}: {} new messages, {} bytes added",
-            checkpoint.stream_name, messages_added, bytes_added
-        );
-
-        Ok(())
+        self.set_stream_metadata(stream_id, &metadata).await
     }
 
-    /// Atomically pause a stream for migration
-    pub fn pause_stream(&mut self, stream_name: &str) -> Result<u64, String> {
-        let stream = self
-            .streams
-            .get_mut(stream_name)
-            .ok_or_else(|| format!("Stream {} not found", stream_name))?;
+    /// Resume a stream after migration
+    pub async fn resume_stream(&mut self, stream_id: &str) -> Result<Vec<u64>, String> {
+        let mut metadata = self
+            .get_stream_metadata(stream_id)
+            .await?
+            .ok_or_else(|| format!("Stream {} not found", stream_id))?;
 
-        if stream.is_paused {
-            return Err(format!("Stream {} is already paused", stream_name));
+        if !metadata.is_paused {
+            return Err("Stream is not paused".to_string());
         }
 
-        let pause_timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+        metadata.is_paused = false;
+        metadata.paused_at = None;
 
-        stream.is_paused = true;
-        stream.paused_at = Some(pause_timestamp);
-        stream.pending_operations.clear(); // Clear any existing pending operations
-
-        info!(
-            "Stream {} paused for migration at timestamp {}",
-            stream_name, pause_timestamp
-        );
-        Ok(stream.last_seq)
-    }
-
-    /// Atomically resume a stream and apply pending operations
-    pub fn resume_stream(&mut self, stream_name: &str) -> Result<Vec<u64>, String> {
-        let stream = self
-            .streams
-            .get_mut(stream_name)
-            .ok_or_else(|| format!("Stream {} not found", stream_name))?;
-
-        if !stream.is_paused {
-            return Err(format!("Stream {} is not paused", stream_name));
-        }
-
-        // Apply pending operations atomically
+        // Process pending operations
+        let pending_ops = self.get_pending_operations(stream_id).await?;
         let mut applied_sequences = Vec::new();
-        for pending_op in &stream.pending_operations {
-            match &pending_op.operation_type {
+
+        for op in pending_ops {
+            match op.operation_type {
                 PendingOperationType::Publish => {
-                    let sequence = stream.last_seq + 1;
-                    stream.last_seq = sequence;
-
-                    let message = MessageData {
-                        sequence,
-                        data: pending_op.data.clone(),
-                        timestamp: pending_op.timestamp,
-                        metadata: pending_op.metadata.clone(),
-                    };
-
-                    stream.messages.insert(sequence, message);
-                    applied_sequences.push(sequence);
-
-                    // Update metrics
-                    self.total_messages += 1;
-                    self.total_bytes += pending_op.data.len() as u64;
-                }
-                PendingOperationType::Rollup => {
-                    // Handle rollup operation
-                    let sequence = stream.last_seq + 1;
-                    stream.last_seq = sequence;
-
-                    let message = MessageData {
-                        sequence,
-                        data: pending_op.data.clone(),
-                        timestamp: pending_op.timestamp,
-                        metadata: pending_op.metadata.clone(),
-                    };
-
-                    stream.messages.insert(sequence, message);
-                    applied_sequences.push(sequence);
-
-                    self.total_messages += 1;
-                    self.total_bytes += pending_op.data.len() as u64;
+                    if let Ok(seq) = self.publish_message(stream_id, op.data, op.metadata).await {
+                        applied_sequences.push(seq);
+                    }
                 }
                 PendingOperationType::Delete { sequence } => {
-                    if let Some(removed_msg) = stream.messages.remove(sequence) {
-                        self.total_messages = self.total_messages.saturating_sub(1);
-                        self.total_bytes = self
-                            .total_bytes
-                            .saturating_sub(removed_msg.data.len() as u64);
-                        applied_sequences.push(*sequence);
-                    }
+                    self.delete_message(stream_id, sequence).await?;
+                }
+                PendingOperationType::Rollup => {
+                    // Implement rollup operation if needed
                 }
             }
         }
 
-        // Clear pause state
-        stream.is_paused = false;
-        stream.paused_at = None;
-        stream.pending_operations.clear();
+        // Clear pending operations
+        self.clear_pending_operations(stream_id).await?;
 
-        info!(
-            "Stream {} resumed, applied {} pending operations",
-            stream_name,
-            applied_sequences.len()
-        );
+        self.set_stream_metadata(stream_id, &metadata).await?;
 
         Ok(applied_sequences)
     }
 
-    /// Check if a stream is paused
-    pub fn is_stream_paused(&self, stream_name: &str) -> bool {
-        self.streams
-            .get(stream_name)
-            .map(|stream| stream.is_paused)
-            .unwrap_or(false)
+    /// Store a pending operation
+    async fn store_pending_operation(
+        &self,
+        stream_id: &str,
+        op: &StoredPendingOperation,
+    ) -> Result<(), String> {
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let key = StorageKey::from(format!("pending:{}", op.id).as_str());
+        let mut buffer = Vec::new();
+        ciborium::into_writer(op, &mut buffer)
+            .map_err(|e| format!("Failed to serialize pending op: {}", e))?;
+
+        storage
+            .put(&namespaces::pending(), key, StorageValue::new(buffer))
+            .await
+            .map_err(|e| format!("Storage error: {}", e))
     }
 
-    /// Queue an operation while stream is paused
-    pub fn queue_pending_operation(
-        &mut self,
-        stream_name: &str,
-        operation_type: PendingOperationType,
-        data: Bytes,
-        metadata: Option<HashMap<String, String>>,
-    ) -> Result<(), String> {
-        let stream = self
-            .streams
-            .get_mut(stream_name)
-            .ok_or_else(|| format!("Stream {} not found", stream_name))?;
+    /// Get pending operations for a stream
+    async fn get_pending_operations(
+        &self,
+        stream_id: &str,
+    ) -> Result<Vec<StoredPendingOperation>, String> {
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
-        if !stream.is_paused {
-            return Err(format!(
-                "Stream {} is not paused, cannot queue operations",
-                stream_name
-            ));
+        let mut operations = Vec::new();
+        let mut iter = storage
+            .iter(&namespaces::pending())
+            .await
+            .map_err(|e| format!("Failed to create iterator: {}", e))?;
+
+        while let Some((_, value)) = iter.next().map_err(|e| format!("Iterator error: {}", e))? {
+            let op: StoredPendingOperation = ciborium::from_reader(value.as_bytes())
+                .map_err(|e| format!("Failed to deserialize pending op: {}", e))?;
+            operations.push(op);
         }
 
-        let pending_op = PendingOperation {
-            operation_type,
-            data,
-            metadata,
-            timestamp: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        };
+        Ok(operations)
+    }
 
-        stream.pending_operations.push(pending_op);
+    /// Clear all pending operations
+    async fn clear_pending_operations(&self, stream_id: &str) -> Result<(), String> {
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Collect keys to delete
+        let mut keys_to_delete = Vec::new();
+        let mut iter = storage
+            .iter(&namespaces::pending())
+            .await
+            .map_err(|e| format!("Failed to create iterator: {}", e))?;
+
+        while let Some((key, _)) = iter.next().map_err(|e| format!("Iterator error: {}", e))? {
+            keys_to_delete.push(key);
+        }
+
+        // Delete all pending operations
+        for key in keys_to_delete {
+            storage
+                .delete(&namespaces::pending(), &key)
+                .await
+                .map_err(|e| format!("Storage error: {}", e))?;
+        }
+
         Ok(())
     }
 
-    /// Remove a stream for migration
-    pub fn remove_stream_for_migration(&mut self, stream_name: &str) -> Result<(), String> {
-        if let Some(stream) = self.streams.remove(stream_name) {
-            // Update metrics
-            self.total_messages = self
-                .total_messages
-                .saturating_sub(stream.messages.len() as u64);
-            let bytes: u64 = stream.messages.values().map(|m| m.data.len() as u64).sum();
-            self.total_bytes = self.total_bytes.saturating_sub(bytes);
-            Ok(())
-        } else {
-            Err(format!("Stream {} not found", stream_name))
-        }
-    }
+    /// Create a migration checkpoint metadata (actual data is streamed separately)
+    pub async fn create_checkpoint_metadata(
+        &self,
+        stream_id: &str,
+    ) -> Result<crate::migration::MigrationCheckpoint, String> {
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
-    /// Recalculate metrics after changes
-    fn recalculate_metrics(&mut self) {
-        self.total_messages = 0;
-        self.total_bytes = 0;
+        let metadata = self
+            .get_stream_metadata(stream_id)
+            .await?
+            .ok_or_else(|| format!("Stream {} not found", stream_id))?;
 
-        for stream in self.streams.values() {
-            self.total_messages += stream.messages.len() as u64;
-            self.total_bytes += stream
-                .messages
-                .values()
-                .map(|m| m.data.len() as u64)
-                .sum::<u64>();
-        }
-    }
+        // Detect storage type from the actual storage backend
+        let storage_type = match storage.storage_type() {
+            "memory" => crate::migration::StorageType::Memory,
+            "rocksdb" => crate::migration::StorageType::RocksDB,
+            _ => crate::migration::StorageType::Memory, // Default fallback
+        };
 
-    /// Clean up old pending operations that have been sitting for too long
-    pub fn cleanup_old_pending_operations(&mut self, max_age_secs: u64) -> usize {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        let mut total_cleaned = 0;
-
-        for stream in self.streams.values_mut() {
-            if stream.is_paused {
-                let before_count = stream.pending_operations.len();
-
-                // Remove operations older than max_age_secs
-                stream
-                    .pending_operations
-                    .retain(|op| now.saturating_sub(op.timestamp) <= max_age_secs);
-
-                let cleaned = before_count - stream.pending_operations.len();
-                if cleaned > 0 {
-                    info!(
-                        "Cleaned {} old pending operations from paused stream",
-                        cleaned
-                    );
-                    total_cleaned += cleaned;
+        // Get stream config and convert to global StreamConfig
+        let local_config = self.get_stream_config(stream_id).await.unwrap_or_default();
+        let stream_config = StreamConfig {
+            max_messages: local_config.max_messages,
+            max_bytes: local_config.max_bytes,
+            max_age_secs: local_config.max_age_secs,
+            storage_type: match storage_type {
+                crate::migration::StorageType::Memory => {
+                    crate::local::stream_storage::traits::StorageType::Memory
                 }
+                crate::migration::StorageType::RocksDB => {
+                    crate::local::stream_storage::traits::StorageType::File
+                }
+                crate::migration::StorageType::S3 => {
+                    crate::local::stream_storage::traits::StorageType::File
+                }
+            },
+            retention_policy: local_config.retention_policy,
+            pubsub_bridge_enabled: local_config.pubsub_bridge_enabled,
+            consensus_group: local_config.consensus_group.or(Some(self.group_id)),
+            compact_on_deletion: local_config.compact_on_deletion,
+            compression: local_config.compression,
+        };
+
+        // Check for pending operations
+        let has_pending = !self.get_pending_operations(stream_id).await?.is_empty();
+
+        Ok(crate::migration::MigrationCheckpoint {
+            stream_name: stream_id.to_string(),
+            sequence: metadata.last_seq,
+            storage_type,
+            config: stream_config,
+            subscriptions: Vec::new(), // Could be tracked in global state
+            created_at: chrono::Utc::now().timestamp() as u64,
+            checksum: String::new(), // Will be calculated during streaming
+            compression: crate::migration::CompressionType::None,
+            is_incremental: false,
+            base_checkpoint_seq: None,
+            message_count: metadata.message_count,
+            total_bytes: metadata.total_bytes,
+            stream_metadata: crate::migration::StreamMetadata {
+                is_paused: metadata.is_paused,
+                paused_at: metadata.paused_at,
+                has_pending_operations: has_pending,
+            },
+        })
+    }
+
+    /// Create an iterator for exporting stream messages
+    pub async fn create_export_iterator(
+        &self,
+        stream_id: &str,
+        start_seq: u64,
+        end_seq: u64,
+    ) -> Result<
+        crate::local::stream_storage::migration_iterator::MigrationMessageIterator<
+            crate::storage::generic::GenericStorage,
+        >,
+        String,
+    > {
+        use crate::local::stream_storage::migration_iterator::MigrationMessageIterator;
+
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        MigrationMessageIterator::new(storage, namespaces::messages(), start_seq, end_seq)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Apply checkpoint metadata (prepare for receiving streamed data)
+    pub async fn prepare_checkpoint_apply(
+        &mut self,
+        checkpoint: &crate::migration::MigrationCheckpoint,
+    ) -> Result<(), String> {
+        // Ensure stream exists with appropriate config
+        if !self
+            .stream_manager
+            .stream_exists(&checkpoint.stream_name)
+            .await
+        {
+            // Create stream with config from checkpoint
+            let config = StreamConfig {
+                max_age_secs: checkpoint.config.max_age_secs,
+                max_messages: checkpoint.config.max_messages,
+                max_bytes: checkpoint.config.max_bytes,
+                storage_type: checkpoint.config.storage_type,
+                retention_policy: checkpoint.config.retention_policy,
+                pubsub_bridge_enabled: checkpoint.config.pubsub_bridge_enabled,
+                consensus_group: checkpoint.config.consensus_group,
+                compact_on_deletion: false,
+                compression: crate::local::stream_storage::CompressionType::None,
+            };
+
+            self.create_stream(&checkpoint.stream_name, config).await?;
+        }
+
+        // If stream is currently not paused but checkpoint says it should be, pause it
+        if checkpoint.stream_metadata.is_paused {
+            self.pause_stream(&checkpoint.stream_name).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Apply a batch of messages from migration
+    pub async fn apply_message_batch(
+        &mut self,
+        stream_name: &str,
+        messages: Vec<crate::migration::StreamMessage>,
+    ) -> Result<(), String> {
+        let storage = self
+            .stream_manager
+            .get_stream_storage(stream_name)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Use batch operations for efficiency
+        let mut batch = crate::storage::WriteBatch::new();
+        let mut _total_bytes = 0u64;
+
+        for msg in messages {
+            // Convert migration message to storage format
+            let log_entry = StreamLogEntry {
+                index: msg.sequence,
+                timestamp: msg.timestamp,
+                data: msg.data.clone(),
+                metadata: StreamLogMetadata {
+                    headers: msg.headers,
+                    compression: msg.compression.as_ref().map(|c| match c.as_str() {
+                        "gzip" => crate::local::stream_storage::log_types::CompressionType::Gzip,
+                        "zstd" => crate::local::stream_storage::log_types::CompressionType::Zstd,
+                        _ => crate::local::stream_storage::log_types::CompressionType::None,
+                    }),
+                    source: match msg.source {
+                        crate::migration::MessageSourceType::Consensus => MessageSource::Consensus,
+                        crate::migration::MessageSourceType::PubSub { subject, publisher } => {
+                            MessageSource::PubSub { subject, publisher }
+                        }
+                        crate::migration::MessageSourceType::Migration { source_group } => {
+                            MessageSource::Migration { source_group }
+                        }
+                    },
+                },
+            };
+
+            let key = keys::encode_log_key(msg.sequence);
+            let mut buffer = Vec::new();
+            ciborium::into_writer(&log_entry, &mut buffer)
+                .map_err(|e| format!("Failed to serialize entry: {}", e))?;
+
+            batch.put(namespaces::messages(), key, StorageValue::new(buffer));
+            _total_bytes += log_entry.data.len() as u64;
+        }
+
+        // Apply batch
+        storage
+            .write_batch(batch)
+            .await
+            .map_err(|e| format!("Storage error: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Finalize checkpoint application
+    pub async fn finalize_checkpoint_apply(
+        &mut self,
+        checkpoint: &crate::migration::MigrationCheckpoint,
+        actual_checksum: &str,
+    ) -> Result<(), String> {
+        // Verify checksum if provided
+        if !checkpoint.checksum.is_empty() && checkpoint.checksum != actual_checksum {
+            return Err(format!(
+                "Checksum mismatch: expected {}, got {}",
+                checkpoint.checksum, actual_checksum
+            ));
+        }
+
+        // Update stream metadata
+        let metadata = StreamMetadata {
+            last_seq: checkpoint.sequence,
+            is_paused: checkpoint.stream_metadata.is_paused,
+            paused_at: checkpoint.stream_metadata.paused_at,
+            message_count: checkpoint.message_count,
+            total_bytes: checkpoint.total_bytes,
+        };
+
+        self.set_stream_metadata(&checkpoint.stream_name, &metadata)
+            .await
+    }
+
+    /// Remove a stream
+    pub async fn remove_stream(&mut self, stream_id: &str) -> Result<(), String> {
+        // Stream manager handles all cleanup
+        self.stream_manager
+            .remove_stream(stream_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Get metrics
+    pub async fn get_metrics(&self) -> crate::local::LocalStateMetrics {
+        let metrics = self.cached_metrics.read().await;
+        let stream_count = self.stream_manager.stream_count().await;
+        let stream_list = self.stream_manager.list_streams().await;
+
+        // Build stream metrics map
+        let mut stream_metrics = HashMap::new();
+        for stream_name in stream_list {
+            if let Ok(Some(metadata)) = self.get_stream_metadata(&stream_name).await {
+                stream_metrics.insert(
+                    stream_name,
+                    crate::local::StreamMetrics {
+                        message_count: metadata.message_count,
+                        last_sequence: metadata.last_seq,
+                        total_bytes: metadata.total_bytes,
+                    },
+                );
             }
         }
 
-        total_cleaned
-    }
-
-    /// Get the count of pending operations across all streams
-    pub fn get_pending_operations_count(&self) -> usize {
-        self.streams
-            .values()
-            .map(|stream| stream.pending_operations.len())
-            .sum()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use std::collections::BTreeMap;
-
-    #[tokio::test]
-    async fn test_local_global_state() {
-        let group_id = crate::allocation::ConsensusGroupId::new(1);
-        let mut store = LocalState::new(group_id);
-
-        // Add a stream
-        let stream_data = StreamData {
-            messages: BTreeMap::new(),
-            last_seq: 0,
-            is_paused: false,
-            pending_operations: Vec::new(),
-            paused_at: None,
-        };
-        store.add_stream("test-stream".to_string(), stream_data);
-
-        // Publish a message
-        let seq = store
-            .publish_message("test-stream", Bytes::from("hello world"), None)
-            .unwrap();
-
-        assert_eq!(seq, 1);
-
-        // Verify message was stored
-        let stream = store.get_stream("test-stream").unwrap();
-        assert_eq!(stream.messages.len(), 1);
-        assert_eq!(stream.last_seq, 1);
-
-        // Test metrics
-        let metrics = store.get_metrics();
-        assert_eq!(metrics.stream_count, 1);
-        assert_eq!(metrics.total_messages, 1);
-    }
-
-    #[tokio::test]
-    async fn test_migration_checkpoint() {
-        let group_id = crate::allocation::ConsensusGroupId::new(0);
-        let mut store = LocalState::new(group_id);
-
-        // Create a stream with some data
-        let stream_name = "test-stream";
-        let mut messages = BTreeMap::new();
-        messages.insert(
-            1,
-            MessageData {
-                sequence: 1,
-                data: Bytes::from("message 1"),
-                timestamp: 1000,
-                metadata: None,
-            },
-        );
-        messages.insert(
-            2,
-            MessageData {
-                sequence: 2,
-                data: Bytes::from("message 2"),
-                timestamp: 2000,
-                metadata: None,
-            },
-        );
-
-        store.add_stream(
-            stream_name.to_string(),
-            StreamData {
-                messages,
-                last_seq: 2,
-                is_paused: false,
-                pending_operations: Vec::new(),
-                paused_at: None,
-            },
-        );
-
-        // Get checkpoint
-        let (stream_data, last_seq) = store.get_stream_checkpoint(stream_name).unwrap();
-        assert_eq!(last_seq, 2);
-        assert_eq!(stream_data.messages.len(), 2);
-
-        // Create checkpoint for migration using the proper method
-        let checkpoint = store.create_migration_checkpoint(stream_name).unwrap();
-
-        // Simulate applying checkpoint to a new store
-        let mut target_store = LocalState::new(crate::allocation::ConsensusGroupId::new(1));
-        let checkpoint_data = serde_json::to_vec(&checkpoint).unwrap();
-        target_store
-            .apply_migration_checkpoint(&checkpoint_data)
-            .unwrap();
-
-        // Verify stream was migrated
-        let migrated_stream = target_store.get_stream(stream_name).unwrap();
-        assert_eq!(migrated_stream.last_seq, 2);
-        assert_eq!(migrated_stream.messages.len(), 2);
-    }
-
-    #[tokio::test]
-    async fn test_migration_with_ongoing_writes() {
-        let group_id = crate::allocation::ConsensusGroupId::new(0);
-        let mut store = LocalState::new(group_id);
-
-        let stream_name = "active-stream";
-        store.add_stream(
-            stream_name.to_string(),
-            StreamData {
-                messages: BTreeMap::new(),
-                last_seq: 0,
-                is_paused: false,
-                pending_operations: Vec::new(),
-                paused_at: None,
-            },
-        );
-
-        // Publish some initial messages
-        for i in 1..=5 {
-            let seq = store
-                .publish_message(stream_name, Bytes::from(format!("message {}", i)), None)
-                .unwrap();
-            assert_eq!(seq, i);
+        crate::local::LocalStateMetrics {
+            group_id: Some(self.group_id),
+            stream_count: stream_count as u32,
+            total_messages: metrics.total_messages,
+            total_bytes: metrics.total_bytes,
+            message_rate: 0.0, // TODO: Calculate actual message rate
+            streams: stream_metrics,
         }
-
-        // Pause the stream (simulating migration)
-        store.pause_stream(stream_name).unwrap();
-
-        // Get checkpoint
-        let (_stream_data, last_seq) = store.get_stream_checkpoint(stream_name).unwrap();
-        assert_eq!(last_seq, 5);
-
-        // Resume the stream
-        store.resume_stream(stream_name).unwrap();
-
-        // Continue publishing
-        let seq = store
-            .publish_message(stream_name, Bytes::from("message after resume"), None)
-            .unwrap();
-        assert_eq!(seq, 6);
     }
 
-    #[test]
-    fn test_message_rate_tracking() {
-        let group_id = crate::allocation::ConsensusGroupId::new(0);
-        let mut store = LocalState::new(group_id);
-
-        // Add a stream
-        store.add_stream(
-            "test-stream".to_string(),
-            StreamData {
-                messages: BTreeMap::new(),
-                last_seq: 0,
-                is_paused: false,
-                pending_operations: Vec::new(),
-                paused_at: None,
-            },
-        );
-
-        // Initial rate should be 0
-        assert_eq!(store.get_message_rate(), 0.0);
-
-        // Publish messages
-        for i in 1..=10 {
-            store
-                .publish_message("test-stream", Bytes::from(format!("msg {}", i)), None)
-                .unwrap();
-        }
-
-        // Rate should be positive now
-        let rate = store.get_message_rate();
-        assert!(rate > 0.0);
-
-        // Check metrics include rate
-        let metrics = store.get_metrics();
-        assert_eq!(metrics.message_rate, rate);
+    /// List all streams
+    pub async fn list_streams(&self) -> Vec<String> {
+        self.stream_manager.list_streams().await
     }
 
-    #[test]
-    fn test_pending_operations_cleanup() {
-        let group_id = crate::allocation::ConsensusGroupId::new(0);
-        let mut store = LocalState::new(group_id);
-
-        // Add a stream
-        store.add_stream(
-            "test-stream".to_string(),
-            StreamData {
-                messages: BTreeMap::new(),
-                last_seq: 0,
-                is_paused: true, // Already paused
-                pending_operations: vec![
-                    PendingOperation {
-                        operation_type: PendingOperationType::Publish,
-                        data: Bytes::from("old operation"),
-                        metadata: None,
-                        timestamp: 1000, // Very old timestamp
-                    },
-                    PendingOperation {
-                        operation_type: PendingOperationType::Publish,
-                        data: Bytes::from("recent operation"),
-                        metadata: None,
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs()
-                            - 10, // 10 seconds ago
-                    },
-                ],
-                paused_at: Some(1000),
-            },
-        );
-
-        // Should have 2 pending operations initially
-        assert_eq!(store.get_pending_operations_count(), 2);
-
-        // Clean up operations older than 60 seconds
-        let cleaned = store.cleanup_old_pending_operations(60);
-        assert_eq!(cleaned, 1); // Should clean the old one
-
-        // Should have 1 pending operation left
-        assert_eq!(store.get_pending_operations_count(), 1);
+    /// Get stream configuration
+    pub async fn get_stream_config(&self, stream_id: &str) -> Result<StreamConfig, String> {
+        self.stream_manager
+            .get_stream_config(stream_id)
+            .await
+            .map_err(|e| e.to_string())
     }
-
-    #[test]
-    fn test_incremental_checkpoint_creation() {
-        let group_id = crate::allocation::ConsensusGroupId::new(0);
-        let mut store = LocalState::new(group_id);
-
-        // Create a stream with messages
-        let stream_name = "test-stream";
-        let mut messages = BTreeMap::new();
-        for i in 1..=20 {
-            messages.insert(
-                i,
-                MessageData {
-                    sequence: i,
-                    data: Bytes::from(format!("message {}", i)),
-                    timestamp: 1000 + i,
-                    metadata: None,
-                },
-            );
-        }
-
-        store.add_stream(
-            stream_name.to_string(),
-            StreamData {
-                messages,
-                last_seq: 20,
-                is_paused: false,
-                pending_operations: Vec::new(),
-                paused_at: None,
-            },
-        );
-
-        // Create incremental checkpoint from sequence 10
-        let checkpoint = store
-            .create_incremental_checkpoint(stream_name, 10)
-            .unwrap();
-
-        // Should only contain messages 11-20
-        assert_eq!(checkpoint.data.messages.len(), 10);
-        assert!(checkpoint.is_incremental);
-        assert_eq!(checkpoint.base_checkpoint_seq, Some(10));
-
-        // Verify message sequences
-        let sequences: Vec<u64> = checkpoint.data.messages.keys().copied().collect();
-        assert_eq!(sequences, vec![11, 12, 13, 14, 15, 16, 17, 18, 19, 20]);
-    }
-}
-
-/// Metrics for a local state machine
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LocalStateMetrics {
-    /// Group ID
-    pub group_id: Option<crate::allocation::ConsensusGroupId>,
-    /// Number of streams
-    pub stream_count: u32,
-    /// Total messages
-    pub total_messages: u64,
-    /// Total bytes
-    pub total_bytes: u64,
-    /// Current message rate (messages per second)
-    pub message_rate: f64,
-    /// Per-stream metrics
-    pub streams: HashMap<String, StreamMetrics>,
-}
-
-/// Metrics for a single stream
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamMetrics {
-    /// Number of messages
-    pub message_count: u64,
-    /// Last sequence number
-    pub last_sequence: u64,
-    /// Total bytes
-    pub total_bytes: u64,
-}
-
-/// Snapshot of a local state machine
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LocalStateSnapshot {
-    /// Group ID
-    pub group_id: Option<crate::allocation::ConsensusGroupId>,
-    /// All streams and their data
-    pub streams: HashMap<String, StreamData>,
-    /// Total messages
-    pub total_messages: u64,
-    /// Total bytes
-    pub total_bytes: u64,
 }

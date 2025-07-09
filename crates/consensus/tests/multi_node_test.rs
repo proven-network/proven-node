@@ -85,6 +85,8 @@ impl MultiNodeTestCluster {
                         config.monitoring.prometheus.enabled = false;
                         config
                     },
+                    stream_storage_backend:
+                        proven_consensus::local::stream_storage::StreamStorageBackend::default(),
                 },
                 is_partitioned: false,
                 port,
@@ -255,6 +257,8 @@ impl TestNode {
             cluster_discovery_timeout: Some(Duration::from_secs(10)),
             cluster_join_retry_config: proven_consensus::config::ClusterJoinRetryConfig::default(),
             hierarchical_config,
+            stream_storage_backend:
+                proven_consensus::local::stream_storage::StreamStorageBackend::default(),
         };
 
         Self {
@@ -291,6 +295,8 @@ impl TestNode {
             cluster_discovery_timeout: Some(Duration::from_secs(10)),
             cluster_join_retry_config: proven_consensus::config::ClusterJoinRetryConfig::default(),
             hierarchical_config,
+            stream_storage_backend:
+                proven_consensus::local::stream_storage::StreamStorageBackend::default(),
         };
 
         Self {

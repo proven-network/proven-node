@@ -22,11 +22,10 @@ pub use global_manager::{GlobalManager, PendingRequest};
 pub use global_state::{ConsensusGroupInfo, GlobalState, MessageData, StreamData};
 pub use snapshot::SnapshotData;
 pub use state_machine::StreamStore;
-pub use storage::{
-    ConsensusStorage, GlobalConsensusMemoryStorage, GlobalConsensusRocksStorage,
-    create_memory_storage, create_memory_storage_with_global_state, create_rocks_storage,
-    create_rocks_storage_with_global_state,
-};
+pub use storage::ConsensusStorage;
+
+// Import stream-related types from local stream storage
+pub use crate::local::stream_storage::traits::{RetentionPolicy, StorageType, StreamConfig};
 
 openraft::declare_raft_types!(
     /// Types for the application using RaftTypeConfig
@@ -50,6 +49,8 @@ pub enum GlobalOperation {
         stream_name: String,
         /// Stream configuration
         config: StreamConfig,
+        /// Consensus group to allocate the stream to
+        group_id: ConsensusGroupId,
     },
 
     /// Update stream configuration
@@ -66,9 +67,9 @@ pub enum GlobalOperation {
         stream_name: String,
     },
 
-    /// Allocate a stream to a consensus group
-    AllocateStream {
-        /// Stream name to allocate
+    /// Reallocate a stream to a different consensus group
+    ReallocateStream {
+        /// Stream name to reallocate
         stream_name: String,
         /// Target consensus group
         group_id: ConsensusGroupId,
@@ -187,59 +188,6 @@ pub struct GlobalResponse {
     pub sequence: u64,
     /// Error message if failed
     pub error: Option<String>,
-}
-
-/// Stream configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamConfig {
-    /// Maximum number of messages to retain
-    pub max_messages: Option<u64>,
-    /// Maximum bytes to retain
-    pub max_bytes: Option<u64>,
-    /// Maximum age of messages in seconds
-    pub max_age_secs: Option<u64>,
-    /// Storage type for the stream
-    pub storage_type: StorageType,
-    /// Retention policy
-    pub retention_policy: RetentionPolicy,
-    /// Enable PubSub bridge for this stream
-    pub pubsub_bridge_enabled: bool,
-    /// Assigned consensus group (None means not yet allocated)
-    pub consensus_group: Option<ConsensusGroupId>,
-}
-
-impl Default for StreamConfig {
-    fn default() -> Self {
-        Self {
-            max_messages: None,
-            max_bytes: None,
-            max_age_secs: None,
-            storage_type: StorageType::Memory,
-            retention_policy: RetentionPolicy::Limits,
-            pubsub_bridge_enabled: false,
-            consensus_group: None,
-        }
-    }
-}
-
-/// Storage type for streams
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum StorageType {
-    /// In-memory storage
-    Memory,
-    /// Persistent storage
-    File,
-}
-
-/// Retention policy for streams
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum RetentionPolicy {
-    /// Retain based on limits (age, size, count)
-    Limits,
-    /// Retain until explicitly acknowledged
-    WorkQueue,
-    /// Retain forever
-    Interest,
 }
 
 /// Source information for PubSub messages

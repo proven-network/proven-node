@@ -12,6 +12,7 @@ use super::cluster::ClusterJoinRetryConfig;
 use super::hierarchical::HierarchicalConsensusConfig;
 use super::storage::StorageConfig;
 use super::transport::TransportConfig;
+use crate::local::stream_storage::per_stream_factory::StreamStorageBackend;
 
 /// Configuration for the consensus system
 #[derive(Debug, Clone)]
@@ -38,6 +39,8 @@ where
     pub cluster_join_retry_config: ClusterJoinRetryConfig,
     /// Hierarchical consensus configuration
     pub hierarchical_config: HierarchicalConsensusConfig,
+    /// Storage backend to use for stream file storage
+    pub stream_storage_backend: StreamStorageBackend,
 }
 
 /// Builder for creating ConsensusConfig instances
@@ -55,6 +58,7 @@ where
     cluster_discovery_timeout: Option<Duration>,
     cluster_join_retry_config: ClusterJoinRetryConfig,
     hierarchical_config: HierarchicalConsensusConfig,
+    stream_storage_backend: StreamStorageBackend,
 }
 
 impl<G, A> ConsensusConfigBuilder<G, A>
@@ -74,6 +78,7 @@ where
             cluster_discovery_timeout: None,
             cluster_join_retry_config: ClusterJoinRetryConfig::default(),
             hierarchical_config: HierarchicalConsensusConfig::default(),
+            stream_storage_backend: StreamStorageBackend::default(),
         }
     }
 
@@ -131,6 +136,12 @@ where
         self
     }
 
+    /// Set the stream storage backend
+    pub fn stream_storage_backend(mut self, backend: StreamStorageBackend) -> Self {
+        self.stream_storage_backend = backend;
+        self
+    }
+
     /// Build the ConsensusConfig
     ///
     /// # Returns
@@ -155,6 +166,7 @@ where
             cluster_discovery_timeout: self.cluster_discovery_timeout,
             cluster_join_retry_config: self.cluster_join_retry_config,
             hierarchical_config: self.hierarchical_config,
+            stream_storage_backend: self.stream_storage_backend,
         })
     }
 }

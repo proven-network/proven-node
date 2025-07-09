@@ -85,6 +85,8 @@ mod pubsub_tests {
                 cluster_join_retry_config:
                     proven_consensus::config::ClusterJoinRetryConfig::default(),
                 hierarchical_config: HierarchicalConsensusConfig::default(),
+                stream_storage_backend:
+                    proven_consensus::local::stream_storage::StreamStorageBackend::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();
@@ -356,6 +358,8 @@ mod pubsub_tests {
                 cluster_join_retry_config:
                     proven_consensus::config::ClusterJoinRetryConfig::default(),
                 hierarchical_config: HierarchicalConsensusConfig::default(),
+                stream_storage_backend:
+                    proven_consensus::local::stream_storage::StreamStorageBackend::default(),
             };
 
             let consensus = Consensus::new(config).await.unwrap();

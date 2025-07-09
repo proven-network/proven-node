@@ -222,7 +222,7 @@ impl Default for LocalConsensusConfig {
 
         Self {
             base_raft_config: base_config,
-            initial_groups: 3,
+            initial_groups: 1,
             min_nodes_per_group: 3,
             max_nodes_per_group: 7,
             max_streams_per_group: 1000,
@@ -394,7 +394,7 @@ mod tests {
         let config = HierarchicalConsensusConfig::default();
 
         assert_eq!(config.global.max_streams, 100_000);
-        assert_eq!(config.local.initial_groups, 3);
+        assert_eq!(config.local.initial_groups, 1);
         assert!(config.allocation.rebalancing.enabled);
         assert_eq!(config.migration.batch_size, 1000);
         assert!(config.monitoring.enabled);
@@ -410,7 +410,7 @@ mod tests {
         assert_eq!(config.global.health_check_interval, Duration::from_secs(30));
 
         // Test local defaults
-        assert_eq!(config.local.initial_groups, 3);
+        assert_eq!(config.local.initial_groups, 1);
         assert_eq!(config.local.min_nodes_per_group, 3);
         assert_eq!(config.local.max_nodes_per_group, 7);
         assert_eq!(config.local.max_streams_per_group, 1000);
@@ -666,6 +666,6 @@ mod tests {
 
         // Verify the hierarchical config is properly initialized
         assert!(hierarchical_config.monitoring.enabled);
-        assert_eq!(hierarchical_config.local.initial_groups, 3);
+        assert_eq!(hierarchical_config.local.initial_groups, 1);
     }
 }

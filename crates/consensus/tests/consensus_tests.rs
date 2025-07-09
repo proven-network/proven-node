@@ -3,6 +3,7 @@ mod tests {
 
     use proven_consensus::{
         NodeId, TestCluster,
+        allocation::ConsensusGroupId,
         global::{GlobalOperation, GlobalRequest},
     };
 
@@ -76,21 +77,160 @@ mod tests {
         // Test global state operations
         let global_state = consensus.global_state();
 
+        // First create a consensus group
+        let result = global_state
+            .apply_operation(
+                &GlobalOperation::AddConsensusGroup {
+                    group_id: ConsensusGroupId::new(1),
+                    members: vec![NodeId::from_seed(1)],
+                },
+                1,
+            )
+            .await;
+        assert!(result.success);
+
         // Test creating a stream in the global state
         let result = global_state
             .apply_operation(
                 &GlobalOperation::CreateStream {
                     stream_name: "test-stream".to_string(),
                     config: proven_consensus::global::StreamConfig::default(),
+                    group_id: ConsensusGroupId::new(1),
                 },
-                1,
+                2,
             )
             .await;
 
         assert!(result.success, "Stream creation should succeed");
-        assert_eq!(result.sequence, 1);
+        assert_eq!(result.sequence, 2);
 
         println!("✅ Consensus messaging test passed");
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_default_consensus_group_creation() {
+        let mut cluster = TestCluster::new_with_tcp_and_memory(1).await;
+
+        // Start the cluster
+        cluster.start_all().await.expect("Failed to start cluster");
+
+        // Wait a bit for initialization and consensus group creation to complete
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+        // Get the consensus after starting
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
+
+        println!("Node ID: {}", consensus.node_id());
+        println!("Is leader: {}", consensus.is_leader());
+
+        // Check that a default consensus group exists
+        let global_state = consensus.global_state();
+        let all_groups = global_state.get_all_groups().await;
+
+        println!("Number of consensus groups: {}", all_groups.len());
+        for group in &all_groups {
+            println!("Group {:?}: {} members", group.id, group.members.len());
+        }
+
+        assert!(
+            !all_groups.is_empty(),
+            "Should have at least one consensus group"
+        );
+
+        // Verify the first group has ID 1
+        let default_group = all_groups.iter().find(|g| g.id.0 == 1);
+        assert!(
+            default_group.is_some(),
+            "Should have default group with ID 1"
+        );
+
+        let group = default_group.unwrap();
+        assert!(
+            !group.members.is_empty(),
+            "Default group should have members"
+        );
+        assert!(
+            group.members.contains(&consensus.node_id()),
+            "Default group should contain the initializing node"
+        );
+
+        println!("✅ Default consensus group creation test passed");
+
+        cluster.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    #[traced_test]
+    async fn test_manual_consensus_group_creation() {
+        let mut cluster = TestCluster::new_with_tcp_and_memory(1).await;
+
+        // Start the cluster
+        cluster.start_all().await.expect("Failed to start cluster");
+
+        // Wait for leader election
+        tokio::time::sleep(Duration::from_secs(2)).await;
+
+        // Get the consensus after starting
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
+
+        // Manually create a consensus group
+        let global_manager = consensus.global_manager();
+        let group_id = ConsensusGroupId::new(1);
+        let add_group_op = GlobalOperation::AddConsensusGroup {
+            group_id,
+            members: vec![consensus.node_id().clone()],
+        };
+
+        let request = GlobalRequest {
+            operation: add_group_op,
+        };
+
+        println!("Submitting AddConsensusGroup request...");
+        let response = global_manager
+            .submit_request(request)
+            .await
+            .expect("Failed to submit request");
+
+        println!(
+            "Response: success={}, error={:?}",
+            response.success, response.error
+        );
+
+        // The group might already exist if our automatic creation worked
+        if !response.success {
+            assert!(
+                response
+                    .error
+                    .as_ref()
+                    .map(|e| e.contains("already exists"))
+                    .unwrap_or(false),
+                "Unexpected error: {:?}",
+                response.error
+            );
+        }
+
+        // Wait for the operation to be applied through Raft
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        // Now check that the group exists
+        let global_state = consensus.global_state();
+        let all_groups = global_state.get_all_groups().await;
+
+        assert_eq!(
+            all_groups.len(),
+            1,
+            "Should have exactly one consensus group"
+        );
+        assert_eq!(all_groups[0].id, group_id, "Group ID should match");
+
+        println!("✅ Manual consensus group creation test passed");
+
+        cluster.shutdown_all().await;
     }
 
     #[tokio::test]
@@ -160,6 +300,7 @@ mod tests {
             operation: GlobalOperation::CreateStream {
                 stream_name: "leader-test".to_string(),
                 config: proven_consensus::global::StreamConfig::default(),
+                group_id: ConsensusGroupId::new(1),
             },
         };
 
@@ -180,7 +321,7 @@ mod tests {
     #[traced_test]
     async fn test_leader_election_workflow() {
         // Test that demonstrates leader election workflow works correctly
-        let mut cluster = TestCluster::new_with_tcp_and_memory(1).await;
+        let mut cluster = TestCluster::new_with_tcp_and_rocksdb(1).await;
         let consensus = cluster
             .get_consensus(0)
             .expect("Should have one consensus node");
@@ -233,6 +374,7 @@ mod tests {
             operation: GlobalOperation::CreateStream {
                 stream_name: "leadership-test".to_string(),
                 config: proven_consensus::global::StreamConfig::default(),
+                group_id: ConsensusGroupId::new(1),
             },
         };
 
@@ -373,6 +515,7 @@ mod tests {
             operation: GlobalOperation::CreateStream {
                 stream_name: "cluster-test".to_string(),
                 config: proven_consensus::global::StreamConfig::default(),
+                group_id: ConsensusGroupId::new(1),
             },
         };
 
@@ -842,6 +985,7 @@ mod tests {
             operation: GlobalOperation::CreateStream {
                 stream_name: "test-cluster-stream".to_string(),
                 config: proven_consensus::global::StreamConfig::default(),
+                group_id: ConsensusGroupId::new(1),
             },
         };
 
@@ -1037,6 +1181,7 @@ mod tests {
             operation: GlobalOperation::CreateStream {
                 stream_name: "websocket-cluster-test".to_string(),
                 config: proven_consensus::global::StreamConfig::default(),
+                group_id: ConsensusGroupId::new(1),
             },
         };
 

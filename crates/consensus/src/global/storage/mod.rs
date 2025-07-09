@@ -7,21 +7,21 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use crate::error::ConsensusResult;
 use crate::global::GlobalState;
 use crate::global::{GlobalRequest, GlobalResponse, GlobalTypeConfig};
 use openraft::storage::{RaftLogStorage, RaftStateMachine};
 
-pub mod memory;
-pub mod rocksdb;
+// Unified storage implementation
+pub mod factory;
+pub mod log_types;
+pub mod unified;
 
-// Re-export for convenience
-pub use memory::GlobalConsensusMemoryStorage;
-pub use rocksdb::GlobalConsensusRocksStorage;
-
-// Compatibility aliases - to be removed
-pub use create_memory_storage as create_memory_storage_with_global_state;
-pub use create_rocks_storage as create_rocks_storage_with_global_state;
+// Re-export new unified storage
+pub use factory::{
+    GlobalStorageFactory, GlobalStorageType, UnifiedGlobalStorageFactory,
+    create_global_storage_factory,
+};
+pub use unified::GlobalStorage;
 
 /// Trait alias for consensus storage requirements
 pub trait ConsensusStorage:
@@ -35,9 +35,8 @@ pub trait ConsensusStorage:
 {
 }
 
-// Implement the trait alias for our storage types
-impl ConsensusStorage for GlobalConsensusMemoryStorage {}
-impl ConsensusStorage for GlobalConsensusRocksStorage {}
+// Implement the trait alias for the unified storage type
+impl ConsensusStorage for GlobalStorageType {}
 
 /// Apply a messaging request to the state machine data
 pub fn apply_request_to_state_machine(
@@ -72,19 +71,4 @@ pub async fn apply_request_to_global_state(
     global_state
         .apply_operation(&request.operation, sequence)
         .await
-}
-
-/// Create a new memory storage instance with GlobalState
-pub fn create_memory_storage(
-    global_state: Arc<GlobalState>,
-) -> ConsensusResult<GlobalConsensusMemoryStorage> {
-    Ok(GlobalConsensusMemoryStorage::new(global_state))
-}
-
-/// Create a new RocksDB storage instance with GlobalState
-pub fn create_rocks_storage(
-    db_path: &str,
-    global_state: Arc<GlobalState>,
-) -> ConsensusResult<GlobalConsensusRocksStorage> {
-    GlobalConsensusRocksStorage::new_with_path(db_path, global_state)
 }

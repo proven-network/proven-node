@@ -84,6 +84,7 @@ mod bridge_tests {
                         operation: crate::global::GlobalOperation::CreateStream {
                             stream_name: self.stream_name.clone(),
                             config: crate::global::StreamConfig::default(),
+                            group_id: crate::allocation::ConsensusGroupId::new(1),
                         },
                     };
 

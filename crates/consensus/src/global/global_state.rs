@@ -123,17 +123,21 @@ impl GlobalState {
             GlobalOperation::CreateStream {
                 stream_name,
                 config,
+                group_id,
             } => {
-                self.create_stream(stream_name, config.clone(), sequence)
+                self.create_stream(stream_name, config.clone(), *group_id, sequence)
                     .await
             }
             GlobalOperation::DeleteStream { stream_name } => {
                 self.delete_stream(stream_name, sequence).await
             }
-            GlobalOperation::AllocateStream {
+            GlobalOperation::ReallocateStream {
                 stream_name,
                 group_id,
-            } => self.allocate_stream(stream_name, *group_id, sequence).await,
+            } => {
+                self.reallocate_stream(stream_name, *group_id, sequence)
+                    .await
+            }
             GlobalOperation::AddConsensusGroup { group_id, members } => {
                 self.add_consensus_group(*group_id, members.clone(), sequence)
                     .await
@@ -160,7 +164,7 @@ impl GlobalState {
                 stream_name,
                 new_group,
             } => {
-                self.allocate_stream(stream_name, *new_group, sequence)
+                self.reallocate_stream(stream_name, *new_group, sequence)
                     .await
             }
             GlobalOperation::SubscribeToSubject {
@@ -453,6 +457,7 @@ impl GlobalState {
         &self,
         stream_name: &str,
         config: StreamConfig,
+        group_id: ConsensusGroupId,
         sequence: u64,
     ) -> GlobalResponse {
         // Validate stream name
@@ -476,8 +481,21 @@ impl GlobalState {
             };
         }
 
-        // Create stream configuration
-        configs.insert(stream_name.to_string(), config);
+        // Check if the consensus group exists
+        let groups = self.consensus_groups.read().await;
+        if !groups.contains_key(&group_id) {
+            return GlobalResponse {
+                success: false,
+                sequence,
+                error: Some(format!("Consensus group {:?} does not exist", group_id)),
+            };
+        }
+        drop(groups);
+
+        // Create stream configuration with the assigned group
+        let mut stream_config = config;
+        stream_config.consensus_group = Some(group_id);
+        configs.insert(stream_name.to_string(), stream_config);
 
         // Initialize stream data if it doesn't exist
         streams
@@ -488,7 +506,10 @@ impl GlobalState {
                 subscriptions: HashSet::new(),
             });
 
-        debug!("Created stream '{}'", stream_name);
+        debug!(
+            "Created stream '{}' and allocated to group {:?}",
+            stream_name, group_id
+        );
 
         GlobalResponse {
             success: true,
@@ -640,8 +661,8 @@ impl GlobalState {
         }
     }
 
-    /// Allocate a stream to a consensus group
-    async fn allocate_stream(
+    /// Reallocate a stream to a different consensus group
+    async fn reallocate_stream(
         &self,
         stream_name: &str,
         group_id: ConsensusGroupId,
@@ -649,19 +670,40 @@ impl GlobalState {
     ) -> GlobalResponse {
         let mut configs = self.stream_configs.write().await;
 
-        if let Some(config) = configs.get_mut(stream_name) {
-            config.consensus_group = Some(group_id);
-            GlobalResponse {
-                success: true,
-                sequence,
-                error: None,
-            }
-        } else {
-            GlobalResponse {
+        // Check if stream exists
+        if !configs.contains_key(stream_name) {
+            return GlobalResponse {
                 success: false,
                 sequence,
                 error: Some(format!("Stream '{}' not found", stream_name)),
-            }
+            };
+        }
+
+        // Check if the new consensus group exists
+        let groups = self.consensus_groups.read().await;
+        if !groups.contains_key(&group_id) {
+            return GlobalResponse {
+                success: false,
+                sequence,
+                error: Some(format!("Consensus group {:?} does not exist", group_id)),
+            };
+        }
+        drop(groups);
+
+        // Update stream config with new group
+        if let Some(config) = configs.get_mut(stream_name) {
+            config.consensus_group = Some(group_id);
+        }
+
+        debug!(
+            "Reallocated stream '{}' to group {:?}",
+            stream_name, group_id
+        );
+
+        GlobalResponse {
+            success: true,
+            sequence,
+            error: None,
         }
     }
 

@@ -346,10 +346,10 @@ where
                     .await
                 {
                     if response.success {
-                        // The response contains the serialized LocalStateMetrics
+                        // The response contains the serialized LocalMetrics
                         if let Some(metrics_data) = response.checkpoint_data {
                             if let Ok(state_metrics) = serde_json::from_slice::<
-                                crate::local::state_machine::LocalStateMetrics,
+                                crate::local::LocalStateMetrics,
                             >(&metrics_data)
                             {
                                 // Update message rate

@@ -8,11 +8,12 @@ use crate::{
     allocation::{AllocationManager, ConsensusGroupId},
     config::{ConsensusConfig, HierarchicalConsensusConfig},
     error::{ConsensusResult, Error},
-    global::GlobalManager,
+    global::{GlobalManager, GlobalState},
     local::LocalConsensusManager,
     migration::MigrationCoordinator,
     router::ConsensusRouter,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
@@ -30,6 +31,12 @@ where
     router: Arc<ConsensusRouter<G, A>>,
     /// Migration coordinator
     migration_coordinator: Arc<MigrationCoordinator<G, A>>,
+    /// Global state reference
+    global_state: Arc<GlobalState>,
+    /// Local consensus manager
+    local_manager: Arc<LocalConsensusManager<G, A>>,
+    /// Node ID
+    node_id: NodeId,
     /// Background task handles
     background_tasks: Vec<JoinHandle<()>>,
     /// Shutdown signal
@@ -43,24 +50,26 @@ where
 {
     /// Create a new hierarchical orchestrator
     pub async fn new(
-        _base_config: ConsensusConfig<G, A>,
+        base_config: ConsensusConfig<G, A>,
         hierarchical_config: HierarchicalConsensusConfig,
         global_manager: Arc<GlobalManager<G, A>>,
+        global_state: Arc<GlobalState>,
         node_id: NodeId,
     ) -> ConsensusResult<Self> {
         info!("Initializing hierarchical consensus orchestrator");
 
         // Create storage factory based on configuration
-        let storage_factory = crate::local::storage::factory::create_storage_factory(
+        let storage_factory = crate::local::group_storage::create_raft_storage_factory(
             &hierarchical_config.local.storage_config,
         )?;
 
-        // Create local consensus manager with storage factory
-        let local_manager = Arc::new(LocalConsensusManager::with_storage_factory(
+        // Create local consensus manager with storage factory and backend
+        let local_manager = Arc::new(LocalConsensusManager::with_storage_factory_and_backend(
             node_id.clone(),
             hierarchical_config.local.base_raft_config.clone(),
             global_manager.clone(),
-            storage_factory.into(),
+            storage_factory,
+            base_config.stream_storage_backend.clone(),
         ));
 
         // Create allocation manager
@@ -103,6 +112,15 @@ where
             background_tasks.push(rebalancing_task);
         }
 
+        // Start group watcher task to monitor global consensus group changes
+        let group_watcher_task = Self::start_group_watcher_task(
+            global_state.clone(),
+            local_manager.clone(),
+            node_id.clone(),
+            shutdown.clone(),
+        );
+        background_tasks.push(group_watcher_task);
+
         // Initialize local consensus groups
         Self::initialize_local_groups(&local_manager, &allocation_manager, &hierarchical_config)
             .await?;
@@ -111,6 +129,9 @@ where
             config: hierarchical_config,
             router,
             migration_coordinator,
+            global_state,
+            local_manager,
+            node_id,
             background_tasks,
             shutdown,
         })
@@ -248,6 +269,72 @@ where
                     }
                     _ = shutdown.notified() => {
                         info!("Rebalancing task shutting down");
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
+    /// Start group watcher background task
+    fn start_group_watcher_task(
+        global_state: Arc<GlobalState>,
+        local_manager: Arc<LocalConsensusManager<G, A>>,
+        node_id: NodeId,
+        shutdown: Arc<tokio::sync::Notify>,
+    ) -> JoinHandle<()> {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            let mut known_groups: HashSet<ConsensusGroupId> = HashSet::new();
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        // Get current groups from global state where this node is a member
+                        let node_groups = global_state.get_node_groups(&node_id).await;
+
+                        let current_groups: HashSet<ConsensusGroupId> =
+                            node_groups.iter().map(|g| g.id).collect();
+
+                        // Find new groups (in current but not in known)
+                        let new_groups: Vec<_> = current_groups.difference(&known_groups).cloned().collect();
+
+                        // Find removed groups (in known but not in current)
+                        let removed_groups: Vec<_> = known_groups.difference(&current_groups).cloned().collect();
+
+                        // Create local consensus instances for new groups
+                        for group_id in new_groups {
+                            info!("Detected new consensus group {:?} for this node, creating local instance", group_id);
+
+                            if let Some(group_info) = global_state.get_group(group_id).await {
+                                // Create local consensus instance for this group
+                                if let Err(e) = local_manager.create_group(
+                                    group_id,
+                                    group_info.members.clone(),
+                                ).await {
+                                    error!("Failed to create local consensus group {:?}: {}", group_id, e);
+                                } else {
+                                    info!("Successfully created local consensus group {:?}", group_id);
+                                }
+                            }
+                        }
+
+                        // Remove local consensus instances for removed groups
+                        for group_id in removed_groups {
+                            info!("Node removed from consensus group {:?}, removing local instance", group_id);
+
+                            if let Err(e) = local_manager.remove_group(group_id).await {
+                                error!("Failed to remove local consensus group {:?}: {}", group_id, e);
+                            } else {
+                                info!("Successfully removed local consensus group {:?}", group_id);
+                            }
+                        }
+
+                        // Update known groups
+                        known_groups = current_groups;
+                    }
+                    _ = shutdown.notified() => {
+                        info!("Group watcher task shutting down");
                         break;
                     }
                 }

@@ -5,17 +5,26 @@
 
 /// Group discovery for local consensus groups
 pub mod group_discovery;
+/// Group storage for Raft consensus operations
+pub mod group_storage;
+/// Legacy types for migration compatibility
+pub mod legacy_types;
 /// Local consensus manager for managing local consensus groups
 pub mod local_manager;
 /// Network factory for creating local consensus groups
 pub mod network_factory;
-/// Network registry for local groups
+/// State machine implementation
 pub mod state_machine;
-/// Storage for local consensus groups
-pub mod storage;
+/// Stream storage for stream data operations
+pub mod stream_storage;
 
 pub use local_manager::{LocalConsensusManager, MigrationState as NodeMigrationState};
-pub use state_machine::LocalState;
+pub use state_machine::StorageBackedLocalState;
+// Re-export legacy types for migration compatibility
+pub use legacy_types::{
+    LocalStateMetrics, MessageData, PendingOperation, PendingOperationType, StreamData,
+    StreamMetrics,
+};
 
 use crate::allocation::ConsensusGroupId;
 use crate::global::PubSubMessageSource;

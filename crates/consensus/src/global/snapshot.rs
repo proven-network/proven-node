@@ -173,15 +173,28 @@ mod tests {
     async fn test_snapshot_serialization() {
         let store = GlobalState::new();
 
+        // First create a consensus group
+        let response = store
+            .apply_operation(
+                &GlobalOperation::AddConsensusGroup {
+                    group_id: crate::allocation::ConsensusGroupId::new(1),
+                    members: vec![crate::NodeId::from_seed(1)],
+                },
+                1,
+            )
+            .await;
+        assert!(response.success);
+
         // In the hierarchical model, we only test admin operations
-        // First create a stream
+        // Now create a stream
         let response = store
             .apply_operation(
                 &GlobalOperation::CreateStream {
                     stream_name: "test-stream".to_string(),
                     config: crate::global::StreamConfig::default(),
+                    group_id: crate::allocation::ConsensusGroupId::new(1),
                 },
-                1,
+                2,
             )
             .await;
         assert!(response.success);
@@ -193,7 +206,7 @@ mod tests {
                     stream_name: "test-stream".to_string(),
                     subject_pattern: "foo.*".to_string(),
                 },
-                2,
+                3,
             )
             .await;
         if !response.success {
@@ -218,14 +231,27 @@ mod tests {
     async fn test_snapshot_restore() {
         let original_store = GlobalState::new();
 
+        // First create a consensus group
+        let response = original_store
+            .apply_operation(
+                &GlobalOperation::AddConsensusGroup {
+                    group_id: crate::allocation::ConsensusGroupId::new(1),
+                    members: vec![crate::NodeId::from_seed(1)],
+                },
+                1,
+            )
+            .await;
+        assert!(response.success);
+
         // Create streams first
         let response = original_store
             .apply_operation(
                 &GlobalOperation::CreateStream {
                     stream_name: "test-stream".to_string(),
                     config: crate::global::StreamConfig::default(),
+                    group_id: crate::allocation::ConsensusGroupId::new(1),
                 },
-                1,
+                2,
             )
             .await;
         assert!(response.success);
@@ -235,8 +261,9 @@ mod tests {
                 &GlobalOperation::CreateStream {
                     stream_name: "test-stream-2".to_string(),
                     config: crate::global::StreamConfig::default(),
+                    group_id: crate::allocation::ConsensusGroupId::new(1),
                 },
-                2,
+                3,
             )
             .await;
         assert!(response.success);
@@ -248,7 +275,7 @@ mod tests {
                     stream_name: "test-stream".to_string(),
                     subject_pattern: "foo.*".to_string(),
                 },
-                3,
+                4,
             )
             .await;
         assert!(response.success);
@@ -260,7 +287,7 @@ mod tests {
                     stream_name: "test-stream-2".to_string(),
                     subject_pattern: "bar.*".to_string(),
                 },
-                4,
+                5,
             )
             .await;
         assert!(response.success);

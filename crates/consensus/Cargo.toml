@@ -56,7 +56,8 @@ lazy_static = "1.4"
 flate2 = "1.0"
 
 [features]
-default = ["test-helpers"]
+default = ["test-helpers", "s3"]
+s3 = []
 test-helpers = [
     "dep:proven-attestation-mock", 
     "dep:proven-governance-mock", 

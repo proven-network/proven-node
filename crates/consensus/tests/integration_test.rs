@@ -6,24 +6,39 @@ use tempfile::tempdir;
 use openraft::storage::RaftStateMachine;
 use proven_consensus::global::SnapshotData;
 use proven_consensus::global::{GlobalOperation, GlobalState, StreamConfig};
-use proven_consensus::global::{
-    create_memory_storage_with_global_state, create_rocks_storage_with_global_state,
-};
 
 #[tokio::test]
 async fn test_end_to_end_snapshot_workflow_memory() {
     // Create a GlobalState with some data
     let global_state = Arc::new(GlobalState::new());
 
+    // First create a consensus group
+    let response = global_state
+        .apply_operation(
+            &GlobalOperation::AddConsensusGroup {
+                group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
+                members: vec![proven_consensus::NodeId::from_seed(1)],
+            },
+            1,
+        )
+        .await;
+    assert!(
+        response.success,
+        "Failed to create consensus group: {:?}",
+        response.error
+    );
+
     // Add some test data - only admin operations are allowed in GlobalOperation now
     let operations = vec![
         GlobalOperation::CreateStream {
             stream_name: "test-stream-1".to_string(),
             config: StreamConfig::default(),
+            group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
         },
         GlobalOperation::CreateStream {
             stream_name: "test-stream-2".to_string(),
             config: StreamConfig::default(),
+            group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
         },
         GlobalOperation::SubscribeToSubject {
             stream_name: "test-stream-1".to_string(),
@@ -32,7 +47,7 @@ async fn test_end_to_end_snapshot_workflow_memory() {
     ];
 
     for (i, op) in operations.iter().enumerate() {
-        let response = global_state.apply_operation(op, i as u64 + 1).await;
+        let response = global_state.apply_operation(op, i as u64 + 2).await;
         assert!(
             response.success,
             "Operation {} failed: {:?}",
@@ -44,8 +59,15 @@ async fn test_end_to_end_snapshot_workflow_memory() {
     assert_eq!(global_state.last_sequence("test-stream-1").await, 0);
     assert_eq!(global_state.last_sequence("test-stream-2").await, 0);
 
-    // Create storage with the StreamStore
-    let mut storage = create_memory_storage_with_global_state(global_state.clone()).unwrap();
+    // Create storage using the factory
+    let storage_factory = proven_consensus::global::storage::create_global_storage_factory(
+        &proven_consensus::config::StorageConfig::Memory,
+    )
+    .unwrap();
+    let mut storage = storage_factory
+        .create_storage(global_state.clone())
+        .await
+        .unwrap();
 
     // Create snapshot
     let snapshot = storage.get_current_snapshot().await.unwrap().unwrap();
@@ -53,8 +75,14 @@ async fn test_end_to_end_snapshot_workflow_memory() {
 
     // Create a new GlobalState and storage for restoration
     let new_global_state = Arc::new(GlobalState::new());
-    let mut new_storage =
-        create_memory_storage_with_global_state(new_global_state.clone()).unwrap();
+    let storage_factory = proven_consensus::global::storage::create_global_storage_factory(
+        &proven_consensus::config::StorageConfig::Memory,
+    )
+    .unwrap();
+    let mut new_storage = storage_factory
+        .create_storage(new_global_state.clone())
+        .await
+        .unwrap();
 
     // Install the snapshot
     new_storage
@@ -83,11 +111,28 @@ async fn test_end_to_end_snapshot_workflow_rocks() {
     // Create a GlobalState with some data
     let global_state = Arc::new(GlobalState::new());
 
+    // First create a consensus group
+    let response = global_state
+        .apply_operation(
+            &GlobalOperation::AddConsensusGroup {
+                group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
+                members: vec![proven_consensus::NodeId::from_seed(1)],
+            },
+            1,
+        )
+        .await;
+    assert!(
+        response.success,
+        "Failed to create consensus group: {:?}",
+        response.error
+    );
+
     // Add some test data - only admin operations
     let operations = [
         GlobalOperation::CreateStream {
             stream_name: "rocks-stream-1".to_string(),
             config: StreamConfig::default(),
+            group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
         },
         GlobalOperation::SubscribeToSubject {
             stream_name: "rocks-stream-1".to_string(),
@@ -96,7 +141,7 @@ async fn test_end_to_end_snapshot_workflow_rocks() {
     ];
 
     for (i, op) in operations.iter().enumerate() {
-        let response = global_state.apply_operation(op, i as u64 + 1).await;
+        let response = global_state.apply_operation(op, i as u64 + 2).await;
         assert!(
             response.success,
             "Operation {} failed: {:?}",
@@ -104,9 +149,17 @@ async fn test_end_to_end_snapshot_workflow_rocks() {
         );
     }
 
-    // Create storage with the GlobalState
-    let mut storage =
-        create_rocks_storage_with_global_state(db_path, global_state.clone()).unwrap();
+    // Create storage using the factory
+    let storage_factory = proven_consensus::global::storage::create_global_storage_factory(
+        &proven_consensus::config::StorageConfig::RocksDB {
+            path: std::path::PathBuf::from(db_path),
+        },
+    )
+    .unwrap();
+    let mut storage = storage_factory
+        .create_storage(global_state.clone())
+        .await
+        .unwrap();
 
     // Create snapshot
     let snapshot = storage.get_current_snapshot().await.unwrap().unwrap();
@@ -116,8 +169,16 @@ async fn test_end_to_end_snapshot_workflow_rocks() {
     let temp_dir2 = tempdir().unwrap();
     let db_path2 = temp_dir2.path().to_str().unwrap();
     let new_global_state = Arc::new(GlobalState::new());
-    let mut new_storage =
-        create_rocks_storage_with_global_state(db_path2, new_global_state.clone()).unwrap();
+    let storage_factory2 = proven_consensus::global::storage::create_global_storage_factory(
+        &proven_consensus::config::StorageConfig::RocksDB {
+            path: std::path::PathBuf::from(db_path2),
+        },
+    )
+    .unwrap();
+    let mut new_storage = storage_factory2
+        .create_storage(new_global_state.clone())
+        .await
+        .unwrap();
 
     // Install the snapshot
     new_storage
@@ -140,20 +201,44 @@ async fn test_end_to_end_snapshot_workflow_rocks() {
 async fn test_snapshot_builder_workflow() {
     let global_state = Arc::new(GlobalState::new());
 
+    // First create a consensus group
+    let response = global_state
+        .apply_operation(
+            &GlobalOperation::AddConsensusGroup {
+                group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
+                members: vec![proven_consensus::NodeId::from_seed(1)],
+            },
+            1,
+        )
+        .await;
+    assert!(
+        response.success,
+        "Failed to create consensus group: {:?}",
+        response.error
+    );
+
     // Add some data - create a stream
     let response = global_state
         .apply_operation(
             &GlobalOperation::CreateStream {
                 stream_name: "builder-test".to_string(),
                 config: StreamConfig::default(),
+                group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
             },
-            1,
+            2,
         )
         .await;
     assert!(response.success);
 
-    // Create storage
-    let mut storage = create_memory_storage_with_global_state(global_state.clone()).unwrap();
+    // Create storage using the factory
+    let storage_factory = proven_consensus::global::storage::create_global_storage_factory(
+        &proven_consensus::config::StorageConfig::Memory,
+    )
+    .unwrap();
+    let mut storage = storage_factory
+        .create_storage(global_state.clone())
+        .await
+        .unwrap();
 
     // Create snapshot using get_current_snapshot instead of snapshot builder
     let snapshot = storage.get_current_snapshot().await.unwrap().unwrap();
@@ -172,15 +257,33 @@ async fn test_snapshot_builder_workflow() {
 async fn test_snapshot_with_complex_data() {
     let global_state = Arc::new(GlobalState::new());
 
+    // First create a consensus group
+    let response = global_state
+        .apply_operation(
+            &GlobalOperation::AddConsensusGroup {
+                group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
+                members: vec![proven_consensus::NodeId::from_seed(1)],
+            },
+            1,
+        )
+        .await;
+    assert!(
+        response.success,
+        "Failed to create consensus group: {:?}",
+        response.error
+    );
+
     // Create a more complex scenario with multiple streams and subscriptions
     let operations = vec![
         GlobalOperation::CreateStream {
             stream_name: "stream-a".to_string(),
             config: StreamConfig::default(),
+            group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
         },
         GlobalOperation::CreateStream {
             stream_name: "stream-b".to_string(),
             config: StreamConfig::default(),
+            group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
         },
         GlobalOperation::SubscribeToSubject {
             stream_name: "stream-a".to_string(),
@@ -197,7 +300,7 @@ async fn test_snapshot_with_complex_data() {
     ];
 
     for (i, op) in operations.iter().enumerate() {
-        let response = global_state.apply_operation(op, i as u64 + 1).await;
+        let response = global_state.apply_operation(op, i as u64 + 2).await;
         assert!(
             response.success,
             "Operation {} failed: {:?}",
