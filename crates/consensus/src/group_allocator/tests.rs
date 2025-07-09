@@ -40,14 +40,30 @@ mod group_allocator_tests {
     async fn create_test_topology_manager_with_nodes(
         nodes: Vec<GovernanceNode>,
     ) -> TopologyManager<MockGovernance> {
-        let node_id = if !nodes.is_empty() {
-            NodeId::new(nodes[0].public_key)
-        } else {
-            NodeId::from_seed(0)
-        };
+        // If we have nodes, get the proper governance from our helpers
+        if !nodes.is_empty() {
+            // Extract ports from the nodes
+            let _ports: Vec<u16> = nodes
+                .iter()
+                .map(|node| {
+                    node.origin
+                        .strip_prefix("http://127.0.0.1:")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(8000)
+                })
+                .collect();
 
-        let governance = create_test_governance_with_nodes(nodes).await;
-        TopologyManager::new(governance, node_id)
+            // Create keys from public keys
+            let governance = create_test_governance_with_nodes(nodes.clone()).await;
+            let node_id = NodeId::new(nodes[0].public_key);
+
+            TopologyManager::new(governance, node_id)
+        } else {
+            // No nodes - just create a simple topology manager
+            let node_id = NodeId::from_seed(0);
+            let governance = create_test_governance_with_nodes(vec![]).await;
+            TopologyManager::new(governance, node_id)
+        }
     }
 
     /// Create a test node with specific region and AZ

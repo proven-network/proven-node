@@ -35,6 +35,7 @@ pub mod pubsub;
 /// Consensus routing
 pub mod router;
 pub mod subscription;
+#[cfg(any(test, feature = "test-helpers"))]
 pub mod test_helpers;
 pub mod topology;
 pub mod transport;
@@ -70,8 +71,4 @@ pub use verification::{
 
 // Re-export test helpers (test-only)
 #[cfg(any(test, feature = "test-helpers"))]
-pub use test_helpers::{
-    TestCluster, create_multi_node_governance, create_single_node_governance,
-    test_multi_node_cluster, test_single_node_memory, test_single_node_rocksdb,
-    test_single_node_tcp, test_websocket_node,
-};
+pub use test_helpers::{TestCluster, create_test_topology_manager};

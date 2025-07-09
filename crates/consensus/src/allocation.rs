@@ -326,7 +326,6 @@ impl AllocationManager {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
 
     use crate::NodeId;
 
@@ -516,40 +515,56 @@ mod tests {
             ],
         );
 
-        // Allocate stream to group0
+        // Allocate stream to a group (we don't know which one with RoundRobin)
         let allocated_group = manager.allocate_stream("stream1".to_string(), 100).unwrap();
+
+        // Determine the target group (the other group)
+        let target_group = if allocated_group == group0 {
+            group1
+        } else {
+            group0
+        };
+
+        // Check initial state
+        assert_eq!(manager.get_stream_group("stream1"), Some(allocated_group));
 
         // Check initial load distribution
         let initial_loads = manager.get_group_loads();
-        let initial_count = initial_loads
+        let allocated_group_initial_count = initial_loads
             .iter()
             .find(|(id, _)| *id == allocated_group)
             .map(|(_, m)| m.stream_count)
             .unwrap();
-        assert_eq!(initial_count, 1);
+        let target_group_initial_count = initial_loads
+            .iter()
+            .find(|(id, _)| *id == target_group)
+            .map(|(_, m)| m.stream_count)
+            .unwrap();
+        assert_eq!(allocated_group_initial_count, 1);
+        assert_eq!(target_group_initial_count, 0);
 
-        // Migrate to group1
-        manager.migrate_stream("stream1", group1, 200).unwrap();
+        // Migrate to target group
+        manager
+            .migrate_stream("stream1", target_group, 200)
+            .unwrap();
 
-        tokio::time::sleep(Duration::from_millis(1000)).await;
-
-        // Verify migration
-        assert_eq!(manager.get_stream_group("stream1"), Some(group1));
+        // Verify migration completed immediately (synchronous operation)
+        assert_eq!(manager.get_stream_group("stream1"), Some(target_group));
 
         // Check final load distribution
         let final_loads = manager.get_group_loads();
-        let old_count = final_loads
+        let allocated_group_final_count = final_loads
             .iter()
             .find(|(id, _)| *id == allocated_group)
             .map(|(_, m)| m.stream_count)
             .unwrap();
-        let new_count = final_loads
+        let target_group_final_count = final_loads
             .iter()
-            .find(|(id, _)| *id == group1)
+            .find(|(id, _)| *id == target_group)
             .map(|(_, m)| m.stream_count)
             .unwrap();
-        assert_eq!(old_count, 0);
-        assert_eq!(new_count, 1);
+        assert_eq!(allocated_group_final_count, 0);
+        assert_eq!(target_group_final_count, 1);
     }
 
     #[test]

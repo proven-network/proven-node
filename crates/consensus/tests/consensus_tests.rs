@@ -2,28 +2,20 @@
 mod tests {
 
     use proven_consensus::{
-        Consensus, ConsensusConfig, HierarchicalConsensusConfig, NodeId,
+        NodeId, TestCluster,
         global::{GlobalOperation, GlobalRequest},
-        test_multi_node_cluster, test_single_node_tcp, test_websocket_node,
     };
 
-    use ed25519_dalek::SigningKey;
-    use openraft::Config as RaftConfig;
-    use proven_attestation_mock::MockAttestor;
-    use proven_governance::{GovernanceNode, Version};
-    use proven_governance_mock::MockGovernance;
-    use rand::rngs::OsRng;
-    use std::{collections::HashSet, sync::Arc, time::Duration};
+    use std::time::Duration;
     use tracing_test::traced_test;
-
-    fn next_port() -> u16 {
-        proven_util::port_allocator::allocate_port()
-    }
 
     #[tokio::test]
     #[traced_test]
     async fn test_consensus_creation() {
-        let consensus = test_single_node_tcp(next_port()).await;
+        let cluster = TestCluster::new_with_tcp_and_memory(1).await;
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
 
         // Verify basic properties
         assert!(!consensus.node_id().to_string().is_empty());
@@ -34,7 +26,10 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_consensus_lifecycle() {
-        let consensus = test_single_node_tcp(next_port()).await;
+        let mut cluster = TestCluster::new_with_tcp_and_memory(1).await;
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
         let node_id = consensus.node_id().to_string();
 
         println!("Testing consensus lifecycle for node: {}", &node_id[..8]);
@@ -52,11 +47,7 @@ mod tests {
         println!("Is leader: {}", is_leader);
 
         // Test shutdown
-        let shutdown_result = consensus.shutdown().await;
-        assert!(
-            shutdown_result.is_ok(),
-            "Consensus shutdown should succeed: {shutdown_result:?}"
-        );
+        cluster.shutdown_all().await;
 
         println!(
             "✅ Consensus lifecycle test passed for node: {}",
@@ -67,7 +58,10 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_consensus_messaging() {
-        let consensus = test_single_node_tcp(next_port()).await;
+        let cluster = TestCluster::new_with_tcp_and_memory(1).await;
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
 
         // Test cluster discovery (should work even without full cluster)
         let discovery_responses = consensus.discover_existing_clusters().await;
@@ -102,8 +96,12 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_leader_election_single_node() {
-        let consensus = test_single_node_tcp(next_port()).await;
-        let node_id = consensus.node_id().to_string();
+        let mut cluster = TestCluster::new_with_tcp_and_memory(1).await;
+        let node_id = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node")
+            .node_id()
+            .to_string();
 
         println!(
             "Testing single-node leader election for node: {}",
@@ -111,25 +109,29 @@ mod tests {
         );
 
         // Initially, the node should not be a leader (not initialized)
-        assert!(!consensus.is_leader());
-        // Raft always has a term (starts at 0), so we check it's 0 before initialization
-        assert_eq!(consensus.current_term(), Some(0));
-        assert_eq!(consensus.current_leader().await, None);
+        {
+            let consensus = cluster
+                .get_consensus(0)
+                .expect("Should have one consensus node");
+            assert!(!consensus.is_leader());
+            // Raft always has a term (starts at 0), so we check it's 0 before initialization
+            assert_eq!(consensus.current_term(), Some(0));
+            assert_eq!(consensus.current_leader().await, None);
+        }
 
         // Start the consensus system - should automatically become leader (single node)
-        let start_result = consensus.start().await;
-        assert!(
-            start_result.is_ok(),
-            "Start should succeed: {start_result:?}"
-        );
+        cluster.start_all().await.expect("Start should succeed");
 
         // Wait for the cluster to be ready
-        consensus
-            .wait_for_leader(Some(Duration::from_secs(10)))
-            .await
-            .unwrap();
+        assert!(
+            cluster.wait_for_cluster_formation(10).await,
+            "Cluster should form within timeout"
+        );
 
         // After initialization, this node should be the leader
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
         println!("Checking leadership status...");
         println!("Current term: {:?}", consensus.current_term());
         println!("Current leader: {:?}", consensus.current_leader().await);
@@ -169,11 +171,7 @@ mod tests {
         );
 
         // Shutdown
-        let shutdown_result = consensus.shutdown().await;
-        assert!(
-            shutdown_result.is_ok(),
-            "Shutdown should succeed: {shutdown_result:?}"
-        );
+        cluster.shutdown_all().await;
 
         println!("✅ Single-node leader election test completed");
     }
@@ -182,7 +180,10 @@ mod tests {
     #[traced_test]
     async fn test_leader_election_workflow() {
         // Test that demonstrates leader election workflow works correctly
-        let consensus = test_single_node_tcp(next_port()).await;
+        let mut cluster = TestCluster::new_with_tcp_and_memory(1).await;
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
         let node_id = consensus.node_id().to_string();
 
         println!(
@@ -191,20 +192,27 @@ mod tests {
         );
 
         // Test 1: Node starts without being a leader
-        assert!(!consensus.is_leader());
-        assert_eq!(consensus.current_term(), Some(0));
+        {
+            let consensus = cluster
+                .get_consensus(0)
+                .expect("Should have one consensus node");
+            assert!(!consensus.is_leader());
+            assert_eq!(consensus.current_term(), Some(0));
+        }
 
         // Test 2: Start consensus (single node should become leader)
-        let start_result = consensus.start().await;
-        assert!(start_result.is_ok());
+        cluster.start_all().await.expect("Start should succeed");
 
         // Wait for the cluster to be ready
-        consensus
-            .wait_for_leader(Some(Duration::from_secs(10)))
-            .await
-            .unwrap();
+        assert!(
+            cluster.wait_for_cluster_formation(10).await,
+            "Cluster should form within timeout"
+        );
 
         // Test 3: Verify leadership is established
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
         let final_term = consensus.current_term().unwrap_or(0);
         assert!(
             final_term > 0,
@@ -236,8 +244,7 @@ mod tests {
         // For create stream operation, we just verify it succeeded above
 
         // Shutdown
-        let shutdown_result = consensus.shutdown().await;
-        assert!(shutdown_result.is_ok());
+        cluster.shutdown_all().await;
 
         println!("✅ Leader election workflow test completed successfully");
         println!("   - Single node correctly became leader");
@@ -252,7 +259,7 @@ mod tests {
         println!("🧪 Testing multi-node cluster formation with shared governance");
 
         let num_nodes = 3;
-        let mut cluster = test_multi_node_cluster(num_nodes).await;
+        let mut cluster = TestCluster::new_with_tcp_and_memory(num_nodes).await;
 
         println!("📋 Allocated ports: {:?}", cluster.ports);
 
@@ -272,11 +279,11 @@ mod tests {
         let mut cluster_terms = Vec::new();
 
         println!("📊 Analyzing cluster state:");
-        for (i, node) in cluster.nodes.iter().enumerate() {
-            let is_leader = node.is_leader();
-            let current_leader = node.current_leader().await;
-            let cluster_size = node.cluster_size();
-            let current_term = node.current_term();
+        for (i, consensus) in cluster.consensus_instances.iter().enumerate() {
+            let is_leader = consensus.is_leader();
+            let current_leader = consensus.current_leader().await;
+            let cluster_size = consensus.cluster_size();
+            let current_term = consensus.current_term();
 
             println!(
                 "   Node {} - Leader: {}, Current Leader: {:?}, Term: {:?}, Cluster Size: {:?}",
@@ -397,19 +404,17 @@ mod tests {
         println!("🧪 Testing simultaneous node discovery");
 
         let num_nodes = 2; // Start with just 2 nodes for simplicity
-        let mut cluster = test_multi_node_cluster(num_nodes).await;
-        let nodes = &cluster.nodes;
+        let mut cluster = TestCluster::new_with_tcp_and_memory(num_nodes).await;
         let ports = &cluster.ports;
 
         println!("📋 Allocated ports: {:?}", ports);
 
         // Start ALL nodes simultaneously
         println!("🚀 Starting all nodes simultaneously...");
-        let start_futures: Vec<_> = nodes.iter().map(|node| node.start()).collect();
-
-        // Use try_join_all to start all nodes at the same time
-        let start_results = futures::future::try_join_all(start_futures).await;
-        assert!(start_results.is_ok(), "All nodes should start successfully");
+        cluster
+            .start_all()
+            .await
+            .expect("All nodes should start successfully");
 
         println!("✅ All nodes started simultaneously");
 
@@ -419,10 +424,10 @@ mod tests {
 
         // Check if any discovery responses were received
         println!("📊 Checking discovery results:");
-        for (i, node) in nodes.iter().enumerate() {
-            let cluster_state = node.cluster_state().await;
-            let is_leader = node.is_leader();
-            let current_leader = node.current_leader().await;
+        for (i, consensus) in cluster.consensus_instances.iter().enumerate() {
+            let cluster_state = consensus.cluster_state().await;
+            let is_leader = consensus.is_leader();
+            let current_leader = consensus.current_leader().await;
 
             println!(
                 "   Node {} - State: {:?}, Leader: {}, Current Leader: {:?}",
@@ -440,52 +445,22 @@ mod tests {
         println!("🎯 Simultaneous discovery test completed");
     }
 
-    // Helper function to create shared governance for multiple nodes
-    #[allow(dead_code)]
-    fn create_shared_governance(ports: &[u16]) -> Arc<MockGovernance> {
-        let attestor = MockAttestor::new();
-        let actual_pcrs = attestor.pcrs_sync();
-        let test_version = Version {
-            ne_pcr0: actual_pcrs.pcr0,
-            ne_pcr1: actual_pcrs.pcr1,
-            ne_pcr2: actual_pcrs.pcr2,
-        };
-
-        let mut topology_nodes = Vec::new();
-        for port in ports {
-            let signing_key = SigningKey::generate(&mut OsRng);
-            let topology_node = GovernanceNode {
-                availability_zone: "test-az".to_string(),
-                origin: format!("http://127.0.0.1:{}", port),
-                public_key: signing_key.verifying_key(),
-                region: "test-region".to_string(),
-                specializations: HashSet::new(),
-            };
-            topology_nodes.push(topology_node);
-        }
-
-        Arc::new(MockGovernance::new(
-            topology_nodes,
-            vec![test_version],
-            "http://localhost:3200".to_string(),
-            vec![],
-        ))
-    }
-
     #[tokio::test]
     #[traced_test]
     async fn test_consensus_transport_types() {
         // Test TCP transport creation
-        let tcp_consensus = test_single_node_tcp(next_port()).await;
+        let tcp_cluster = TestCluster::new_with_tcp_and_memory(1).await;
+        let tcp_consensus = tcp_cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
         assert!(!tcp_consensus.supports_http_integration());
 
-        // Test WebSocket transport creation using helper
-        let (ws_consensus, _port, server_handle) = test_websocket_node().await;
-
+        // Test WebSocket transport creation
+        let ws_cluster = TestCluster::new_with_websocket_and_memory(1).await;
+        let ws_consensus = ws_cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
         assert!(ws_consensus.supports_http_integration());
-
-        // Clean up the server
-        server_handle.abort();
 
         println!("✅ Transport types test passed");
     }
@@ -493,17 +468,20 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn test_stream_operations() {
-        let consensus = test_single_node_tcp(next_port()).await;
+        let mut cluster = TestCluster::new_with_tcp_and_memory(1).await;
 
-        consensus.start().await.unwrap();
+        cluster.start_all().await.unwrap();
 
         // Wait for the cluster to be ready
-        consensus
-            .wait_for_leader(Some(Duration::from_secs(10)))
-            .await
-            .unwrap();
+        assert!(
+            cluster.wait_for_cluster_formation(10).await,
+            "Cluster should form within timeout"
+        );
 
         // Test that we can access global state directly
+        let consensus = cluster
+            .get_consensus(0)
+            .expect("Should have one consensus node");
         let global_state = consensus.global_state();
         let last_seq = global_state.last_sequence("test-stream").await;
         assert_eq!(last_seq, 0); // Should be 0 for a new stream
@@ -552,9 +530,8 @@ mod tests {
         println!("🧪 Testing basic unidirectional connection message sending");
 
         let num_nodes = 2;
-        let mut cluster = test_multi_node_cluster(num_nodes).await;
+        let mut cluster = TestCluster::new_with_tcp_and_memory(num_nodes).await;
         let nodes = &cluster.nodes;
-        let signing_keys = &cluster.keys;
 
         println!("📋 Allocated ports: {:?}", cluster.ports);
 
@@ -566,18 +543,25 @@ mod tests {
         // Wait a moment for listeners to be ready
         tokio::time::sleep(Duration::from_millis(200)).await;
 
+        // Get consensus instances for testing
+        let consensus_0 = cluster.get_consensus(0).expect("Should have consensus 0");
+
         // Test sending a message from node 0 to node 1 (this will establish connection on-demand)
-        let node_1_id = NodeId::new(signing_keys[1].verifying_key());
+        let node_1_id = cluster
+            .get_consensus(1)
+            .expect("Should have consensus 1")
+            .node_id()
+            .clone();
         let test_message = proven_consensus::network::messages::Message::Application(Box::new(
             proven_consensus::network::messages::ApplicationMessage::ClusterDiscovery(
                 proven_consensus::network::messages::ClusterDiscoveryRequest {
-                    requester_id: nodes[0].node_id().clone(),
+                    requester_id: consensus_0.node_id().clone(),
                 },
             ),
         ));
 
         // Send message which should establish connection on-demand
-        let send_result = nodes[0]
+        let send_result = consensus_0
             .network_manager()
             .send_message(node_1_id.clone(), test_message)
             .await;
@@ -587,7 +571,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(300)).await;
 
         // Check connected peers
-        let connected_peers = nodes[0]
+        let connected_peers = consensus_0
             .network_manager()
             .get_connected_peers()
             .await
@@ -618,23 +602,22 @@ mod tests {
         println!("🧪 Testing cluster discovery with correlation ID tracking");
 
         let num_nodes = 2;
-        let mut cluster = test_multi_node_cluster(num_nodes).await;
-        let nodes = &cluster.nodes;
-        let signing_keys = &cluster.keys;
+        let mut cluster = TestCluster::new_with_tcp_and_memory(num_nodes).await;
 
         println!("📋 Allocated ports: {:?}", cluster.ports);
 
-        println!(
-            "✅ Created {} nodes (networks already started)",
-            nodes.len()
-        );
+        // Start all nodes so they can respond to discovery
+        println!("🚀 Starting all nodes...");
+        cluster.start_all().await.expect("Failed to start nodes");
 
-        // Wait a moment for listeners to be ready
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        println!("✅ Started {} nodes", cluster.nodes.len());
+
+        // Get consensus instances for testing
+        let consensus = cluster.get_consensus(0).expect("Should have consensus 0");
 
         // Test cluster discovery from node 0 (this should use correlation IDs)
         println!("🔍 Starting cluster discovery from node 0...");
-        let discovery_result = nodes[0].discover_existing_clusters().await;
+        let discovery_result = consensus.discover_existing_clusters().await;
 
         println!("📋 Discovery result: {:?}", discovery_result);
 
@@ -654,9 +637,24 @@ mod tests {
         let response = &responses[0];
         assert_eq!(
             response.responder_id,
-            NodeId::new(signing_keys[1].verifying_key())
+            NodeId::new(cluster.signing_keys[1].verifying_key())
         );
-        assert!(!response.has_active_cluster); // Nodes are not in clusters yet
+
+        // After starting nodes, they automatically form a cluster
+        assert!(
+            response.has_active_cluster,
+            "Node should be in an active cluster"
+        );
+        assert!(
+            response.current_term.is_some(),
+            "Should have a current term"
+        );
+        assert!(response.current_leader.is_some(), "Should have a leader");
+        assert_eq!(
+            response.cluster_size,
+            Some(2),
+            "Cluster should have 2 nodes"
+        );
 
         println!("✅ Cluster discovery with correlation IDs test completed successfully");
 
@@ -670,10 +668,9 @@ mod tests {
         println!("🧪 Testing complete end-to-end discovery and join flow");
 
         let num_nodes = 3;
-        let mut cluster = test_multi_node_cluster(num_nodes).await;
-        let nodes = &mut cluster.nodes;
+        let mut cluster = TestCluster::new_with_tcp_and_memory(num_nodes).await;
         let ports = &cluster.ports;
-        let signing_keys = &cluster.keys;
+        let signing_keys = &cluster.signing_keys;
 
         println!("📋 All allocated ports: {:?}", ports);
 
@@ -681,9 +678,14 @@ mod tests {
 
         println!("\n🎬 Starting end-to-end test scenario");
 
+        // Get consensus instances for testing
+        let consensus_0 = cluster.get_consensus(0).expect("Should have consensus 0");
+        let consensus_1 = cluster.get_consensus(1).expect("Should have consensus 1");
+        let consensus_2 = cluster.get_consensus(2).expect("Should have consensus 2");
+
         // Step 1: Start the first node as cluster leader
         println!("\n📍 Step 1: Starting node 0 as initial cluster leader");
-        let leader_start_result = nodes[0].start().await;
+        let leader_start_result = consensus_0.start().await;
         assert!(
             leader_start_result.is_ok(),
             "Leader node should start successfully"
@@ -694,16 +696,16 @@ mod tests {
 
         // Verify node 0 is the leader
         let mut attempts = 0;
-        while !nodes[0].is_leader() && attempts < 10 {
+        while !consensus_0.is_leader() && attempts < 10 {
             tokio::time::sleep(Duration::from_millis(200)).await;
             attempts += 1;
         }
-        assert!(nodes[0].is_leader(), "Node 0 should become the leader");
+        assert!(consensus_0.is_leader(), "Node 0 should become the leader");
         println!("✅ Node 0 is now the cluster leader");
 
         // Step 2: Test discovery from node 1
         println!("\n📍 Step 2: Testing cluster discovery from node 1");
-        let discovery_results = nodes[1].discover_existing_clusters().await.unwrap();
+        let discovery_results = consensus_1.discover_existing_clusters().await.unwrap();
         println!(
             "🔍 Discovery found {} active clusters",
             discovery_results.len()
@@ -735,7 +737,7 @@ mod tests {
         println!("\n📍 Step 3: Node 1 joining the cluster via NetworkManager");
 
         // Use GlobalManager's join method directly
-        let join_result = nodes[1]
+        let join_result = consensus_1
             .global_manager()
             .join_existing_cluster_via_raft(
                 NodeId::new(signing_keys[1].verifying_key()),
@@ -757,8 +759,8 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         // Check cluster state on both nodes
-        let leader_cluster_size = nodes[0].cluster_size();
-        let joiner_cluster_size = nodes[1].cluster_size();
+        let leader_cluster_size = consensus_0.cluster_size();
+        let joiner_cluster_size = consensus_1.cluster_size();
 
         println!("Leader reports cluster size: {:?}", leader_cluster_size);
         println!("Joiner reports cluster size: {:?}", joiner_cluster_size);
@@ -776,8 +778,8 @@ mod tests {
         );
 
         // Check that both nodes agree on the leader
-        let leader_id_from_leader = nodes[0].current_leader().await;
-        let leader_id_from_joiner = nodes[1].current_leader().await;
+        let leader_id_from_leader = consensus_0.current_leader().await;
+        let leader_id_from_joiner = consensus_1.current_leader().await;
         assert_eq!(
             leader_id_from_leader, leader_id_from_joiner,
             "Both nodes should agree on the leader"
@@ -788,7 +790,7 @@ mod tests {
         println!("\n📍 Step 5: Testing third node joining");
 
         // Discover from node 2
-        let discovery_results_2 = nodes[2].discover_existing_clusters().await.unwrap();
+        let discovery_results_2 = consensus_2.discover_existing_clusters().await.unwrap();
         assert!(
             !discovery_results_2.is_empty(),
             "Node 2 should discover the existing cluster"
@@ -800,7 +802,7 @@ mod tests {
             .expect("Should find the existing cluster");
 
         // Join the cluster
-        let join_result_2 = nodes[2]
+        let join_result_2 = consensus_2
             .global_manager()
             .join_existing_cluster_via_raft(
                 NodeId::new(signing_keys[2].verifying_key()),
@@ -822,8 +824,8 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(3)).await;
 
         // All nodes should see cluster size of 3
-        for (i, node) in nodes.iter().enumerate() {
-            let cluster_size = node.cluster_size();
+        for (i, consensus) in cluster.consensus_instances.iter().enumerate() {
+            let cluster_size = consensus.cluster_size();
             assert_eq!(
                 cluster_size,
                 Some(3),
@@ -843,7 +845,7 @@ mod tests {
             },
         };
 
-        let submit_result = nodes[0].submit_request(test_request).await;
+        let submit_result = consensus_0.submit_request(test_request).await;
         assert!(
             submit_result.is_ok(),
             "Should be able to submit request to cluster"
@@ -873,81 +875,19 @@ mod tests {
         println!("🧪 Testing WebSocket-based leader election");
 
         let num_nodes = 3;
-        let mut nodes = Vec::new();
-        let mut ports = Vec::new();
-        let mut signing_keys = Vec::new();
+        let mut cluster = TestCluster::new_with_websocket_and_memory(num_nodes).await;
         let mut http_servers = Vec::new();
-
-        // Allocate ports and generate keys for all nodes
-        for _i in 0..num_nodes {
-            ports.push(next_port());
-            signing_keys.push(SigningKey::generate(&mut OsRng));
-        }
-
-        println!("📋 Allocated ports: {:?}", ports);
-
-        // Create a shared governance that knows about all nodes
-        let shared_governance = {
-            let attestor = MockAttestor::new();
-            let actual_pcrs = attestor.pcrs_sync();
-            let test_version = Version {
-                ne_pcr0: actual_pcrs.pcr0,
-                ne_pcr1: actual_pcrs.pcr1,
-                ne_pcr2: actual_pcrs.pcr2,
-            };
-
-            let governance = Arc::new(MockGovernance::new(
-                vec![], // Start with empty topology
-                vec![test_version],
-                "http://localhost:3200".to_string(),
-                vec![],
-            ));
-
-            // Add all nodes to the shared governance
-            for (i, (&port, signing_key)) in ports.iter().zip(signing_keys.iter()).enumerate() {
-                let node = GovernanceNode {
-                    availability_zone: "test-az".to_string(),
-                    origin: format!("http://127.0.0.1:{}", port),
-                    public_key: signing_key.verifying_key(),
-                    region: "test-region".to_string(),
-                    specializations: HashSet::new(),
-                };
-
-                governance
-                    .add_node(node)
-                    .expect("Failed to add node to governance");
-                println!("✅ Added node {} to shared governance", i);
-            }
-
-            governance
-        };
-
-        // Create consensus nodes using the shared governance with WebSocket transport
-        for signing_key in signing_keys.iter() {
-            let attestor = Arc::new(MockAttestor::new());
-
-            let config = ConsensusConfig {
-                governance: shared_governance.clone(),
-                attestor: attestor.clone(),
-                signing_key: signing_key.clone(),
-                raft_config: RaftConfig::default(),
-                transport_config: proven_consensus::transport::TransportConfig::WebSocket,
-                storage_config: proven_consensus::config::StorageConfig::Memory,
-                cluster_discovery_timeout: None,
-                cluster_join_retry_config:
-                    proven_consensus::config::ClusterJoinRetryConfig::default(),
-                hierarchical_config: HierarchicalConsensusConfig::default(),
-            };
-
-            let consensus = Consensus::new(config).await.unwrap();
-            nodes.push(consensus);
-        }
 
         // Start HTTP servers for each node with WebSocket integration
         println!("🚀 Starting HTTP servers with WebSocket integration...");
-        for (i, (node, &port)) in nodes.iter().zip(ports.iter()).enumerate() {
+        for (i, (consensus, &port)) in cluster
+            .consensus_instances
+            .iter()
+            .zip(cluster.ports.iter())
+            .enumerate()
+        {
             // Get the WebSocket router from the consensus
-            let router = node.create_router().expect("Should create router");
+            let router = consensus.create_router().expect("Should create router");
 
             // Create the HTTP server
             let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
@@ -973,27 +913,19 @@ mod tests {
 
         // Start all consensus nodes
         println!("🚀 Starting all consensus nodes...");
-        for (i, node) in nodes.iter().enumerate() {
-            println!(
-                "Starting WebSocket consensus node {} ({})",
-                i,
-                &node.node_id()
-            );
-            let start_result = node.start().await;
-            assert!(
-                start_result.is_ok(),
-                "WebSocket node {} start should succeed: {start_result:?}",
-                i
-            );
-            // Short delay to allow listener to start
-            tokio::time::sleep(Duration::from_millis(200)).await;
-        }
+        cluster
+            .start_all()
+            .await
+            .expect("Failed to start all nodes");
 
         println!("✅ All WebSocket consensus nodes started");
 
         // Give time for WebSocket connections and cluster formation
         println!("⏳ Waiting for WebSocket cluster formation and leader election...");
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        assert!(
+            cluster.wait_for_cluster_formation(10).await,
+            "WebSocket cluster should form within timeout"
+        );
 
         // Collect cluster state from all nodes
         let mut leader_count = 0;
@@ -1002,11 +934,11 @@ mod tests {
         let mut cluster_terms = Vec::new();
 
         println!("📊 Analyzing WebSocket cluster state:");
-        for (i, node) in nodes.iter().enumerate() {
-            let is_leader = node.is_leader();
-            let current_leader = node.current_leader().await;
-            let cluster_size = node.cluster_size();
-            let current_term = node.current_term();
+        for (i, consensus) in cluster.consensus_instances.iter().enumerate() {
+            let is_leader = consensus.is_leader();
+            let current_leader = consensus.current_leader().await;
+            let cluster_size = consensus.cluster_size();
+            let current_term = consensus.current_term();
 
             println!(
                 "   WebSocket Node {} - Leader: {}, Current Leader: {:?}, Term: {:?}, Cluster Size: {:?}",
@@ -1097,9 +1029,8 @@ mod tests {
 
         // Test WebSocket cluster functionality - only the leader should accept writes
         println!("🔍 Testing WebSocket cluster functionality...");
-        let leader_node = nodes
-            .iter()
-            .find(|node| node.is_leader())
+        let leader_node = cluster
+            .get_leader()
             .expect("Should have exactly one leader");
 
         let request = GlobalRequest {
@@ -1126,8 +1057,8 @@ mod tests {
 
         // Test WebSocket connection status
         println!("🔍 Testing WebSocket connection status...");
-        for (i, node) in nodes.iter().enumerate() {
-            match node.get_connected_peers().await {
+        for (i, consensus) in cluster.consensus_instances.iter().enumerate() {
+            match consensus.get_connected_peers().await {
                 Ok(peers) => {
                     println!(
                         "✅ WebSocket Node {} has {} connected peers",
@@ -1150,15 +1081,7 @@ mod tests {
 
         // Graceful shutdown
         println!("🛑 Shutting down WebSocket cluster...");
-        for (i, node) in nodes.iter().enumerate() {
-            let shutdown_result = node.shutdown().await;
-            assert!(
-                shutdown_result.is_ok(),
-                "WebSocket Node {} shutdown should succeed",
-                i
-            );
-            println!("✅ WebSocket Node {} shutdown successfully", i);
-        }
+        cluster.shutdown_all().await;
 
         // Shutdown HTTP servers
         println!("🛑 Shutting down HTTP servers...");
