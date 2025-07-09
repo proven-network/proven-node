@@ -1,12 +1,22 @@
 use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
     net::{SocketAddr, TcpListener},
     sync::{LazyLock, Mutex},
+    time::SystemTime,
 };
 
-/// Global port allocator starting from 15000 (to avoid conflicts with other services)
-static NEXT_PORT: LazyLock<Mutex<u16>> = LazyLock::new(|| Mutex::new(15000));
+/// Global port allocator starting from a random port (to avoid conflicts with other services)
+static NEXT_PORT: LazyLock<Mutex<u16>> = LazyLock::new(|| {
+    let mut hasher = DefaultHasher::new();
+    SystemTime::now().hash(&mut hasher);
+    // Generate random port in range 15000-25000
+    let random_offset = (hasher.finish() % 10000) as u16;
+    let starting_port = 15000 + random_offset;
+    Mutex::new(starting_port)
+});
 
-/// Allocate the next available port, starting from 15000
+/// Allocate the next available port, starting from a random port in range 15000-25000
 pub fn allocate_port() -> u16 {
     let mut port_guard = NEXT_PORT.lock().unwrap();
 
@@ -22,7 +32,7 @@ pub fn allocate_port() -> u16 {
     }
 
     panic!(
-        "No available ports found after trying 10000 ports from {}",
+        "No available ports found after trying 10000 ports starting from {}",
         *port_guard - 10000
     )
 }
