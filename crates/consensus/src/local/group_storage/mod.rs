@@ -6,20 +6,19 @@
 /// Log types for local Raft storage
 pub mod log_types;
 
-/// Raft-specific storage implementation
-pub mod raft_storage;
+/// Unified local storage implementation
+pub mod unified;
 
-/// Factory for creating Raft storage instances
-pub mod raft_factory;
+/// Factory for creating unified local storage instances
+pub mod local_factory;
 
 /// Tests for LogStorage implementation
 #[cfg(test)]
 mod test_log_storage;
 
 // Re-export commonly used types
-pub use raft_factory::{
-    GroupRaftStorage, GroupRaftStorageFactory, MemoryRaftStorageFactory, RocksDBRaftStorageFactory,
-    create_raft_storage_factory,
+pub use local_factory::{
+    LocalStorageFactory, UnifiedLocalStorage, UnifiedLocalStorageFactory,
+    create_local_storage_factory,
 };
-
-pub use raft_storage::{RaftSnapshotBuilder, RaftStorage};
+pub use unified::LocalStorage;

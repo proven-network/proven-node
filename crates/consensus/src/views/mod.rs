@@ -9,9 +9,11 @@
 //! - NodeView: Read-only view of node state and capacity
 
 pub mod group_view;
+pub mod local_stream_view;
 pub mod node_view;
 pub mod stream_management_view;
 
 pub use group_view::GroupView;
+pub use local_stream_view::LocalStreamView;
 pub use node_view::NodeView;
 pub use stream_management_view::StreamManagementView;

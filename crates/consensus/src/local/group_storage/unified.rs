@@ -1,22 +1,27 @@
-//! Raft-specific storage implementation for local consensus groups
+//! Unified local consensus storage implementation
 //!
-//! This module provides storage implementations specifically for Raft consensus
-//! operations, separate from stream data storage.
+//! This module provides a unified storage implementation that combines
+//! Raft log storage and state machine functionality, similar to GlobalStorage.
 
 use super::log_types::{LocalEntryType, LocalLogMetadata, StreamOperationType};
 use crate::{
     allocation::ConsensusGroupId,
     error::{ConsensusResult, Error},
-    local::{LocalResponse, LocalTypeConfig},
+    local::{
+        LocalResponse, LocalTypeConfig, StorageBackedLocalState,
+        state_command::{LocalCommandFactory, LocalCommandProcessor},
+    },
     node_id::NodeId,
     storage::{StorageEngine, StorageValue, log::LogStorage},
 };
 use openraft::{
     Entry, LogId, SnapshotMeta, StorageError, StoredMembership, Vote,
-    storage::{LogState, RaftLogReader, RaftLogStorage, RaftStateMachine, Snapshot},
+    storage::{IOFlushed, LogState, RaftLogReader, RaftLogStorage, RaftStateMachine, Snapshot},
 };
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, io::Cursor, ops::RangeBounds, sync::Arc};
+use tokio::sync::RwLock;
+use tracing::{debug, error};
 
 /// Namespaces for Raft storage
 mod namespaces {
@@ -65,16 +70,24 @@ mod keys {
     }
 }
 
-/// Raft storage implementation backed by a generic storage engine
+/// Unified local storage that combines Raft storage with state machine
 #[derive(Clone)]
-pub struct RaftStorage<S: StorageEngine + LogStorage<LocalLogMetadata>> {
+pub struct LocalStorage<S: StorageEngine + LogStorage<LocalLogMetadata>> {
+    /// The underlying storage engine
     storage: Arc<S>,
+    /// Group ID for this storage instance
     group_id: ConsensusGroupId,
+    /// Local state machine reference
+    local_state: Arc<RwLock<StorageBackedLocalState>>,
 }
 
-impl<S: StorageEngine + LogStorage<LocalLogMetadata>> RaftStorage<S> {
-    /// Create a new Raft storage instance
-    pub async fn new(storage: Arc<S>, group_id: ConsensusGroupId) -> ConsensusResult<Self> {
+impl<S: StorageEngine + LogStorage<LocalLogMetadata>> LocalStorage<S> {
+    /// Create a new unified local storage instance
+    pub async fn new(
+        storage: Arc<S>,
+        group_id: ConsensusGroupId,
+        local_state: Arc<RwLock<StorageBackedLocalState>>,
+    ) -> ConsensusResult<Self> {
         // Create namespaces
         storage
             .create_namespace(&namespaces::logs())
@@ -89,7 +102,11 @@ impl<S: StorageEngine + LogStorage<LocalLogMetadata>> RaftStorage<S> {
             .await
             .map_err(|e| Error::storage(e.to_string()))?;
 
-        Ok(Self { storage, group_id })
+        Ok(Self {
+            storage,
+            group_id,
+            local_state,
+        })
     }
 }
 
@@ -123,8 +140,17 @@ impl StoredVote {
     }
 }
 
+impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> Debug for LocalStorage<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LocalStorage")
+            .field("storage", &"<storage_engine>")
+            .field("group_id", &self.group_id)
+            .finish()
+    }
+}
+
 impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> RaftLogReader<LocalTypeConfig>
-    for RaftStorage<S>
+    for LocalStorage<S>
 {
     async fn try_get_log_entries<RB: RangeBounds<u64> + Clone + Debug + Send>(
         &mut self,
@@ -178,7 +204,7 @@ impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> RaftLogReader<Loca
 }
 
 impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> RaftLogStorage<LocalTypeConfig>
-    for RaftStorage<S>
+    for LocalStorage<S>
 {
     type LogReader = Self;
 
@@ -209,7 +235,7 @@ impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> RaftLogStorage<Loc
     async fn append<I>(
         &mut self,
         entries: I,
-        callback: openraft::storage::IOFlushed<LocalTypeConfig>,
+        callback: IOFlushed<LocalTypeConfig>,
     ) -> Result<(), StorageError<LocalTypeConfig>>
     where
         I: IntoIterator<Item = Entry<LocalTypeConfig>> + Send,
@@ -328,14 +354,14 @@ impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> RaftLogStorage<Loc
     }
 }
 
-/// Snapshot builder for Raft storage
-pub struct RaftSnapshotBuilder<S: StorageEngine + LogStorage<LocalLogMetadata>> {
+/// Snapshot builder for local storage
+pub struct LocalSnapshotBuilder<S: StorageEngine + LogStorage<LocalLogMetadata>> {
     #[allow(dead_code)]
     storage: Arc<S>,
 }
 
 impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone>
-    openraft::RaftSnapshotBuilder<LocalTypeConfig> for RaftSnapshotBuilder<S>
+    openraft::RaftSnapshotBuilder<LocalTypeConfig> for LocalSnapshotBuilder<S>
 {
     async fn build_snapshot(
         &mut self,
@@ -357,9 +383,9 @@ impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone>
 }
 
 impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> RaftStateMachine<LocalTypeConfig>
-    for RaftStorage<S>
+    for LocalStorage<S>
 {
-    type SnapshotBuilder = RaftSnapshotBuilder<S>;
+    type SnapshotBuilder = LocalSnapshotBuilder<S>;
 
     async fn applied_state(
         &mut self,
@@ -414,31 +440,47 @@ impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> RaftStateMachine<L
         for entry in entries {
             // Process the entry payload
             match entry.payload {
-                openraft::EntryPayload::Normal(ref _request) => {
-                    // INTEGRATION POINT: State machine operations should be handled here
-                    //
-                    // The proper implementation requires:
-                    // 1. Access to StorageBackedLocalState (from state_machine.rs)
-                    // 2. Deserialize request as LocalRequest
-                    // 3. Handle each LocalStreamOperation variant by delegating to state machine
-                    //
-                    // Current architecture challenge:
-                    // - RaftStorage is created before stream_manager exists
-                    // - StorageBackedLocalState needs stream_manager reference
-                    // - Circular dependency if we try to pass state machine to RaftStorage
-                    //
-                    // Possible solutions:
-                    // 1. Create a separate state machine wrapper that OpenRaft uses
-                    // 2. Use a shared state pattern with Arc<RwLock<Option<StateMachine>>>
-                    // 3. Refactor the initialization order in LocalConsensusManager
-                    //
-                    // For now, return a placeholder response
-                    responses.push(LocalResponse {
-                        success: true,
-                        sequence: Some(entry.log_id.index),
-                        error: None,
-                        checkpoint_data: None,
-                    });
+                openraft::EntryPayload::Normal(ref request) => {
+                    debug!(
+                        "Processing local request for group {:?}: {:?}",
+                        self.group_id,
+                        request.operation.operation_name()
+                    );
+
+                    // Create command from operation
+                    let command = LocalCommandFactory::from_operation(&request.operation);
+
+                    // Get write lock on state
+                    let mut state = self.local_state.write().await;
+
+                    // Process command through command processor
+                    let response =
+                        match LocalCommandProcessor::process(command.as_ref(), &mut state).await {
+                            Ok(response) => {
+                                debug!(
+                                    "Successfully processed operation {} for group {:?}",
+                                    request.operation.operation_name(),
+                                    self.group_id
+                                );
+                                response
+                            }
+                            Err(e) => {
+                                error!(
+                                    "Failed to process operation {} for group {:?}: {}",
+                                    request.operation.operation_name(),
+                                    self.group_id,
+                                    e
+                                );
+                                LocalResponse {
+                                    success: false,
+                                    sequence: Some(entry.log_id.index),
+                                    error: Some(e.to_string()),
+                                    checkpoint_data: None,
+                                }
+                            }
+                        };
+
+                    responses.push(response);
                 }
                 openraft::EntryPayload::Membership(ref membership) => {
                     // Process membership changes
@@ -483,7 +525,7 @@ impl<S: StorageEngine + LogStorage<LocalLogMetadata> + Clone> RaftStateMachine<L
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
-        RaftSnapshotBuilder {
+        LocalSnapshotBuilder {
             storage: self.storage.clone(),
         }
     }

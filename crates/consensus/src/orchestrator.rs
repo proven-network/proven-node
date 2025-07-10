@@ -124,8 +124,8 @@ where
     ) -> ConsensusResult<Self> {
         info!("Initializing orchestrator");
 
-        // Create storage factory
-        let storage_factory = crate::local::group_storage::create_raft_storage_factory(
+        // Create local storage factory
+        let local_storage_factory = crate::local::group_storage::create_local_storage_factory(
             &hierarchical_config.local.storage_config,
         )?;
 
@@ -134,7 +134,7 @@ where
             node_id.clone(),
             hierarchical_config.local.base_raft_config.clone(),
             global_manager.clone(),
-            storage_factory,
+            local_storage_factory,
             base_config.stream_storage_backend.clone(),
         ));
 

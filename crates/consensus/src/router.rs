@@ -4,9 +4,9 @@ use crate::global::GlobalResponse;
 use crate::global::global_manager::GlobalManager;
 use crate::local::LocalConsensusManager;
 use crate::local::LocalResponse;
-use crate::local::LocalStreamOperation;
 use crate::monitoring::MonitoringService;
 use crate::operations::GlobalOperation;
+use crate::operations::{LocalStreamOperation, MigrationOperation, StreamOperation};
 use futures::future;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -184,10 +184,10 @@ where
 
         let is_write_operation = matches!(
             &operation,
-            LocalStreamOperation::PublishToStream { .. }
-                | LocalStreamOperation::PublishBatchToStream { .. }
-                | LocalStreamOperation::RollupStream { .. }
-                | LocalStreamOperation::DeleteFromStream { .. }
+            LocalStreamOperation::Stream(StreamOperation::Publish { .. })
+                | LocalStreamOperation::Stream(StreamOperation::PublishBatch { .. })
+                | LocalStreamOperation::Stream(StreamOperation::Rollup { .. })
+                | LocalStreamOperation::Stream(StreamOperation::Delete { .. })
         );
 
         if is_write_operation {
@@ -263,10 +263,10 @@ where
     ) -> ConsensusResult<LocalResponse> {
         let is_write = matches!(
             &operation,
-            LocalStreamOperation::PublishToStream { .. }
-                | LocalStreamOperation::PublishBatchToStream { .. }
-                | LocalStreamOperation::RollupStream { .. }
-                | LocalStreamOperation::DeleteFromStream { .. }
+            LocalStreamOperation::Stream(StreamOperation::Publish { .. })
+                | LocalStreamOperation::Stream(StreamOperation::PublishBatch { .. })
+                | LocalStreamOperation::Stream(StreamOperation::Rollup { .. })
+                | LocalStreamOperation::Stream(StreamOperation::Delete { .. })
         );
 
         if is_write {
@@ -355,7 +355,7 @@ where
                 // Get the local state metrics if available
                 if let Ok(response) = self
                     .local_manager
-                    .process_operation(*group_id, LocalStreamOperation::GetMetrics)
+                    .process_operation(*group_id, LocalStreamOperation::get_metrics())
                     .await
                 {
                     if response.success {
@@ -534,9 +534,9 @@ where
         let mut results = HashMap::new();
         for group_id in target_groups {
             // Create a query operation for stream information
-            let query_op = LocalStreamOperation::GetStreamCheckpoint {
-                stream_name: stream_pattern.clone().unwrap_or_else(|| "*".to_string()),
-            };
+            let query_op = LocalStreamOperation::get_stream_checkpoint(
+                stream_pattern.clone().unwrap_or_else(|| "*".to_string()),
+            );
 
             match self
                 .handle_local_stream_operation(group_id, query_op, None)
@@ -714,31 +714,32 @@ where
         operation: &LocalStreamOperation,
     ) -> Option<LocalStreamOperation> {
         match operation {
-            LocalStreamOperation::CreateStreamForMigration { stream_name, .. } => {
+            LocalStreamOperation::Migration(MigrationOperation::CreateStream {
+                stream_name,
+                ..
+            }) => {
                 // Rollback: Remove the stream
-                Some(LocalStreamOperation::RemoveStream {
-                    stream_name: stream_name.clone(),
-                })
+                Some(LocalStreamOperation::remove_stream(stream_name.clone()))
             }
-            LocalStreamOperation::PauseStream { stream_name } => {
+            LocalStreamOperation::Migration(MigrationOperation::PauseStream { stream_name }) => {
                 // Rollback: Resume the stream
-                Some(LocalStreamOperation::ResumeStream {
-                    stream_name: stream_name.clone(),
-                })
+                Some(LocalStreamOperation::resume_stream(stream_name.clone()))
             }
-            LocalStreamOperation::RemoveStream { stream_name } => {
+            LocalStreamOperation::Migration(MigrationOperation::RemoveStream { stream_name }) => {
                 // Cannot rollback a removal - data is lost
                 warn!("Cannot rollback stream removal for {}", stream_name);
                 None
             }
-            LocalStreamOperation::ApplyMigrationCheckpoint { .. }
-            | LocalStreamOperation::ApplyIncrementalCheckpoint { .. } => {
+            LocalStreamOperation::Migration(MigrationOperation::ApplyCheckpoint { .. })
+            | LocalStreamOperation::Migration(MigrationOperation::ApplyIncrementalCheckpoint {
+                ..
+            }) => {
                 // Cannot easily rollback checkpoint application
                 warn!("Cannot rollback checkpoint application");
                 None
             }
-            LocalStreamOperation::PublishToStream { .. }
-            | LocalStreamOperation::PublishBatchToStream { .. } => {
+            LocalStreamOperation::Stream(StreamOperation::Publish { .. })
+            | LocalStreamOperation::Stream(StreamOperation::PublishBatch { .. }) => {
                 // Cannot rollback publishes - would need to track sequences
                 warn!("Cannot rollback publish operations");
                 None
@@ -918,7 +919,7 @@ where
         let mut total_cleaned = 0u64;
 
         for group_id in groups {
-            let operation = LocalStreamOperation::CleanupPendingOperations { max_age_secs };
+            let operation = LocalStreamOperation::cleanup_pending_operations(max_age_secs);
 
             match self.route_local_operation(group_id, operation).await {
                 Ok(response) => {

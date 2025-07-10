@@ -13,6 +13,8 @@ pub mod legacy_types;
 pub mod local_manager;
 /// Network factory for creating local consensus groups
 pub mod network_factory;
+/// State command pattern for local operations
+pub mod state_command;
 /// State machine implementation
 pub mod state_machine;
 /// Stream storage for stream data operations
@@ -25,16 +27,15 @@ pub use legacy_types::{
     LocalStateMetrics, MessageData, PendingOperation, PendingOperationType, StreamData,
     StreamMetrics,
 };
+// Re-export LocalStreamOperation from operations module
+pub use crate::operations::LocalStreamOperation;
 
 use crate::allocation::ConsensusGroupId;
-use crate::global::PubSubMessageSource;
 use crate::node::Node;
 use crate::node_id::NodeId;
 
-use bytes::Bytes;
 use openraft::Entry;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::io::Cursor;
 
 openraft::declare_raft_types!(
@@ -86,119 +87,6 @@ pub enum MigrationState {
     Completed,
     /// Migration failed
     Failed,
-}
-
-/// Local stream operations handled by local consensus groups
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum LocalStreamOperation {
-    /// Publish a message to a stream
-    PublishToStream {
-        /// Stream name to publish to
-        stream: String,
-        /// Message data
-        data: Bytes,
-        /// Optional metadata
-        metadata: Option<HashMap<String, String>>,
-    },
-
-    /// Publish multiple messages to a stream
-    PublishBatchToStream {
-        /// Stream name to publish to
-        stream: String,
-        /// Messages to publish
-        messages: Vec<Bytes>,
-    },
-
-    /// Rollup operation on a stream
-    RollupStream {
-        /// Stream name to rollup
-        stream: String,
-        /// Message data
-        data: Bytes,
-        /// Expected sequence number
-        expected_seq: u64,
-    },
-
-    /// Delete a message from a stream
-    DeleteFromStream {
-        /// Stream name to delete from
-        stream: String,
-        /// Sequence number of the message to delete
-        sequence: u64,
-    },
-
-    /// Publish from PubSub to a stream
-    PublishFromPubSub {
-        /// Stream name to publish to
-        stream_name: String,
-        /// Subject that triggered this
-        subject: String,
-        /// Message data
-        data: Bytes,
-        /// Source information
-        source: PubSubMessageSource,
-    },
-
-    /// Create a stream for migration
-    CreateStreamForMigration {
-        /// Stream name to create
-        stream_name: String,
-        /// Source consensus group
-        source_group: ConsensusGroupId,
-    },
-
-    /// Get a checkpoint of stream data for migration
-    GetStreamCheckpoint {
-        /// Stream name to checkpoint
-        stream_name: String,
-    },
-
-    /// Get an incremental checkpoint of stream data since a sequence number
-    GetIncrementalCheckpoint {
-        /// Stream name to checkpoint
-        stream_name: String,
-        /// Only include messages after this sequence number
-        since_sequence: u64,
-    },
-
-    /// Apply a migration checkpoint
-    ApplyMigrationCheckpoint {
-        /// Checkpoint data
-        checkpoint: Bytes,
-    },
-
-    /// Apply an incremental migration checkpoint (merges with existing data)
-    ApplyIncrementalCheckpoint {
-        /// Checkpoint data
-        checkpoint: Bytes,
-    },
-
-    /// Pause stream for migration
-    PauseStream {
-        /// Stream name to pause
-        stream_name: String,
-    },
-
-    /// Resume stream after migration
-    ResumeStream {
-        /// Stream name to resume
-        stream_name: String,
-    },
-
-    /// Remove stream after migration
-    RemoveStream {
-        /// Stream name to remove
-        stream_name: String,
-    },
-
-    /// Get metrics for the local state machine
-    GetMetrics,
-
-    /// Clean up old pending operations
-    CleanupPendingOperations {
-        /// Maximum age of pending operations to keep (in seconds)
-        max_age_secs: u64,
-    },
 }
 
 /// Migration state for a stream

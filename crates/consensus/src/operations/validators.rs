@@ -7,8 +7,10 @@
 use crate::{
     error::{ConsensusResult, Error, GroupError, NodeError, StreamError},
     operations::{
-        OperationContext, OperationValidator, group_ops::GroupOperation, node_ops::NodeOperation,
-        routing_ops::RoutingOperation, stream_management_ops::StreamManagementOperation,
+        LocalOperationContext, LocalStreamOperation, MaintenanceOperation, MigrationOperation,
+        OperationContext, OperationValidator, PubSubOperation, StreamOperation,
+        group_ops::GroupOperation, node_ops::NodeOperation, routing_ops::RoutingOperation,
+        stream_management_ops::StreamManagementOperation,
     },
 };
 
@@ -487,5 +489,236 @@ impl OperationValidator<RoutingOperation> for RoutingOperationValidator {
                 Ok(())
             }
         }
+    }
+}
+
+/// Validator for local stream operations
+pub struct LocalStreamOperationValidator;
+
+/// Trait for validating local operations
+#[async_trait::async_trait]
+pub trait LocalOperationValidator<T: Send + Sync> {
+    /// Validate the operation in the given context
+    async fn validate(
+        &self,
+        operation: &T,
+        context: &LocalOperationContext<'_>,
+    ) -> ConsensusResult<()>;
+}
+
+#[async_trait::async_trait]
+impl LocalOperationValidator<LocalStreamOperation> for LocalStreamOperationValidator {
+    async fn validate(
+        &self,
+        operation: &LocalStreamOperation,
+        context: &LocalOperationContext<'_>,
+    ) -> ConsensusResult<()> {
+        match operation {
+            LocalStreamOperation::Stream(op) => self.validate_stream_operation(op, context).await,
+            LocalStreamOperation::Migration(op) => {
+                self.validate_migration_operation(op, context).await
+            }
+            LocalStreamOperation::PubSub(op) => self.validate_pubsub_operation(op, context).await,
+            LocalStreamOperation::Maintenance(op) => {
+                self.validate_maintenance_operation(op, context).await
+            }
+        }
+    }
+}
+
+impl LocalStreamOperationValidator {
+    /// Validate stream operations
+    async fn validate_stream_operation(
+        &self,
+        operation: &StreamOperation,
+        context: &LocalOperationContext<'_>,
+    ) -> ConsensusResult<()> {
+        let stream_name = operation.stream_name();
+
+        // Check if stream name is valid
+        if stream_name.is_empty() {
+            return Err(Error::InvalidOperation(
+                "Stream name cannot be empty".to_string(),
+            ));
+        }
+
+        match operation {
+            StreamOperation::Publish { .. }
+            | StreamOperation::PublishBatch { .. }
+            | StreamOperation::Rollup { .. } => {
+                // Check if stream exists and is not paused
+                match context
+                    .local_state
+                    .get_stream_metadata(stream_name)
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                    })? {
+                    Some(metadata) => {
+                        if metadata.is_paused {
+                            return Err(Error::InvalidOperation(format!(
+                                "Stream '{}' is paused for migration",
+                                stream_name
+                            )));
+                        }
+                    }
+                    None => {
+                        return Err(Error::InvalidOperation(format!(
+                            "Stream '{}' does not exist",
+                            stream_name
+                        )));
+                    }
+                }
+            }
+            StreamOperation::Delete { .. } => {
+                // Check if stream exists
+                if context
+                    .local_state
+                    .get_stream_metadata(stream_name)
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                    })?
+                    .is_none()
+                {
+                    return Err(Error::InvalidOperation(format!(
+                        "Stream '{}' does not exist",
+                        stream_name
+                    )));
+                }
+            }
+        }
+
+        // Additional validations
+        if let StreamOperation::PublishBatch {
+            stream: _,
+            messages,
+        } = operation
+        {
+            if messages.is_empty() {
+                return Err(Error::InvalidOperation("Batch cannot be empty".to_string()));
+            }
+        }
+
+        if let StreamOperation::Rollup { expected_seq, .. } = operation {
+            // Could add validation for expected sequence number
+            let _ = expected_seq;
+        }
+
+        Ok(())
+    }
+
+    /// Validate migration operations
+    async fn validate_migration_operation(
+        &self,
+        operation: &MigrationOperation,
+        context: &LocalOperationContext<'_>,
+    ) -> ConsensusResult<()> {
+        match operation {
+            MigrationOperation::CreateStream { stream_name, .. } => {
+                // Check if stream already exists
+                if context
+                    .local_state
+                    .get_stream_metadata(stream_name)
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                    })?
+                    .is_some()
+                {
+                    return Err(Error::InvalidOperation(format!(
+                        "Stream '{}' already exists",
+                        stream_name
+                    )));
+                }
+            }
+            MigrationOperation::GetCheckpoint { stream_name }
+            | MigrationOperation::GetIncrementalCheckpoint { stream_name, .. }
+            | MigrationOperation::PauseStream { stream_name }
+            | MigrationOperation::ResumeStream { stream_name }
+            | MigrationOperation::RemoveStream { stream_name } => {
+                // Check if stream exists
+                if context
+                    .local_state
+                    .get_stream_metadata(stream_name)
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                    })?
+                    .is_none()
+                {
+                    return Err(Error::InvalidOperation(format!(
+                        "Stream '{}' does not exist",
+                        stream_name
+                    )));
+                }
+            }
+            MigrationOperation::ApplyCheckpoint { .. }
+            | MigrationOperation::ApplyIncrementalCheckpoint { .. } => {
+                // Checkpoint validation happens during application since it requires
+                // deserializing and validating the checkpoint data
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate PubSub operations
+    async fn validate_pubsub_operation(
+        &self,
+        operation: &PubSubOperation,
+        context: &LocalOperationContext<'_>,
+    ) -> ConsensusResult<()> {
+        match operation {
+            PubSubOperation::PublishFromPubSub { stream_name, .. } => {
+                // Check if stream exists and is not paused
+                match context
+                    .local_state
+                    .get_stream_metadata(stream_name)
+                    .await
+                    .map_err(|e| {
+                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                    })? {
+                    Some(metadata) => {
+                        if metadata.is_paused {
+                            return Err(Error::InvalidOperation(format!(
+                                "Stream '{}' is paused for migration",
+                                stream_name
+                            )));
+                        }
+                    }
+                    None => {
+                        return Err(Error::InvalidOperation(format!(
+                            "Stream '{}' does not exist",
+                            stream_name
+                        )));
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate maintenance operations
+    async fn validate_maintenance_operation(
+        &self,
+        operation: &MaintenanceOperation,
+        _context: &LocalOperationContext<'_>,
+    ) -> ConsensusResult<()> {
+        match operation {
+            MaintenanceOperation::GetMetrics => {
+                // No validation needed for read operations
+            }
+            MaintenanceOperation::CleanupPendingOperations { max_age_secs } => {
+                if *max_age_secs == 0 {
+                    return Err(Error::InvalidOperation(
+                        "Max age must be greater than 0".to_string(),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
     }
 }

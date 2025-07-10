@@ -17,7 +17,7 @@ use crate::NodeId;
 use crate::global::{
     PubSubMessageSource, global_manager::GlobalManager, global_state::GlobalState,
 };
-use crate::local::LocalStreamOperation;
+use crate::operations::LocalStreamOperation;
 use crate::orchestrator::Orchestrator;
 use crate::subscription::SubscriptionInvoker;
 use proven_governance::Governance;
@@ -269,12 +269,12 @@ where
 
         // Submit to consensus for persistent storage
         // Use hierarchical routing
-        let operation = LocalStreamOperation::PublishFromPubSub {
-            stream_name: self.stream_name.clone(),
-            subject: subject.to_string(),
-            data: message,
+        let operation = LocalStreamOperation::publish_from_pubsub(
+            self.stream_name.clone(),
+            subject.to_string(),
+            message,
             source,
-        };
+        );
 
         match self
             .hierarchical_orchestrator

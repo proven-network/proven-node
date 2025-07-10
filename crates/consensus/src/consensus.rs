@@ -372,11 +372,7 @@ where
     /// Returns an error if the Raft instance is not initialized or if consensus fails.
     pub async fn publish_message(&self, stream: String, data: Bytes) -> ConsensusResult<u64> {
         // Use hierarchical routing
-        let operation = LocalStreamOperation::PublishToStream {
-            stream: stream.clone(),
-            data,
-            metadata: None,
-        };
+        let operation = LocalStreamOperation::publish_to_stream(stream.clone(), data, None);
 
         let response = self
             .hierarchical_orchestrator
@@ -407,11 +403,8 @@ where
         metadata: std::collections::HashMap<String, String>,
     ) -> ConsensusResult<u64> {
         // Use hierarchical routing
-        let operation = LocalStreamOperation::PublishToStream {
-            stream: stream.clone(),
-            data,
-            metadata: Some(metadata),
-        };
+        let operation =
+            LocalStreamOperation::publish_to_stream(stream.clone(), data, Some(metadata));
 
         let response = self
             .hierarchical_orchestrator
@@ -441,10 +434,7 @@ where
         messages: Vec<Bytes>,
     ) -> ConsensusResult<u64> {
         // Use hierarchical routing
-        let operation = LocalStreamOperation::PublishBatchToStream {
-            stream: stream.clone(),
-            messages,
-        };
+        let operation = LocalStreamOperation::publish_batch_to_stream(stream.clone(), messages);
 
         let response = self
             .hierarchical_orchestrator
@@ -475,11 +465,7 @@ where
         expected_seq: u64,
     ) -> ConsensusResult<u64> {
         // Use hierarchical routing
-        let operation = LocalStreamOperation::RollupStream {
-            stream: stream.clone(),
-            data,
-            expected_seq,
-        };
+        let operation = LocalStreamOperation::rollup_stream(stream.clone(), data, expected_seq);
 
         let response = self
             .hierarchical_orchestrator
@@ -505,10 +491,7 @@ where
     /// Returns an error if the Raft instance is not initialized or if consensus fails.
     pub async fn delete_message(&self, stream: String, sequence: u64) -> ConsensusResult<u64> {
         // Use hierarchical routing
-        let operation = LocalStreamOperation::DeleteFromStream {
-            stream: stream.clone(),
-            sequence,
-        };
+        let operation = LocalStreamOperation::delete_from_stream(stream.clone(), sequence);
 
         let response = self
             .hierarchical_orchestrator

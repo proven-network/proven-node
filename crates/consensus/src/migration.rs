@@ -6,8 +6,9 @@
 use crate::allocation::ConsensusGroupId;
 use crate::error::{ConsensusResult, Error, MigrationError};
 use crate::global::StreamConfig;
-use crate::local::{LocalStreamOperation, MigrationState};
+use crate::local::MigrationState;
 use crate::operations::GlobalOperation;
+use crate::operations::LocalStreamOperation;
 use crate::router::ConsensusRouter;
 
 use bytes::Bytes;
@@ -337,10 +338,10 @@ where
         );
 
         // Create stream in target group with migration marker
-        let operation = LocalStreamOperation::CreateStreamForMigration {
-            stream_name: migration.stream_name.clone(),
-            source_group: migration.source_group,
-        };
+        let operation = LocalStreamOperation::create_stream_for_migration(
+            migration.stream_name.clone(),
+            migration.source_group,
+        );
 
         self.router
             .route_local_operation(migration.target_group, operation)
@@ -477,10 +478,10 @@ where
         since_seq: u64,
     ) -> ConsensusResult<MigrationCheckpoint> {
         // Use the specialized incremental checkpoint operation
-        let operation = LocalStreamOperation::GetIncrementalCheckpoint {
-            stream_name: migration.stream_name.clone(),
-            since_sequence: since_seq,
-        };
+        let operation = LocalStreamOperation::get_incremental_checkpoint(
+            migration.stream_name.clone(),
+            since_seq,
+        );
 
         let response = self
             .router
@@ -579,9 +580,9 @@ where
         );
 
         // Use the specialized incremental apply operation
-        let operation = LocalStreamOperation::ApplyIncrementalCheckpoint {
-            checkpoint: compressed_checkpoint.compressed_data,
-        };
+        let operation = LocalStreamOperation::apply_incremental_checkpoint(
+            compressed_checkpoint.compressed_data,
+        );
 
         let response = self
             .router
@@ -620,9 +621,7 @@ where
         self.router.route_global_operation(operation).await?;
 
         // Pause writes on source group
-        let pause_op = LocalStreamOperation::PauseStream {
-            stream_name: migration.stream_name.clone(),
-        };
+        let pause_op = LocalStreamOperation::pause_stream(migration.stream_name.clone());
 
         self.router
             .route_local_operation(migration.source_group, pause_op)
@@ -636,18 +635,14 @@ where
         debug!("Completing migration for stream {}", migration.stream_name);
 
         // Remove stream from source group
-        let remove_op = LocalStreamOperation::RemoveStream {
-            stream_name: migration.stream_name.clone(),
-        };
+        let remove_op = LocalStreamOperation::remove_stream(migration.stream_name.clone());
 
         self.router
             .route_local_operation(migration.source_group, remove_op)
             .await?;
 
         // Resume stream on target group
-        let resume_op = LocalStreamOperation::ResumeStream {
-            stream_name: migration.stream_name.clone(),
-        };
+        let resume_op = LocalStreamOperation::resume_stream(migration.stream_name.clone());
 
         self.router
             .route_local_operation(migration.target_group, resume_op)
@@ -661,9 +656,7 @@ where
         &self,
         migration: &ActiveMigration,
     ) -> ConsensusResult<MigrationCheckpoint> {
-        let operation = LocalStreamOperation::GetStreamCheckpoint {
-            stream_name: migration.stream_name.clone(),
-        };
+        let operation = LocalStreamOperation::get_stream_checkpoint(migration.stream_name.clone());
 
         let response = self
             .router
@@ -741,13 +734,9 @@ where
             serde_json::to_vec(checkpoint).map_err(|e| Error::Serialization(e.to_string()))?;
 
         let apply_op = if checkpoint.is_incremental {
-            LocalStreamOperation::ApplyIncrementalCheckpoint {
-                checkpoint: Bytes::from(checkpoint_bytes),
-            }
+            LocalStreamOperation::apply_incremental_checkpoint(Bytes::from(checkpoint_bytes))
         } else {
-            LocalStreamOperation::ApplyMigrationCheckpoint {
-                checkpoint: Bytes::from(checkpoint_bytes),
-            }
+            LocalStreamOperation::apply_migration_checkpoint(Bytes::from(checkpoint_bytes))
         };
 
         let response = self
@@ -873,9 +862,7 @@ where
         );
 
         // Resume source stream if it was paused
-        let resume_op = LocalStreamOperation::ResumeStream {
-            stream_name: migration.stream_name.clone(),
-        };
+        let resume_op = LocalStreamOperation::resume_stream(migration.stream_name.clone());
 
         if let Err(e) = self
             .router
@@ -889,9 +876,7 @@ where
         }
 
         // Remove stream from target group if it was created
-        let remove_op = LocalStreamOperation::RemoveStream {
-            stream_name: migration.stream_name.clone(),
-        };
+        let remove_op = LocalStreamOperation::remove_stream(migration.stream_name.clone());
 
         if let Err(e) = self
             .router

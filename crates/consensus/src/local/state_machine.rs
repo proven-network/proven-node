@@ -117,7 +117,10 @@ impl StorageBackedLocalState {
     }
 
     /// Get stream metadata
-    async fn get_stream_metadata(&self, stream_id: &str) -> Result<Option<StreamMetadata>, String> {
+    pub async fn get_stream_metadata(
+        &self,
+        stream_id: &str,
+    ) -> Result<Option<StreamMetadata>, String> {
         let storage = match self.stream_manager.get_stream_storage(stream_id).await {
             Ok(storage) => storage,
             Err(_) => return Ok(None), // Stream doesn't exist

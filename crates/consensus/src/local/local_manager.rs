@@ -1,5 +1,8 @@
 use super::LocalStreamOperation;
-use super::group_storage::{GroupRaftStorageFactory, create_raft_storage_factory};
+use super::StorageBackedLocalState;
+use super::group_storage::{
+    LocalStorageFactory, UnifiedLocalStorage, create_local_storage_factory,
+};
 use super::network_factory::LocalNetworkRegistry;
 use super::stream_storage::{
     StreamConfig, StreamStorageBackend, UnifiedStreamManager, create_stream_manager_with_backend,
@@ -34,9 +37,8 @@ where
     network_registry: Arc<LocalNetworkRegistry>,
     /// Reference to the global consensus manager
     global_manager: Arc<GlobalManager<G, A>>,
-    /// Raft storage factory
-    raft_storage_factory:
-        Box<dyn GroupRaftStorageFactory<Storage = super::group_storage::GroupRaftStorage>>,
+    /// Local storage factory
+    local_storage_factory: Box<dyn LocalStorageFactory<Storage = UnifiedLocalStorage>>,
     /// Base path for stream storage (if using file-based storage)
     stream_storage_base_path: Option<std::path::PathBuf>,
     /// Storage backend for streams
@@ -47,10 +49,12 @@ where
 struct LocalConsensusGroup {
     /// The Raft instance for this group
     raft: Arc<Raft<LocalTypeConfig>>,
-    /// Raft storage
-    _raft_storage: super::group_storage::GroupRaftStorage,
+    /// Local storage (combines Raft storage and state machine)
+    _local_storage: UnifiedLocalStorage,
     /// Stream manager for per-stream storage
     stream_manager: Arc<UnifiedStreamManager>,
+    /// Local state machine
+    _local_state: Arc<RwLock<StorageBackedLocalState>>,
     /// Group metadata
     _id: ConsensusGroupId,
     /// Members of this group
@@ -84,7 +88,7 @@ where
         global_manager: Arc<GlobalManager<G, A>>,
     ) -> ConsensusResult<Self> {
         let storage_config = StorageConfig::Memory;
-        let raft_storage_factory = create_raft_storage_factory(&storage_config)?;
+        let local_storage_factory = create_local_storage_factory(&storage_config)?;
 
         Ok(Self {
             groups: Arc::new(RwLock::new(HashMap::new())),
@@ -92,7 +96,7 @@ where
             base_config: Arc::new(base_config),
             network_registry: Arc::new(LocalNetworkRegistry::new()),
             global_manager,
-            raft_storage_factory,
+            local_storage_factory,
             stream_storage_base_path: None,
             stream_storage_backend: StreamStorageBackend::default(),
         })
@@ -105,7 +109,7 @@ where
         global_manager: Arc<GlobalManager<G, A>>,
         storage_config: &StorageConfig,
     ) -> ConsensusResult<Self> {
-        let raft_storage_factory = create_raft_storage_factory(storage_config)?;
+        let local_storage_factory = create_local_storage_factory(storage_config)?;
         let stream_storage_base_path = match storage_config {
             StorageConfig::Memory => None,
             StorageConfig::RocksDB { path } => Some(path.clone()),
@@ -117,7 +121,7 @@ where
             base_config: Arc::new(base_config),
             network_registry: Arc::new(LocalNetworkRegistry::new()),
             global_manager,
-            raft_storage_factory,
+            local_storage_factory,
             stream_storage_base_path,
             stream_storage_backend: StreamStorageBackend::default(),
         })
@@ -128,15 +132,13 @@ where
         node_id: NodeId,
         base_config: Config,
         global_manager: Arc<GlobalManager<G, A>>,
-        raft_storage_factory: Box<
-            dyn GroupRaftStorageFactory<Storage = super::group_storage::GroupRaftStorage>,
-        >,
+        local_storage_factory: Box<dyn LocalStorageFactory<Storage = UnifiedLocalStorage>>,
     ) -> Self {
         Self::with_storage_factory_and_backend(
             node_id,
             base_config,
             global_manager,
-            raft_storage_factory,
+            local_storage_factory,
             StreamStorageBackend::default(),
         )
     }
@@ -146,9 +148,7 @@ where
         node_id: NodeId,
         base_config: Config,
         global_manager: Arc<GlobalManager<G, A>>,
-        raft_storage_factory: Box<
-            dyn GroupRaftStorageFactory<Storage = super::group_storage::GroupRaftStorage>,
-        >,
+        local_storage_factory: Box<dyn LocalStorageFactory<Storage = UnifiedLocalStorage>>,
         stream_storage_backend: StreamStorageBackend,
     ) -> Self {
         Self {
@@ -157,7 +157,7 @@ where
             base_config: Arc::new(base_config),
             network_registry: Arc::new(LocalNetworkRegistry::new()),
             global_manager,
-            raft_storage_factory,
+            local_storage_factory,
             stream_storage_base_path: None,
             stream_storage_backend,
         }
@@ -197,18 +197,24 @@ where
             )));
         }
 
-        // Create Raft storage for this group
-        let raft_storage = self
-            .raft_storage_factory
-            .create_raft_storage(group_id)
-            .await?;
-
         // Create stream manager for this group
         let stream_manager = Arc::new(create_stream_manager_with_backend(
             group_id,
             self.stream_storage_base_path.clone(),
             self.stream_storage_backend.clone(),
         )?);
+
+        // Create local state machine
+        let local_state = Arc::new(RwLock::new(StorageBackedLocalState::new(
+            group_id,
+            stream_manager.clone(),
+        )));
+
+        // Create local storage for this group (includes both Raft storage and state machine)
+        let local_storage = self
+            .local_storage_factory
+            .create_local_storage(group_id, local_state.clone())
+            .await?;
 
         // Create a customized config for this group
         let mut config = (*self.base_config).clone();
@@ -232,8 +238,8 @@ where
             self.node_id.clone(),
             Arc::new(config),
             network_factory,
-            raft_storage.clone(),
-            raft_storage.clone(),
+            local_storage.clone(),
+            local_storage.clone(),
         )
         .await
         .map_err(|e| Error::Raft(format!("Failed to create Raft instance: {:?}", e)))?;
@@ -243,8 +249,9 @@ where
 
         let group = LocalConsensusGroup {
             raft: Arc::new(raft),
-            _raft_storage: raft_storage,
+            _local_storage: local_storage,
             stream_manager,
+            _local_state: local_state,
             _id: group_id,
             _members: members,
             _metrics: metrics,
@@ -268,7 +275,7 @@ where
                 .map_err(|e| Error::Raft(format!("Failed to shutdown Raft: {:?}", e)))?;
 
             // Clean up Raft storage for this group
-            self.raft_storage_factory.cleanup_raft_storage(group_id)?;
+            // TODO: Add cleanup method to LocalStorageFactory if needed
 
             // Clean up all streams in the stream manager
             group.stream_manager.cleanup_all().await?;
@@ -375,18 +382,24 @@ where
             )));
         }
 
-        // Create Raft storage for this group
-        let raft_storage = self
-            .raft_storage_factory
-            .create_raft_storage(group_id)
-            .await?;
-
         // Create stream manager for this group
         let stream_manager = Arc::new(create_stream_manager_with_backend(
             group_id,
             self.stream_storage_base_path.clone(),
             self.stream_storage_backend.clone(),
         )?);
+
+        // Create local state machine
+        let local_state = Arc::new(RwLock::new(StorageBackedLocalState::new(
+            group_id,
+            stream_manager.clone(),
+        )));
+
+        // Create local storage for this group (includes both Raft storage and state machine)
+        let local_storage = self
+            .local_storage_factory
+            .create_local_storage(group_id, local_state.clone())
+            .await?;
 
         // Create a customized config for this group
         let mut config = (*self.base_config).clone();
@@ -409,8 +422,8 @@ where
             self.node_id.clone(),
             Arc::new(config),
             network_factory,
-            raft_storage.clone(),
-            raft_storage.clone(),
+            local_storage.clone(),
+            local_storage.clone(),
         )
         .await
         .map_err(|e| Error::Raft(format!("Failed to create Raft instance: {:?}", e)))?;
@@ -420,8 +433,9 @@ where
 
         let group = LocalConsensusGroup {
             raft: Arc::new(raft),
-            _raft_storage: raft_storage,
+            _local_storage: local_storage,
             stream_manager,
+            _local_state: local_state,
             _id: group_id,
             _members: members,
             _metrics: metrics,
