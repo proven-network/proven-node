@@ -2,7 +2,7 @@ use crate::StopArgs;
 use crate::error::{Error, Result};
 use crate::nitro::NitroCli;
 
-use proven_vsock_rpc::RpcClient;
+use proven_vsock_rpc_cac::CacClient;
 use tokio::time::{Duration, sleep};
 use tokio_vsock::VsockAddr;
 use tracing::info;
@@ -14,9 +14,9 @@ pub async fn stop(args: StopArgs) -> Result<()> {
     }
 
     info!("attempting graceful shutdown");
-    let _ = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
-        .shutdown()
-        .await;
+    if let Ok(client) = CacClient::new(VsockAddr::new(args.enclave_cid, 1024)) {
+        let _ = client.shutdown().await;
+    }
 
     let mut attempts = 0;
     while attempts < 60 {

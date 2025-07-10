@@ -13,6 +13,7 @@ proven-http.workspace = true
 proven-http-insecure.workspace = true
 proven-vsock-proxy.workspace = true
 proven-vsock-rpc.workspace = true
+proven-vsock-rpc-cac.workspace = true
 proven-vsock-tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true

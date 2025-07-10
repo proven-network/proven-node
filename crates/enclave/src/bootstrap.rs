@@ -61,7 +61,7 @@ use proven_store_asm::{AsmStore, AsmStoreOptions};
 use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
 use proven_store_s3::{S3Store, S3Store2, S3Store3, S3StoreOptions};
 use proven_vsock_proxy::Proxy;
-use proven_vsock_rpc::InitializeRequest;
+use proven_vsock_rpc_cac::InitializeRequest;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;

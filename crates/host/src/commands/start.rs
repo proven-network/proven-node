@@ -16,7 +16,7 @@ use nix::unistd::Uid;
 use proven_bootable::Bootable;
 use proven_http_insecure::InsecureHttpServer;
 use proven_vsock_proxy::Proxy;
-use proven_vsock_rpc::{InitializeRequest, RpcClient};
+use proven_vsock_rpc_cac::{CacClient, InitializeRequest};
 use proven_vsock_tracing::host::VsockTracingConsumer;
 use tokio::signal::unix::{SignalKind, signal};
 use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener};
@@ -158,7 +158,8 @@ fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<(
 async fn initialize_enclave(args: &StartArgs) -> Result<()> {
     let host_dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
 
-    let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
+    let client = CacClient::new(VsockAddr::new(args.enclave_cid, 1024))?;
+    let res = client
         .initialize(InitializeRequest {
             certificates_bucket: args.certificates_bucket.clone(),
             cidr: args.cidr,
@@ -190,9 +191,8 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
 }
 
 async fn shutdown_enclave(args: &StartArgs) -> Result<()> {
-    let res = RpcClient::new(VsockAddr::new(args.enclave_cid, 1024))
-        .shutdown()
-        .await;
+    let client = CacClient::new(VsockAddr::new(args.enclave_cid, 1024))?;
+    let res = client.shutdown().await;
 
     info!("shutdown response: {:?}", res);
 

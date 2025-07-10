@@ -1,9 +1,10 @@
-use std::net::Ipv4Addr;
+//! Initialize command implementation.
 
 use cidr::Ipv4Cidr;
 use serde::{Deserialize, Serialize};
+use std::net::Ipv4Addr;
 
-/// A request to add a new peer to the server.
+/// Request to initialize the enclave.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InitializeRequest {
@@ -22,7 +23,7 @@ pub struct InitializeRequest {
     /// S3 bucket for file-systems (encrypted/decrypted inside enclave).
     pub file_systems_bucket: String,
 
-    /// DNS resolv.conf from host (used temporarily until DOH starta).
+    /// DNS resolv.conf from host (used temporarily until DOH starts).
     pub host_dns_resolv: String,
 
     /// Host IP address on virtual network between enclave and host.
@@ -71,9 +72,11 @@ pub struct InitializeRequest {
     pub testnet: bool,
 }
 
-/// The response to an add peer request.
+/// Response to initialization request.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InitializeResponse {
-    /// Whether the server successfully initialized.
+    /// Whether the initialization was successful.
     pub success: bool,
+    /// Optional error message if initialization failed.
+    pub error: Option<String>,
 }

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-nats.workspace = true
+async-trait.workspace = true
 axum.workspace = true
 bytes.workspace = true
 ciborium.workspace = true
@@ -52,6 +53,7 @@ proven-store-nats.workspace = true
 proven-store-s3.workspace = true
 proven-vsock-proxy.workspace = true
 proven-vsock-rpc.workspace = true
+proven-vsock-rpc-cac.workspace = true
 proven-vsock-tracing.workspace = true
 radix-common.workspace = true
 rand.workspace = true

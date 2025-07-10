@@ -10244,6 +10244,7 @@ name = "proven-enclave"
 version = "0.1.0"
 dependencies = [
  "async-nats",
+ "async-trait",
  "axum 0.8.4",
  "bytes",
  "ciborium",
@@ -10291,6 +10292,7 @@ dependencies = [
  "proven-store-s3",
  "proven-vsock-proxy",
  "proven-vsock-rpc",
+ "proven-vsock-rpc-cac",
  "proven-vsock-tracing",
  "radix-common 1.3.0",
  "rand 0.8.5",
@@ -10428,6 +10430,7 @@ dependencies = [
  "proven-http-insecure",
  "proven-vsock-proxy",
  "proven-vsock-rpc",
+ "proven-vsock-rpc-cac",
  "proven-vsock-tracing",
  "serde",
  "serde_json",
@@ -11331,13 +11334,44 @@ dependencies = [
 name = "proven-vsock-rpc"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "bincode",
+ "bytes",
  "ciborium",
+ "crc32fast",
+ "criterion 0.6.0",
+ "dashmap 6.1.0",
+ "futures",
+ "parking_lot 0.12.4",
+ "pin-project",
+ "proptest",
+ "prost",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-stream",
+ "tokio-test",
+ "tokio-util",
+ "tokio-vsock",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "proven-vsock-rpc-cac"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
  "cidr",
- "derive_more 2.0.1",
+ "proven-vsock-rpc",
  "serde",
  "thiserror 2.0.12",
  "tokio",
- "tokio-vsock",
+ "tokio-test",
  "tracing",
 ]
 
@@ -14721,6 +14755,19 @@ dependencies = [
  "pin-project-lite",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "tokio-test"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2468baabc3311435b55dd935f702f42cd1b8abb7e754fb7dfb16bd36aa88f9f7"
+dependencies = [
+ "async-stream",
+ "bytes",
+ "futures-core",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

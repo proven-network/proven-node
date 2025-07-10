@@ -22,11 +22,93 @@ use proven_vsock_tracing::enclave::VsockTracingProducer;
 
 use std::sync::Arc;
 
-use proven_vsock_rpc::{InitializeResponse, RpcCall, RpcServer, ShutdownResponse};
-use tokio::sync::Mutex;
-use tokio_vsock::{VMADDR_CID_ANY, VsockAddr};
+use async_trait::async_trait;
+use proven_vsock_rpc::VsockAddr;
+use proven_vsock_rpc_cac::{
+    CacServer, InitializeRequest, InitializeResponse, ShutdownResponse, commands::ShutdownRequest,
+    server::CacCommandHandler,
+};
+use tokio::sync::RwLock;
+use tokio_vsock::VMADDR_CID_ANY;
 use tracing::{error, info};
 use tracing_panic::panic_hook;
+
+/// Enclave command handler state
+struct EnclaveHandler {
+    state: Arc<RwLock<Option<EnclaveNode>>>,
+}
+
+impl EnclaveHandler {
+    fn new() -> Self {
+        Self {
+            state: Arc::new(RwLock::new(None)),
+        }
+    }
+}
+
+#[async_trait]
+impl CacCommandHandler for EnclaveHandler {
+    async fn handle_initialize(
+        &self,
+        request: InitializeRequest,
+    ) -> proven_vsock_rpc_cac::Result<InitializeResponse> {
+        // Check if already initialized
+        if self.state.read().await.is_some() {
+            error!("Already initialized");
+            return Ok(InitializeResponse {
+                success: false,
+                error: Some("Already initialized".to_string()),
+            });
+        }
+
+        // Create bootstrap from request
+        let Ok(bootstrap) = Bootstrap::new(request) else {
+            return Ok(InitializeResponse {
+                success: false,
+                error: Some("Failed to create bootstrap".to_string()),
+            });
+        };
+
+        // Initialize the enclave
+        match bootstrap.initialize().await {
+            Ok(enclave) => {
+                info!("Enclave started successfully");
+                *self.state.write().await = Some(enclave);
+                Ok(InitializeResponse {
+                    success: true,
+                    error: None,
+                })
+            }
+            Err(e) => {
+                error!("Failed to start enclave: {:?}", e);
+                Ok(InitializeResponse {
+                    success: false,
+                    error: Some(format!("Failed to start enclave: {e}")),
+                })
+            }
+        }
+    }
+
+    async fn handle_shutdown(
+        &self,
+        _request: ShutdownRequest,
+    ) -> proven_vsock_rpc_cac::Result<ShutdownResponse> {
+        let state = self.state.write().await.take();
+        if let Some(enclave) = state {
+            enclave.shutdown().await;
+            info!("Enclave shutdown successfully");
+            Ok(ShutdownResponse {
+                success: true,
+                message: Some("Enclave shutdown successfully".to_string()),
+            })
+        } else {
+            Ok(ShutdownResponse {
+                success: false,
+                message: Some("Enclave not initialized".to_string()),
+            })
+        }
+    }
+}
 
 // TODO: Don't hardcode threads
 #[tokio::main(worker_threads = 12)]
@@ -37,74 +119,14 @@ async fn main() -> Result<()> {
 
     fdlimit::raise_fdlimit();
 
-    let rpc_server = RpcServer::new(VsockAddr::new(VMADDR_CID_ANY, 1024));
+    // Create the CAC server with our handler
+    let handler = EnclaveHandler::new();
+    let server = CacServer::new(VsockAddr::new(VMADDR_CID_ANY, 1024), handler);
 
-    if let Err(e) = handle_initial_request(&rpc_server).await {
-        error!("Failed to handle initial request: {:?}", e);
-    }
-
-    Ok(())
-}
-
-#[allow(clippy::large_stack_frames)]
-async fn handle_initial_request(rpc_server: &RpcServer) -> Result<()> {
-    match rpc_server.accept().await {
-        Ok(RpcCall::Initialize(args, ack)) => {
-            let Ok(bootstrap) = Bootstrap::new(args) else {
-                ack(InitializeResponse { success: false }).await?;
-                return Ok(());
-            };
-
-            match bootstrap.initialize().await {
-                Ok(enclave) => {
-                    info!("Enclave started successfully");
-
-                    ack(InitializeResponse { success: true }).await?;
-
-                    handle_requests_loop(rpc_server, enclave).await?;
-                }
-
-                Err(e) => {
-                    error!("Failed to start enclave: {:?}", e);
-                    ack(InitializeResponse { success: false }).await?;
-                }
-            }
-        }
-        Ok(_) => {
-            error!("Unexpected initial request");
-        }
-        Err(e) => {
-            error!("Failed to accept initial request: {:?}", e);
-        }
-    }
-
-    Ok(())
-}
-
-async fn handle_requests_loop(rpc_server: &RpcServer, enclave: EnclaveNode) -> Result<()> {
-    let enclave = Arc::new(Mutex::new(enclave));
-
-    loop {
-        match rpc_server.accept().await {
-            Ok(rpc) => match rpc {
-                RpcCall::Initialize(_, ack) => {
-                    error!("Already initialized");
-                    ack(InitializeResponse { success: false }).await?;
-                }
-
-                RpcCall::Shutdown(ack) => {
-                    enclave.lock().await.shutdown().await;
-
-                    ack(ShutdownResponse { success: true }).await?;
-
-                    info!("Enclave shutdown successfully");
-                    break;
-                }
-            },
-            Err(e) => {
-                error!("Failed to accept request: {:?}", e);
-            }
-        }
+    // Start serving
+    info!("Starting enclave CAC server on port 1024");
+    if let Err(e) = server.serve().await {
+        error!("CAC server error: {:?}", e);
     }
 
     Ok(())
