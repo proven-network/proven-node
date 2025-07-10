@@ -9,10 +9,7 @@ mod tests {
             stream_manager::create_stream_manager,
             traits::{RetentionPolicy, StorageType, StreamConfig},
         },
-        storage::{
-            StorageEngine, StorageNamespace,
-            log::{LogEntry, LogStorage},
-        },
+        storage::{StorageEngine, StorageNamespace, log::LogEntry},
     };
     use bytes::Bytes;
     use std::collections::HashMap;
@@ -61,7 +58,8 @@ mod tests {
             metadata: metadata1,
         };
 
-        <_ as LogStorage<StreamLogMetadata>>::append_entry(storage.as_ref(), &namespace, entry1)
+        storage
+            .append_stream_entry(&namespace, entry1)
             .await
             .expect("Failed to append entry");
 
@@ -95,17 +93,14 @@ mod tests {
             metadata: metadata3,
         };
 
-        <_ as LogStorage<StreamLogMetadata>>::append_entries(
-            storage.as_ref(),
-            &namespace,
-            vec![entry2, entry3],
-        )
-        .await
-        .expect("Failed to append entries");
+        storage
+            .append_stream_entries(&namespace, vec![entry2, entry3])
+            .await
+            .expect("Failed to append entries");
 
         // Test get_entry
         let retrieved: LogEntry<StreamLogMetadata> = storage
-            .get_entry(&namespace, 2)
+            .get_stream_entry(&namespace, 2)
             .await
             .expect("Failed to get entry")
             .expect("Entry not found");
@@ -115,7 +110,7 @@ mod tests {
 
         // Test get_last_entry
         let last: LogEntry<StreamLogMetadata> = storage
-            .get_last_entry(&namespace)
+            .get_last_stream_entry(&namespace)
             .await
             .expect("Failed to get last entry")
             .expect("No last entry");
@@ -125,7 +120,7 @@ mod tests {
 
         // Test get_first_entry
         let first: LogEntry<StreamLogMetadata> = storage
-            .get_first_entry(&namespace)
+            .get_first_stream_entry(&namespace)
             .await
             .expect("Failed to get first entry")
             .expect("No first entry");
@@ -135,7 +130,7 @@ mod tests {
 
         // Test read_range
         let range_entries: Vec<LogEntry<StreamLogMetadata>> = storage
-            .read_range(&namespace, 1..=2)
+            .read_stream_range(&namespace, 1..=2)
             .await
             .expect("Failed to read range");
 
@@ -144,31 +139,32 @@ mod tests {
         assert_eq!(range_entries[1].index, 2);
 
         // Test get_log_state
-        let state =
-            <_ as LogStorage<StreamLogMetadata>>::get_log_state(storage.as_ref(), &namespace)
-                .await
-                .expect("Failed to get log state")
-                .expect("No log state");
+        let state = storage
+            .get_stream_log_state(&namespace)
+            .await
+            .expect("Failed to get log state")
+            .expect("No log state");
 
         assert_eq!(state.first_index, 1);
         assert_eq!(state.last_index, 3);
         assert_eq!(state.entry_count, 3);
 
         // Test truncate (remove entry 3)
-        <_ as LogStorage<StreamLogMetadata>>::truncate(storage.as_ref(), &namespace, 2)
+        storage
+            .truncate_stream_log(&namespace, 2)
             .await
             .expect("Failed to truncate");
 
         // Verify truncation
         let after_truncate: Option<LogEntry<StreamLogMetadata>> = storage
-            .get_entry(&namespace, 3)
+            .get_stream_entry(&namespace, 3)
             .await
             .expect("Failed to check after truncate");
         assert!(after_truncate.is_none());
 
         // Verify entry 2 still exists
         let entry2_exists: Option<LogEntry<StreamLogMetadata>> = storage
-            .get_entry(&namespace, 2)
+            .get_stream_entry(&namespace, 2)
             .await
             .expect("Failed to check entry 2");
         assert!(entry2_exists.is_some());

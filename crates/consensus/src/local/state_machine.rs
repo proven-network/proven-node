@@ -11,7 +11,7 @@ use crate::{
         stream_manager::UnifiedStreamManager,
         traits::StreamConfig,
     },
-    storage::{StorageEngine, StorageIterator, StorageKey, StorageValue, keys, log::LogStorage},
+    storage::{StorageEngine, StorageIterator, StorageKey, StorageValue, keys},
 };
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -263,9 +263,9 @@ impl StorageBackedLocalState {
             metadata: log_metadata,
         };
 
-        // Use LogStorage to append the entry
+        // Use helper method to append the entry
         storage
-            .append_entry(&namespaces::messages(), log_entry)
+            .append_stream_entry(&namespaces::messages(), log_entry)
             .await
             .map_err(|e| format!("Storage error: {}", e))?;
 
@@ -512,12 +512,8 @@ impl StorageBackedLocalState {
         stream_id: &str,
         start_seq: u64,
         end_seq: u64,
-    ) -> Result<
-        crate::local::stream_storage::migration_iterator::MigrationMessageIterator<
-            crate::storage::generic::GenericStorage,
-        >,
-        String,
-    > {
+    ) -> Result<crate::local::stream_storage::migration_iterator::MigrationMessageIterator, String>
+    {
         use crate::local::stream_storage::migration_iterator::MigrationMessageIterator;
 
         let storage = self

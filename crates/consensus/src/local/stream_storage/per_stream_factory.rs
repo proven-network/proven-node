@@ -106,7 +106,7 @@ impl UnifiedPerStreamFactory {
 
 #[async_trait::async_trait]
 impl PerStreamStorageFactory for UnifiedPerStreamFactory {
-    type Storage = crate::storage::generic::GenericStorage;
+    type Storage = super::unified::UnifiedStreamStorage;
 
     async fn create_stream_storage(
         &self,
@@ -117,7 +117,7 @@ impl PerStreamStorageFactory for UnifiedPerStreamFactory {
         match persistence_mode {
             StreamPersistenceMode::Memory => {
                 // Create a new memory storage instance for this stream
-                Ok(Arc::new(crate::storage::generic::GenericStorage::memory()))
+                Ok(Arc::new(super::unified::UnifiedStreamStorage::memory()))
             }
             StreamPersistenceMode::File => {
                 // Create file-based storage with the configured backend
@@ -134,7 +134,7 @@ impl PerStreamStorageFactory for UnifiedPerStreamFactory {
                             crate::storage::adaptors::rocksdb::RocksDBAdaptorConfig::development(
                                 path,
                             );
-                        let storage = crate::storage::generic::GenericStorage::rocksdb(config)
+                        let storage = super::unified::UnifiedStreamStorage::rocksdb(config)
                             .await
                             .map_err(|_e| {
                                 crate::error::Error::Storage(

@@ -45,6 +45,7 @@ rand.workspace = true
 proven-attestation.workspace = true
 proven-bootable.workspace = true
 proven-governance.workspace = true
+proven-vsock-rpc = { workspace = true, optional = true }
 sha2.workspace = true
 chrono.workspace = true
 
@@ -55,9 +56,34 @@ lazy_static = "1.4"
 # Compression
 flate2 = "1.0"
 
+# S3 and cloud storage dependencies (optional)
+aws-config = { version = "1.1", optional = true }
+aws-sdk-s3 = { version = "1.5", optional = true }
+aws-types = { version = "1.1", optional = true }
+
+# Encryption and security for S3
+aes-gcm = { version = "0.10", optional = true }
+miniz_oxide = { version = "0.7", optional = true }
+
+# Additional utilities for S3
+lru = { version = "0.12", optional = true }
+crossbeam = { version = "0.8", optional = true }
+crc32fast = { version = "1.3", optional = true }
+# ciborium is already in workspace dependencies
+
 [features]
 default = ["s3"]
-s3 = []
+s3 = [
+    "dep:aws-config",
+    "dep:aws-sdk-s3", 
+    "dep:aws-types",
+    "dep:aes-gcm",
+    "dep:miniz_oxide",
+    "dep:lru",
+    "dep:crossbeam",
+    "dep:crc32fast",
+    "dep:proven-vsock-rpc"
+]
 test-helpers = [
     "dep:proven-attestation-mock", 
     "dep:proven-governance-mock", 

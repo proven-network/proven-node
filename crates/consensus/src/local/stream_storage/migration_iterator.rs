@@ -5,16 +5,17 @@
 
 use crate::error::ConsensusResult;
 use crate::local::stream_storage::log_types::{
-    CompressionType as StorageCompressionType, MessageSource, StreamMetadata as StreamLogMetadata,
+    CompressionType as StorageCompressionType, MessageSource,
 };
+use crate::local::stream_storage::unified::UnifiedStreamStorage;
 use crate::migration::{MessageSourceType, StreamMessage};
-use crate::storage::{StorageEngine, StorageNamespace, log::LogStorage};
+use crate::storage::StorageNamespace;
 use std::sync::Arc;
 
 /// Iterator for streaming messages from storage during migration
-pub struct MigrationMessageIterator<S: StorageEngine + LogStorage<StreamLogMetadata>> {
+pub struct MigrationMessageIterator {
     /// Storage instance
-    storage: Arc<S>,
+    storage: Arc<UnifiedStreamStorage>,
     /// Namespace to read from
     namespace: StorageNamespace,
     /// Start sequence (inclusive)
@@ -32,10 +33,10 @@ pub struct MigrationMessageIterator<S: StorageEngine + LogStorage<StreamLogMetad
     total_bytes: u64,
 }
 
-impl<S: StorageEngine + LogStorage<StreamLogMetadata>> MigrationMessageIterator<S> {
+impl MigrationMessageIterator {
     /// Create a new migration iterator
     pub async fn new(
-        storage: Arc<S>,
+        storage: Arc<UnifiedStreamStorage>,
         namespace: StorageNamespace,
         start_seq: u64,
         end_seq: u64,
@@ -60,10 +61,10 @@ impl<S: StorageEngine + LogStorage<StreamLogMetadata>> MigrationMessageIterator<
 
         // Loop through sequences until we find a message or reach the end
         while self.current_seq <= self.end_seq {
-            // Use LogStorage to get the entry at the current sequence
+            // Use helper method to get the entry at the current sequence
             match self
                 .storage
-                .get_entry(&self.namespace, self.current_seq)
+                .get_stream_entry(&self.namespace, self.current_seq)
                 .await
                 .map_err(|_e| {
                     crate::error::Error::Storage(crate::error::StorageError::OperationFailed {

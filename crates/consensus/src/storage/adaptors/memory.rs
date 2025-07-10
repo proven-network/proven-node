@@ -1,7 +1,10 @@
 //! In-memory storage adaptor implementation
 
 use crate::storage::{
-    traits::{SnapshotMetadata, SnapshotStorage, StorageEngine},
+    traits::{
+        MaintenanceResult, Priority, SnapshotMetadata, SnapshotStorage, StorageCapabilities,
+        StorageEngine, StorageHints, StorageMetrics, StorageStats,
+    },
     types::{
         BatchOperation, StorageError, StorageIterator, StorageKey, StorageNamespace, StorageResult,
         StorageValue, WriteBatch,
@@ -13,9 +16,38 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     ops::RangeBounds,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Instant,
 };
 use tokio::sync::RwLock;
+use tracing::debug;
+
+/// Metrics for memory storage
+#[derive(Debug, Clone)]
+struct MemoryMetrics {
+    reads: Arc<AtomicU64>,
+    writes: Arc<AtomicU64>,
+    deletes: Arc<AtomicU64>,
+    bytes_read: Arc<AtomicU64>,
+    bytes_written: Arc<AtomicU64>,
+    errors: Arc<AtomicU64>,
+}
+
+impl Default for MemoryMetrics {
+    fn default() -> Self {
+        Self {
+            reads: Arc::new(AtomicU64::new(0)),
+            writes: Arc::new(AtomicU64::new(0)),
+            deletes: Arc::new(AtomicU64::new(0)),
+            bytes_read: Arc::new(AtomicU64::new(0)),
+            bytes_written: Arc::new(AtomicU64::new(0)),
+            errors: Arc::new(AtomicU64::new(0)),
+        }
+    }
+}
 
 /// In-memory storage implementation using BTreeMap for ordering
 #[derive(Clone, Debug)]
@@ -24,6 +56,8 @@ pub struct MemoryStorage {
     namespaces: Arc<RwLock<HashMap<StorageNamespace, BTreeMap<StorageKey, StorageValue>>>>,
     /// Snapshots stored by namespace and ID
     snapshots: Arc<RwLock<HashMap<StorageNamespace, HashMap<String, Bytes>>>>,
+    /// Metrics tracking
+    metrics: MemoryMetrics,
 }
 
 impl MemoryStorage {
@@ -52,6 +86,7 @@ impl MemoryStorage {
         Self {
             namespaces: Arc::new(RwLock::new(namespaces)),
             snapshots: Arc::new(RwLock::new(HashMap::new())),
+            metrics: MemoryMetrics::default(),
         }
     }
 
@@ -113,16 +148,39 @@ impl StorageIterator for MemoryIterator {
 impl StorageEngine for MemoryStorage {
     type Iterator = MemoryIterator;
 
+    fn capabilities(&self) -> StorageCapabilities {
+        StorageCapabilities {
+            atomic_batches: true,        // In-memory operations are atomic
+            efficient_range_scan: true,  // BTreeMap provides efficient range queries
+            snapshots: true,             // Easy to snapshot memory state
+            eventual_consistency: false, // Memory is strongly consistent
+            max_value_size: None,        // Limited only by available memory
+            atomic_conditionals: true,   // Can implement true CAS
+            streaming: false,            // No benefit for in-memory storage
+            caching: false,              // Memory IS the cache
+        }
+    }
+
     async fn get(
         &self,
         namespace: &StorageNamespace,
         key: &StorageKey,
     ) -> StorageResult<Option<StorageValue>> {
+        self.metrics.reads.fetch_add(1, Ordering::Relaxed);
+
         let namespaces = self.namespaces.read().await;
-        Ok(namespaces
+        let result = namespaces
             .get(namespace)
             .and_then(|store| store.get(key))
-            .cloned())
+            .cloned();
+
+        if let Some(ref value) = result {
+            self.metrics
+                .bytes_read
+                .fetch_add(value.as_bytes().len() as u64, Ordering::Relaxed);
+        }
+
+        Ok(result)
     }
 
     async fn put(
@@ -131,6 +189,11 @@ impl StorageEngine for MemoryStorage {
         key: StorageKey,
         value: StorageValue,
     ) -> StorageResult<()> {
+        self.metrics.writes.fetch_add(1, Ordering::Relaxed);
+        self.metrics
+            .bytes_written
+            .fetch_add(value.as_bytes().len() as u64, Ordering::Relaxed);
+
         self.get_or_create_namespace(namespace).await?;
         let mut namespaces = self.namespaces.write().await;
         if let Some(store) = namespaces.get_mut(namespace) {
@@ -140,6 +203,8 @@ impl StorageEngine for MemoryStorage {
     }
 
     async fn delete(&self, namespace: &StorageNamespace, key: &StorageKey) -> StorageResult<()> {
+        self.metrics.deletes.fetch_add(1, Ordering::Relaxed);
+
         let mut namespaces = self.namespaces.write().await;
         if let Some(store) = namespaces.get_mut(namespace) {
             store.remove(key);
@@ -237,6 +302,210 @@ impl StorageEngine for MemoryStorage {
             })
             .unwrap_or(0);
         Ok(size)
+    }
+
+    // New trait methods
+
+    async fn initialize(&self) -> StorageResult<()> {
+        // Pre-allocate common namespaces to avoid lock contention
+        let common_namespaces = vec!["logs", "metadata", "snapshots", "state", "checkpoints"];
+
+        let mut namespaces = self.namespaces.write().await;
+        for ns in common_namespaces {
+            namespaces
+                .entry(StorageNamespace::new(ns))
+                .or_insert_with(BTreeMap::new);
+        }
+
+        debug!("Memory storage initialized with common namespaces");
+        Ok(())
+    }
+
+    async fn shutdown(&self) -> StorageResult<()> {
+        // Log final statistics
+        let namespaces = self.namespaces.read().await;
+        for (ns, data) in namespaces.iter() {
+            debug!("Namespace '{}' final size: {} entries", ns, data.len());
+        }
+
+        // Clear all data to free memory immediately
+        drop(namespaces);
+        self.namespaces.write().await.clear();
+        self.snapshots.write().await.clear();
+
+        Ok(())
+    }
+
+    async fn maintenance(&self) -> StorageResult<MaintenanceResult> {
+        let start = Instant::now();
+        let mut result = MaintenanceResult::default();
+
+        // Count total entries and estimate memory usage
+        let namespaces = self.namespaces.read().await;
+        let mut total_entries = 0u64;
+        let mut total_bytes = 0u64;
+
+        for (_, data) in namespaces.iter() {
+            total_entries += data.len() as u64;
+            for (k, v) in data.iter() {
+                total_bytes += (k.as_bytes().len() + v.as_bytes().len()) as u64;
+            }
+        }
+
+        result.entries_compacted = 0; // No compaction needed for memory storage
+        result.bytes_reclaimed = 0;
+        result.duration_ms = start.elapsed().as_millis() as u64;
+        result.details = format!(
+            "Total entries: {}, Total bytes: {}, Namespaces: {}",
+            total_entries,
+            total_bytes,
+            namespaces.len()
+        );
+
+        Ok(result)
+    }
+
+    async fn get_batch(
+        &self,
+        namespace: &StorageNamespace,
+        keys: &[StorageKey],
+    ) -> StorageResult<Vec<Option<StorageValue>>> {
+        self.metrics
+            .reads
+            .fetch_add(keys.len() as u64, Ordering::Relaxed);
+
+        // Single lock acquisition for all reads
+        let namespaces = self.namespaces.read().await;
+
+        let data = namespaces
+            .get(namespace)
+            .ok_or_else(|| StorageError::NamespaceNotFound(namespace.to_string()))?;
+
+        // Vectorized lookups
+        let results: Vec<Option<StorageValue>> = keys
+            .iter()
+            .map(|key| {
+                let value = data.get(key).cloned();
+                if let Some(ref v) = value {
+                    self.metrics
+                        .bytes_read
+                        .fetch_add(v.as_bytes().len() as u64, Ordering::Relaxed);
+                }
+                value
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    async fn put_with_hints(
+        &self,
+        namespace: &StorageNamespace,
+        key: StorageKey,
+        value: StorageValue,
+        hints: StorageHints,
+    ) -> StorageResult<()> {
+        // For memory storage, we can use hints for optimization
+        // For now, just delegate to regular put
+        // In a real implementation, we might use hints for:
+        // - Pre-allocating space for sequential writes
+        // - Using different data structures for different access patterns
+        // - Prioritizing critical writes
+
+        if hints.priority == Priority::Critical {
+            // Critical writes could get priority handling
+            debug!("Critical write to key: {:?}", key);
+        }
+
+        self.put(namespace, key, value).await
+    }
+
+    async fn put_if_absent(
+        &self,
+        namespace: &StorageNamespace,
+        key: StorageKey,
+        value: StorageValue,
+    ) -> StorageResult<bool> {
+        self.metrics.writes.fetch_add(1, Ordering::Relaxed);
+
+        self.get_or_create_namespace(namespace).await?;
+        let mut namespaces = self.namespaces.write().await;
+        let data = namespaces
+            .entry(namespace.clone())
+            .or_insert_with(BTreeMap::new);
+
+        // True atomic operation with BTreeMap::entry API
+        match data.entry(key) {
+            std::collections::btree_map::Entry::Vacant(e) => {
+                self.metrics
+                    .bytes_written
+                    .fetch_add(value.as_bytes().len() as u64, Ordering::Relaxed);
+                e.insert(value);
+                Ok(true)
+            }
+            std::collections::btree_map::Entry::Occupied(_) => Ok(false),
+        }
+    }
+
+    async fn compare_and_swap(
+        &self,
+        namespace: &StorageNamespace,
+        key: &StorageKey,
+        expected: Option<&StorageValue>,
+        new_value: StorageValue,
+    ) -> StorageResult<bool> {
+        self.metrics.writes.fetch_add(1, Ordering::Relaxed);
+
+        self.get_or_create_namespace(namespace).await?;
+        let mut namespaces = self.namespaces.write().await;
+        let data = namespaces
+            .entry(namespace.clone())
+            .or_insert_with(BTreeMap::new);
+
+        match (data.get(key), expected) {
+            (Some(current), Some(exp)) if current == exp => {
+                self.metrics
+                    .bytes_written
+                    .fetch_add(new_value.as_bytes().len() as u64, Ordering::Relaxed);
+                data.insert(key.clone(), new_value);
+                Ok(true)
+            }
+            (None, None) => {
+                self.metrics
+                    .bytes_written
+                    .fetch_add(new_value.as_bytes().len() as u64, Ordering::Relaxed);
+                data.insert(key.clone(), new_value);
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+}
+
+#[async_trait]
+impl StorageMetrics for MemoryStorage {
+    async fn get_stats(&self) -> StorageStats {
+        StorageStats {
+            reads: self.metrics.reads.load(Ordering::Relaxed),
+            writes: self.metrics.writes.load(Ordering::Relaxed),
+            deletes: self.metrics.deletes.load(Ordering::Relaxed),
+            cache_hits: None, // N/A for memory storage
+            cache_misses: None,
+            bytes_read: self.metrics.bytes_read.load(Ordering::Relaxed),
+            bytes_written: self.metrics.bytes_written.load(Ordering::Relaxed),
+            avg_read_latency_ms: Some(0.001), // Sub-millisecond for memory
+            avg_write_latency_ms: Some(0.001),
+            errors: self.metrics.errors.load(Ordering::Relaxed),
+        }
+    }
+
+    async fn reset_stats(&self) {
+        self.metrics.reads.store(0, Ordering::Relaxed);
+        self.metrics.writes.store(0, Ordering::Relaxed);
+        self.metrics.deletes.store(0, Ordering::Relaxed);
+        self.metrics.bytes_read.store(0, Ordering::Relaxed);
+        self.metrics.bytes_written.store(0, Ordering::Relaxed);
+        self.metrics.errors.store(0, Ordering::Relaxed);
     }
 }
 
@@ -662,6 +931,117 @@ where
             bytes_freed: state_before.total_bytes - state_after.total_bytes,
             new_first_index: state_after.first_index,
         })
+    }
+}
+
+// Enhanced methods for memory storage
+impl MemoryStorage {
+    /// Optimized batch append for log entries
+    pub async fn append_log_batch<M>(
+        &self,
+        namespace: &StorageNamespace,
+        entries: &[(u64, Bytes)],
+    ) -> StorageResult<()>
+    where
+        M: Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
+    {
+        use crate::storage::log::keys;
+
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        // Single lock acquisition for all operations
+        let mut namespaces = self.namespaces.write().await;
+        let data = namespaces
+            .entry(namespace.clone())
+            .or_insert_with(BTreeMap::new);
+
+        // Reserve capacity for better performance
+        // Note: BTreeMap doesn't have reserve, but we can still benefit from bulk operations
+
+        // Track metrics
+        self.metrics
+            .writes
+            .fetch_add(entries.len() as u64, Ordering::Relaxed);
+
+        let mut total_bytes = 0u64;
+        let mut min_index = u64::MAX;
+        let mut max_index = 0u64;
+
+        // Bulk insert with single lock hold
+        for (index, bytes) in entries {
+            min_index = min_index.min(*index);
+            max_index = max_index.max(*index);
+            total_bytes += bytes.len() as u64;
+
+            let key = keys::encode_log_key(*index);
+            data.insert(key, StorageValue::new(bytes.clone()));
+        }
+
+        self.metrics
+            .bytes_written
+            .fetch_add(total_bytes, Ordering::Relaxed);
+
+        // Update log state metadata
+        let metadata_key = keys::encode_metadata_key("log_state");
+        let state: Option<crate::storage::log::LogState> =
+            data.get(&metadata_key).and_then(|val| {
+                ciborium::from_reader::<crate::storage::log::LogState, _>(val.as_bytes()).ok()
+            });
+
+        let new_state = if let Some(mut state) = state {
+            state.first_index = state.first_index.min(min_index);
+            state.last_index = state.last_index.max(max_index);
+            state.entry_count += entries.len() as u64;
+            state.total_bytes += total_bytes;
+            state
+        } else {
+            crate::storage::log::LogState {
+                first_index: min_index,
+                last_index: max_index,
+                entry_count: entries.len() as u64,
+                total_bytes,
+            }
+        };
+
+        let mut state_buffer = Vec::new();
+        ciborium::into_writer(&new_state, &mut state_buffer)
+            .map_err(|e| StorageError::InvalidValue(e.to_string()))?;
+        data.insert(metadata_key, StorageValue::new(state_buffer));
+
+        Ok(())
+    }
+
+    /// Efficiently get the last N log entries
+    pub async fn last_log_entries(
+        &self,
+        namespace: &StorageNamespace,
+        count: usize,
+    ) -> StorageResult<Option<Vec<(u64, Bytes)>>> {
+        use crate::storage::log::keys;
+
+        let namespaces = self.namespaces.read().await;
+        let data = namespaces
+            .get(namespace)
+            .ok_or_else(|| StorageError::NamespaceNotFound(namespace.to_string()))?;
+
+        // BTreeMap maintains order, so we can efficiently get last entries
+        let entries: Vec<(u64, Bytes)> = data
+            .iter()
+            .rev()
+            .filter_map(|(k, v)| keys::decode_log_index(k).map(|index| (index, v.0.clone())))
+            .take(count)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev() // Reverse again to get ascending order
+            .collect();
+
+        if entries.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(entries))
+        }
     }
 }
 

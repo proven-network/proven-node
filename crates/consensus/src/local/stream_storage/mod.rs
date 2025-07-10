@@ -18,6 +18,9 @@ pub mod per_stream_factory;
 /// Migration iterators for efficient streaming
 pub mod migration_iterator;
 
+/// Unified stream storage type
+pub mod unified;
+
 /// Tests for LogStorage with stream storage
 #[cfg(test)]
 mod test_stream_log_storage;
