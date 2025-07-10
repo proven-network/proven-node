@@ -773,6 +773,7 @@ struct RocksDBLogBatch<M> {
     _marker: std::marker::PhantomData<M>,
 }
 
+#[allow(dead_code)]
 enum LogBatchOp<M> {
     Append(StorageNamespace, crate::storage::log::LogEntry<M>),
     Truncate(StorageNamespace, u64),

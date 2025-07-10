@@ -5,8 +5,8 @@
 
 use crate::allocation::ConsensusGroupId;
 use crate::error::{ConsensusResult, Error};
-use crate::global::GlobalOperation;
 use crate::node_id::NodeId;
+use crate::operations::{GlobalOperation, NodeOperation};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
@@ -337,10 +337,10 @@ impl MigrationCoordinator {
                 }
                 MigrationPhase::ReadyToLeaveSource => {
                     // Generate operation to remove from source group
-                    operations.push(GlobalOperation::RemoveNodeFromGroup {
+                    operations.push(GlobalOperation::Node(NodeOperation::RemoveFromGroup {
                         node_id: node_id.clone(),
                         group_id: coordination.migration.from_group,
-                    });
+                    }));
                 }
                 MigrationPhase::Complete => {
                     // Migration complete, no operations needed

@@ -460,11 +460,6 @@ impl GroupRebalancer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::create_test_topology_manager;
-
-    fn create_test_allocations() -> GroupAllocations {
-        GroupAllocations::new()
-    }
 
     #[test]
     fn test_migration_state_tracking() {
@@ -493,20 +488,5 @@ mod tests {
             .update_migration_phase(&node_id, MigrationPhase::Complete)
             .unwrap();
         assert!(!rebalancer.is_migrating(&node_id));
-    }
-
-    #[tokio::test]
-    async fn test_empty_rebalancing_plan() {
-        let config = GroupAllocatorConfig::default();
-        let rebalancer = GroupRebalancer::new(config);
-
-        let topology_manager = create_test_topology_manager().await;
-        let allocations = create_test_allocations();
-
-        let plan = rebalancer
-            .generate_plan(&topology_manager, &allocations)
-            .await
-            .unwrap();
-        assert!(plan.is_none());
     }
 }

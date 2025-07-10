@@ -1,11 +1,14 @@
-//! Integration tests for snapshot functionality
+mod common;
 
 use std::sync::Arc;
 use tempfile::tempdir;
 
 use openraft::storage::RaftStateMachine;
 use proven_consensus::global::SnapshotData;
-use proven_consensus::global::{GlobalOperation, GlobalState, StreamConfig};
+use proven_consensus::global::{StreamConfig, global_state::GlobalState};
+use proven_consensus::operations::{
+    GlobalOperation, GroupOperation, RoutingOperation, StreamManagementOperation,
+};
 
 #[tokio::test]
 async fn test_end_to_end_snapshot_workflow_memory() {
@@ -15,10 +18,10 @@ async fn test_end_to_end_snapshot_workflow_memory() {
     // First create a consensus group
     let response = global_state
         .apply_operation(
-            &GlobalOperation::AddConsensusGroup {
+            &GlobalOperation::Group(GroupOperation::Create {
                 group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-                members: vec![proven_consensus::NodeId::from_seed(1)],
-            },
+                initial_members: vec![proven_consensus::NodeId::from_seed(1)],
+            }),
             1,
         )
         .await;
@@ -30,20 +33,20 @@ async fn test_end_to_end_snapshot_workflow_memory() {
 
     // Add some test data - only admin operations are allowed in GlobalOperation now
     let operations = vec![
-        GlobalOperation::CreateStream {
-            stream_name: "test-stream-1".to_string(),
+        GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+            name: "test-stream-1".to_string(),
             config: StreamConfig::default(),
             group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-        },
-        GlobalOperation::CreateStream {
-            stream_name: "test-stream-2".to_string(),
+        }),
+        GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+            name: "test-stream-2".to_string(),
             config: StreamConfig::default(),
             group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-        },
-        GlobalOperation::SubscribeToSubject {
+        }),
+        GlobalOperation::Routing(RoutingOperation::Subscribe {
             stream_name: "test-stream-1".to_string(),
             subject_pattern: "test.*".to_string(),
-        },
+        }),
     ];
 
     for (i, op) in operations.iter().enumerate() {
@@ -114,10 +117,10 @@ async fn test_end_to_end_snapshot_workflow_rocks() {
     // First create a consensus group
     let response = global_state
         .apply_operation(
-            &GlobalOperation::AddConsensusGroup {
+            &GlobalOperation::Group(GroupOperation::Create {
                 group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-                members: vec![proven_consensus::NodeId::from_seed(1)],
-            },
+                initial_members: vec![proven_consensus::NodeId::from_seed(1)],
+            }),
             1,
         )
         .await;
@@ -129,15 +132,15 @@ async fn test_end_to_end_snapshot_workflow_rocks() {
 
     // Add some test data - only admin operations
     let operations = [
-        GlobalOperation::CreateStream {
-            stream_name: "rocks-stream-1".to_string(),
+        GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+            name: "rocks-stream-1".to_string(),
             config: StreamConfig::default(),
             group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-        },
-        GlobalOperation::SubscribeToSubject {
+        }),
+        GlobalOperation::Routing(RoutingOperation::Subscribe {
             stream_name: "rocks-stream-1".to_string(),
             subject_pattern: "rocks.*".to_string(),
-        },
+        }),
     ];
 
     for (i, op) in operations.iter().enumerate() {
@@ -204,10 +207,10 @@ async fn test_snapshot_builder_workflow() {
     // First create a consensus group
     let response = global_state
         .apply_operation(
-            &GlobalOperation::AddConsensusGroup {
+            &GlobalOperation::Group(GroupOperation::Create {
                 group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-                members: vec![proven_consensus::NodeId::from_seed(1)],
-            },
+                initial_members: vec![proven_consensus::NodeId::from_seed(1)],
+            }),
             1,
         )
         .await;
@@ -220,11 +223,11 @@ async fn test_snapshot_builder_workflow() {
     // Add some data - create a stream
     let response = global_state
         .apply_operation(
-            &GlobalOperation::CreateStream {
-                stream_name: "builder-test".to_string(),
+            &GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+                name: "builder-test".to_string(),
                 config: StreamConfig::default(),
                 group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-            },
+            }),
             2,
         )
         .await;
@@ -260,10 +263,10 @@ async fn test_snapshot_with_complex_data() {
     // First create a consensus group
     let response = global_state
         .apply_operation(
-            &GlobalOperation::AddConsensusGroup {
+            &GlobalOperation::Group(GroupOperation::Create {
                 group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-                members: vec![proven_consensus::NodeId::from_seed(1)],
-            },
+                initial_members: vec![proven_consensus::NodeId::from_seed(1)],
+            }),
             1,
         )
         .await;
@@ -275,28 +278,28 @@ async fn test_snapshot_with_complex_data() {
 
     // Create a more complex scenario with multiple streams and subscriptions
     let operations = vec![
-        GlobalOperation::CreateStream {
-            stream_name: "stream-a".to_string(),
+        GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+            name: "stream-a".to_string(),
             config: StreamConfig::default(),
             group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-        },
-        GlobalOperation::CreateStream {
-            stream_name: "stream-b".to_string(),
+        }),
+        GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+            name: "stream-b".to_string(),
             config: StreamConfig::default(),
             group_id: proven_consensus::allocation::ConsensusGroupId::new(1),
-        },
-        GlobalOperation::SubscribeToSubject {
+        }),
+        GlobalOperation::Routing(RoutingOperation::Subscribe {
             stream_name: "stream-a".to_string(),
             subject_pattern: "events.*".to_string(),
-        },
-        GlobalOperation::SubscribeToSubject {
+        }),
+        GlobalOperation::Routing(RoutingOperation::Subscribe {
             stream_name: "stream-b".to_string(),
             subject_pattern: "notifications.>".to_string(),
-        },
-        GlobalOperation::BulkSubscribeToSubjects {
+        }),
+        GlobalOperation::Routing(RoutingOperation::BulkSubscribe {
             stream_name: "stream-a".to_string(),
             subject_patterns: vec!["alerts.*".to_string(), "logs.error".to_string()],
-        },
+        }),
     ];
 
     for (i, op) in operations.iter().enumerate() {

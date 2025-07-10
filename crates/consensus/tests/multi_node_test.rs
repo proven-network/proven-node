@@ -3,13 +3,15 @@
 //! This module provides infrastructure for testing consensus operations
 //! across multiple simulated nodes with realistic network conditions.
 
+mod common;
+
 use bytes::Bytes;
+use common::TestCluster;
 use ed25519_dalek::SigningKey;
 use futures::future;
 use proven_attestation_mock::MockAttestor;
 use proven_consensus::{
-    Consensus, ConsensusConfig, HierarchicalConsensusConfig, NodeId, TestCluster,
-    allocation::ConsensusGroupId,
+    Consensus, ConsensusConfig, HierarchicalConsensusConfig, NodeId, allocation::ConsensusGroupId,
 };
 use proven_governance::{GovernanceNode, Version};
 use proven_governance_mock::MockGovernance;
@@ -73,7 +75,7 @@ impl MultiNodeTestCluster {
                     attestor: Arc::new(MockAttestor::new()),
                     signing_key: test_cluster.signing_keys[i].clone(),
                     raft_config: openraft::Config::default(),
-                    transport_config: proven_consensus::transport::TransportConfig::Tcp {
+                    transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
                         listen_addr: format!("127.0.0.1:{}", port).parse().unwrap(),
                     },
                     storage_config: proven_consensus::config::StorageConfig::Memory,
@@ -250,7 +252,7 @@ impl TestNode {
             attestor: attestor.clone(),
             signing_key: signing_key.clone(),
             raft_config: openraft::Config::default(),
-            transport_config: proven_consensus::transport::TransportConfig::Tcp {
+            transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
                 listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
             },
             storage_config: proven_consensus::config::StorageConfig::Memory,
@@ -288,7 +290,7 @@ impl TestNode {
             attestor: attestor.clone(),
             signing_key: signing_key.clone(),
             raft_config: openraft::Config::default(),
-            transport_config: proven_consensus::transport::TransportConfig::Tcp {
+            transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
                 listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
             },
             storage_config: proven_consensus::config::StorageConfig::Memory,

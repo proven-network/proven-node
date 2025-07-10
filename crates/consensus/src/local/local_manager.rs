@@ -8,24 +8,21 @@ use super::{LocalRequest, LocalTypeConfig};
 use crate::allocation::ConsensusGroupId;
 use crate::config::StorageConfig;
 use crate::error::{ConsensusResult, Error};
-use crate::global::GlobalManager;
+use crate::global::global_manager::GlobalManager;
 use crate::node::Node;
 use crate::node_id::NodeId;
-use crate::operations::ConsensusResponse;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use openraft::{Config, Raft, RaftMetrics};
-use proven_attestation::Attestor;
-use proven_governance::Governance;
 use tokio::sync::RwLock;
 
 /// Manages multiple local consensus groups on a single node
 pub struct LocalConsensusManager<G, A>
 where
-    G: Governance + Send + Sync + 'static,
-    A: Attestor + Send + Sync + 'static,
+    G: proven_governance::Governance + Send + Sync + 'static,
+    A: proven_attestation::Attestor + Send + Sync + 'static,
 {
     /// Map of group IDs to their Raft instances
     groups: Arc<RwLock<HashMap<ConsensusGroupId, LocalConsensusGroup>>>,
@@ -51,7 +48,7 @@ struct LocalConsensusGroup {
     /// The Raft instance for this group
     raft: Arc<Raft<LocalTypeConfig>>,
     /// Raft storage
-    raft_storage: super::group_storage::GroupRaftStorage,
+    _raft_storage: super::group_storage::GroupRaftStorage,
     /// Stream manager for per-stream storage
     stream_manager: Arc<UnifiedStreamManager>,
     /// Group metadata
@@ -77,8 +74,8 @@ pub enum MigrationState {
 
 impl<G, A> LocalConsensusManager<G, A>
 where
-    G: Governance + Send + Sync + 'static,
-    A: Attestor + Send + Sync + 'static,
+    G: proven_governance::Governance + Send + Sync + 'static,
+    A: proven_attestation::Attestor + Send + Sync + 'static,
 {
     /// Create a new local consensus manager
     pub fn new(
@@ -194,7 +191,7 @@ where
         let mut groups = self.groups.write().await;
 
         if groups.contains_key(&group_id) {
-            return Err(Error::AlreadyExists(format!(
+            return Err(Error::already_exists(format!(
                 "Consensus group {:?} already exists",
                 group_id
             )));
@@ -246,7 +243,7 @@ where
 
         let group = LocalConsensusGroup {
             raft: Arc::new(raft),
-            raft_storage,
+            _raft_storage: raft_storage,
             stream_manager,
             _id: group_id,
             _members: members,
@@ -278,7 +275,7 @@ where
 
             Ok(())
         } else {
-            Err(Error::NotFound(format!(
+            Err(Error::not_found(format!(
                 "Consensus group {:?} not found",
                 group_id
             )))
@@ -295,7 +292,7 @@ where
         groups
             .get(&group_id)
             .map(|g| g.raft.clone())
-            .ok_or_else(|| Error::NotFound(format!("Consensus group {:?} not found", group_id)))
+            .ok_or_else(|| Error::not_found(format!("Consensus group {:?} not found", group_id)))
     }
 
     /// Get the stream manager for a specific group
@@ -308,7 +305,7 @@ where
         groups
             .get(&group_id)
             .map(|g| g.stream_manager.clone())
-            .ok_or_else(|| Error::NotFound(format!("Consensus group {:?} not found", group_id)))
+            .ok_or_else(|| Error::not_found(format!("Consensus group {:?} not found", group_id)))
     }
 
     /// Create a stream in a group with specific configuration
@@ -322,7 +319,7 @@ where
         stream_manager
             .create_stream(stream_id.to_string(), config)
             .await
-            .map_err(|e| Error::Storage(format!("Failed to create stream: {}", e)))?;
+            .map_err(|e| Error::storage(format!("Failed to create stream: {}", e)))?;
         Ok(())
     }
 
@@ -331,7 +328,7 @@ where
         &self,
         group_id: ConsensusGroupId,
         operation: LocalStreamOperation,
-    ) -> ConsensusResult<ConsensusResponse> {
+    ) -> ConsensusResult<super::LocalResponse> {
         let raft = self.get_raft(group_id).await?;
 
         // Create LocalRequest from the operation
@@ -343,13 +340,7 @@ where
             .await
             .map_err(|e| Error::Raft(format!("Failed to write to Raft: {:?}", e)))?;
 
-        Ok(ConsensusResponse {
-            success: response.data.success,
-            sequence: response.data.sequence,
-            error: response.data.error,
-            request_id: None,
-            checkpoint_data: response.data.checkpoint_data,
-        })
+        Ok(response.data)
     }
 
     /// Join a consensus group as a learner
@@ -378,7 +369,7 @@ where
         let mut groups = self.groups.write().await;
 
         if groups.contains_key(&group_id) {
-            return Err(Error::AlreadyExists(format!(
+            return Err(Error::already_exists(format!(
                 "Already a member of group {:?}",
                 group_id
             )));
@@ -429,7 +420,7 @@ where
 
         let group = LocalConsensusGroup {
             raft: Arc::new(raft),
-            raft_storage,
+            _raft_storage: raft_storage,
             stream_manager,
             _id: group_id,
             _members: members,
@@ -453,7 +444,7 @@ where
             group.migration_state = state;
             Ok(())
         } else {
-            Err(Error::NotFound(format!(
+            Err(Error::not_found(format!(
                 "Consensus group {:?} not found",
                 group_id
             )))

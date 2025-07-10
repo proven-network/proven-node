@@ -77,7 +77,7 @@ mod pubsub_tests {
                 attestor: attestor.clone(),
                 signing_key: signing_key.clone(),
                 raft_config: RaftConfig::default(),
-                transport_config: proven_consensus::transport::TransportConfig::Tcp {
+                transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
                     listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
                 },
                 storage_config: proven_consensus::config::StorageConfig::Memory,
@@ -350,7 +350,7 @@ mod pubsub_tests {
                 attestor: attestor.clone(),
                 signing_key: signing_key.clone(),
                 raft_config: RaftConfig::default(),
-                transport_config: proven_consensus::transport::TransportConfig::Tcp {
+                transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
                     listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
                 },
                 storage_config: proven_consensus::config::StorageConfig::Memory,

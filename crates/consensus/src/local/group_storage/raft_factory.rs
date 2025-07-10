@@ -62,8 +62,10 @@ impl RocksDBRaftStorageFactory {
     /// Create a new RocksDB Raft storage factory
     pub fn new(base_path: PathBuf) -> ConsensusResult<Self> {
         // Ensure base directory exists
-        std::fs::create_dir_all(&base_path).map_err(|e| {
-            crate::error::Error::Storage(format!("Failed to create base directory: {}", e))
+        std::fs::create_dir_all(&base_path).map_err(|_e| {
+            crate::error::Error::Storage(crate::error::StorageError::OperationFailed {
+                operation: "create_dir_all".to_string(),
+            })
         })?;
 
         Ok(Self { base_path })
@@ -108,7 +110,11 @@ impl GroupRaftStorageFactory for RocksDBRaftStorageFactory {
         let storage_engine = Arc::new(
             crate::storage::adaptors::rocksdb::RocksDBStorage::new(config)
                 .await
-                .map_err(|e| crate::error::Error::Storage(e.to_string()))?,
+                .map_err(|_e| {
+                    crate::error::Error::Storage(crate::error::StorageError::OperationFailed {
+                        operation: "create_rocksdb_storage".to_string(),
+                    })
+                })?,
         );
         let raft_storage =
             crate::local::group_storage::RaftStorage::new(storage_engine, group_id).await?;
@@ -118,8 +124,10 @@ impl GroupRaftStorageFactory for RocksDBRaftStorageFactory {
     fn cleanup_raft_storage(&self, group_id: ConsensusGroupId) -> ConsensusResult<()> {
         let group_path = self.group_raft_path(group_id);
         if group_path.exists() {
-            std::fs::remove_dir_all(&group_path).map_err(|e| {
-                crate::error::Error::Storage(format!("Failed to cleanup Raft storage: {}", e))
+            std::fs::remove_dir_all(&group_path).map_err(|_e| {
+                crate::error::Error::Storage(crate::error::StorageError::OperationFailed {
+                    operation: "cleanup_raft_storage".to_string(),
+                })
             })?;
         }
         Ok(())

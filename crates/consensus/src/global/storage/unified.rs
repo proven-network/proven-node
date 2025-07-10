@@ -16,8 +16,12 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::apply_request_to_state_machine;
-use crate::global::{GlobalResponse, GlobalState, GlobalTypeConfig, SnapshotData};
+use base64::{Engine as _, engine::general_purpose};
+
+use crate::global::global_state::GlobalState;
+use crate::global::{
+    CommandFactory, CommandProcessor, GlobalResponse, GlobalTypeConfig, SnapshotData,
+};
 use crate::node_id::NodeId;
 use crate::storage::{
     StorageEngine, StorageKey, StorageNamespace, StorageValue,
@@ -528,19 +532,28 @@ where
                 },
                 EntryPayload::Normal(request) => {
                     state_machine.last_applied_log = Some(log_id.clone());
-                    // First update the state machine data for persistence
-                    let response = apply_request_to_state_machine(
-                        &mut state_machine.data,
-                        &request,
-                        log_id.index,
-                    );
-                    // Then apply to the actual global state
-                    if response.success {
-                        self.global_state
-                            .apply_operation(&request.operation, log_id.index)
-                            .await
-                    } else {
-                        response
+
+                    // Use the command pattern to handle the operation
+                    let command = CommandFactory::from_operation(&request.operation);
+
+                    // Process the command (validation + application)
+                    match CommandProcessor::process(&*command, &self.global_state, log_id.index)
+                        .await
+                    {
+                        Ok(response) => {
+                            // Store the command for persistence
+                            let command_data = command.persist();
+                            state_machine.data.insert(
+                                format!("cmd_{}", log_id.index),
+                                general_purpose::STANDARD.encode(&command_data),
+                            );
+                            response
+                        }
+                        Err(e) => GlobalResponse {
+                            sequence: log_id.index,
+                            success: false,
+                            error: Some(e.to_string()),
+                        },
                     }
                 }
                 EntryPayload::Membership(membership) => {

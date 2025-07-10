@@ -55,7 +55,8 @@ impl NodeId {
     }
 
     /// Generate a deterministic NodeId from a seed
-    #[cfg(any(test, feature = "test-helpers"))]
+    /// TODO: Reenable test cfg once orchestrator is refactored
+    // #[cfg(any(test, feature = "test-helpers"))]
     pub fn from_seed(seed: u8) -> crate::NodeId {
         use ed25519_dalek::{SigningKey, VerifyingKey};
         let mut key_bytes = [0u8; 32];

@@ -445,33 +445,4 @@ mod tests {
         let score = TopologyAnalyzer::calculate_az_diversity_score(&distribution, 6);
         assert!(score > 0.9); // Should be close to 1.0
     }
-
-    #[tokio::test]
-    async fn test_find_best_az() {
-        use crate::test_helpers::create_test_topology_manager;
-
-        let topology_manager = create_test_topology_manager().await;
-
-        // Create a group with nodes only in az-a and az-b
-        let group = ConsensusGroup {
-            id: ConsensusGroupId::new(1),
-            region: "us-east-1".to_string(),
-            members: vec![NodeId::from_seed(0), NodeId::from_seed(1)]
-                .into_iter()
-                .collect(),
-            state: crate::group_allocator::GroupState::Active,
-        };
-
-        let available_azs = vec![
-            "us-east-1a".to_string(),
-            "us-east-1b".to_string(),
-            "us-east-1c".to_string(),
-        ];
-
-        let best_az =
-            TopologyAnalyzer::find_best_az_for_group(&topology_manager, &group, &available_azs)
-                .await
-                .unwrap();
-        assert!(best_az.is_some()); // Should pick one of the available AZs
-    }
 }

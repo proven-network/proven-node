@@ -83,8 +83,10 @@ impl UnifiedPerStreamFactory {
         storage_backend: StreamStorageBackend,
     ) -> ConsensusResult<Self> {
         if let Some(path) = &base_path {
-            std::fs::create_dir_all(path).map_err(|e| {
-                crate::error::Error::Storage(format!("Failed to create base directory: {}", e))
+            std::fs::create_dir_all(path).map_err(|_e| {
+                crate::error::Error::Storage(crate::error::StorageError::OperationFailed {
+                    operation: "create_dir_all".to_string(),
+                })
             })?;
         }
         Ok(Self {
@@ -120,9 +122,9 @@ impl PerStreamStorageFactory for UnifiedPerStreamFactory {
             StreamPersistenceMode::File => {
                 // Create file-based storage with the configured backend
                 let path = self.stream_base_path(group_id, stream_id).ok_or_else(|| {
-                    crate::error::Error::Storage(
-                        "Base path required for file-based storage".to_string(),
-                    )
+                    crate::error::Error::Storage(crate::error::StorageError::OperationFailed {
+                        operation: "stream_base_path".to_string(),
+                    })
                 })?;
 
                 match self.storage_backend {
@@ -134,7 +136,13 @@ impl PerStreamStorageFactory for UnifiedPerStreamFactory {
                             );
                         let storage = crate::storage::generic::GenericStorage::rocksdb(config)
                             .await
-                            .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+                            .map_err(|_e| {
+                                crate::error::Error::Storage(
+                                    crate::error::StorageError::OperationFailed {
+                                        operation: "create_rocksdb_storage".to_string(),
+                                    },
+                                )
+                            })?;
                         Ok(Arc::new(storage))
                     }
                 }
@@ -149,8 +157,10 @@ impl PerStreamStorageFactory for UnifiedPerStreamFactory {
     ) -> ConsensusResult<()> {
         if let Some(path) = self.stream_base_path(group_id, stream_id) {
             if path.exists() {
-                std::fs::remove_dir_all(&path).map_err(|e| {
-                    crate::error::Error::Storage(format!("Failed to cleanup stream storage: {}", e))
+                std::fs::remove_dir_all(&path).map_err(|_e| {
+                    crate::error::Error::Storage(crate::error::StorageError::OperationFailed {
+                        operation: "cleanup_stream_storage".to_string(),
+                    })
                 })?;
             }
         }

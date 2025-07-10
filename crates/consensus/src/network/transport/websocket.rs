@@ -4,10 +4,10 @@
 //! capabilities. Like the TCP transport, it only handles raw networking -
 //! no business logic, COSE, or attestation verification.
 
+use super::{HttpIntegratedTransport, MessageHandler, NetworkTransport, PeerConnection};
 use crate::NodeId;
 use crate::error::{NetworkError, NetworkResult};
 use crate::topology::TopologyManager;
-use crate::transport::{HttpIntegratedTransport, MessageHandler, NetworkTransport, PeerConnection};
 use crate::verification::ConnectionVerification;
 
 use std::any::Any;
@@ -393,10 +393,10 @@ where
                                 connection_id, e
                             );
                             self.verifier.remove_connection(&connection_id).await;
-                            return Err(NetworkError::ConnectionFailed(format!(
-                                "Verification failed: {}",
-                                e
-                            )));
+                            return Err(NetworkError::ConnectionFailed {
+                                peer: expected_node_id.clone(),
+                                reason: format!("Verification failed: {}", e),
+                            });
                         }
                     }
 
@@ -412,9 +412,10 @@ where
                                     &verified_public_key, &expected_node_id
                                 );
                                 self.verifier.remove_connection(&connection_id).await;
-                                return Err(NetworkError::ConnectionFailed(
-                                    "Public key mismatch during verification".to_string(),
-                                ));
+                                return Err(NetworkError::ConnectionFailed {
+                                    peer: expected_node_id,
+                                    reason: "Public key mismatch during verification".to_string(),
+                                });
                             }
 
                             info!(
@@ -424,10 +425,10 @@ where
 
                             // Recreate the WebSocket stream from the split parts
                             let ws_stream = ws_sender.reunite(ws_receiver).map_err(|e| {
-                                NetworkError::ConnectionFailed(format!(
-                                    "Failed to reunite WebSocket stream: {}",
-                                    e
-                                ))
+                                NetworkError::ConnectionFailed {
+                                    peer: expected_node_id,
+                                    reason: format!("Failed to reunite WebSocket stream: {}", e),
+                                }
                             })?;
 
                             // Store the connection with verified public key
@@ -446,9 +447,10 @@ where
                 }
                 Some(Ok(TungsteniteMessage::Close(_))) => {
                     self.verifier.remove_connection(&connection_id).await;
-                    return Err(NetworkError::ConnectionFailed(
-                        "Connection closed during verification".to_string(),
-                    ));
+                    return Err(NetworkError::ConnectionFailed {
+                        peer: expected_node_id,
+                        reason: "Connection closed during verification".to_string(),
+                    });
                 }
                 Some(Ok(_)) => {
                     // Ignore other message types during verification
@@ -456,16 +458,17 @@ where
                 Some(Err(e)) => {
                     warn!("WebSocket error during verification: {}", e);
                     self.verifier.remove_connection(&connection_id).await;
-                    return Err(NetworkError::ConnectionFailed(format!(
-                        "WebSocket error during verification: {}",
-                        e
-                    )));
+                    return Err(NetworkError::ConnectionFailed {
+                        peer: expected_node_id,
+                        reason: format!("WebSocket error during verification: {}", e),
+                    });
                 }
                 None => {
                     self.verifier.remove_connection(&connection_id).await;
-                    return Err(NetworkError::ConnectionFailed(
-                        "Connection stream ended during verification".to_string(),
-                    ));
+                    return Err(NetworkError::ConnectionFailed {
+                        peer: expected_node_id,
+                        reason: "Connection stream ended during verification".to_string(),
+                    });
                 }
             }
         }
@@ -646,7 +649,10 @@ where
         let node_wrapper = crate::Node::from(node.clone());
         let ws_url = node_wrapper
             .websocket_url()
-            .map_err(NetworkError::ConnectionFailed)?;
+            .map_err(|e| NetworkError::ConnectionFailed {
+                peer: node_id.clone(),
+                reason: format!("Failed to get WebSocket URL: {}", e),
+            })?;
 
         // Connection with retry logic (matching TCP transport)
         let mut last_error = None;
@@ -675,16 +681,15 @@ where
                     }
                 }
                 Ok(Err(e)) => {
-                    last_error = Some(NetworkError::ConnectionFailed(format!(
-                        "WebSocket connection failed to {}: {}",
-                        ws_url, e
-                    )));
+                    last_error = Some(NetworkError::ConnectionFailed {
+                        peer: node_id.clone(),
+                        reason: format!("WebSocket connection failed to {}: {}", ws_url, e),
+                    });
                 }
                 Err(_) => {
-                    last_error = Some(NetworkError::Timeout(format!(
-                        "WebSocket connection timeout to {}",
-                        ws_url
-                    )));
+                    last_error = Some(NetworkError::Timeout {
+                        operation: format!("WebSocket connection timeout to {}", ws_url),
+                    });
                 }
             }
 
@@ -695,8 +700,10 @@ where
         }
 
         // All attempts failed
-        let error = last_error
-            .unwrap_or_else(|| NetworkError::ConnectionFailed("Unknown error".to_string()));
+        let error = last_error.unwrap_or_else(|| NetworkError::ConnectionFailed {
+            peer: node_id,
+            reason: "Unknown error".to_string(),
+        });
         warn!(
             "Failed to establish WebSocket connection to {} after {} attempts: {}",
             ws_url, CONNECTION_RETRY_ATTEMPTS, error
@@ -753,7 +760,7 @@ where
         }
 
         // Still no connection available
-        Err(NetworkError::PeerNotConnected)
+        Err(NetworkError::PeerNotConnected())
     }
 
     async fn start_listener(&self, message_handler: MessageHandler) -> NetworkResult<()> {

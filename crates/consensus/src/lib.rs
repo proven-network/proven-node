@@ -7,10 +7,12 @@
 //! - Single builder pattern for initialization
 #![warn(missing_docs)]
 #![warn(clippy::all)]
+#![allow(clippy::result_large_err)]
 
 /// Stream allocation and consensus group management
 pub mod allocation;
 pub mod attestation;
+// pub mod cluster_discovery;
 pub mod config;
 pub mod consensus;
 pub mod cose;
@@ -27,7 +29,7 @@ pub mod monitoring;
 pub mod network;
 pub mod node;
 pub mod node_id;
-/// Hierarchical consensus operations
+/// New categorized operations
 pub mod operations;
 /// Hierarchical consensus orchestrator
 pub mod orchestrator;
@@ -38,11 +40,9 @@ pub mod router;
 pub mod storage;
 pub mod subscription;
 pub mod topology;
-pub mod transport;
 pub mod verification;
-
-#[cfg(any(test, feature = "test-helpers"))]
-pub mod test_helpers;
+/// Read-only views for orchestrator decision-making
+pub mod views;
 
 // Re-export main types
 pub use consensus::Consensus;
@@ -51,7 +51,6 @@ pub use global::{ConsensusStorage, GlobalTypeConfig};
 pub use node::Node;
 pub use node_id::NodeId;
 pub use openraft::Config as RaftConfig;
-pub use transport::{HttpIntegratedTransport, NetworkTransport};
 
 // Re-export config types
 pub use config::{
@@ -69,7 +68,3 @@ pub use topology::TopologyManager;
 pub use verification::{
     ConnectionState, ConnectionVerification, ConnectionVerifier, VerificationMessage,
 };
-
-// Re-export test helpers (test-only)
-#[cfg(any(test, feature = "test-helpers"))]
-pub use test_helpers::{TestCluster, create_test_topology_manager};

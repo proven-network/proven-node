@@ -7,6 +7,8 @@ use proven_governance::GovernanceNode;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::NodeId;
+
 /// Node ID type for consensus system
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Node(GovernanceNode);
@@ -15,6 +17,11 @@ impl Node {
     /// Get the public key of this node
     pub fn public_key(&self) -> VerifyingKey {
         self.0.public_key
+    }
+
+    /// Get the node ID of this node
+    pub fn node_id(&self) -> NodeId {
+        NodeId::new(self.0.public_key)
     }
 
     /// Get the origin URL of this node

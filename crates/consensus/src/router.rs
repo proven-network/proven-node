@@ -1,15 +1,32 @@
 use crate::allocation::{AllocationManager, ConsensusGroupId};
 use crate::error::{ConsensusResult, Error};
-use crate::global::{GlobalManager, GlobalOperation, GlobalRequest};
+use crate::global::GlobalResponse;
+use crate::global::global_manager::GlobalManager;
 use crate::local::LocalConsensusManager;
+use crate::local::LocalResponse;
 use crate::local::LocalStreamOperation;
 use crate::monitoring::MonitoringService;
-use crate::operations::{ConsensusOperation, ConsensusRequest, ConsensusResponse};
+use crate::operations::GlobalOperation;
 use futures::future;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+
+/// Unified operation type that can be routed to appropriate consensus group
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ConsensusOperation {
+    /// Global admin operation
+    GlobalAdmin(GlobalOperation),
+    /// Local stream operation
+    LocalStream {
+        /// Target consensus group
+        group_id: ConsensusGroupId,
+        /// The operation
+        operation: LocalStreamOperation,
+    },
+}
 
 /// Advanced consensus operation router with cross-group capabilities
 ///
@@ -57,21 +74,21 @@ where
         }
     }
 
-    /// Route a consensus request to the appropriate handler
-    pub async fn route_request(
+    /// Route a consensus operation to the appropriate handler
+    pub async fn route_operation(
         &self,
-        request: ConsensusRequest,
-    ) -> ConsensusResult<ConsensusResponse> {
-        match request.operation {
+        operation: ConsensusOperation,
+        request_id: Option<String>,
+    ) -> ConsensusResult<LocalResponse> {
+        match operation {
             ConsensusOperation::GlobalAdmin(op) => {
-                self.handle_global_admin_operation(op, request.request_id)
-                    .await
+                self.handle_global_admin_operation(op, request_id).await
             }
             ConsensusOperation::LocalStream {
                 group_id,
                 operation,
             } => {
-                self.handle_local_stream_operation(group_id, operation, request.request_id)
+                self.handle_local_stream_operation(group_id, operation, request_id)
                     .await
             }
         }
@@ -81,20 +98,15 @@ where
     async fn handle_global_admin_operation(
         &self,
         operation: GlobalOperation,
-        request_id: Option<String>,
-    ) -> ConsensusResult<ConsensusResponse> {
-        let request = GlobalRequest { operation };
+        _request_id: Option<String>,
+    ) -> ConsensusResult<LocalResponse> {
+        // Submit the operation directly to global manager
+        let response = self.global_manager.submit_operation(operation).await?;
 
-        // Submit to global consensus and get the log index
-        let log_index = self.global_manager.propose_request(&request).await?;
-
-        // For now, assume success if we got a log index
-        // In a real implementation, we'd need to wait for the operation to be applied
-        Ok(ConsensusResponse {
-            success: true,
-            sequence: Some(log_index),
-            error: None,
-            request_id,
+        Ok(LocalResponse {
+            success: response.success,
+            sequence: Some(response.sequence),
+            error: response.error,
             checkpoint_data: None,
         })
     }
@@ -104,14 +116,13 @@ where
         &self,
         group_id: ConsensusGroupId,
         operation: LocalStreamOperation,
-        request_id: Option<String>,
-    ) -> ConsensusResult<ConsensusResponse> {
+        _request_id: Option<String>,
+    ) -> ConsensusResult<LocalResponse> {
         // Forward to the local consensus manager
-        let mut response = self
+        let response = self
             .local_manager
             .process_operation(group_id, operation)
             .await?;
-        response.request_id = request_id;
         Ok(response)
     }
 
@@ -120,7 +131,7 @@ where
         let allocation_mgr = self.allocation_manager.read().await;
         allocation_mgr
             .get_stream_group(stream_name)
-            .ok_or_else(|| Error::NotFound(format!("Stream '{}' not allocated", stream_name)))
+            .ok_or_else(|| Error::not_found(format!("Stream '{}' not allocated", stream_name)))
     }
 
     /// Route a stream operation automatically based on stream allocation
@@ -129,7 +140,7 @@ where
         stream_name: &str,
         operation: LocalStreamOperation,
         request_id: Option<String>,
-    ) -> ConsensusResult<ConsensusResponse> {
+    ) -> ConsensusResult<LocalResponse> {
         let group_id = self.get_stream_group(stream_name).await?;
 
         // Check if we're in a migration scenario
@@ -151,7 +162,7 @@ where
         primary_group: ConsensusGroupId,
         operation: LocalStreamOperation,
         request_id: Option<String>,
-    ) -> ConsensusResult<ConsensusResponse> {
+    ) -> ConsensusResult<LocalResponse> {
         let my_groups = self.local_manager.get_my_groups().await;
 
         // Find groups where this node is in migration state
@@ -249,7 +260,7 @@ where
         old_group: ConsensusGroupId,
         new_group: ConsensusGroupId,
         request_id: Option<String>,
-    ) -> ConsensusResult<ConsensusResponse> {
+    ) -> ConsensusResult<LocalResponse> {
         let is_write = matches!(
             &operation,
             LocalStreamOperation::PublishToStream { .. }
@@ -314,8 +325,10 @@ where
     pub async fn route_global_operation(
         &self,
         operation: GlobalOperation,
-    ) -> ConsensusResult<ConsensusResponse> {
-        self.handle_global_admin_operation(operation, None).await
+    ) -> ConsensusResult<GlobalResponse> {
+        // Submit the operation directly to global manager
+        let response = self.global_manager.submit_operation(operation).await?;
+        Ok(response)
     }
 
     /// Route a local operation to a specific group
@@ -323,7 +336,7 @@ where
         &self,
         group_id: ConsensusGroupId,
         operation: LocalStreamOperation,
-    ) -> ConsensusResult<ConsensusResponse> {
+    ) -> ConsensusResult<LocalResponse> {
         self.handle_local_stream_operation(group_id, operation, None)
             .await
     }
@@ -348,9 +361,10 @@ where
                     if response.success {
                         // The response contains the serialized LocalMetrics
                         if let Some(metrics_data) = response.checkpoint_data {
-                            if let Ok(state_metrics) = serde_json::from_slice::<
-                                crate::local::LocalStateMetrics,
-                            >(&metrics_data)
+                            if let Ok(state_metrics) =
+                                serde_json::from_slice::<crate::local::LocalStateMetrics>(
+                                    &metrics_data[..],
+                                )
                             {
                                 // Update message rate
                                 let _ = allocation_mgr.update_group_message_rate(
@@ -410,7 +424,7 @@ where
         &self,
         stream_name: &str,
         operation: LocalStreamOperation,
-    ) -> ConsensusResult<ConsensusResponse> {
+    ) -> ConsensusResult<LocalResponse> {
         let group_id = self.get_stream_group(stream_name).await?;
         debug!(
             "Routing operation for stream '{}' to group {:?}",
@@ -425,7 +439,7 @@ where
         &self,
         group_ids: Vec<ConsensusGroupId>,
         operation: LocalStreamOperation,
-    ) -> ConsensusResult<Vec<ConsensusResponse>> {
+    ) -> ConsensusResult<Vec<LocalResponse>> {
         info!(
             "Routing operation to {} groups: {:?}",
             group_ids.len(),
@@ -446,7 +460,7 @@ where
             .collect();
 
         let results = future::join_all(tasks).await;
-        let responses: Vec<ConsensusResponse> = results
+        let responses: Vec<LocalResponse> = results
             .into_iter()
             .filter_map(|result| match result {
                 Ok(response) => Some(response),
@@ -464,7 +478,7 @@ where
     pub async fn broadcast_to_all_groups(
         &self,
         operation: LocalStreamOperation,
-    ) -> ConsensusResult<HashMap<ConsensusGroupId, ConsensusResponse>> {
+    ) -> ConsensusResult<HashMap<ConsensusGroupId, LocalResponse>> {
         let group_ids = {
             let allocation_mgr = self.allocation_manager.read().await;
             allocation_mgr
@@ -554,12 +568,12 @@ where
         &self,
         operation: LocalStreamOperation,
         prefer_least_loaded: bool,
-    ) -> ConsensusResult<ConsensusResponse> {
+    ) -> ConsensusResult<LocalResponse> {
         let allocation_mgr = self.allocation_manager.read().await;
         let group_loads = allocation_mgr.get_group_loads();
 
         if group_loads.is_empty() {
-            return Err(Error::NotFound("No consensus groups available".to_string()));
+            return Err(Error::not_found("No consensus groups available"));
         }
 
         let target_group = if prefer_least_loaded {
@@ -799,7 +813,7 @@ where
         let streams = global_state.streams.read().await;
         let stream_data = streams
             .get(stream_name)
-            .ok_or_else(|| Error::NotFound(format!("Stream {} not found", stream_name)))?;
+            .ok_or_else(|| Error::not_found(format!("Stream {} not found", stream_name)))?;
 
         // Get stream config which contains consensus group allocation
         let stream_configs = global_state.stream_configs.read().await;
@@ -823,7 +837,7 @@ where
     pub async fn get_consensus_group_info(
         &self,
         group_id: ConsensusGroupId,
-    ) -> Option<crate::global::ConsensusGroupInfo> {
+    ) -> Option<crate::global::global_state::ConsensusGroupInfo> {
         let global_state = self.global_manager.get_current_state().await.ok()?;
         let consensus_groups = global_state.consensus_groups.read().await;
         consensus_groups.get(&group_id).cloned()
@@ -839,7 +853,7 @@ where
         let consensus_groups = global_state.consensus_groups.read().await;
         let group_info = consensus_groups
             .get(&group_id)
-            .ok_or_else(|| Error::NotFound(format!("Group {:?} not found", group_id)))?;
+            .ok_or_else(|| Error::not_found(format!("Group {:?} not found", group_id)))?;
 
         // Get Raft metrics for the group
         let local_metrics = self.local_manager.get_all_metrics().await;
@@ -938,6 +952,37 @@ where
 
         Ok(total_cleaned)
     }
+
+    /// Register a consensus group with the allocation manager
+    pub async fn register_consensus_group(
+        &self,
+        group_id: ConsensusGroupId,
+        members: Vec<crate::NodeId>,
+    ) -> ConsensusResult<()> {
+        let mut allocation_mgr = self.allocation_manager.write().await;
+        allocation_mgr.add_group(group_id, members);
+        info!(
+            "Registered consensus group {:?} with allocation manager",
+            group_id
+        );
+        Ok(())
+    }
+
+    /// Unregister a consensus group from the allocation manager
+    pub async fn unregister_consensus_group(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<()> {
+        let mut allocation_mgr = self.allocation_manager.write().await;
+        allocation_mgr.remove_group(group_id).map_err(|e| {
+            Error::InvalidOperation(format!("Failed to remove group {:?}: {}", group_id, e))
+        })?;
+        info!(
+            "Unregistered consensus group {:?} from allocation manager",
+            group_id
+        );
+        Ok(())
+    }
 }
 
 /// Metrics for the consensus router
@@ -971,9 +1016,9 @@ pub struct CrossGroupTransactionResult {
     /// Whether the transaction succeeded
     pub success: bool,
     /// Responses from source group operations
-    pub source_responses: Vec<ConsensusResponse>,
+    pub source_responses: Vec<LocalResponse>,
     /// Responses from target group operations
-    pub target_responses: Vec<ConsensusResponse>,
+    pub target_responses: Vec<LocalResponse>,
     /// Whether rollback was performed
     pub rollback_performed: bool,
 }

@@ -1,7 +1,8 @@
 //! Global consensus state management
 //!
-//! This module contains the state machine for global consensus operations,
-//! managing streams, consensus groups, and administrative operations.
+//! This module contains the pure state container for global consensus operations.
+//! All validation is handled by operation validators, and the state machine
+//! only applies pre-validated operations.
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -10,17 +11,23 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::debug;
 
-use super::{GlobalOperation, GlobalResponse, StreamConfig};
-use crate::allocation::ConsensusGroupId;
-use crate::error::{ConsensusResult, Error};
-use crate::local::MigrationState;
-use crate::pubsub::{SubjectRouter, subject_matches_pattern};
-use crate::subscription::{SubscriptionHandlerMap, SubscriptionInvoker};
+use super::{GlobalResponse, StreamConfig};
+use crate::{
+    NodeId,
+    allocation::ConsensusGroupId,
+    operations::{
+        GlobalOperation, group_ops::GroupOperation, node_ops::NodeOperation,
+        routing_ops::RoutingOperation, stream_management_ops::StreamManagementOperation,
+    },
+    pubsub::{SubjectRouter, subject_matches_pattern},
+    subscription::{SubscriptionHandlerMap, SubscriptionInvoker},
+};
 
 /// Global consensus state machine
 ///
-/// This is the central state machine for the global consensus layer,
-/// managing metadata about streams, consensus groups, and cluster configuration.
+/// This is a pure state container that applies pre-validated operations.
+/// All validation should be done by operation validators before operations
+/// reach this state machine.
 #[derive(Debug, Clone)]
 pub struct GlobalState {
     /// Stream data storage
@@ -41,7 +48,7 @@ pub struct ConsensusGroupInfo {
     /// Group identifier
     pub id: ConsensusGroupId,
     /// Member node IDs
-    pub members: Vec<crate::NodeId>,
+    pub members: Vec<NodeId>,
     /// When the group was created
     pub created_at: u64,
     /// Number of streams allocated to this group
@@ -78,7 +85,7 @@ pub struct MessageData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PubSubDetails {
     /// Node that published the message
-    pub node_id: Option<crate::NodeId>,
+    pub node_id: Option<NodeId>,
     /// Original subject
     pub subject: String,
 }
@@ -113,619 +120,526 @@ impl GlobalState {
         }
     }
 
-    /// Apply a messaging operation to the state machine
+    /// Apply a global operation to the state machine
+    ///
+    /// NOTE: This assumes the operation has already been validated.
+    /// All validation should be done by operation validators.
     pub async fn apply_operation(
         &self,
         operation: &GlobalOperation,
         sequence: u64,
     ) -> GlobalResponse {
         match operation {
-            GlobalOperation::CreateStream {
-                stream_name,
+            GlobalOperation::StreamManagement(op) => {
+                self.apply_stream_operation(op, sequence).await
+            }
+            GlobalOperation::Group(op) => self.apply_group_operation(op, sequence).await,
+            GlobalOperation::Node(op) => self.apply_node_operation(op, sequence).await,
+            GlobalOperation::Routing(op) => self.apply_routing_operation(op, sequence).await,
+        }
+    }
+
+    /// Apply a stream management operation
+    async fn apply_stream_operation(
+        &self,
+        operation: &StreamManagementOperation,
+        sequence: u64,
+    ) -> GlobalResponse {
+        match operation {
+            StreamManagementOperation::Create {
+                name,
                 config,
                 group_id,
             } => {
-                self.create_stream(stream_name, config.clone(), *group_id, sequence)
-                    .await
-            }
-            GlobalOperation::DeleteStream { stream_name } => {
-                self.delete_stream(stream_name, sequence).await
-            }
-            GlobalOperation::ReallocateStream {
-                stream_name,
-                group_id,
-            } => {
-                self.reallocate_stream(stream_name, *group_id, sequence)
-                    .await
-            }
-            GlobalOperation::AddConsensusGroup { group_id, members } => {
-                self.add_consensus_group(*group_id, members.clone(), sequence)
-                    .await
-            }
-            GlobalOperation::RemoveConsensusGroup { group_id } => {
-                self.remove_consensus_group(*group_id, sequence).await
-            }
-            GlobalOperation::MigrateStream {
-                stream_name,
-                from_group,
-                to_group,
-                state,
-            } => {
-                self.handle_stream_migration(
-                    stream_name,
-                    *from_group,
-                    *to_group,
-                    state.clone(),
-                    sequence,
-                )
-                .await
-            }
-            GlobalOperation::UpdateStreamAllocation {
-                stream_name,
-                new_group,
-            } => {
-                self.reallocate_stream(stream_name, *new_group, sequence)
-                    .await
-            }
-            GlobalOperation::SubscribeToSubject {
-                stream_name,
-                subject_pattern,
-            } => {
-                self.subscribe_to_subject(stream_name, subject_pattern, sequence)
-                    .await
-            }
-            GlobalOperation::UnsubscribeFromSubject {
-                stream_name,
-                subject_pattern,
-            } => {
-                self.unsubscribe_from_subject(stream_name, subject_pattern, sequence)
-                    .await
-            }
-            GlobalOperation::BulkSubscribeToSubjects {
-                stream_name,
-                subject_patterns,
-            } => {
-                self.bulk_subscribe_to_subjects(stream_name, subject_patterns, sequence)
-                    .await
-            }
-            GlobalOperation::BulkUnsubscribeFromSubjects {
-                stream_name,
-                subject_patterns,
-            } => {
-                self.bulk_unsubscribe_from_subjects(stream_name, subject_patterns, sequence)
-                    .await
-            }
-            GlobalOperation::AssignNodeToGroup { node_id, group_id } => {
-                self.assign_node_to_group(node_id, *group_id, sequence)
-                    .await
-            }
-            GlobalOperation::RemoveNodeFromGroup { node_id, group_id } => {
-                self.remove_node_from_group(node_id, *group_id, sequence)
-                    .await
-            }
-            GlobalOperation::UpdateNodeGroups { node_id, group_ids } => {
-                self.update_node_groups(node_id, group_ids, sequence).await
-            }
-            _ => {
-                // Handle other admin operations that aren't implemented yet
-                GlobalResponse {
-                    success: false,
-                    sequence,
-                    error: Some("Admin operation not implemented in GlobalState".to_string()),
+                let mut configs = self.stream_configs.write().await;
+                let mut streams = self.streams.write().await;
+                let mut groups = self.consensus_groups.write().await;
+
+                // Create stream configuration with the assigned group
+                let mut stream_config = config.clone();
+                stream_config.consensus_group = Some(*group_id);
+                configs.insert(name.clone(), stream_config);
+
+                // Initialize stream data
+                streams.entry(name.clone()).or_insert_with(|| StreamData {
+                    messages: BTreeMap::new(),
+                    next_sequence: 1,
+                    subscriptions: HashSet::new(),
+                });
+
+                // Update group stream count
+                if let Some(group) = groups.get_mut(group_id) {
+                    group.stream_count += 1;
                 }
-            }
-        }
-    }
 
-    /// Add a new consensus group
-    async fn add_consensus_group(
-        &self,
-        group_id: ConsensusGroupId,
-        members: Vec<crate::NodeId>,
-        sequence: u64,
-    ) -> GlobalResponse {
-        let mut groups = self.consensus_groups.write().await;
-
-        // Check if group already exists
-        if groups.contains_key(&group_id) {
-            return GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Consensus group {:?} already exists", group_id)),
-            };
-        }
-
-        // Create group info
-        let group_info = ConsensusGroupInfo {
-            id: group_id,
-            members: members.clone(),
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            stream_count: 0,
-        };
-
-        groups.insert(group_id, group_info);
-
-        debug!(
-            "Added consensus group {:?} with members {:?}",
-            group_id, members
-        );
-
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
-        }
-    }
-
-    /// Remove a consensus group
-    async fn remove_consensus_group(
-        &self,
-        group_id: ConsensusGroupId,
-        sequence: u64,
-    ) -> GlobalResponse {
-        // Check if any streams are allocated to this group
-        let configs = self.stream_configs.read().await;
-        let allocated_streams: Vec<_> = configs
-            .iter()
-            .filter(|(_, config)| config.consensus_group == Some(group_id))
-            .map(|(name, _)| name.clone())
-            .collect();
-
-        if !allocated_streams.is_empty() {
-            GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!(
-                    "Cannot remove group {:?}: {} streams still allocated",
-                    group_id,
-                    allocated_streams.len()
-                )),
-            }
-        } else {
-            // Remove from our storage
-            let mut groups = self.consensus_groups.write().await;
-            groups.remove(&group_id);
-
-            debug!("Removed consensus group {:?}", group_id);
-            GlobalResponse {
-                success: true,
-                sequence,
-                error: None,
-            }
-        }
-    }
-
-    /// Get consensus groups that a node belongs to
-    pub async fn get_node_groups(&self, node_id: &crate::NodeId) -> Vec<ConsensusGroupInfo> {
-        let groups = self.consensus_groups.read().await;
-        groups
-            .values()
-            .filter(|group| group.members.contains(node_id))
-            .cloned()
-            .collect()
-    }
-
-    /// Get all consensus groups
-    pub async fn get_all_groups(&self) -> Vec<ConsensusGroupInfo> {
-        let groups = self.consensus_groups.read().await;
-        groups.values().cloned().collect()
-    }
-
-    /// Get a specific consensus group
-    pub async fn get_group(&self, group_id: ConsensusGroupId) -> Option<ConsensusGroupInfo> {
-        let groups = self.consensus_groups.read().await;
-        groups.get(&group_id).cloned()
-    }
-
-    /// Assign a node to a consensus group
-    async fn assign_node_to_group(
-        &self,
-        node_id: &crate::NodeId,
-        group_id: ConsensusGroupId,
-        sequence: u64,
-    ) -> GlobalResponse {
-        let mut groups = self.consensus_groups.write().await;
-
-        if let Some(group) = groups.get_mut(&group_id) {
-            // Check if node is already in the group
-            if group.members.contains(node_id) {
-                return GlobalResponse {
-                    success: false,
-                    sequence,
-                    error: Some(format!(
-                        "Node {:?} is already in group {:?}",
-                        node_id, group_id
-                    )),
-                };
-            }
-
-            // Add node to group
-            group.members.push(node_id.clone());
-
-            debug!("Assigned node {:?} to group {:?}", node_id, group_id);
-
-            GlobalResponse {
-                success: true,
-                sequence,
-                error: None,
-            }
-        } else {
-            GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Consensus group {:?} not found", group_id)),
-            }
-        }
-    }
-
-    /// Remove a node from a consensus group
-    async fn remove_node_from_group(
-        &self,
-        node_id: &crate::NodeId,
-        group_id: ConsensusGroupId,
-        sequence: u64,
-    ) -> GlobalResponse {
-        let mut groups = self.consensus_groups.write().await;
-
-        if let Some(group) = groups.get_mut(&group_id) {
-            // Remove node from group
-            let original_len = group.members.len();
-            group.members.retain(|id| id != node_id);
-
-            if group.members.len() < original_len {
-                debug!("Removed node {:?} from group {:?}", node_id, group_id);
+                debug!("Created stream '{}' in group {:?}", name, group_id);
 
                 GlobalResponse {
                     success: true,
                     sequence,
                     error: None,
                 }
-            } else {
+            }
+
+            StreamManagementOperation::UpdateConfig { name, config } => {
+                let mut configs = self.stream_configs.write().await;
+
+                if let Some(existing_config) = configs.get_mut(name) {
+                    // Preserve group allocation
+                    let group_id = existing_config.consensus_group;
+                    *existing_config = config.clone();
+                    existing_config.consensus_group = group_id;
+
+                    debug!("Updated configuration for stream '{}'", name);
+
+                    GlobalResponse {
+                        success: true,
+                        sequence,
+                        error: None,
+                    }
+                } else {
+                    GlobalResponse {
+                        success: false,
+                        sequence,
+                        error: Some(format!("Stream '{}' not found", name)),
+                    }
+                }
+            }
+
+            StreamManagementOperation::Delete { name } => {
+                let mut configs = self.stream_configs.write().await;
+                let mut streams = self.streams.write().await;
+                let mut router = self.subject_router.write().await;
+                let mut groups = self.consensus_groups.write().await;
+
+                // Get the group before deletion
+                let group_id = configs.get(name).and_then(|c| c.consensus_group);
+
+                // Remove configuration
+                configs.remove(name);
+                streams.remove(name);
+                router.remove_stream(name);
+
+                // Update group stream count
+                if let Some(gid) = group_id {
+                    if let Some(group) = groups.get_mut(&gid) {
+                        group.stream_count = group.stream_count.saturating_sub(1);
+                    }
+                }
+
+                debug!("Deleted stream '{}'", name);
+
                 GlobalResponse {
-                    success: false,
+                    success: true,
                     sequence,
-                    error: Some(format!(
-                        "Node {:?} was not in group {:?}",
-                        node_id, group_id
-                    )),
+                    error: None,
                 }
             }
-        } else {
-            GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Consensus group {:?} not found", group_id)),
-            }
-        }
-    }
 
-    /// Update a node's group assignments (complete replacement)
-    async fn update_node_groups(
-        &self,
-        node_id: &crate::NodeId,
-        new_group_ids: &[ConsensusGroupId],
-        sequence: u64,
-    ) -> GlobalResponse {
-        let mut groups = self.consensus_groups.write().await;
+            StreamManagementOperation::Reallocate { name, target_group } => {
+                let mut configs = self.stream_configs.write().await;
+                let mut groups = self.consensus_groups.write().await;
 
-        // First, remove the node from all existing groups
-        for group in groups.values_mut() {
-            group.members.retain(|id| id != node_id);
-        }
+                if let Some(config) = configs.get_mut(name) {
+                    // Update group stream counts
+                    if let Some(old_group_id) = config.consensus_group {
+                        if let Some(old_group) = groups.get_mut(&old_group_id) {
+                            old_group.stream_count = old_group.stream_count.saturating_sub(1);
+                        }
+                    }
 
-        // Then add to specified groups
-        let mut errors = Vec::new();
-        for group_id in new_group_ids {
-            if let Some(group) = groups.get_mut(group_id) {
-                if !group.members.contains(node_id) {
-                    group.members.push(node_id.clone());
+                    if let Some(new_group) = groups.get_mut(target_group) {
+                        new_group.stream_count += 1;
+                    }
+
+                    config.consensus_group = Some(*target_group);
+
+                    debug!("Reallocated stream '{}' to group {:?}", name, target_group);
+
+                    GlobalResponse {
+                        success: true,
+                        sequence,
+                        error: None,
+                    }
+                } else {
+                    GlobalResponse {
+                        success: false,
+                        sequence,
+                        error: Some(format!("Stream '{}' not found", name)),
+                    }
                 }
-            } else {
-                errors.push(format!("Group {:?} not found", group_id));
+            }
+
+            StreamManagementOperation::Migrate {
+                name,
+                from_group: _,
+                to_group: _,
+                state,
+            } => {
+                // Migration state tracking would be handled by a separate component
+                debug!(
+                    "Recording migration state for stream '{}': {:?}",
+                    name, state
+                );
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            }
+
+            StreamManagementOperation::UpdateAllocation { name, new_group } => {
+                // This is similar to Reallocate - inline the logic to avoid recursion
+                let mut configs = self.stream_configs.write().await;
+                let mut groups = self.consensus_groups.write().await;
+
+                if let Some(config) = configs.get_mut(name) {
+                    // Update group stream counts
+                    if let Some(old_group_id) = config.consensus_group {
+                        if let Some(old_group) = groups.get_mut(&old_group_id) {
+                            old_group.stream_count = old_group.stream_count.saturating_sub(1);
+                        }
+                    }
+
+                    if let Some(new_group_obj) = groups.get_mut(new_group) {
+                        new_group_obj.stream_count += 1;
+                    }
+
+                    config.consensus_group = Some(*new_group);
+
+                    debug!(
+                        "Updated allocation for stream '{}' to group {:?}",
+                        name, new_group
+                    );
+
+                    GlobalResponse {
+                        success: true,
+                        sequence,
+                        error: None,
+                    }
+                } else {
+                    GlobalResponse {
+                        success: false,
+                        sequence,
+                        error: Some(format!("Stream '{}' not found", name)),
+                    }
+                }
             }
         }
+    }
 
-        if errors.is_empty() {
-            debug!(
-                "Updated node {:?} group assignments to {:?}",
-                node_id, new_group_ids
-            );
+    /// Apply a group operation
+    async fn apply_group_operation(
+        &self,
+        operation: &GroupOperation,
+        sequence: u64,
+    ) -> GlobalResponse {
+        match operation {
+            GroupOperation::Create {
+                group_id,
+                initial_members,
+            } => {
+                let mut groups = self.consensus_groups.write().await;
 
-            GlobalResponse {
-                success: true,
-                sequence,
-                error: None,
+                let group_info = ConsensusGroupInfo {
+                    id: *group_id,
+                    members: initial_members.clone(),
+                    created_at: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs(),
+                    stream_count: 0,
+                };
+
+                groups.insert(*group_id, group_info);
+
+                debug!(
+                    "Created consensus group {:?} with {} members",
+                    group_id,
+                    initial_members.len()
+                );
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
             }
-        } else {
-            GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Errors updating groups: {}", errors.join(", "))),
+
+            GroupOperation::Delete { group_id } => {
+                let mut groups = self.consensus_groups.write().await;
+                groups.remove(group_id);
+
+                debug!("Deleted consensus group {:?}", group_id);
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
             }
-        }
-    }
 
-    // ... Additional methods would be moved here from state_machine.rs ...
-    // For brevity, I'm including just the essential methods for group management
-    // The full implementation would include all stream operations, subscriptions, etc.
+            GroupOperation::UpdateMembers { group_id, members } => {
+                let mut groups = self.consensus_groups.write().await;
 
-    /// Create a new stream with configuration
-    async fn create_stream(
-        &self,
-        stream_name: &str,
-        config: StreamConfig,
-        group_id: ConsensusGroupId,
-        sequence: u64,
-    ) -> GlobalResponse {
-        // Validate stream name
-        if let Err(e) = validate_stream_name(stream_name) {
-            return GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(e.to_string()),
-            };
-        }
+                if let Some(group) = groups.get_mut(group_id) {
+                    group.members = members.clone();
 
-        let mut configs = self.stream_configs.write().await;
-        let mut streams = self.streams.write().await;
+                    debug!("Updated members for group {:?}", group_id);
 
-        // Check if stream already exists
-        if configs.contains_key(stream_name) {
-            return GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Stream '{}' already exists", stream_name)),
-            };
-        }
-
-        // Check if the consensus group exists
-        let groups = self.consensus_groups.read().await;
-        if !groups.contains_key(&group_id) {
-            return GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Consensus group {:?} does not exist", group_id)),
-            };
-        }
-        drop(groups);
-
-        // Create stream configuration with the assigned group
-        let mut stream_config = config;
-        stream_config.consensus_group = Some(group_id);
-        configs.insert(stream_name.to_string(), stream_config);
-
-        // Initialize stream data if it doesn't exist
-        streams
-            .entry(stream_name.to_string())
-            .or_insert_with(|| StreamData {
-                messages: BTreeMap::new(),
-                next_sequence: 1,
-                subscriptions: HashSet::new(),
-            });
-
-        debug!(
-            "Created stream '{}' and allocated to group {:?}",
-            stream_name, group_id
-        );
-
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
-        }
-    }
-
-    /// Delete a stream
-    async fn delete_stream(&self, stream_name: &str, sequence: u64) -> GlobalResponse {
-        let mut configs = self.stream_configs.write().await;
-        let mut streams = self.streams.write().await;
-        let mut router = self.subject_router.write().await;
-
-        // Remove configuration
-        if configs.remove(stream_name).is_none() {
-            return GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Stream '{}' does not exist", stream_name)),
-            };
-        }
-
-        // Remove stream data
-        streams.remove(stream_name);
-
-        // Remove from subject router
-        router.remove_stream(stream_name);
-
-        debug!("Deleted stream '{}'", stream_name);
-
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
-        }
-    }
-
-    /// Subscribe a stream to a subject pattern
-    async fn subscribe_to_subject(
-        &self,
-        stream_name: &str,
-        subject_pattern: &str,
-        sequence: u64,
-    ) -> GlobalResponse {
-        // Validate subject pattern
-        if let Err(e) = crate::pubsub::validate_subject_pattern(subject_pattern) {
-            return GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(e.to_string()),
-            };
-        }
-
-        // Update stream subscriptions
-        {
-            let mut streams = self.streams.write().await;
-            let stream_data =
-                streams
-                    .entry(stream_name.to_string())
-                    .or_insert_with(|| StreamData {
-                        messages: BTreeMap::new(),
-                        next_sequence: 1,
-                        subscriptions: HashSet::new(),
-                    });
-            stream_data
-                .subscriptions
-                .insert(subject_pattern.to_string());
-        }
-
-        // Update subject router
-        {
-            let mut router = self.subject_router.write().await;
-            router.subscribe_stream(stream_name, subject_pattern);
-        }
-
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
-        }
-    }
-
-    /// Unsubscribe a stream from a subject pattern
-    async fn unsubscribe_from_subject(
-        &self,
-        stream_name: &str,
-        subject_pattern: &str,
-        sequence: u64,
-    ) -> GlobalResponse {
-        // Update stream subscriptions
-        {
-            let mut streams = self.streams.write().await;
-            if let Some(stream_data) = streams.get_mut(stream_name) {
-                stream_data.subscriptions.remove(subject_pattern);
+                    GlobalResponse {
+                        success: true,
+                        sequence,
+                        error: None,
+                    }
+                } else {
+                    GlobalResponse {
+                        success: false,
+                        sequence,
+                        error: Some(format!("Group {:?} not found", group_id)),
+                    }
+                }
             }
         }
-
-        // Update subject router
-        {
-            let mut router = self.subject_router.write().await;
-            router.unsubscribe_stream(stream_name, subject_pattern);
-        }
-
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
-        }
     }
 
-    /// Bulk subscribe to multiple subjects
-    async fn bulk_subscribe_to_subjects(
+    /// Apply a node operation
+    async fn apply_node_operation(
         &self,
-        stream_name: &str,
-        subject_patterns: &[String],
+        operation: &NodeOperation,
         sequence: u64,
     ) -> GlobalResponse {
-        for pattern in subject_patterns {
-            let _ = self
-                .subscribe_to_subject(stream_name, pattern, sequence)
-                .await;
-        }
+        match operation {
+            NodeOperation::AssignToGroup { node_id, group_id } => {
+                let mut groups = self.consensus_groups.write().await;
 
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
+                if let Some(group) = groups.get_mut(group_id) {
+                    if !group.members.contains(node_id) {
+                        group.members.push(node_id.clone());
+                    }
+
+                    debug!("Assigned node {:?} to group {:?}", node_id, group_id);
+
+                    GlobalResponse {
+                        success: true,
+                        sequence,
+                        error: None,
+                    }
+                } else {
+                    GlobalResponse {
+                        success: false,
+                        sequence,
+                        error: Some(format!("Group {:?} not found", group_id)),
+                    }
+                }
+            }
+
+            NodeOperation::RemoveFromGroup { node_id, group_id } => {
+                let mut groups = self.consensus_groups.write().await;
+
+                if let Some(group) = groups.get_mut(group_id) {
+                    group.members.retain(|id| id != node_id);
+
+                    debug!("Removed node {:?} from group {:?}", node_id, group_id);
+
+                    GlobalResponse {
+                        success: true,
+                        sequence,
+                        error: None,
+                    }
+                } else {
+                    GlobalResponse {
+                        success: false,
+                        sequence,
+                        error: Some(format!("Group {:?} not found", group_id)),
+                    }
+                }
+            }
+
+            NodeOperation::UpdateGroups { node_id, group_ids } => {
+                let mut groups = self.consensus_groups.write().await;
+
+                // Remove node from all groups
+                for group in groups.values_mut() {
+                    group.members.retain(|id| id != node_id);
+                }
+
+                // Add to specified groups
+                for group_id in group_ids {
+                    if let Some(group) = groups.get_mut(group_id) {
+                        if !group.members.contains(node_id) {
+                            group.members.push(node_id.clone());
+                        }
+                    }
+                }
+
+                debug!("Updated node {:?} group assignments", node_id);
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            }
+
+            NodeOperation::Decommission { node_id } => {
+                let mut groups = self.consensus_groups.write().await;
+
+                // Remove node from all groups
+                for group in groups.values_mut() {
+                    group.members.retain(|id| id != node_id);
+                }
+
+                debug!("Decommissioned node {:?}", node_id);
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            }
         }
     }
 
-    /// Bulk unsubscribe from multiple subjects
-    async fn bulk_unsubscribe_from_subjects(
+    /// Apply a routing operation
+    async fn apply_routing_operation(
         &self,
-        stream_name: &str,
-        subject_patterns: &[String],
+        operation: &RoutingOperation,
         sequence: u64,
     ) -> GlobalResponse {
-        for pattern in subject_patterns {
-            let _ = self
-                .unsubscribe_from_subject(stream_name, pattern, sequence)
-                .await;
-        }
+        match operation {
+            RoutingOperation::Subscribe {
+                stream_name,
+                subject_pattern,
+            } => {
+                let mut streams = self.streams.write().await;
+                let mut router = self.subject_router.write().await;
 
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
+                let stream_data =
+                    streams
+                        .entry(stream_name.to_string())
+                        .or_insert_with(|| StreamData {
+                            messages: BTreeMap::new(),
+                            next_sequence: 1,
+                            subscriptions: HashSet::new(),
+                        });
+
+                stream_data
+                    .subscriptions
+                    .insert(subject_pattern.to_string());
+                router.subscribe_stream(stream_name, subject_pattern);
+
+                debug!(
+                    "Stream '{}' subscribed to '{}'",
+                    stream_name, subject_pattern
+                );
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            }
+
+            RoutingOperation::Unsubscribe {
+                stream_name,
+                subject_pattern,
+            } => {
+                let mut streams = self.streams.write().await;
+                let mut router = self.subject_router.write().await;
+
+                if let Some(stream_data) = streams.get_mut(stream_name) {
+                    stream_data.subscriptions.remove(subject_pattern);
+                }
+
+                router.unsubscribe_stream(stream_name, subject_pattern);
+
+                debug!(
+                    "Stream '{}' unsubscribed from '{}'",
+                    stream_name, subject_pattern
+                );
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            }
+
+            RoutingOperation::RemoveAllSubscriptions { stream_name } => {
+                let mut streams = self.streams.write().await;
+                let mut router = self.subject_router.write().await;
+
+                if let Some(stream_data) = streams.get_mut(stream_name) {
+                    stream_data.subscriptions.clear();
+                }
+
+                router.remove_stream(stream_name);
+
+                debug!("Removed all subscriptions for stream '{}'", stream_name);
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            }
+
+            RoutingOperation::BulkSubscribe {
+                stream_name,
+                subject_patterns,
+            } => {
+                let mut streams = self.streams.write().await;
+                let mut router = self.subject_router.write().await;
+
+                let stream_data =
+                    streams
+                        .entry(stream_name.to_string())
+                        .or_insert_with(|| StreamData {
+                            messages: BTreeMap::new(),
+                            next_sequence: 1,
+                            subscriptions: HashSet::new(),
+                        });
+
+                for pattern in subject_patterns {
+                    stream_data.subscriptions.insert(pattern.clone());
+                    router.subscribe_stream(stream_name, pattern);
+                    debug!("Stream '{}' subscribed to '{}'", stream_name, pattern);
+                }
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            }
+
+            RoutingOperation::BulkUnsubscribe {
+                stream_name,
+                subject_patterns,
+            } => {
+                let mut streams = self.streams.write().await;
+                let mut router = self.subject_router.write().await;
+
+                if let Some(stream_data) = streams.get_mut(stream_name) {
+                    for pattern in subject_patterns {
+                        stream_data.subscriptions.remove(pattern);
+                        router.unsubscribe_stream(stream_name, pattern);
+                        debug!("Stream '{}' unsubscribed from '{}'", stream_name, pattern);
+                    }
+                }
+
+                GlobalResponse {
+                    success: true,
+                    sequence,
+                    error: None,
+                }
+            }
         }
     }
 
-    /// Reallocate a stream to a different consensus group
-    async fn reallocate_stream(
-        &self,
-        stream_name: &str,
-        group_id: ConsensusGroupId,
-        sequence: u64,
-    ) -> GlobalResponse {
-        let mut configs = self.stream_configs.write().await;
-
-        // Check if stream exists
-        if !configs.contains_key(stream_name) {
-            return GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Stream '{}' not found", stream_name)),
-            };
-        }
-
-        // Check if the new consensus group exists
-        let groups = self.consensus_groups.read().await;
-        if !groups.contains_key(&group_id) {
-            return GlobalResponse {
-                success: false,
-                sequence,
-                error: Some(format!("Consensus group {:?} does not exist", group_id)),
-            };
-        }
-        drop(groups);
-
-        // Update stream config with new group
-        if let Some(config) = configs.get_mut(stream_name) {
-            config.consensus_group = Some(group_id);
-        }
-
-        debug!(
-            "Reallocated stream '{}' to group {:?}",
-            stream_name, group_id
-        );
-
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
-        }
-    }
-
-    /// Handle stream migration state changes
-    async fn handle_stream_migration(
-        &self,
-        stream_name: &str,
-        _from_group: ConsensusGroupId,
-        _to_group: ConsensusGroupId,
-        _state: MigrationState,
-        sequence: u64,
-    ) -> GlobalResponse {
-        // Migration state is tracked by the migration coordinator
-        // This just records the migration in the global state
-        debug!("Recording migration state for stream '{}'", stream_name);
-
-        GlobalResponse {
-            success: true,
-            sequence,
-            error: None,
-        }
-    }
+    // Read-only accessor methods
 
     /// Get a message from a stream
     pub async fn get_message(&self, stream: &str, seq: u64) -> Option<Bytes> {
@@ -790,6 +704,28 @@ impl GlobalState {
         configs.get(stream_name).cloned()
     }
 
+    /// Get consensus groups that a node belongs to
+    pub async fn get_node_groups(&self, node_id: &NodeId) -> Vec<ConsensusGroupInfo> {
+        let groups = self.consensus_groups.read().await;
+        groups
+            .values()
+            .filter(|group| group.members.contains(node_id))
+            .cloned()
+            .collect()
+    }
+
+    /// Get all consensus groups
+    pub async fn get_all_groups(&self) -> Vec<ConsensusGroupInfo> {
+        let groups = self.consensus_groups.read().await;
+        groups.values().cloned().collect()
+    }
+
+    /// Get a specific consensus group
+    pub async fn get_group(&self, group_id: ConsensusGroupId) -> Option<ConsensusGroupInfo> {
+        let groups = self.consensus_groups.read().await;
+        groups.get(&group_id).cloned()
+    }
+
     /// Route a subject to subscribed streams
     pub async fn route_subject(&self, subject: &str) -> HashSet<String> {
         let router = self.subject_router.read().await;
@@ -846,19 +782,4 @@ impl GlobalState {
             );
         }
     }
-}
-
-/// Validates a stream name
-pub fn validate_stream_name(name: &str) -> ConsensusResult<()> {
-    if name.is_empty() {
-        return Err(Error::InvalidStreamName(
-            "Stream name cannot be empty".to_string(),
-        ));
-    }
-    if name.contains(['*', '>', '.']) {
-        return Err(Error::InvalidStreamName(
-            "Stream name cannot contain wildcards or dots".to_string(),
-        ));
-    }
-    Ok(())
 }

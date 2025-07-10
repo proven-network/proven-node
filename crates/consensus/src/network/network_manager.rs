@@ -4,12 +4,12 @@
 //! COSE signing/verification, message serialization/deserialization,
 //! and message routing.
 
+use super::transport::{NetworkTransport, tcp::TcpTransport, websocket::WebSocketTransport};
 use crate::NodeId;
 use crate::attestation::AttestationVerifier;
 use crate::cose::CoseHandler;
 use crate::error::{Error, NetworkError};
 use crate::network::messages::{ApplicationMessage, Message, RaftMessage};
-use crate::transport::{NetworkTransport, tcp::TcpTransport, websocket::WebSocketTransport};
 use crate::verification::{ConnectionVerification, ConnectionVerifier};
 
 use std::marker::PhantomData;
@@ -191,9 +191,10 @@ where
             .lock()
             .await
             .take()
-            .ok_or(NetworkError::ConnectionFailed(
-                "Incoming message receiver already taken".to_string(),
-            ))?;
+            .ok_or(NetworkError::ConnectionFailed {
+                peer: self.local_node_id.clone(),
+                reason: "Incoming message receiver already taken".to_string(),
+            })?;
         let router_task = tokio::spawn(Self::message_router_loop(
             incoming_rx,
             self.network_channels.app_message_tx.clone(),
@@ -210,9 +211,10 @@ where
                 .lock()
                 .await
                 .take()
-                .ok_or(NetworkError::ConnectionFailed(
-                    "App message receiver already taken".to_string(),
-                ))?;
+                .ok_or(NetworkError::ConnectionFailed {
+                    peer: self.local_node_id.clone(),
+                    reason: "App message receiver already taken".to_string(),
+                })?;
             let app_processor_task =
                 tokio::spawn(Self::application_message_processor_loop(app_rx, handler));
             task_handles.push(app_processor_task);
@@ -226,9 +228,10 @@ where
                 .lock()
                 .await
                 .take()
-                .ok_or(NetworkError::ConnectionFailed(
-                    "Raft message receiver already taken".to_string(),
-                ))?;
+                .ok_or(NetworkError::ConnectionFailed {
+                    peer: self.local_node_id.clone(),
+                    reason: "Raft message receiver already taken".to_string(),
+                })?;
             let raft_processor_task =
                 tokio::spawn(Self::raft_message_processor_loop(raft_rx, handler));
             task_handles.push(raft_processor_task);
@@ -241,9 +244,10 @@ where
             .lock()
             .await
             .take()
-            .ok_or(NetworkError::ConnectionFailed(
-                "Outgoing message receiver already taken".to_string(),
-            ))?;
+            .ok_or(NetworkError::ConnectionFailed {
+                peer: self.local_node_id.clone(),
+                reason: "Outgoing message receiver already taken".to_string(),
+            })?;
         let sender_task = tokio::spawn(Self::outgoing_message_sender_loop(
             outgoing_rx,
             transport_tx.clone(),
@@ -258,8 +262,15 @@ where
             let mut transport_rx = transport_rx;
             debug!("Transport sender task started");
             while let Some((target_node_id, data)) = transport_rx.recv().await {
+                info!(
+                    "Transport sender: Sending {} bytes to {}",
+                    data.len(),
+                    target_node_id
+                );
                 if let Err(e) = transport_clone.send_bytes(&target_node_id, data).await {
                     error!("Failed to send message to {}: {}", target_node_id, e);
+                } else {
+                    info!("Transport sender: Successfully sent to {}", target_node_id);
                 }
             }
             debug!("Transport sender task exited");
@@ -280,7 +291,7 @@ where
     }
 
     /// Create a simple transport handler that forwards messages to the router
-    pub fn create_simple_transport_handler(&self) -> crate::transport::MessageHandler {
+    pub fn create_simple_transport_handler(&self) -> super::transport::MessageHandler {
         let incoming_tx = self.network_channels.incoming_message_tx.clone();
 
         Arc::new(move |sender_id: NodeId, data: Bytes| {
@@ -302,6 +313,10 @@ where
         target_node_id: NodeId,
         message: Message,
     ) -> Result<(), Error> {
+        debug!(
+            "NetworkManager sending message to {}: {:?}",
+            target_node_id, message
+        );
         self.network_channels
             .outgoing_message_tx
             .send((target_node_id, message, None))
@@ -315,6 +330,10 @@ where
         message: Message,
         correlation_id: Uuid,
     ) -> Result<(), Error> {
+        debug!(
+            "NetworkManager sending message to {} with correlation {}: {:?}",
+            target_node_id, correlation_id, message
+        );
         self.network_channels
             .outgoing_message_tx
             .send((target_node_id, message, Some(correlation_id)))
@@ -350,7 +369,7 @@ where
 
     /// Check if the underlying transport supports HTTP integration
     pub fn supports_http_integration(&self) -> bool {
-        use crate::transport::websocket::WebSocketTransport;
+        use super::transport::websocket::WebSocketTransport;
         self.transport
             .as_any()
             .downcast_ref::<WebSocketTransport<G>>()
@@ -359,7 +378,8 @@ where
 
     /// Create a router for HTTP integration if supported
     pub fn create_router(&self) -> Option<axum::Router> {
-        use crate::transport::{HttpIntegratedTransport, websocket::WebSocketTransport};
+        use super::transport::{HttpIntegratedTransport, websocket::WebSocketTransport};
+
         if let Some(ws_transport) = self
             .transport
             .as_any()
@@ -380,22 +400,40 @@ where
     ) {
         debug!("Message router task started");
         while let Some((sender_id, data)) = incoming_rx.recv().await {
+            info!(
+                "Message router: Received {} bytes from {}",
+                data.len(),
+                sender_id
+            );
             // Parse and route message
             match Self::parse_incoming_message(&data, &sender_id, &cose_handler).await {
-                Ok((message, metadata)) => match message {
-                    Message::Application(app_msg) => {
-                        if let Err(e) = app_tx.send((sender_id, *app_msg, metadata.correlation_id))
-                        {
-                            error!("Failed to route application message: {}", e);
+                Ok((message, metadata)) => {
+                    info!(
+                        "Message router: Parsed message from {} with correlation {:?}",
+                        sender_id, metadata.correlation_id
+                    );
+                    match message {
+                        Message::Application(app_msg) => {
+                            info!(
+                                "Message router: Routing application message from {}",
+                                sender_id
+                            );
+                            if let Err(e) =
+                                app_tx.send((sender_id, *app_msg, metadata.correlation_id))
+                            {
+                                error!("Failed to route application message: {}", e);
+                            }
+                        }
+                        Message::Raft(raft_msg) => {
+                            info!("Message router: Routing raft message from {}", sender_id);
+                            if let Err(e) =
+                                raft_tx.send((sender_id, raft_msg, metadata.correlation_id))
+                            {
+                                error!("Failed to route raft message: {}", e);
+                            }
                         }
                     }
-                    Message::Raft(raft_msg) => {
-                        if let Err(e) = raft_tx.send((sender_id, raft_msg, metadata.correlation_id))
-                        {
-                            error!("Failed to route raft message: {}", e);
-                        }
-                    }
-                },
+                }
                 Err(e) => {
                     error!("Failed to parse incoming message from {}: {}", sender_id, e);
                 }
@@ -438,10 +476,20 @@ where
     ) {
         debug!("Outgoing message sender task started");
         while let Some((target_node_id, message, correlation_id)) = outgoing_rx.recv().await {
+            info!(
+                "Outgoing message sender: Processing message to {} with correlation {:?}",
+                target_node_id, correlation_id
+            );
             match Self::sign_message_static(&message, correlation_id, &cose_handler).await {
                 Ok(signed_data) => {
+                    info!(
+                        "Successfully signed message for {}, sending to transport",
+                        target_node_id
+                    );
                     if let Err(e) = transport_tx.send((target_node_id.clone(), signed_data)) {
                         error!("Failed to send signed message to {}: {}", target_node_id, e);
+                    } else {
+                        info!("Message queued for transport to {}", target_node_id);
                     }
                 }
                 Err(e) => {

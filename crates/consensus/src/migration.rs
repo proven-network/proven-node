@@ -4,10 +4,12 @@
 //! to balance load and ensure optimal performance.
 
 use crate::allocation::ConsensusGroupId;
-use crate::error::{ConsensusResult, Error};
-use crate::global::{GlobalOperation, StreamConfig};
+use crate::error::{ConsensusResult, Error, MigrationError};
+use crate::global::StreamConfig;
 use crate::local::{LocalStreamOperation, MigrationState};
+use crate::operations::GlobalOperation;
 use crate::router::ConsensusRouter;
+
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -151,9 +153,17 @@ pub enum MessageSourceType {
     /// From consensus
     Consensus,
     /// From PubSub
-    PubSub { subject: String, publisher: String },
+    PubSub {
+        /// The subject the message was published to
+        subject: String,
+        /// The publisher of the message
+        publisher: String,
+    },
     /// From migration
-    Migration { source_group: u64 },
+    Migration {
+        /// The source consensus group the message was migrated from
+        source_group: u64,
+    },
 }
 
 /// Enhanced migration checkpoint with compression and validation
@@ -250,12 +260,14 @@ where
         }
 
         // Submit migration request to global consensus
-        let operation = GlobalOperation::MigrateStream {
-            stream_name: stream_name.clone(),
-            from_group: source_group,
-            to_group: target_group,
-            state: MigrationState::Preparing,
-        };
+        let operation = GlobalOperation::StreamManagement(
+            crate::operations::StreamManagementOperation::Migrate {
+                name: stream_name.clone(),
+                from_group: source_group,
+                to_group: target_group,
+                state: MigrationState::Preparing,
+            },
+        );
 
         self.router
             .route_global_operation(operation)
@@ -268,7 +280,7 @@ where
         let migration = {
             let migrations = self.active_migrations.read().await;
             migrations.get(stream_name).cloned().ok_or_else(|| {
-                Error::NotFound(format!("Migration for stream {} not found", stream_name))
+                Error::not_found(format!("Migration for stream {} not found", stream_name))
             })?
         };
 
@@ -306,11 +318,11 @@ where
             }
             MigrationState::Failed => {
                 warn!("Migration of stream {} is in failed state", stream_name);
-                return Err(Error::MigrationFailed(
-                    migration
+                return Err(Error::MigrationFailed(MigrationError::InvalidState {
+                    details: migration
                         .error
                         .unwrap_or_else(|| "Unknown error".to_string()),
-                ));
+                }));
             }
         }
 
@@ -476,20 +488,28 @@ where
             .await?;
 
         if !response.success {
-            return Err(Error::Stream(response.error.unwrap_or_else(|| {
-                "Failed to get incremental checkpoint".to_string()
-            })));
+            return Err(Error::Stream(
+                crate::error::StreamError::OperationConflict {
+                    name: migration.stream_name.clone(),
+                    reason: response
+                        .error
+                        .unwrap_or_else(|| "Failed to get incremental checkpoint".to_string()),
+                },
+            ));
         }
 
         // Retrieve the incremental checkpoint from the response
-        let checkpoint_data = response
-            .checkpoint_data
-            .ok_or_else(|| Error::Stream("No checkpoint data in response".to_string()))?;
+        let checkpoint_data = response.checkpoint_data.ok_or_else(|| {
+            Error::Stream(crate::error::StreamError::OperationConflict {
+                name: migration.stream_name.clone(),
+                reason: "No checkpoint data in response".to_string(),
+            })
+        })?;
 
         // Deserialize the incremental checkpoint
         let mut checkpoint: MigrationCheckpoint = serde_json::from_slice(&checkpoint_data)
             .map_err(|e| {
-                Error::Deserialization(format!(
+                Error::Serialization(format!(
                     "Failed to deserialize incremental checkpoint: {}",
                     e
                 ))
@@ -515,9 +535,9 @@ where
 
         // Verify this is indeed an incremental checkpoint
         if !checkpoint.is_incremental {
-            return Err(Error::InvalidCheckpoint(
-                "Expected incremental checkpoint but got full checkpoint".to_string(),
-            ));
+            return Err(Error::MigrationFailed(MigrationError::InvalidState {
+                details: "Expected incremental checkpoint but got full checkpoint".to_string(),
+            }));
         }
 
         info!(
@@ -532,6 +552,7 @@ where
     }
 
     /// Apply incremental checkpoint to target group
+    #[allow(dead_code)]
     async fn apply_incremental_checkpoint(
         &self,
         checkpoint: &MigrationCheckpoint,
@@ -539,9 +560,9 @@ where
     ) -> ConsensusResult<()> {
         // Validate that this is indeed an incremental checkpoint
         if !checkpoint.is_incremental {
-            return Err(Error::InvalidCheckpoint(
-                "Expected incremental checkpoint".to_string(),
-            ));
+            return Err(Error::MigrationFailed(MigrationError::InvalidState {
+                details: "Expected incremental checkpoint".to_string(),
+            }));
         }
 
         validate_checkpoint(checkpoint)?;
@@ -568,9 +589,14 @@ where
             .await?;
 
         if !response.success {
-            return Err(Error::Stream(response.error.unwrap_or_else(|| {
-                "Failed to apply incremental checkpoint".to_string()
-            })));
+            return Err(Error::Stream(
+                crate::error::StreamError::OperationConflict {
+                    name: checkpoint.stream_name.clone(),
+                    reason: response
+                        .error
+                        .unwrap_or_else(|| "Failed to apply incremental checkpoint".to_string()),
+                },
+            ));
         }
 
         Ok(())
@@ -584,10 +610,12 @@ where
         );
 
         // Update allocation in global consensus
-        let operation = GlobalOperation::UpdateStreamAllocation {
-            stream_name: migration.stream_name.clone(),
-            new_group: migration.target_group,
-        };
+        let operation = GlobalOperation::StreamManagement(
+            crate::operations::StreamManagementOperation::UpdateAllocation {
+                name: migration.stream_name.clone(),
+                new_group: migration.target_group,
+            },
+        );
 
         self.router.route_global_operation(operation).await?;
 
@@ -644,21 +672,27 @@ where
 
         if !response.success {
             return Err(Error::Stream(
-                response
-                    .error
-                    .unwrap_or_else(|| "Failed to get checkpoint".to_string()),
+                crate::error::StreamError::OperationConflict {
+                    name: migration.stream_name.clone(),
+                    reason: response
+                        .error
+                        .unwrap_or_else(|| "Failed to get checkpoint".to_string()),
+                },
             ));
         }
 
         // Retrieve the actual checkpoint from the response
-        let checkpoint_data = response
-            .checkpoint_data
-            .ok_or_else(|| Error::Stream("No checkpoint data in response".to_string()))?;
+        let checkpoint_data = response.checkpoint_data.ok_or_else(|| {
+            Error::Stream(crate::error::StreamError::OperationConflict {
+                name: migration.stream_name.clone(),
+                reason: "No checkpoint data in response".to_string(),
+            })
+        })?;
 
         // Deserialize the checkpoint
         let mut checkpoint: MigrationCheckpoint = serde_json::from_slice(&checkpoint_data)
             .map_err(|e| {
-                Error::Deserialization(format!("Failed to deserialize checkpoint: {}", e))
+                Error::Serialization(format!("Failed to deserialize checkpoint: {}", e))
             })?;
 
         // Now retrieve the actual stream configuration and subscriptions from global state
@@ -722,9 +756,14 @@ where
             .await?;
 
         if !response.success {
-            return Err(Error::Stream(response.error.unwrap_or_else(|| {
-                "Failed to apply checkpoint metadata".to_string()
-            })));
+            return Err(Error::Stream(
+                crate::error::StreamError::OperationConflict {
+                    name: checkpoint.stream_name.clone(),
+                    reason: response
+                        .error
+                        .unwrap_or_else(|| "Failed to apply checkpoint metadata".to_string()),
+                },
+            ));
         }
 
         // For now, we're using a simplified approach where the actual data transfer
@@ -765,12 +804,14 @@ where
         };
 
         if let Some(migration) = migration {
-            let operation = GlobalOperation::MigrateStream {
-                stream_name: stream_name.to_string(),
-                from_group: migration.source_group,
-                to_group: migration.target_group,
-                state: new_state,
-            };
+            let operation = GlobalOperation::StreamManagement(
+                crate::operations::StreamManagementOperation::Migrate {
+                    name: stream_name.to_string(),
+                    from_group: migration.source_group,
+                    to_group: migration.target_group,
+                    state: new_state,
+                },
+            );
 
             self.router.route_global_operation(operation).await?;
         }
@@ -789,7 +830,7 @@ where
                 migration.error = Some(error.clone());
                 migration.clone()
             } else {
-                return Err(Error::NotFound(format!(
+                return Err(Error::not_found(format!(
                     "Migration for stream {} not found",
                     stream_name
                 )));
@@ -864,10 +905,12 @@ where
         }
 
         // Restore allocation to source group in global consensus
-        let restore_allocation_op = GlobalOperation::UpdateStreamAllocation {
-            stream_name: migration.stream_name.clone(),
-            new_group: migration.source_group,
-        };
+        let restore_allocation_op = GlobalOperation::StreamManagement(
+            crate::operations::StreamManagementOperation::UpdateAllocation {
+                name: migration.stream_name.clone(),
+                new_group: migration.source_group,
+            },
+        );
 
         if let Err(e) = self
             .router
@@ -895,7 +938,7 @@ where
         {
             let migrations = self.active_migrations.read().await;
             if migrations.contains_key(stream_name) {
-                return Err(Error::AlreadyExists(format!(
+                return Err(Error::already_exists(format!(
                     "Migration for stream {} is already in progress",
                     stream_name
                 )));
@@ -915,7 +958,7 @@ where
             .router
             .query_stream_info(stream_name)
             .await
-            .map_err(|e| Error::NotFound(format!("Stream {} not found: {}", stream_name, e)))?;
+            .map_err(|e| Error::not_found(format!("Stream {} not found: {}", stream_name, e)))?;
 
         // Verify the stream is actually in the source group
         if stream_info.consensus_group != Some(source_group) {
@@ -931,7 +974,7 @@ where
             .get_consensus_group_info(target_group)
             .await
             .ok_or_else(|| {
-                Error::NotFound(format!(
+                Error::not_found(format!(
                     "Target consensus group {:?} not found",
                     target_group
                 ))
@@ -1078,10 +1121,10 @@ pub fn compress_checkpoint(
             let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
             encoder
                 .write_all(&serialized)
-                .map_err(|e| Error::CompressionFailed(e.to_string()))?;
+                .map_err(|e| Error::Serialization(format!("Compression failed: {}", e)))?;
             let compressed = encoder
                 .finish()
-                .map_err(|e| Error::CompressionFailed(e.to_string()))?;
+                .map_err(|e| Error::Serialization(format!("Compression failed: {}", e)))?;
             Bytes::from(compressed)
         }
         CompressionType::Lz4 => {
@@ -1127,7 +1170,7 @@ pub fn decompress_checkpoint(
             let mut decompressed = Vec::new();
             decoder
                 .read_to_end(&mut decompressed)
-                .map_err(|e| Error::DecompressionFailed(e.to_string()))?;
+                .map_err(|e| Error::Serialization(format!("Decompression failed: {}", e)))?;
             decompressed
         }
         CompressionType::Lz4 => {
@@ -1139,14 +1182,16 @@ pub fn decompress_checkpoint(
     // Verify checksum
     let actual_checksum = calculate_checksum(&decompressed_data);
     if actual_checksum != compressed.metadata.original_checksum {
-        return Err(Error::ChecksumMismatch(format!(
-            "Expected {}, got {}",
-            compressed.metadata.original_checksum, actual_checksum
-        )));
+        return Err(Error::MigrationFailed(MigrationError::DataLoss {
+            details: format!(
+                "Expected {}, got {}",
+                compressed.metadata.original_checksum, actual_checksum
+            ),
+        }));
     }
 
     let checkpoint: MigrationCheckpoint = serde_json::from_slice(&decompressed_data)
-        .map_err(|e| Error::Deserialization(e.to_string()))?;
+        .map_err(|e| Error::Serialization(e.to_string()))?;
 
     Ok(checkpoint)
 }
@@ -1163,30 +1208,31 @@ pub fn calculate_checksum(data: &[u8]) -> String {
 pub fn validate_checkpoint(checkpoint: &MigrationCheckpoint) -> ConsensusResult<()> {
     // Check if stream name is valid
     if checkpoint.stream_name.is_empty() {
-        return Err(Error::InvalidCheckpoint(
-            "Stream name cannot be empty".to_string(),
-        ));
+        return Err(Error::MigrationFailed(MigrationError::InvalidState {
+            details: "Stream name cannot be empty".to_string(),
+        }));
     }
 
     // Check if sequence number is valid
     if checkpoint.sequence == 0 && checkpoint.message_count > 0 {
-        return Err(Error::InvalidCheckpoint(
-            "Checkpoint sequence cannot be 0 when there are messages".to_string(),
-        ));
+        return Err(Error::MigrationFailed(MigrationError::InvalidState {
+            details: "Checkpoint sequence cannot be 0 when there are messages".to_string(),
+        }));
     }
 
     // For incremental checkpoints, validate base sequence
     if checkpoint.is_incremental {
         if let Some(base_seq) = checkpoint.base_checkpoint_seq {
             if base_seq >= checkpoint.sequence {
-                return Err(Error::InvalidCheckpoint(
-                    "Base checkpoint sequence must be less than checkpoint sequence".to_string(),
-                ));
+                return Err(Error::MigrationFailed(MigrationError::InvalidState {
+                    details: "Base checkpoint sequence must be less than checkpoint sequence"
+                        .to_string(),
+                }));
             }
         } else {
-            return Err(Error::InvalidCheckpoint(
-                "Incremental checkpoint must have base checkpoint sequence".to_string(),
-            ));
+            return Err(Error::MigrationFailed(MigrationError::InvalidState {
+                details: "Incremental checkpoint must have base checkpoint sequence".to_string(),
+            }));
         }
     }
 

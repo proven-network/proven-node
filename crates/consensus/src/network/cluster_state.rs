@@ -7,6 +7,10 @@ pub enum InitiatorReason {
     SingleNode,
     /// Discovery timeout expired
     DiscoveryTimeout,
+    /// All peers are in discovering state
+    AllPeersDiscovering,
+    /// Elected as initiator based on strategy
+    ElectedInitiator,
 }
 
 /// Represents the current state of cluster membership

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::config::StorageConfig;
 use crate::error::ConsensusResult;
-use crate::global::{GlobalState, GlobalTypeConfig};
+use crate::global::{GlobalTypeConfig, global_state::GlobalState};
 use crate::storage::adaptors::{memory::MemoryStorage, rocksdb::RocksDBStorage};
 
 use super::unified::GlobalStorage;
@@ -53,7 +53,7 @@ impl GlobalStorageFactory for MemoryGlobalStorageFactory {
         let storage_engine = Arc::new(MemoryStorage::new());
         let unified_storage = GlobalStorage::new(storage_engine, global_state)
             .await
-            .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+            .map_err(|e| crate::error::Error::storage(e.to_string()))?;
 
         Ok(GlobalStorageType::MemoryBacked(unified_storage))
     }
@@ -86,12 +86,12 @@ impl GlobalStorageFactory for RocksDBGlobalStorageFactory {
         let storage_engine = Arc::new(
             RocksDBStorage::new(config)
                 .await
-                .map_err(|e| crate::error::Error::Storage(e.to_string()))?,
+                .map_err(|e| crate::error::Error::storage(e.to_string()))?,
         );
 
         let unified_storage = GlobalStorage::new(storage_engine, global_state)
             .await
-            .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+            .map_err(|e| crate::error::Error::storage(e.to_string()))?;
 
         Ok(GlobalStorageType::RocksDBBacked(unified_storage))
     }
@@ -335,7 +335,7 @@ impl GlobalStorageFactory for UnifiedGlobalStorageFactory {
                 let storage_engine = Arc::new(MemoryStorage::new());
                 let unified_storage = GlobalStorage::new(storage_engine, global_state)
                     .await
-                    .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+                    .map_err(|e| crate::error::Error::storage(e.to_string()))?;
 
                 Ok(GlobalStorageType::MemoryBacked(unified_storage))
             }
@@ -345,12 +345,12 @@ impl GlobalStorageFactory for UnifiedGlobalStorageFactory {
                 let storage_engine = Arc::new(
                     RocksDBStorage::new(config)
                         .await
-                        .map_err(|e| crate::error::Error::Storage(e.to_string()))?,
+                        .map_err(|e| crate::error::Error::storage(e.to_string()))?,
                 );
 
                 let unified_storage = GlobalStorage::new(storage_engine, global_state)
                     .await
-                    .map_err(|e| crate::error::Error::Storage(e.to_string()))?;
+                    .map_err(|e| crate::error::Error::storage(e.to_string()))?;
 
                 Ok(GlobalStorageType::RocksDBBacked(unified_storage))
             }
@@ -368,7 +368,7 @@ pub fn create_global_storage_factory(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::global::GlobalState;
+    use crate::global::global_state::GlobalState;
 
     #[tokio::test]
     async fn test_memory_global_storage_factory() {

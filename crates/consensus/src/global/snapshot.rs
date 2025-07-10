@@ -122,7 +122,7 @@ impl SnapshotData {
                             data: Bytes::from(data),
                             metadata: snapshot_msg.metadata.clone(),
                             timestamp: snapshot_msg.timestamp,
-                            source: super::state_machine::MessageSource::Consensus, // Default to consensus source for restored messages
+                            source: super::global_state::MessageSource::Consensus, // Default to consensus source for restored messages
                         };
                         (*seq, msg)
                     })
@@ -166,8 +166,10 @@ impl SnapshotData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::global::GlobalOperation;
-    use crate::global::GlobalState;
+    use crate::global::global_state::GlobalState;
+    use crate::operations::{
+        GlobalOperation, GroupOperation, RoutingOperation, StreamManagementOperation,
+    };
 
     #[tokio::test]
     async fn test_snapshot_serialization() {
@@ -176,10 +178,10 @@ mod tests {
         // First create a consensus group
         let response = store
             .apply_operation(
-                &GlobalOperation::AddConsensusGroup {
+                &GlobalOperation::Group(GroupOperation::Create {
                     group_id: crate::allocation::ConsensusGroupId::new(1),
-                    members: vec![crate::NodeId::from_seed(1)],
-                },
+                    initial_members: vec![crate::NodeId::from_seed(1)],
+                }),
                 1,
             )
             .await;
@@ -189,11 +191,11 @@ mod tests {
         // Now create a stream
         let response = store
             .apply_operation(
-                &GlobalOperation::CreateStream {
-                    stream_name: "test-stream".to_string(),
+                &GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+                    name: "test-stream".to_string(),
                     config: crate::global::StreamConfig::default(),
                     group_id: crate::allocation::ConsensusGroupId::new(1),
-                },
+                }),
                 2,
             )
             .await;
@@ -202,10 +204,10 @@ mod tests {
         // Then subscribe to a subject (this is an admin operation)
         let response = store
             .apply_operation(
-                &GlobalOperation::SubscribeToSubject {
+                &GlobalOperation::Routing(RoutingOperation::Subscribe {
                     stream_name: "test-stream".to_string(),
                     subject_pattern: "foo.*".to_string(),
-                },
+                }),
                 3,
             )
             .await;
@@ -234,10 +236,10 @@ mod tests {
         // First create a consensus group
         let response = original_store
             .apply_operation(
-                &GlobalOperation::AddConsensusGroup {
+                &GlobalOperation::Group(GroupOperation::Create {
                     group_id: crate::allocation::ConsensusGroupId::new(1),
-                    members: vec![crate::NodeId::from_seed(1)],
-                },
+                    initial_members: vec![crate::NodeId::from_seed(1)],
+                }),
                 1,
             )
             .await;
@@ -246,11 +248,11 @@ mod tests {
         // Create streams first
         let response = original_store
             .apply_operation(
-                &GlobalOperation::CreateStream {
-                    stream_name: "test-stream".to_string(),
+                &GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+                    name: "test-stream".to_string(),
                     config: crate::global::StreamConfig::default(),
                     group_id: crate::allocation::ConsensusGroupId::new(1),
-                },
+                }),
                 2,
             )
             .await;
@@ -258,11 +260,11 @@ mod tests {
 
         let response = original_store
             .apply_operation(
-                &GlobalOperation::CreateStream {
-                    stream_name: "test-stream-2".to_string(),
+                &GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+                    name: "test-stream-2".to_string(),
                     config: crate::global::StreamConfig::default(),
                     group_id: crate::allocation::ConsensusGroupId::new(1),
-                },
+                }),
                 3,
             )
             .await;
@@ -271,10 +273,10 @@ mod tests {
         // Subscribe to a subject (admin operation)
         let response = original_store
             .apply_operation(
-                &GlobalOperation::SubscribeToSubject {
+                &GlobalOperation::Routing(RoutingOperation::Subscribe {
                     stream_name: "test-stream".to_string(),
                     subject_pattern: "foo.*".to_string(),
-                },
+                }),
                 4,
             )
             .await;
@@ -283,10 +285,10 @@ mod tests {
         // Subscribe to another subject
         let response = original_store
             .apply_operation(
-                &GlobalOperation::SubscribeToSubject {
+                &GlobalOperation::Routing(RoutingOperation::Subscribe {
                     stream_name: "test-stream-2".to_string(),
                     subject_pattern: "bar.*".to_string(),
-                },
+                }),
                 5,
             )
             .await;

@@ -65,6 +65,7 @@ impl StorageKey {
     }
 
     /// Create a storage key from a string
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         Self(Bytes::copy_from_slice(s.as_bytes()))
     }

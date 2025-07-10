@@ -78,7 +78,7 @@ impl StreamManager {
 
         // Check if stream already exists
         if streams.contains_key(&stream_id) {
-            return Err(Error::AlreadyExists(format!(
+            return Err(Error::already_exists(format!(
                 "Stream {} already exists",
                 stream_id
             )));
@@ -115,7 +115,7 @@ impl StreamManager {
         streams
             .get(stream_id)
             .map(|info| info.storage.clone())
-            .ok_or_else(|| Error::NotFound(format!("Stream {} not found", stream_id)))
+            .ok_or_else(|| Error::not_found(format!("Stream {} not found", stream_id)))
     }
 
     /// Check if a stream exists
@@ -130,7 +130,7 @@ impl StreamManager {
         streams
             .get(stream_id)
             .map(|info| info.config.clone())
-            .ok_or_else(|| Error::NotFound(format!("Stream {} not found", stream_id)))
+            .ok_or_else(|| Error::not_found(format!("Stream {} not found", stream_id)))
     }
 
     /// Update stream configuration
@@ -145,7 +145,7 @@ impl StreamManager {
                 info.config = config;
                 Ok(())
             }
-            None => Err(Error::NotFound(format!("Stream {} not found", stream_id))),
+            None => Err(Error::not_found(format!("Stream {} not found", stream_id))),
         }
     }
 
@@ -155,7 +155,7 @@ impl StreamManager {
 
         // Remove from map
         if streams.remove(stream_id).is_none() {
-            return Err(Error::NotFound(format!("Stream {} not found", stream_id)));
+            return Err(Error::not_found(format!("Stream {} not found", stream_id)));
         }
 
         // Clean up storage
@@ -182,7 +182,7 @@ impl StreamManager {
         let streams = self.streams.read().await;
         let info = streams
             .get(stream_id)
-            .ok_or_else(|| Error::NotFound(format!("Stream {} not found", stream_id)))?;
+            .ok_or_else(|| Error::not_found(format!("Stream {} not found", stream_id)))?;
 
         Ok(StreamExport {
             stream_id: stream_id.to_string(),
@@ -203,7 +203,7 @@ impl StreamManager {
 
         // Check if stream already exists
         if streams.contains_key(&stream_id) {
-            return Err(Error::AlreadyExists(format!(
+            return Err(Error::already_exists(format!(
                 "Stream {} already exists",
                 stream_id
             )));

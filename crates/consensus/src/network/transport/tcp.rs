@@ -4,10 +4,10 @@
 //! no COSE handling, no attestation verification. All of that is handled by
 //! the consensus layer.
 
+use super::{MessageHandler, NetworkTransport, PeerConnection};
 use crate::NodeId;
 use crate::error::{NetworkError, NetworkResult};
 use crate::topology::TopologyManager;
-use crate::transport::{MessageHandler, NetworkTransport, PeerConnection};
 use crate::verification::ConnectionVerification;
 
 use std::any::Any;
@@ -122,9 +122,13 @@ where
         *self.shutdown_tx.lock().unwrap() = Some(shutdown_tx.clone());
 
         // Start TCP listener
-        let listener = TcpListener::bind(self.listen_addr)
-            .await
-            .map_err(|e| NetworkError::BindFailed(e.to_string()))?;
+        let listener =
+            TcpListener::bind(self.listen_addr)
+                .await
+                .map_err(|e| NetworkError::BindFailed {
+                    address: self.listen_addr.to_string(),
+                    reason: e.to_string(),
+                })?;
 
         // Start listener task
         let incoming_peers = self.incoming_peers.clone();
@@ -360,15 +364,21 @@ where
 
         let length_result = match read_result {
             Ok(Ok(_)) => Ok(()),
-            Ok(Err(e)) => Err(NetworkError::ReceiveFailed(e.to_string())),
-            Err(_) => Err(NetworkError::ReceiveFailed("Read timeout".to_string())),
+            Ok(Err(e)) => Err(NetworkError::ReceiveFailed {
+                reason: e.to_string(),
+            }),
+            Err(_) => Err(NetworkError::ReceiveFailed {
+                reason: "Read timeout".to_string(),
+            }),
         };
 
         length_result?;
 
         let len = u32::from_be_bytes(len_buf);
         if len > MAX_MESSAGE_SIZE {
-            return Err(NetworkError::ReceiveFailed("Message too large".to_string()));
+            return Err(NetworkError::ReceiveFailed {
+                reason: "Message too large".to_string(),
+            });
         }
 
         // Read message data with timeout
@@ -378,8 +388,12 @@ where
             stream.read_exact(&mut data),
         )
         .await
-        .map_err(|_| NetworkError::ReceiveFailed("Read timeout".to_string()))?
-        .map_err(|e| NetworkError::ReceiveFailed(e.to_string()))?;
+        .map_err(|_| NetworkError::ReceiveFailed {
+            reason: "Read timeout".to_string(),
+        })?
+        .map_err(|e| NetworkError::ReceiveFailed {
+            reason: e.to_string(),
+        })?;
 
         Ok(data)
     }
@@ -472,10 +486,10 @@ where
                                 connection_id, e
                             );
                             self.verifier.remove_connection(&connection_id).await;
-                            return Err(NetworkError::ConnectionFailed(format!(
-                                "Verification failed: {}",
-                                e
-                            )));
+                            return Err(NetworkError::ConnectionFailed {
+                                peer: expected_node_id,
+                                reason: format!("Verification failed: {}", e),
+                            });
                         }
                     }
 
@@ -491,9 +505,10 @@ where
                                     &verified_public_key, &expected_node_id
                                 );
                                 self.verifier.remove_connection(&connection_id).await;
-                                return Err(NetworkError::ConnectionFailed(
-                                    "Public key mismatch during verification".to_string(),
-                                ));
+                                return Err(NetworkError::ConnectionFailed {
+                                    peer: expected_node_id,
+                                    reason: "Public key mismatch during verification".to_string(),
+                                });
                             }
 
                             // Create a channel for sending messages to this verified peer
@@ -545,10 +560,10 @@ where
                 }
                 Err(e) => {
                     self.verifier.remove_connection(&connection_id).await;
-                    return Err(NetworkError::ConnectionFailed(format!(
-                        "Connection closed during verification: {}",
-                        e
-                    )));
+                    return Err(NetworkError::ConnectionFailed {
+                        peer: expected_node_id,
+                        reason: format!("Connection closed during verification: {}", e),
+                    });
                 }
             }
         }
@@ -566,10 +581,14 @@ where
 
         // Get socket address using the Node's tcp_socket_addr method
         let node_wrapper = crate::Node::from(node.clone());
-        let address = node_wrapper
-            .tcp_socket_addr()
-            .await
-            .map_err(NetworkError::ConnectionFailed)?;
+        let address =
+            node_wrapper
+                .tcp_socket_addr()
+                .await
+                .map_err(|e| NetworkError::ConnectionFailed {
+                    peer: node_wrapper.node_id(),
+                    reason: e.to_string(),
+                })?;
 
         debug!("Resolved {} to {}", node.origin, address);
 
@@ -593,10 +612,16 @@ where
                     }
                 }
                 Ok(Err(e)) => {
-                    last_error = Some(NetworkError::ConnectionFailed(e.to_string()));
+                    last_error = Some(NetworkError::ConnectionFailed {
+                        peer: node_wrapper.node_id(),
+                        reason: e.to_string(),
+                    });
                 }
                 Err(_) => {
-                    last_error = Some(NetworkError::Timeout("Connection timeout".to_string()));
+                    last_error = Some(NetworkError::ConnectionFailed {
+                        peer: node_wrapper.node_id(),
+                        reason: "Connection timeout".to_string(),
+                    });
                 }
             }
 
@@ -607,8 +632,10 @@ where
         }
 
         // All attempts failed
-        let error = last_error
-            .unwrap_or_else(|| NetworkError::ConnectionFailed("Unknown error".to_string()));
+        let error = last_error.unwrap_or_else(|| NetworkError::ConnectionFailed {
+            peer: node_id.clone(),
+            reason: "Unknown error".to_string(),
+        });
         warn!(
             "Failed to establish on-demand connection to peer {} after {} attempts: {}",
             node_id, CONNECTION_RETRY_ATTEMPTS, error
@@ -658,7 +685,9 @@ where
         }
 
         // Still no connection available
-        Err(NetworkError::PeerNotConnected)
+        Err(NetworkError::PeerNotConnected {
+            peer: target_node_id.clone(),
+        })
     }
 
     async fn start_listener(&self, message_handler: MessageHandler) -> NetworkResult<()> {

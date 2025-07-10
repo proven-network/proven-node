@@ -35,6 +35,7 @@ impl ClientOptions for ConsensusClientOptions {}
 
 /// Error type for consensus clients.
 #[derive(Debug, thiserror::Error)]
+#[allow(clippy::large_enum_variant)] // TODO: Improve this
 pub enum ConsensusClientError {
     /// Consensus error.
     #[error("Consensus error: {0}")]

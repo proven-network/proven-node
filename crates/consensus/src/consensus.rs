@@ -18,18 +18,20 @@ use proven_bootable::Bootable;
 use proven_governance::Governance;
 
 use crate::NodeId;
+// use crate::cluster_discovery::{ClusterDiscovery, ClusterDiscoveryConfig, DiscoveryResult};
 use crate::config::ConsensusConfig;
 use crate::error::{ConsensusResult, Error};
-use crate::global::GlobalManager;
 use crate::global::{
-    GlobalOperation, GlobalRequest, GlobalResponse, GlobalState, GlobalTypeConfig,
+    GlobalRequest, GlobalResponse, GlobalTypeConfig, global_manager::GlobalManager,
+    global_state::GlobalState,
 };
 use crate::local::LocalStreamOperation;
 use crate::network::messages::{ApplicationMessage, ClusterDiscoveryResponse};
 use crate::network::network_manager::NetworkManager;
 use crate::network::{ClusterState, InitiatorReason};
-use crate::operations::{ConsensusOperation, ConsensusRequest};
+use crate::operations::{GlobalOperation, RoutingOperation, StreamManagementOperation};
 use crate::orchestrator::Orchestrator;
+use crate::router::ConsensusOperation;
 
 // Type aliases for complex handler types
 type AppMessageHandlerType =
@@ -126,25 +128,26 @@ where
             raft_adapter_response_rx,
         );
 
-        // Create global manager (handles Raft, discovery, topology)
+        // Create global manager
         let raft_config = Arc::new(config.raft_config);
-        let global_manager = GlobalManager::new(
-            node_id.clone(),
-            storage,
-            raft_config,
-            config.cluster_join_retry_config,
-            network_factory,
-            network_manager.clone(),
-            topology.clone(),
-            global_state.clone(),
-            raft_adapter_request_rx,
-            raft_adapter_response_tx,
-        )
-        .await
-        .map_err(|e| Error::Raft(format!("Failed to create GlobalManager: {e}")))?;
 
-        // Wrap global manager in Arc
-        let global_manager = Arc::new(global_manager);
+        // Create GlobalManager
+        let global_manager = Arc::new(
+            GlobalManager::new(
+                node_id.clone(),
+                raft_config.as_ref().clone(),
+                network_factory,
+                storage,
+                global_state.clone(),
+                Some(topology.clone()),
+                network_manager.clone(),
+                config.cluster_join_retry_config.clone(),
+                raft_adapter_request_rx,
+                raft_adapter_response_tx,
+            )
+            .await
+            .map_err(|e| Error::Raft(format!("Failed to create GlobalManager: {e}")))?,
+        );
 
         // Create PubSub manager
         let pubsub_manager = Arc::new(crate::pubsub::PubSubManager::new(
@@ -171,6 +174,7 @@ where
         let orchestrator = Orchestrator::new(
             orchestrator_config,
             hierarchical_config,
+            Default::default(), // Use default views config
             global_manager.clone(),
             global_state.clone(),
             node_id.clone(),
@@ -187,7 +191,7 @@ where
         ));
 
         // Create consensus instance
-        let mut consensus = Self {
+        let consensus = Self {
             node_id: node_id.clone(),
             global_state,
             network_manager: network_manager.clone(),
@@ -198,14 +202,13 @@ where
             task_handles: Arc::new(std::sync::Mutex::new(Vec::new())),
         };
 
-        // Start components
-        consensus.start_internal().await?;
-
         Ok(consensus)
     }
 
     /// Start internal components
-    async fn start_internal(&mut self) -> ConsensusResult<()> {
+    async fn start_internal(&self) -> ConsensusResult<()> {
+        info!("Starting internal components for node {}", self.node_id);
+
         // Set up message handlers to route from NetworkManager to GlobalManager and PubSubManager
         let global_manager_clone = self.global_manager.clone();
         let pubsub_manager_clone = self.pubsub_manager.clone();
@@ -227,6 +230,10 @@ where
                     // Route other application messages to global manager
                     let global_manager = global_manager_clone.clone();
                     tokio::spawn(async move {
+                        info!(
+                            "Routing application message from {} to GlobalManager: {:?}",
+                            node_id, message
+                        );
                         if let Err(e) = global_manager
                             .handle_network_message(
                                 node_id,
@@ -261,13 +268,15 @@ where
             }));
 
         // Start the network transport and message handling
+        info!("Starting network manager...");
         self.network_manager
             .start_network(app_message_handler, raft_message_handler)
             .await?;
+        info!("Network manager started");
 
-        // Start global consensus components (Raft, discovery, topology)
-        self.global_manager.start_topology().await?;
+        // GlobalManager message processing is handled via the handlers we set up above
 
+        info!("All internal components started successfully");
         Ok(())
     }
 
@@ -298,7 +307,8 @@ where
 
     /// Check if this node is the leader
     pub fn is_leader(&self) -> bool {
-        self.global_manager.is_leader()
+        // For now, use a blocking call. In production, this should be refactored to async
+        futures::executor::block_on(self.global_manager.is_leader())
     }
 
     /// Check if this node has an active cluster
@@ -325,7 +335,9 @@ where
             Ok(router)
         } else {
             Err(Error::Configuration(
-                "HTTP integration not supported by current transport".to_string(),
+                crate::error::ConfigurationError::InvalidTransport {
+                    reason: "HTTP integration not supported by current transport".to_string(),
+                },
             ))
         }
     }
@@ -333,15 +345,12 @@ where
     /// Submit a messaging request for consensus
     pub async fn submit_request(&self, request: GlobalRequest) -> ConsensusResult<GlobalResponse> {
         // Route through hierarchical system
-        let consensus_request = ConsensusRequest {
-            operation: ConsensusOperation::GlobalAdmin(request.operation),
-            request_id: None,
-        };
+        let operation = ConsensusOperation::GlobalAdmin(request.operation);
 
         let response = self
             .hierarchical_orchestrator
             .router()
-            .route_request(consensus_request)
+            .route_operation(operation, None)
             .await?;
 
         Ok(GlobalResponse {
@@ -532,10 +541,10 @@ where
         let subject_pattern = subject_pattern.into();
 
         let request = GlobalRequest {
-            operation: GlobalOperation::SubscribeToSubject {
+            operation: GlobalOperation::Routing(RoutingOperation::Subscribe {
                 stream_name,
                 subject_pattern,
-            },
+            }),
         };
 
         self.propose_request(&request).await
@@ -552,10 +561,10 @@ where
         subject_pattern: impl Into<String>,
     ) -> ConsensusResult<u64> {
         let request = GlobalRequest {
-            operation: GlobalOperation::UnsubscribeFromSubject {
+            operation: GlobalOperation::Routing(RoutingOperation::Unsubscribe {
                 stream_name: stream_name.into(),
                 subject_pattern: subject_pattern.into(),
-            },
+            }),
         };
 
         self.propose_request(&request).await
@@ -571,9 +580,9 @@ where
         stream_name: impl Into<String>,
     ) -> ConsensusResult<u64> {
         let request = GlobalRequest {
-            operation: GlobalOperation::RemoveStreamSubscriptions {
+            operation: GlobalOperation::Routing(RoutingOperation::RemoveAllSubscriptions {
                 stream_name: stream_name.into(),
-            },
+            }),
         };
 
         self.propose_request(&request).await
@@ -594,10 +603,10 @@ where
         let stream_name = stream_name.into();
 
         let request = GlobalRequest {
-            operation: GlobalOperation::BulkSubscribeToSubjects {
+            operation: GlobalOperation::Routing(RoutingOperation::BulkSubscribe {
                 stream_name,
                 subject_patterns,
-            },
+            }),
         };
 
         self.propose_request(&request).await
@@ -616,10 +625,10 @@ where
         subject_patterns: Vec<String>,
     ) -> ConsensusResult<u64> {
         let request = GlobalRequest {
-            operation: GlobalOperation::BulkUnsubscribeFromSubjects {
+            operation: GlobalOperation::Routing(RoutingOperation::BulkUnsubscribe {
                 stream_name: stream_name.into(),
                 subject_patterns,
-            },
+            }),
         };
 
         self.propose_request(&request).await
@@ -716,11 +725,11 @@ where
         };
 
         // Use hierarchical system - create the stream with the selected group
-        let operation = GlobalOperation::CreateStream {
-            stream_name,
+        let operation = GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+            name: stream_name,
             config,
             group_id,
-        };
+        });
 
         let response = self
             .hierarchical_orchestrator
@@ -729,7 +738,7 @@ where
             .await?;
 
         if response.success {
-            Ok(response.sequence.unwrap_or(0))
+            Ok(response.sequence)
         } else {
             Err(Error::ConsensusFailed(
                 response
@@ -750,10 +759,10 @@ where
         config: crate::global::StreamConfig,
     ) -> ConsensusResult<u64> {
         let request = GlobalRequest {
-            operation: GlobalOperation::UpdateStreamConfig {
-                stream_name: stream_name.into(),
+            operation: GlobalOperation::StreamManagement(StreamManagementOperation::UpdateConfig {
+                name: stream_name.into(),
                 config,
-            },
+            }),
         };
 
         self.propose_request(&request).await
@@ -766,17 +775,17 @@ where
     /// Returns an error if the stream doesn't exist or consensus fails.
     pub async fn delete_stream(&self, stream_name: impl Into<String>) -> ConsensusResult<u64> {
         let request = GlobalRequest {
-            operation: GlobalOperation::DeleteStream {
-                stream_name: stream_name.into(),
-            },
+            operation: GlobalOperation::StreamManagement(StreamManagementOperation::Delete {
+                name: stream_name.into(),
+            }),
         };
 
         self.propose_request(&request).await
     }
 
     /// Get current Raft metrics
-    pub fn metrics(&self) -> Option<openraft::RaftMetrics<GlobalTypeConfig>> {
-        self.global_manager.metrics()
+    pub async fn metrics(&self) -> Option<openraft::RaftMetrics<GlobalTypeConfig>> {
+        self.global_manager.metrics().await.ok()
     }
 
     /// Get connected peers
@@ -806,8 +815,36 @@ where
     pub async fn start(&self) -> ConsensusResult<()> {
         info!("Starting consensus system for node {}", self.node_id);
 
+        // Initialize transport and then complete startup with discovery
+        self.initialize_transport().await?;
+        self.complete_startup().await
+    }
+
+    /// Initialize the transport and internal components without starting discovery
+    /// This is useful for tests that need to set up HTTP servers before discovery
+    pub async fn initialize_transport(&self) -> ConsensusResult<()> {
+        // Start internal components first (network, handlers, etc.)
+        self.start_internal().await?;
+
+        // Start topology manager to refresh from governance
+
+        info!("Starting topology manager...");
+        self.global_manager.start_topology().await?;
+        info!("Topology manager started");
+
+        Ok(())
+    }
+
+    /// Complete the startup process by running discovery
+    /// Should be called after initialize_transport()
+    pub async fn complete_startup(&self) -> ConsensusResult<()> {
         // Get all peers from topology
         let all_peers = self.global_manager.topology().get_all_peers().await;
+
+        info!("Topology refresh complete. Found {} peers", all_peers.len());
+        for peer in &all_peers {
+            info!("  - Peer: {} at {}", peer.node_id(), peer.origin());
+        }
 
         if all_peers.is_empty() {
             // Single node topology - immediately become initiator
@@ -855,11 +892,8 @@ where
 
             info!("Performing cluster discovery round...");
 
-            // Clear previous responses (now handled by NetworkManager)
-            // No need to clear manually as NetworkManager handles this
-
-            // Perform discovery
-            let responses = self.discover_existing_clusters().await?;
+            // Perform discovery using GlobalManager
+            let responses = self.global_manager.discover_existing_clusters().await?;
 
             // Check if any peer reports an active cluster
             if let Some(existing_cluster) = responses
@@ -901,15 +935,16 @@ where
             if coordinator_id == &self.node_id {
                 info!("Selected as cluster coordinator, initializing multi-node cluster");
 
-                // Peers are already GovernanceNodes, no conversion needed
-                self.initialize_multi_node_cluster(all_peers).await?;
+                // We are the coordinator
+                self.initialize_multi_node_cluster(InitiatorReason::ElectedInitiator, all_peers)
+                    .await?;
             } else {
                 info!("Not selected as coordinator, waiting for coordinator to initialize cluster");
                 // Wait a bit more for the coordinator to set up the cluster
                 tokio::time::sleep(Duration::from_secs(2)).await;
 
                 // Try one more discovery round
-                let responses = self.discover_existing_clusters().await?;
+                let responses = self.global_manager.discover_existing_clusters().await?;
 
                 if let Some(existing_cluster) = responses
                     .iter()
@@ -941,9 +976,13 @@ where
     }
 
     /// Initialize a multi-node cluster by starting as single-node and expecting others to join
-    async fn initialize_multi_node_cluster(&self, peers: Vec<crate::Node>) -> ConsensusResult<()> {
+    async fn initialize_multi_node_cluster(
+        &self,
+        reason: InitiatorReason,
+        peers: Vec<crate::Node>,
+    ) -> ConsensusResult<()> {
         self.global_manager
-            .initialize_multi_node_cluster(self.node_id.clone(), peers)
+            .initialize_multi_node_cluster(self.node_id.clone(), reason, peers)
             .await
     }
 
@@ -990,6 +1029,12 @@ where
     /// Get the global state
     pub fn global_state(&self) -> &Arc<GlobalState> {
         &self.global_state
+    }
+
+    /// Force sync of consensus groups with allocation manager
+    /// This is useful for testing or when immediate sync is needed
+    pub async fn sync_consensus_groups(&self) -> ConsensusResult<()> {
+        self.hierarchical_orchestrator.sync_consensus_groups().await
     }
 
     /// Publish a message to a subject using PubSub (bypasses consensus)

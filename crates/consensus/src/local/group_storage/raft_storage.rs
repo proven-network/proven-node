@@ -51,6 +51,7 @@ mod keys {
         StorageKey::from("last_applied")
     }
 
+    #[allow(dead_code)]
     pub fn log_entry(index: u64) -> StorageKey {
         StorageKey::from(format!("log:{:016x}", index).as_str())
     }
@@ -78,15 +79,15 @@ impl<S: StorageEngine + LogStorage<LocalLogMetadata>> RaftStorage<S> {
         storage
             .create_namespace(&namespaces::logs())
             .await
-            .map_err(|e| Error::Storage(e.to_string()))?;
+            .map_err(|e| Error::storage(e.to_string()))?;
         storage
             .create_namespace(&namespaces::state())
             .await
-            .map_err(|e| Error::Storage(e.to_string()))?;
+            .map_err(|e| Error::storage(e.to_string()))?;
         storage
             .create_namespace(&namespaces::snapshots())
             .await
-            .map_err(|e| Error::Storage(e.to_string()))?;
+            .map_err(|e| Error::storage(e.to_string()))?;
 
         Ok(Self { storage, group_id })
     }

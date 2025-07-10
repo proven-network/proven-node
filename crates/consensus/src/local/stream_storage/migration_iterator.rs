@@ -65,8 +65,11 @@ impl<S: StorageEngine + LogStorage<StreamLogMetadata>> MigrationMessageIterator<
                 .storage
                 .get_entry(&self.namespace, self.current_seq)
                 .await
-                .map_err(|e| crate::error::Error::Storage(e.to_string()))?
-            {
+                .map_err(|_e| {
+                    crate::error::Error::Storage(crate::error::StorageError::OperationFailed {
+                        operation: "get_entry".to_string(),
+                    })
+                })? {
                 Some(log_entry) => {
                     // Update checksum with raw data
                     self.checksum_hasher.update(log_entry.data.as_ref());

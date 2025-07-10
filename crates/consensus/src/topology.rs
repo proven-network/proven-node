@@ -2,7 +2,6 @@
 
 use ed25519_dalek::VerifyingKey;
 use proven_governance::Governance;
-use proven_governance_mock::MockGovernance;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -60,7 +59,10 @@ where
 
     /// Refresh topology from governance
     pub async fn refresh_topology(&self) -> ConsensusResult<()> {
-        debug!("Refreshing topology from governance");
+        info!(
+            "Refreshing topology from governance for node {}",
+            self.node_id
+        );
 
         let topology = self
             .governance
@@ -68,23 +70,35 @@ where
             .await
             .map_err(|e| Error::Governance(format!("Failed to get topology: {e}")))?;
 
+        info!("Governance returned {} nodes in topology", topology.len());
+
         let mut peers = Vec::new();
 
         for node in topology {
+            info!(
+                "  - Node {} at {}",
+                NodeId::new(node.public_key),
+                node.origin
+            );
+
             // Skip ourselves
             if self.node_id == node.public_key {
+                info!("    (skipping self)");
                 continue;
             }
 
             // Validate the origin URL
             url::Url::parse(&node.origin).map_err(|e| {
-                Error::Configuration(format!("Invalid origin URL '{}': {}", node.origin, e))
+                Error::Configuration(crate::error::ConfigurationError::InvalidValue {
+                    key: "origin".to_string(),
+                    reason: format!("Invalid origin URL '{}': {}", node.origin, e),
+                })
             })?;
 
             peers.push(crate::Node::from(node));
         }
 
-        debug!("Found {} peers in topology", peers.len());
+        info!("Found {} peers in topology (excluding self)", peers.len());
 
         // Update cached peers
         {
@@ -244,10 +258,14 @@ where
             }
         }
 
-        Err(Error::Configuration(format!(
-            "Own node with public key {} not found in topology",
-            hex::encode(self.node_id.to_bytes())
-        )))
+        Err(Error::Configuration(
+            crate::error::ConfigurationError::MissingRequired {
+                key: format!(
+                    "node with public key {}",
+                    hex::encode(self.node_id.to_bytes())
+                ),
+            },
+        ))
     }
 
     /// Manually clear cooldown for a specific node (useful for testing or manual intervention)
@@ -403,7 +421,8 @@ where
     }
 }
 
-impl TopologyManager<MockGovernance> {
+#[cfg(test)]
+impl TopologyManager<proven_governance_mock::MockGovernance> {
     /// Add a node to the topology.
     ///
     /// # Errors

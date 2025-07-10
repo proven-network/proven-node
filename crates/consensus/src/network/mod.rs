@@ -8,5 +8,6 @@ pub mod adaptor;
 mod cluster_state;
 pub mod messages;
 pub mod network_manager;
+pub mod transport;
 
 pub use cluster_state::{ClusterState, InitiatorReason};

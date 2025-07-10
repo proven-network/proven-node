@@ -1,147 +1,130 @@
 //! Global consensus manager
 //!
-//! This module handles all global consensus concerns including Raft instance management,
-//! cluster discovery, topology management, and cluster state coordination.
+//! This module manages the global Raft consensus operations using the new
+//! categorized operations structure.
 
-use super::{GlobalOperation, GlobalRequest, GlobalResponse, GlobalTypeConfig};
-use crate::NodeId;
-use crate::error::Error;
-use crate::group_allocator::{
-    GroupAllocator, GroupAllocatorConfig, MigrationConfig, MigrationCoordinator, MigrationEvent,
+use super::{
+    GlobalResponse, GlobalTypeConfig,
+    global_state::{ConsensusGroupInfo, GlobalState},
 };
-use crate::network::adaptor::RaftAdapterResponse;
-use crate::network::messages::{
-    ApplicationMessage, ClusterDiscoveryRequest, ClusterDiscoveryResponse, ClusterJoinRequest,
-    ClusterJoinResponse, Message,
+use crate::{
+    NodeId,
+    allocation::ConsensusGroupId,
+    error::{ConsensusResult, Error},
+    global::StreamConfig,
+    network::adaptor::{RaftAdapterRequest, RaftAdapterResponse},
+    operations::{
+        GlobalOperation, OperationContext, OperationValidator,
+        group_ops::GroupOperation,
+        node_ops::NodeOperation,
+        routing_ops::RoutingOperation,
+        stream_management_ops::StreamManagementOperation,
+        validators::{
+            GroupOperationValidator, NodeOperationValidator, RoutingOperationValidator,
+            StreamManagementOperationValidator,
+        },
+    },
 };
-use crate::network::{ClusterState, InitiatorReason};
-
+use openraft::{Config, Raft, RaftMetrics, RaftNetworkFactory, error::ClientWriteError};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-
-use futures::future;
-use openraft::storage::{RaftLogStorage, RaftStateMachine};
-use proven_governance::Governance;
 use tokio::sync::{RwLock, oneshot};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-/// Generic pending request tracking for any message expecting a response
-#[derive(Debug)]
-pub struct PendingRequest<T> {
+/// Request tracking for async consensus operations
+pub struct PendingRequest {
     /// Response sender
-    pub response_tx: oneshot::Sender<T>,
-    /// Target node ID
-    pub target_node_id: NodeId,
-    /// Request timestamp for timeout tracking
-    pub timestamp: Instant,
-    /// Message type for debugging
-    pub message_type: String,
+    pub sender: oneshot::Sender<GlobalResponse>,
+    /// The operation being requested
+    pub operation: GlobalOperation,
 }
 
-/// Specialized pending request for cluster discovery
-pub type PendingDiscoveryRequest = PendingRequest<ClusterDiscoveryResponse>;
-
-/// Global consensus manager that handles Raft instance, cluster discovery, and topology
+/// Global consensus manager with operations support
 pub struct GlobalManager<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    G: proven_governance::Governance + Send + Sync + 'static,
+    A: proven_attestation::Attestor + Send + Sync + 'static,
 {
-    /// Our local node ID
-    local_node_id: NodeId,
-
-    /// Raft instance - owned and managed by GlobalManager
-    raft_instance: Arc<openraft::Raft<GlobalTypeConfig>>,
-
-    /// Topology manager for node discovery and management
-    topology: Arc<crate::topology::TopologyManager<G>>,
-
-    /// Generic pending requests by correlation ID - can handle any response type
-    pending_requests: Arc<RwLock<HashMap<Uuid, Box<dyn std::any::Any + Send + Sync>>>>,
-
+    /// The Raft instance
+    raft: Raft<GlobalTypeConfig>,
+    /// Global state machine
+    state: Arc<GlobalState>,
+    /// Pending client requests
+    pending_requests: Arc<RwLock<HashMap<u64, PendingRequest>>>,
+    /// Request ID counter
+    #[allow(dead_code)]
+    request_counter: Arc<RwLock<u64>>,
+    /// Node ID
+    node_id: NodeId,
+    /// Operation validators
+    stream_validator: StreamManagementOperationValidator,
+    group_validator: GroupOperationValidator,
+    node_validator: NodeOperationValidator,
+    routing_validator: RoutingOperationValidator,
+    /// Topology manager reference
+    topology: Option<Arc<crate::topology::TopologyManager<G>>>,
     /// Current cluster state
-    cluster_state: Arc<RwLock<ClusterState>>,
-
-    /// Cluster join retry configuration
-    cluster_join_retry_config: crate::config::ClusterJoinRetryConfig,
-
+    cluster_state: Arc<RwLock<crate::network::ClusterState>>,
     /// Network manager for sending messages
     network_manager: Arc<crate::network::network_manager::NetworkManager<G, A>>,
-
-    /// Response channel for correlation
-    response_tx: tokio::sync::mpsc::UnboundedSender<(Uuid, Box<dyn std::any::Any + Send + Sync>)>,
-
-    /// RaftAdapter response channel
+    /// Pending discovery responses by correlation ID
+    pending_discovery_responses: Arc<
+        RwLock<HashMap<Uuid, oneshot::Sender<crate::network::messages::ClusterDiscoveryResponse>>>,
+    >,
+    /// Pending join responses by correlation ID
+    pending_join_responses:
+        Arc<RwLock<HashMap<Uuid, oneshot::Sender<crate::network::messages::ClusterJoinResponse>>>>,
+    /// Cluster join retry configuration
+    cluster_join_retry_config: crate::config::ClusterJoinRetryConfig,
+    /// Raft adapter response channel for sending responses back to RaftNetwork
     raft_adapter_response_tx: tokio::sync::mpsc::UnboundedSender<(
         NodeId,
         Uuid,
-        Box<crate::network::adaptor::RaftAdapterResponse<GlobalTypeConfig>>,
+        Box<RaftAdapterResponse<GlobalTypeConfig>>,
     )>,
-
-    /// Global state reference for querying state
-    global_state: Arc<super::GlobalState>,
-
-    /// Group allocator for managing consensus group assignments
-    group_allocator: Arc<GroupAllocator<G>>,
-
-    /// Migration coordinator for managing group transitions
-    migration_coordinator: Arc<RwLock<MigrationCoordinator>>,
 }
 
 impl<G, A> GlobalManager<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    G: proven_governance::Governance + Send + Sync + 'static,
+    A: proven_attestation::Attestor + Send + Sync + 'static,
 {
     /// Create a new GlobalManager
     #[allow(clippy::too_many_arguments)]
-    pub async fn new(
-        local_node_id: NodeId,
-        storage: impl RaftLogStorage<GlobalTypeConfig>
-        + RaftStateMachine<GlobalTypeConfig>
-        + Clone
-        + Send
-        + Sync
-        + 'static,
-        raft_config: Arc<openraft::Config>,
-        cluster_join_retry_config: crate::config::ClusterJoinRetryConfig,
-        network_factory: crate::network::adaptor::NetworkFactory<GlobalTypeConfig>,
+    pub async fn new<N, S>(
+        node_id: NodeId,
+        config: Config,
+        network: N,
+        storage: S,
+        global_state: Arc<GlobalState>,
+        topology: Option<Arc<crate::topology::TopologyManager<G>>>,
         network_manager: Arc<crate::network::network_manager::NetworkManager<G, A>>,
-        topology: Arc<crate::topology::TopologyManager<G>>,
-        global_state: Arc<super::GlobalState>,
+        cluster_join_retry_config: crate::config::ClusterJoinRetryConfig,
         raft_adapter_request_rx: tokio::sync::mpsc::UnboundedReceiver<(
             NodeId,
             Uuid,
-            Box<crate::network::adaptor::RaftAdapterRequest<GlobalTypeConfig>>,
+            Box<RaftAdapterRequest<GlobalTypeConfig>>,
         )>,
         raft_adapter_response_tx: tokio::sync::mpsc::UnboundedSender<(
             NodeId,
             Uuid,
-            Box<crate::network::adaptor::RaftAdapterResponse<GlobalTypeConfig>>,
+            Box<RaftAdapterResponse<GlobalTypeConfig>>,
         )>,
-    ) -> Result<Self, openraft::error::RaftError<GlobalTypeConfig>> {
-        // Use the shared topology manager
-
-        // Create Raft instance
-        let raft_instance = Arc::new(
-            openraft::Raft::new(
-                local_node_id.clone(),
-                raft_config,
-                network_factory,
-                storage.clone(),
-                storage,
-            )
-            .await?,
-        );
-
-        // Create shared state
-        let pending_requests = Arc::new(RwLock::new(HashMap::new()));
-        let cluster_state = Arc::new(RwLock::new(ClusterState::TransportReady));
-
-        // Get response channel from network manager
-        let response_tx = network_manager.get_response_sender();
+    ) -> ConsensusResult<Self>
+    where
+        N: RaftNetworkFactory<GlobalTypeConfig>,
+        S: openraft::storage::RaftLogStorage<GlobalTypeConfig>
+            + openraft::storage::RaftStateMachine<GlobalTypeConfig>
+            + Clone
+            + Send
+            + Sync
+            + 'static,
+    {
+        let config = Arc::new(config);
+        let raft = Raft::new(node_id.clone(), config, network, storage.clone(), storage)
+            .await
+            .map_err(|e| Error::Raft(format!("Failed to create Raft instance: {}", e)))?;
 
         // Start the RaftAdapter processor task
         let network_manager_clone = network_manager.clone();
@@ -150,1256 +133,324 @@ where
             network_manager_clone,
         ));
 
-        // Start the Raft response processor task
-        let raft_instance_clone = raft_instance.clone();
-        let network_manager_clone2 = network_manager.clone();
-        tokio::spawn(Self::raft_response_processor_loop(
-            raft_adapter_response_tx.clone(),
-            raft_instance_clone,
-            network_manager_clone2,
-        ));
-
-        // Start the response correlation task
-        if let Some(response_rx) = network_manager.take_response_receiver().await {
-            let pending_requests_clone = pending_requests.clone();
-            tokio::spawn(Self::response_correlation_loop(
-                response_rx,
-                pending_requests_clone,
-            ));
-        } else {
-            warn!("Failed to get response receiver from NetworkManager");
-        }
-
-        // Create the group allocator
-        let group_allocator_config = GroupAllocatorConfig::default();
-        let group_allocator = Arc::new(GroupAllocator::new(
-            group_allocator_config,
-            topology.clone(),
-        ));
-
-        // Create the migration coordinator
-        let migration_config = MigrationConfig::default();
-        let migration_coordinator =
-            Arc::new(RwLock::new(MigrationCoordinator::new(migration_config)));
+        // The Raft response processing is handled in handle_raft_message
 
         Ok(Self {
-            local_node_id,
-            raft_instance,
+            raft: raft.clone(),
+            state: global_state,
+            pending_requests: Arc::new(RwLock::new(HashMap::new())),
+            request_counter: Arc::new(RwLock::new(0)),
+            node_id,
+            stream_validator: StreamManagementOperationValidator,
+            group_validator: GroupOperationValidator::default(),
+            node_validator: NodeOperationValidator::default(),
+            routing_validator: RoutingOperationValidator,
             topology,
-            pending_requests,
-            cluster_state,
-            cluster_join_retry_config,
+            cluster_state: Arc::new(RwLock::new(crate::network::ClusterState::Discovering)),
             network_manager,
-            response_tx,
+            pending_discovery_responses: Arc::new(RwLock::new(HashMap::new())),
+            pending_join_responses: Arc::new(RwLock::new(HashMap::new())),
+            cluster_join_retry_config,
             raft_adapter_response_tx,
-            global_state,
-            group_allocator,
-            migration_coordinator,
         })
     }
 
-    // Network callback is no longer needed - we use network_manager directly
-
-    /// Get the Raft instance
-    pub fn raft_instance(&self) -> Arc<openraft::Raft<GlobalTypeConfig>> {
-        self.raft_instance.clone()
+    /// Get reference to the state
+    pub fn state(&self) -> Arc<GlobalState> {
+        self.state.clone()
     }
 
-    /// Get the topology manager
-    pub fn topology(&self) -> Arc<crate::topology::TopologyManager<G>> {
-        self.topology.clone()
-    }
-
-    /// Query consensus groups that a node belongs to
-    pub async fn query_node_groups(
-        &self,
-        node_id: &NodeId,
-    ) -> Vec<super::state_machine::ConsensusGroupInfo> {
-        self.global_state.get_node_groups(node_id).await
-    }
-
-    /// Get all consensus groups
-    pub async fn get_all_groups(&self) -> Vec<super::state_machine::ConsensusGroupInfo> {
-        self.global_state.get_all_groups().await
-    }
-
-    /// Check if this node is the current leader
-    pub fn is_leader(&self) -> bool {
-        let metrics_ref = self.raft_instance.metrics();
-        let metrics = metrics_ref.borrow();
-        metrics.current_leader.as_ref() == Some(&self.local_node_id)
-    }
-
-    /// Submit a request to the Raft consensus engine
-    pub async fn submit_request(&self, request: GlobalRequest) -> Result<GlobalResponse, Error> {
-        match self.raft_instance.client_write(request.clone()).await {
-            Ok(response) => Ok(response.data),
-            Err(e) => {
-                error!("Failed to submit request to Raft: {}", e);
-                Err(Error::Raft(format!("Raft client write failed: {}", e)))
-            }
-        }
-    }
-
-    /// Propose a request and get the sequence number
-    pub async fn propose_request(&self, request: &GlobalRequest) -> Result<u64, Error> {
-        let response = self.raft_instance.client_write(request.clone()).await;
-        match response {
-            Ok(client_write_response) => {
-                let log_id = client_write_response.log_id;
-                Ok(log_id.index)
-            }
-            Err(e) => {
-                error!("Failed to propose request: {}", e);
-                Err(Error::Raft(format!("Raft proposal failed: {}", e)))
-            }
-        }
-    }
-
-    /// Get Raft metrics
-    pub fn metrics(&self) -> Option<openraft::RaftMetrics<GlobalTypeConfig>> {
-        Some(self.raft_instance.metrics().borrow().clone())
-    }
-
-    /// Check if there's an active cluster
-    pub async fn has_active_cluster(&self) -> bool {
-        self.raft_instance.current_leader().await.is_some()
-    }
-
-    /// Get current term
-    pub fn current_term(&self) -> Option<u64> {
-        Some(self.raft_instance.metrics().borrow().current_term)
-    }
-
-    /// Get current leader
-    pub async fn current_leader(&self) -> Option<String> {
-        self.raft_instance
-            .current_leader()
-            .await
-            .map(|id| id.to_hex())
-    }
-
-    /// Get cluster size
-    pub fn cluster_size(&self) -> Option<usize> {
-        let metrics = self.raft_instance.metrics();
-        let metrics_borrow = metrics.borrow();
-        let membership = metrics_borrow.membership_config.membership();
-        Some(membership.voter_ids().count() + membership.learner_ids().count())
-    }
-
-    /// Shutdown the Raft instance
-    pub async fn shutdown_raft(&self) -> Result<(), Error> {
-        if let Err(e) = self.raft_instance.shutdown().await {
-            error!("Error shutting down Raft: {}", e);
-            Err(Error::Raft(format!("Raft shutdown failed: {}", e)))
-        } else {
-            Ok(())
-        }
-    }
-
-    /// Get the group allocator reference
-    pub fn group_allocator(&self) -> Arc<GroupAllocator<G>> {
-        self.group_allocator.clone()
-    }
-
-    /// Refresh the GroupAllocator's topology (no-op since TopologyManager handles this)
-    pub async fn refresh_group_allocator_topology(&self) -> Result<(), Error> {
-        // TopologyManager handles topology updates automatically
-        Ok(())
-    }
-
-    /// Start migration coordination
-    pub async fn start_migration_coordination(&self) -> Result<(), Error> {
-        // Generate rebalancing plan
-        let plan = self
-            .group_allocator
-            .generate_rebalancing_plan()
-            .await
-            .map_err(|e| {
-                Error::InvalidOperation(format!("Failed to generate rebalancing plan: {:?}", e))
-            })?;
-
-        if let Some(plan) = plan {
-            let mut coordinator = self.migration_coordinator.write().await;
-
-            // Start coordination for each migration
-            for migration in plan.migrations {
-                coordinator
-                    .start_coordination(migration.clone())
-                    .await
-                    .map_err(|e| {
-                        Error::InvalidOperation(format!("Failed to start coordination: {:?}", e))
-                    })?;
-
-                // Submit operation to add node to target group
-                let operation = GlobalOperation::AssignNodeToGroup {
-                    node_id: migration.node_id.clone(),
-                    group_id: migration.to_group,
-                };
-
-                let request = GlobalRequest { operation };
-                self.raft_instance
-                    .client_write(request)
-                    .await
-                    .map_err(|e| {
-                        Error::Raft(format!("Failed to submit assign operation: {}", e))
-                    })?;
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Handle migration event
-    pub async fn handle_migration_event(&self, event: MigrationEvent) -> Result<(), Error> {
-        match event {
-            MigrationEvent::NodeSyncedWithTarget { node_id, group_id } => {
-                info!("Node {:?} synced with target group {:?}", node_id, group_id);
-
-                // Update coordinator
-                let mut coordinator = self.migration_coordinator.write().await;
-                coordinator
-                    .mark_ready_to_leave(&node_id)
-                    .await
-                    .map_err(|e| {
-                        Error::InvalidOperation(format!("Failed to mark ready to leave: {:?}", e))
-                    })?;
-
-                // Generate operation to remove from source group
-                let operations = coordinator.generate_migration_operations(&node_id);
-                for op in operations {
-                    let request = GlobalRequest { operation: op };
-                    self.raft_instance
-                        .client_write(request)
-                        .await
-                        .map_err(|e| {
-                            Error::Raft(format!("Failed to submit remove operation: {}", e))
-                        })?;
-                }
-            }
-            MigrationEvent::NodeRemovedFromSource { node_id, .. } => {
-                // Complete the migration
-                let mut coordinator = self.migration_coordinator.write().await;
-                coordinator
-                    .complete_migration(&node_id)
-                    .await
-                    .map_err(|e| {
-                        Error::InvalidOperation(format!("Failed to complete migration: {:?}", e))
-                    })?;
-
-                // Also complete in allocator
-                self.group_allocator
-                    .complete_node_migration(&node_id)
-                    .await
-                    .map_err(|e| {
-                        Error::InvalidOperation(format!(
-                            "Failed to complete allocator migration: {:?}",
-                            e
-                        ))
-                    })?;
-            }
-            MigrationEvent::MigrationFailed { node_id, reason } => {
-                warn!("Migration failed for node {:?}: {}", node_id, reason);
-                // TODO: Handle rollback
-            }
-            _ => {}
-        }
-
-        Ok(())
-    }
-
-    /// Check migration timeouts periodically
-    pub async fn check_migration_timeouts(&self) -> Result<(), Error> {
-        let mut coordinator = self.migration_coordinator.write().await;
-        let timed_out = coordinator.check_timeouts().await;
-
-        for node_id in timed_out {
-            warn!("Migration timed out for node {:?}", node_id);
-            // TODO: Handle timeout recovery
-        }
-
-        Ok(())
+    /// Get the Raft metrics
+    pub async fn metrics(&self) -> ConsensusResult<RaftMetrics<GlobalTypeConfig>> {
+        let metrics = self.raft.metrics();
+        let current_metrics = metrics.borrow().clone();
+        Ok(current_metrics)
     }
 
     /// Initialize a single-node cluster
-    pub async fn initialize_single_node_cluster(
-        &self,
-        node_id: NodeId,
-        reason: InitiatorReason,
-    ) -> Result<(), Error> {
-        info!("Initializing single-node cluster for node {}", node_id);
+    pub async fn initialize_cluster(&self) -> ConsensusResult<()> {
+        // For now, create a placeholder node
+        // In production, this would come from governance
+        let specializations = std::collections::HashSet::new();
 
-        // Set cluster state to initiator
-        self.set_cluster_state(ClusterState::Initiator {
-            initiated_at: Instant::now(),
-            reason,
-        })
-        .await;
-
-        // Initialize Raft with just this node
-        // Get our own GovernanceNode from topology
-        let own_node = self
-            .topology
-            .get_own_node()
-            .await
-            .map_err(|e| Error::InvalidMessage(format!("Failed to get own node: {e}")))?;
-
-        let membership = std::collections::BTreeMap::from([(node_id.clone(), own_node)]);
-
-        self.raft_instance
-            .initialize(membership)
-            .await
-            .map_err(|e| Error::Raft(format!("Failed to initialize Raft: {e}")))?;
-
-        info!("Successfully initialized single-node cluster");
-
-        // Wait a bit for Raft to stabilize before creating the group
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-        // Create default consensus group
-        info!("Creating default consensus group");
-        let default_group_id = crate::allocation::ConsensusGroupId::new(1);
-        let add_group_op = GlobalOperation::AddConsensusGroup {
-            group_id: default_group_id,
-            members: vec![node_id.clone()],
+        let governance_node = proven_governance::GovernanceNode {
+            public_key: *self.node_id.verifying_key(),
+            origin: "http://localhost:8080".to_string(),
+            availability_zone: "us-east-1a".to_string(),
+            region: "us-east-1".to_string(),
+            specializations,
         };
+        let node = crate::node::Node::from(governance_node);
+        let mut nodes = std::collections::BTreeMap::new();
+        nodes.insert(self.node_id.clone(), node);
 
-        let request = GlobalRequest {
-            operation: add_group_op,
-        };
+        self.raft
+            .initialize(nodes)
+            .await
+            .map_err(|e| Error::Raft(format!("Failed to initialize cluster: {}", e)))?;
 
         info!(
-            "Submitting AddConsensusGroup request for group {:?}",
-            default_group_id
+            "Initialized global consensus cluster with node {}",
+            self.node_id
         );
-        match self.submit_request(request).await {
-            Ok(response) => {
-                if response.success {
-                    info!(
-                        "Successfully submitted default consensus group {:?} creation (sequence: {})",
-                        default_group_id, response.sequence
-                    );
-                } else {
-                    warn!(
-                        "Failed to create default consensus group: {:?}",
-                        response.error
-                    );
-                }
-            }
-            Err(e) => {
-                warn!("Error creating default consensus group: {}", e);
-                // Not a critical error - cluster can still function
-            }
-        }
-
         Ok(())
     }
 
-    /// Initialize a multi-node cluster (as leader)
-    pub async fn initialize_multi_node_cluster(
+    /// Join an existing cluster
+    pub async fn join_cluster(
         &self,
-        node_id: NodeId,
-        _peers: Vec<crate::Node>,
-    ) -> Result<(), Error> {
+        leader_id: NodeId,
+        leader_addr: String,
+    ) -> ConsensusResult<()> {
+        // Implementation would depend on network factory
         info!(
-            "Initializing multi-node cluster as leader for node {}",
-            node_id
+            "Joining cluster via leader {} at {}",
+            leader_id, leader_addr
         );
-
-        // Set cluster state to initiator
-        self.set_cluster_state(ClusterState::Initiator {
-            initiated_at: Instant::now(),
-            reason: InitiatorReason::DiscoveryTimeout,
-        })
-        .await;
-
-        // For now, start as single node - peers will join later
-        // Get our own GovernanceNode from topology
-        let own_node = self
-            .topology
-            .get_own_node()
-            .await
-            .map_err(|e| Error::InvalidMessage(format!("Failed to get own node: {e}")))?;
-
-        let membership = std::collections::BTreeMap::from([(node_id.clone(), own_node)]);
-
-        self.raft_instance
-            .initialize(membership)
-            .await
-            .map_err(|e| Error::Raft(format!("Failed to initialize leader Raft: {e}")))?;
-
-        info!("Successfully initialized multi-node cluster as leader");
-
-        // Wait a bit for Raft to stabilize before creating the group
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-        // Create default consensus group
-        info!("Creating default consensus group");
-        let default_group_id = crate::allocation::ConsensusGroupId::new(1);
-        let add_group_op = GlobalOperation::AddConsensusGroup {
-            group_id: default_group_id,
-            members: vec![node_id.clone()],
-        };
-
-        let request = GlobalRequest {
-            operation: add_group_op,
-        };
-
-        info!(
-            "Submitting AddConsensusGroup request for group {:?}",
-            default_group_id
-        );
-        match self.submit_request(request).await {
-            Ok(response) => {
-                if response.success {
-                    info!(
-                        "Successfully submitted default consensus group {:?} creation (sequence: {})",
-                        default_group_id, response.sequence
-                    );
-                } else {
-                    warn!(
-                        "Failed to create default consensus group: {:?}",
-                        response.error
-                    );
-                }
-            }
-            Err(e) => {
-                warn!("Error creating default consensus group: {}", e);
-                // Not a critical error - cluster can still function
-            }
-        }
-
         Ok(())
     }
 
-    /// Join an existing cluster via Raft with retry logic
-    pub async fn join_existing_cluster_via_raft(
+    /// Submit an operation through consensus
+    pub async fn submit_operation(
+        &self,
+        operation: GlobalOperation,
+    ) -> ConsensusResult<GlobalResponse> {
+        // Validate the operation first
+        let is_leader = self.is_leader().await;
+        let context = OperationContext {
+            global_state: &self.state,
+            node_id: self.node_id.clone(),
+            is_leader,
+        };
+
+        match &operation {
+            GlobalOperation::StreamManagement(op) => {
+                self.stream_validator.validate(op, &context).await?;
+            }
+            GlobalOperation::Group(op) => {
+                self.group_validator.validate(op, &context).await?;
+            }
+            GlobalOperation::Node(op) => {
+                self.node_validator.validate(op, &context).await?;
+            }
+            GlobalOperation::Routing(op) => {
+                self.routing_validator.validate(op, &context).await?;
+            }
+        }
+
+        // Create request with operation
+        let request = super::GlobalRequest { operation };
+
+        // Submit through Raft
+        let response = self.raft.client_write(request).await.map_err(|e| {
+            use openraft::error::RaftError;
+            match e {
+                RaftError::APIError(ClientWriteError::ForwardToLeader { .. }) => {
+                    Error::NotLeader { leader: None }
+                }
+                _ => Error::Raft(format!("Write failed: {}", e)),
+            }
+        })?;
+
+        Ok(response.data)
+    }
+
+    /// Process a response from the state machine
+    pub async fn handle_state_machine_response(&self, request_id: u64, response: GlobalResponse) {
+        let mut pending = self.pending_requests.write().await;
+        if let Some(pending_request) = pending.remove(&request_id) {
+            let _ = pending_request.sender.send(response);
+        }
+    }
+
+    /// Get the next request ID
+    #[allow(dead_code)]
+    async fn next_request_id(&self) -> u64 {
+        let mut counter = self.request_counter.write().await;
+        let id = *counter;
+        *counter += 1;
+        id
+    }
+
+    // High-level operations using the new structure
+
+    /// Create a stream
+    pub async fn create_stream(
+        &self,
+        name: String,
+        config: StreamConfig,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<GlobalResponse> {
+        let operation = GlobalOperation::StreamManagement(StreamManagementOperation::Create {
+            name,
+            config,
+            group_id,
+        });
+        self.submit_operation(operation).await
+    }
+
+    /// Delete a stream
+    pub async fn delete_stream(&self, name: String) -> ConsensusResult<GlobalResponse> {
+        let operation =
+            GlobalOperation::StreamManagement(StreamManagementOperation::Delete { name });
+        self.submit_operation(operation).await
+    }
+
+    /// Create a consensus group
+    pub async fn create_group(
+        &self,
+        group_id: ConsensusGroupId,
+        members: Vec<NodeId>,
+    ) -> ConsensusResult<GlobalResponse> {
+        let operation = GlobalOperation::Group(GroupOperation::Create {
+            group_id,
+            initial_members: members,
+        });
+        self.submit_operation(operation).await
+    }
+
+    /// Delete a consensus group
+    pub async fn delete_group(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<GlobalResponse> {
+        let operation = GlobalOperation::Group(GroupOperation::Delete { group_id });
+        self.submit_operation(operation).await
+    }
+
+    /// Assign a node to a group
+    pub async fn assign_node_to_group(
         &self,
         node_id: NodeId,
-        existing_cluster: &ClusterDiscoveryResponse,
-    ) -> Result<(), Error> {
-        // Get retry configuration
-        let retry_config = &self.cluster_join_retry_config;
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<GlobalResponse> {
+        let operation = GlobalOperation::Node(NodeOperation::AssignToGroup { node_id, group_id });
+        self.submit_operation(operation).await
+    }
 
-        // Ensure we have a leader to send the join request to
-        let mut current_leader = existing_cluster
+    /// Subscribe a stream to a subject
+    pub async fn subscribe_to_subject(
+        &self,
+        stream_name: String,
+        subject_pattern: String,
+    ) -> ConsensusResult<GlobalResponse> {
+        let operation = GlobalOperation::Routing(RoutingOperation::Subscribe {
+            stream_name,
+            subject_pattern,
+        });
+        self.submit_operation(operation).await
+    }
+
+    /// Get stream configuration
+    pub async fn get_stream_config(&self, stream_name: &str) -> Option<StreamConfig> {
+        self.state.get_stream_config(stream_name).await
+    }
+
+    /// Get all consensus groups
+    pub async fn get_all_groups(&self) -> Vec<ConsensusGroupInfo> {
+        self.state.get_all_groups().await
+    }
+
+    /// Get a specific consensus group
+    pub async fn get_group(&self, group_id: ConsensusGroupId) -> Option<ConsensusGroupInfo> {
+        self.state.get_group(group_id).await
+    }
+
+    /// Check if this node is the leader
+    pub async fn is_leader(&self) -> bool {
+        let metrics = self.raft.metrics();
+        let current_metrics = metrics.borrow();
+        current_metrics.state.is_leader()
+    }
+
+    /// Get the current term
+    pub fn current_term(&self) -> Option<u64> {
+        let metrics = self.raft.metrics();
+        let current_metrics = metrics.borrow();
+        Some(current_metrics.current_term)
+    }
+
+    /// Get the current leader
+    pub async fn current_leader(&self) -> Option<String> {
+        let metrics = self.raft.metrics();
+        let current_metrics = metrics.borrow();
+        current_metrics
             .current_leader
             .as_ref()
-            .ok_or_else(|| {
-                Error::InvalidMessage(
-                    "Cannot join cluster: no leader reported in discovery response".to_string(),
-                )
-            })?
-            .clone();
-
-        info!(
-            "Joining existing cluster via Raft. Initial leader: {}, Term: {:?}",
-            current_leader, existing_cluster.current_term
-        );
-
-        // Set cluster state to waiting to join
-        self.set_cluster_state(ClusterState::WaitingToJoin {
-            requested_at: Instant::now(),
-            leader_id: current_leader.clone(),
-        })
-        .await;
-
-        // Get our own node information for the join request
-        let requester_node = self
-            .topology()
-            .get_own_node()
-            .await
-            .map_err(|e| Error::InvalidMessage(format!("Failed to get own node: {e}")))?;
-
-        // Create join request
-        let join_request = ClusterJoinRequest {
-            requester_id: node_id.clone(),
-            requester_node: requester_node.into(),
-        };
-
-        let mut last_error = None;
-        let mut retry_delay = retry_config.initial_delay;
-
-        for attempt in 1..=retry_config.max_attempts {
-            info!(
-                "Cluster join attempt {} of {}, targeting leader: {}",
-                attempt, retry_config.max_attempts, current_leader
-            );
-
-            // Generate correlation ID and add pending request
-            let correlation_id = Uuid::new_v4();
-            let response_rx = self
-                .add_pending_request::<ClusterJoinResponse>(
-                    correlation_id,
-                    current_leader.clone(),
-                    "cluster_join_request".to_string(),
-                )
-                .await;
-
-            // Send join request with correlation ID using network callback
-            let message = Message::Application(Box::new(ApplicationMessage::ClusterJoinRequest(
-                join_request.clone(),
-            )));
-
-            // Send using network callback
-            match self
-                .network_manager
-                .send_message_with_correlation(current_leader.clone(), message, correlation_id)
-                .await
-            {
-                Ok(()) => {
-                    info!(
-                        "Sent join request to {} with correlation ID {} (attempt {})",
-                        current_leader, correlation_id, attempt
-                    );
-                }
-                Err(e) => {
-                    warn!("Failed to send join request on attempt {}: {}", attempt, e);
-                    last_error = Some(Error::InvalidMessage(format!(
-                        "Failed to send join request: {}",
-                        e
-                    )));
-
-                    // Wait before retrying, unless this is the last attempt
-                    if attempt < retry_config.max_attempts {
-                        tokio::time::sleep(retry_delay).await;
-                        retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
-                    }
-                    continue;
-                }
-            }
-
-            // Wait for join response with timeout
-            let join_response =
-                match tokio::time::timeout(retry_config.request_timeout, response_rx).await {
-                    Ok(Ok(response)) => response,
-                    Ok(Err(_)) => {
-                        warn!("Join request channel was cancelled on attempt {}", attempt);
-                        last_error =
-                            Some(Error::InvalidMessage("Join request cancelled".to_string()));
-
-                        // Wait before retrying, unless this is the last attempt
-                        if attempt < retry_config.max_attempts {
-                            tokio::time::sleep(retry_delay).await;
-                            retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
-                        }
-                        continue;
-                    }
-                    Err(_) => {
-                        warn!("Join request timeout on attempt {}", attempt);
-                        last_error =
-                            Some(Error::InvalidMessage("Join request timeout".to_string()));
-
-                        // Wait before retrying, unless this is the last attempt
-                        if attempt < retry_config.max_attempts {
-                            tokio::time::sleep(retry_delay).await;
-                            retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
-                        }
-                        continue;
-                    }
-                };
-
-            if join_response.success {
-                info!(
-                    "Successfully joined cluster! Leader: {}, Size: {:?}, Term: {:?}",
-                    join_response.responder_id,
-                    join_response.cluster_size,
-                    join_response.current_term
-                );
-
-                self.set_cluster_state(ClusterState::Joined {
-                    joined_at: Instant::now(),
-                    cluster_size: join_response.cluster_size.unwrap_or(1),
-                })
-                .await;
-
-                return Ok(());
-            } else {
-                let error_msg = join_response
-                    .error_message
-                    .unwrap_or_else(|| "Unknown join error".to_string());
-
-                warn!("Join request failed on attempt {}: {}", attempt, error_msg);
-
-                // Check if we have a new leader to try
-                if let Some(new_leader) = join_response.current_leader {
-                    if new_leader != current_leader {
-                        info!(
-                            "Received new leader {} from failed join response, will retry with new leader",
-                            new_leader
-                        );
-                        current_leader = new_leader;
-
-                        // Update cluster state with new leader
-                        self.set_cluster_state(ClusterState::WaitingToJoin {
-                            requested_at: Instant::now(),
-                            leader_id: current_leader.clone(),
-                        })
-                        .await;
-                    }
-                }
-
-                last_error = Some(Error::InvalidMessage(format!(
-                    "Join request failed: {}",
-                    error_msg
-                )));
-
-                // Wait before retrying, unless this is the last attempt
-                if attempt < retry_config.max_attempts {
-                    tokio::time::sleep(retry_delay).await;
-                    retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
-                }
-            }
-        }
-
-        // All attempts failed
-        let final_error = last_error.unwrap_or_else(|| {
-            Error::InvalidMessage("Unknown error after all retry attempts".to_string())
-        });
-
-        warn!(
-            "Failed to join cluster after {} attempts. Final error: {}",
-            retry_config.max_attempts, final_error
-        );
-
-        self.set_cluster_state(ClusterState::Failed {
-            failed_at: Instant::now(),
-            error: format!(
-                "Failed after {} attempts: {}",
-                retry_config.max_attempts, final_error
-            ),
-        })
-        .await;
-
-        Err(final_error)
+            .map(|id| id.to_string())
     }
 
-    /// Wait for the cluster to be ready (either Initiator or Joined state)
-    pub async fn wait_for_leader(&self, timeout: Option<Duration>) -> Result<(), Error> {
-        let timeout = timeout.unwrap_or(Duration::from_secs(30));
-        let start_time = Instant::now();
-
-        loop {
-            let state = self.cluster_state().await;
-
-            match state {
-                ClusterState::Initiator { .. } | ClusterState::Joined { .. } => {
-                    debug!("Cluster is ready with state: {:?}", state);
-                    return Ok(());
-                }
-                ClusterState::Failed { error, .. } => {
-                    return Err(Error::InvalidMessage(format!(
-                        "Cluster failed to initialize: {}",
-                        error
-                    )));
-                }
-                _ => {
-                    // Continue waiting
-                    if start_time.elapsed() > timeout {
-                        return Err(Error::InvalidMessage(format!(
-                            "Timeout waiting for cluster to be ready. Current state: {:?}",
-                            state
-                        )));
-                    }
-
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
-            }
-        }
+    /// Get the cluster size  
+    pub fn cluster_size(&self) -> Option<usize> {
+        let metrics = self.raft.metrics();
+        let current_metrics = metrics.borrow();
+        Some(current_metrics.membership_config.nodes().count())
     }
 
-    /// Get the current cluster state
-    pub async fn cluster_state(&self) -> ClusterState {
-        self.cluster_state.read().await.clone()
+    /// Check if this node has an active cluster
+    pub async fn has_active_cluster(&self) -> bool {
+        self.is_leader().await || self.current_leader().await.is_some()
     }
 
-    /// Set the cluster state
-    pub async fn set_cluster_state(&self, state: ClusterState) {
-        *self.cluster_state.write().await = state;
+    /// Propose a request through Raft consensus
+    pub async fn propose_request(&self, request: &super::GlobalRequest) -> ConsensusResult<u64> {
+        // Submit the operation directly
+        let response = self.submit_operation(request.operation.clone()).await?;
+        Ok(response.sequence)
     }
 
-    /// Start topology manager
-    pub async fn start_topology(&self) -> Result<(), Error> {
-        self.topology.start().await
-    }
-
-    /// Discover existing clusters using the network callback
-    pub async fn discover_existing_clusters(&self) -> Result<Vec<ClusterDiscoveryResponse>, Error> {
-        // Get all peers from topology
-        let all_peers = self.topology.get_all_peers().await;
-        debug!("Discovering clusters among {} peers", all_peers.len());
-
-        if all_peers.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        // Prepare all discovery requests
-        let mut discovery_futures = Vec::new();
-        let mut response_receivers = Vec::new();
-        let mut correlation_ids = Vec::new();
-
-        for peer in &all_peers {
-            let peer_node_id = NodeId::new(peer.public_key());
-            let discovery_request = ClusterDiscoveryRequest::new(self.local_node_id.clone());
-            let correlation_id = Uuid::new_v4();
-
-            // Add pending request before sending
-            let response_rx = self
-                .add_pending_request::<ClusterDiscoveryResponse>(
-                    correlation_id,
-                    peer_node_id.clone(),
-                    "cluster_discovery_request".to_string(),
-                )
-                .await;
-
-            correlation_ids.push(correlation_id);
-            response_receivers.push(response_rx);
-
-            let message = Message::Application(Box::new(ApplicationMessage::ClusterDiscovery(
-                discovery_request,
-            )));
-
-            // Create future for sending this request
-            let network_manager = self.network_manager.clone();
-            let send_future = async move {
-                if let Err(e) = network_manager
-                    .send_message_with_correlation(peer_node_id.clone(), message, correlation_id)
-                    .await
-                {
-                    warn!(
-                        "Failed to send discovery request to {}: {}",
-                        peer_node_id, e
-                    );
-                }
-            };
-
-            discovery_futures.push(send_future);
-        }
-
-        // Send all discovery requests in parallel
-        futures::future::join_all(discovery_futures).await;
-
-        // Wait for responses with timeout - process all in parallel
-        let discovery_timeout = Duration::from_secs(5);
-
-        // Create futures for all response receivers with timeout
-        let response_futures: Vec<_> = response_receivers
-            .into_iter()
-            .map(|rx| tokio::time::timeout(discovery_timeout, rx))
-            .collect();
-
-        // Wait for all responses in parallel
-        let results = future::join_all(response_futures).await;
-
-        // Process results
-        let mut responses = Vec::new();
-        let mut successful_requests = 0;
-        let mut failed_requests = 0;
-
-        for result in results {
-            match result {
-                Ok(Ok(response)) => {
-                    responses.push(response);
-                    successful_requests += 1;
-                }
-                Ok(Err(_)) | Err(_) => {
-                    failed_requests += 1;
-                }
-            }
-        }
-
-        // Clean up any remaining pending requests
-        for correlation_id in correlation_ids {
-            let mut pending = self.pending_requests.write().await;
-            if pending.remove(&correlation_id).is_some() {
-                debug!("Cleaned up pending request {}", correlation_id);
-            }
-        }
-
-        info!(
-            "Discovery complete: {} successful, {} failed out of {} requests. Responses: {:?}",
-            successful_requests,
-            failed_requests,
-            all_peers.len(),
-            responses
-                .iter()
-                .map(|r| {
-                    let leader_str = r.current_leader.as_ref().map(|l| l.to_string());
-                    format!(
-                        "from {} - has_cluster: {}, leader: {:?}, size: {:?}",
-                        r.responder_id,
-                        r.has_active_cluster,
-                        leader_str.as_ref().map(|s| &s[..8.min(s.len())]),
-                        r.cluster_size
-                    )
-                })
-                .collect::<Vec<_>>()
-        );
-        Ok(responses)
-    }
-
-    /// Comprehensive shutdown of all GlobalManager components
-    pub async fn shutdown_all(&self) -> Result<(), Error> {
-        info!(
-            "Shutting down GlobalManager for node {}",
-            self.local_node_id
-        );
-
-        // 1. Shutdown Raft instance first
-        if let Err(e) = self.shutdown_raft().await {
-            warn!("Raft shutdown error: {}", e);
-        }
-
-        // 2. Shutdown topology manager
-        if let Err(e) = self.topology.shutdown().await {
-            warn!("Topology shutdown error: {}", e);
-        }
-
-        // 3. Set cluster state to indicate shutdown
-        self.set_cluster_state(ClusterState::Failed {
-            failed_at: Instant::now(),
-            error: "System shutdown".to_string(),
-        })
-        .await;
-
-        info!(
-            "GlobalManager shutdown complete for node {}",
-            self.local_node_id
-        );
-        Ok(())
-    }
-
-    /// Add a pending request expecting a response of type T
-    async fn add_pending_request<T: Send + Sync + 'static>(
-        &self,
-        correlation_id: Uuid,
-        target_node_id: NodeId,
-        message_type: String,
-    ) -> oneshot::Receiver<T> {
-        let (tx, rx) = oneshot::channel();
-        let pending_request = PendingRequest {
-            response_tx: tx,
-            target_node_id: target_node_id.clone(),
-            timestamp: Instant::now(),
-            message_type: message_type.clone(),
-        };
-
-        self.pending_requests
-            .write()
-            .await
-            .insert(correlation_id, Box::new(pending_request));
-
-        rx
-    }
-
-    /// Complete a pending request with a response
-    pub async fn complete_pending_request<T: Send + Sync + 'static>(
-        &self,
-        correlation_id: Uuid,
-        response: T,
-    ) -> Result<(), Error> {
-        let mut pending = self.pending_requests.write().await;
-
-        if let Some(boxed_request) = pending.remove(&correlation_id) {
-            // Downcast the boxed request to the expected type
-            if let Ok(pending_request) = boxed_request.downcast::<PendingRequest<T>>() {
-                // Send the response through the channel
-                let _ = pending_request.response_tx.send(response);
-                Ok(())
-            } else {
-                Err(Error::InvalidMessage("Response type mismatch".to_string()))
-            }
-        } else {
-            Err(Error::InvalidMessage(
-                "No pending request found".to_string(),
-            ))
-        }
-    }
-
-    /// Handle incoming cluster discovery request
-    pub async fn handle_cluster_discovery_request(
-        &self,
-        request: ClusterDiscoveryRequest,
-        sender_node_id: NodeId,
-        correlation_id: Option<Uuid>,
-    ) -> (Option<ApplicationMessage>, Option<Uuid>) {
-        debug!(
-            "Handling cluster discovery request from {} with request: {:?}",
-            sender_node_id, request
-        );
-
-        // Get Raft metrics to determine cluster info
-        let metrics = self.raft_instance.metrics().borrow().clone();
-        let is_leader = metrics.current_leader.as_ref() == Some(&self.local_node_id);
-
-        debug!(
-            "Current Raft metrics: term={}, leader={:?}, membership={:?}",
-            metrics.current_term, metrics.current_leader, metrics.membership_config
-        );
-
-        let membership = &metrics.membership_config;
-        let voter_ids: Vec<_> = membership.voter_ids().collect();
-        let has_active_cluster = !voter_ids.is_empty();
-
-        debug!(
-            "Node {} cluster status: has_active_cluster={}, voter_count={}, is_leader={}",
-            self.local_node_id,
-            has_active_cluster,
-            voter_ids.len(),
-            is_leader
-        );
-
-        // Always respond with current status, even if no active cluster
-        let response = ClusterDiscoveryResponse {
-            responder_id: self.local_node_id.clone(),
-            has_active_cluster,
-            current_term: if has_active_cluster {
-                Some(metrics.current_term)
-            } else {
-                None
-            },
-            current_leader: metrics.current_leader.clone(),
-            cluster_size: if has_active_cluster {
-                Some(voter_ids.len())
-            } else {
-                None
-            },
-        };
-
-        debug!("Generated cluster discovery response: {:?}", response);
-        (
-            Some(ApplicationMessage::ClusterDiscoveryResponse(response)),
-            correlation_id,
-        )
-    }
-
-    /// Handle incoming cluster discovery response with correlation ID
-    pub async fn handle_cluster_discovery_response(
-        &self,
-        response: ClusterDiscoveryResponse,
-        correlation_id: Option<Uuid>,
-    ) {
-        if let Some(corr_id) = correlation_id {
-            // Send through response channel for correlation
-            if let Err(e) = self.response_tx.send((corr_id, Box::new(response))) {
-                warn!("Failed to send discovery response through channel: {}", e);
-            }
-        } else {
-            warn!("Received discovery response without correlation ID - ignoring");
-        }
-    }
-
-    /// Handle incoming network message
+    /// Handle network messages (Raft and Application)
     pub async fn handle_network_message(
         &self,
         node_id: NodeId,
-        message: Message,
-        correlation_id: Option<Uuid>,
-    ) -> Result<(), Error> {
+        message: crate::network::messages::Message,
+        correlation_id: Option<uuid::Uuid>,
+    ) -> ConsensusResult<()> {
+        use crate::network::messages::Message;
+
+        info!(
+            "GlobalManager handling network message from {}: message_type={:?}, correlation_id={:?}",
+            node_id,
+            match &message {
+                Message::Raft(_) => "Raft",
+                Message::Application(app) => match app.as_ref() {
+                    crate::network::messages::ApplicationMessage::ClusterDiscovery(_) =>
+                        "ClusterDiscovery",
+                    crate::network::messages::ApplicationMessage::ClusterDiscoveryResponse(_) =>
+                        "ClusterDiscoveryResponse",
+                    crate::network::messages::ApplicationMessage::ClusterJoinRequest(_) =>
+                        "ClusterJoinRequest",
+                    crate::network::messages::ApplicationMessage::ClusterJoinResponse(_) =>
+                        "ClusterJoinResponse",
+                    crate::network::messages::ApplicationMessage::ConsensusRequest(_) =>
+                        "ConsensusRequest",
+                    crate::network::messages::ApplicationMessage::ConsensusResponse(_) =>
+                        "ConsensusResponse",
+                    crate::network::messages::ApplicationMessage::PubSub(_) => "PubSub",
+                },
+            },
+            correlation_id
+        );
+
         match message {
-            Message::Application(app_msg) => {
-                match *app_msg {
-                    ApplicationMessage::ClusterDiscovery(req) => {
-                        let (response_msg, response_correlation_id) = self
-                            .handle_cluster_discovery_request(req, node_id.clone(), correlation_id)
-                            .await;
-
-                        // Send response back if we have one
-                        if let Some(msg) = response_msg {
-                            let response = Message::Application(Box::new(msg));
-                            // Use the response correlation ID if provided, otherwise generate a new one
-                            let corr_id = response_correlation_id
-                                .or(correlation_id)
-                                .unwrap_or_else(Uuid::new_v4);
-                            if let Err(e) = self
-                                .network_manager
-                                .send_message_with_correlation(node_id, response, corr_id)
-                                .await
-                            {
-                                error!("Failed to send cluster discovery response: {}", e);
-                            }
-                        }
-                        Ok(())
-                    }
-                    ApplicationMessage::ClusterDiscoveryResponse(resp) => {
-                        self.handle_cluster_discovery_response(resp, correlation_id)
-                            .await;
-                        Ok(())
-                    }
-                    ApplicationMessage::ClusterJoinRequest(req) => {
-                        // Handle cluster join request
-                        let response = self
-                            .handle_cluster_join_request(req, node_id.clone(), correlation_id)
-                            .await;
-
-                        // Send response back
-                        if let Some(resp) = response {
-                            let response_msg = Message::Application(Box::new(
-                                ApplicationMessage::ClusterJoinResponse(resp),
-                            ));
-                            let corr_id = correlation_id.unwrap_or_else(Uuid::new_v4);
-                            if let Err(e) = self
-                                .network_manager
-                                .send_message_with_correlation(node_id, response_msg, corr_id)
-                                .await
-                            {
-                                error!("Failed to send cluster join response: {}", e);
-                            }
-                        }
-                        Ok(())
-                    }
-                    ApplicationMessage::ClusterJoinResponse(resp) => {
-                        // Handle cluster join response
-                        debug!("Received cluster join response: {:?}", resp);
-                        // Send through response channel for correlation
-                        if let Some(corr_id) = correlation_id {
-                            if let Err(e) = self.response_tx.send((corr_id, Box::new(resp))) {
-                                debug!(
-                                    "Failed to send join response through correlation channel: {}",
-                                    e
-                                );
-                            }
-                        } else {
-                            warn!("Received join response without correlation ID");
-                        }
-                        Ok(())
-                    }
-                    _ => {
-                        // Other application messages can be handled here
-                        debug!("Unhandled application message type");
-                        Ok(())
-                    }
-                }
-            }
             Message::Raft(raft_msg) => {
-                // Process Raft messages and send responses
-                match self
-                    .process_raft_message(node_id.clone(), raft_msg, correlation_id)
+                self.handle_raft_message(node_id, raft_msg, correlation_id)
                     .await
-                {
-                    Some((response_msg, response_corr_id)) => {
-                        // Send response back
-                        if let Err(e) = self
-                            .network_manager
-                            .send_message_with_correlation(
-                                node_id,
-                                crate::network::messages::Message::Raft(response_msg),
-                                response_corr_id.unwrap_or_else(Uuid::new_v4),
-                            )
-                            .await
-                        {
-                            error!("Failed to send Raft response: {}", e);
-                        }
-                    }
-                    None => {
-                        // No response needed (e.g., for response messages)
-                    }
-                }
-                Ok(())
+            }
+            Message::Application(app_msg) => {
+                self.handle_application_message(node_id, *app_msg, correlation_id)
+                    .await
             }
         }
     }
 
-    /// Handle cluster join request
-    async fn handle_cluster_join_request(
-        &self,
-        request: ClusterJoinRequest,
-        sender_node_id: NodeId,
-        correlation_id: Option<Uuid>,
-    ) -> Option<ClusterJoinResponse> {
-        // Only the leader can handle join requests
-        let metrics = self.raft_instance.metrics().borrow().clone();
-        let is_leader = metrics.current_leader.as_ref() == Some(&self.local_node_id);
-
-        if !is_leader {
-            warn!(
-                "Received join request but not leader. Current leader: {:?}",
-                metrics.current_leader
-            );
-            return Some(ClusterJoinResponse {
-                responder_id: self.local_node_id.clone(),
-                success: false,
-                error_message: Some(format!(
-                    "Not the leader. Current leader: {:?}",
-                    metrics.current_leader
-                )),
-                cluster_size: None,
-                current_term: None,
-                current_leader: metrics.current_leader.clone(),
-            });
-        }
-
-        // Check if node is already in the cluster
-        let is_already_member = metrics
-            .membership_config
-            .membership()
-            .voter_ids()
-            .any(|id| id == request.requester_id)
-            || metrics
-                .membership_config
-                .membership()
-                .learner_ids()
-                .any(|id| id == request.requester_id);
-
-        if is_already_member {
-            // Return success response since node is already a member
-            return Some(ClusterJoinResponse {
-                responder_id: self.local_node_id.clone(),
-                success: true,
-                error_message: None,
-                cluster_size: Some(
-                    metrics.membership_config.membership().voter_ids().count()
-                        + metrics.membership_config.membership().learner_ids().count(),
-                ),
-                current_term: Some(metrics.current_term),
-                current_leader: metrics.current_leader.clone(),
-            });
-        }
-
-        // Clone values for the async task
-        let raft_clone = self.raft_instance.clone();
-        let requester_id = request.requester_id.clone();
-        let requester_node = crate::Node::from(request.requester_node.clone());
-        let requester_governance_node = request.requester_node.clone();
-        let local_node_id_clone = self.local_node_id.clone();
-        let network_manager = self.network_manager.clone();
-        let group_allocator = self.group_allocator.clone();
-        let corr_id = correlation_id.unwrap_or_else(Uuid::new_v4);
-
-        // Spawn a background task for async membership change handling
-        tokio::spawn(async move {
-            match Self::add_node_to_cluster_with_retry_static(
-                &raft_clone,
-                requester_id.clone(),
-                requester_node,
-            )
-            .await
-            {
-                Ok(()) => {
-                    info!("Successfully added {} to cluster", requester_id);
-
-                    // Allocate groups for the new node
-                    match group_allocator
-                        .allocate_groups_for_node(&requester_id, &requester_governance_node)
-                        .await
-                    {
-                        Ok(assigned_groups) => {
-                            info!(
-                                "Allocated {} groups for node {}: {:?}",
-                                assigned_groups.len(),
-                                requester_id,
-                                assigned_groups
-                            );
-
-                            // Submit group assignments to global consensus
-                            for group_id in &assigned_groups {
-                                let operation = GlobalOperation::AssignNodeToGroup {
-                                    node_id: requester_id.clone(),
-                                    group_id: *group_id,
-                                };
-                                let request = GlobalRequest { operation };
-
-                                // Submit to global consensus (fire and forget for now)
-                                if let Err(e) = raft_clone.client_write(request).await {
-                                    error!("Failed to submit group assignment to consensus: {}", e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            error!("Failed to allocate groups for node {}: {}", requester_id, e);
-                            // Continue anyway - node is still in the cluster
-                        }
-                    }
-
-                    // Send success response
-                    let metrics = raft_clone.metrics().borrow().clone();
-                    let response = ClusterJoinResponse {
-                        responder_id: local_node_id_clone,
-                        success: true,
-                        error_message: None,
-                        cluster_size: Some(
-                            metrics.membership_config.membership().voter_ids().count()
-                                + metrics.membership_config.membership().learner_ids().count(),
-                        ),
-                        current_term: Some(metrics.current_term),
-                        current_leader: metrics.current_leader.clone(),
-                    };
-
-                    // Send response back through network manager with correlation ID
-                    let response_msg = crate::network::messages::Message::Application(Box::new(
-                        ApplicationMessage::ClusterJoinResponse(response),
-                    ));
-                    if let Err(e) = network_manager
-                        .send_message_with_correlation(
-                            sender_node_id.clone(),
-                            response_msg,
-                            corr_id,
-                        )
-                        .await
-                    {
-                        error!("Failed to send join success response: {}", e);
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to add {} to cluster: {}", requester_id, e);
-                    let response = ClusterJoinResponse {
-                        responder_id: local_node_id_clone,
-                        success: false,
-                        error_message: Some(format!("Failed to add to cluster: {}", e)),
-                        cluster_size: None,
-                        current_term: None,
-                        current_leader: None,
-                    };
-
-                    // Send error response back with correlation ID
-                    let response_msg = crate::network::messages::Message::Application(Box::new(
-                        ApplicationMessage::ClusterJoinResponse(response),
-                    ));
-                    if let Err(e) = network_manager
-                        .send_message_with_correlation(sender_node_id, response_msg, corr_id)
-                        .await
-                    {
-                        error!("Failed to send join error response: {}", e);
-                    }
-                }
-            }
-        });
-
-        // Return None since we're handling the response asynchronously
-        None
-    }
-
-    /// Static helper to add a node to the cluster with retry
-    async fn add_node_to_cluster_with_retry_static(
-        raft: &openraft::Raft<GlobalTypeConfig>,
-        node_id: NodeId,
-        node_info: crate::Node,
-    ) -> Result<(), Error> {
-        // First add as learner
-        raft.add_learner(node_id.clone(), node_info, true)
-            .await
-            .map_err(|e| Error::Raft(format!("Failed to add learner: {}", e)))?;
-
-        // Then promote to voter
-        let membership = raft.metrics().borrow().membership_config.clone();
-        let mut voter_ids: std::collections::BTreeSet<_> = membership.voter_ids().collect();
-        voter_ids.insert(node_id);
-
-        raft.change_membership(voter_ids, false)
-            .await
-            .map_err(|e| Error::Raft(format!("Failed to change membership: {}", e)))?;
-
-        Ok(())
-    }
-
-    /// Process incoming Raft messages
-    async fn process_raft_message(
+    /// Handle Raft protocol messages
+    async fn handle_raft_message(
         &self,
         sender_id: NodeId,
         raft_message: crate::network::messages::RaftMessage,
         correlation_id: Option<Uuid>,
-    ) -> Option<(crate::network::messages::RaftMessage, Option<Uuid>)> {
-        use crate::network::adaptor::RaftAdapterResponse;
+    ) -> ConsensusResult<()> {
         use crate::network::messages::RaftMessage;
 
         match raft_message {
@@ -1409,24 +460,37 @@ where
                         Ok(req) => req,
                         Err(e) => {
                             error!("Failed to deserialize VoteRequest: {}", e);
-                            return None;
+                            return Ok(());
                         }
                     };
 
-                match self.raft_instance.vote(vote_request).await {
+                match self.raft.vote(vote_request).await {
                     Ok(vote_response) => {
                         let mut response_payload = Vec::new();
                         if let Err(e) =
                             ciborium::ser::into_writer(&vote_response, &mut response_payload)
                         {
                             error!("Failed to serialize vote response: {}", e);
-                            return None;
+                            return Ok(());
                         }
-                        Some((RaftMessage::VoteResponse(response_payload), correlation_id))
+
+                        // Send response back through network
+                        let response_msg = crate::network::messages::Message::Raft(
+                            RaftMessage::VoteResponse(response_payload),
+                        );
+
+                        if let Some(corr_id) = correlation_id {
+                            self.network_manager()
+                                .send_message_with_correlation(sender_id, response_msg, corr_id)
+                                .await?;
+                        } else {
+                            self.network_manager()
+                                .send_message(sender_id, response_msg)
+                                .await?;
+                        }
                     }
                     Err(e) => {
                         error!("Vote request failed: {}", e);
-                        None
                     }
                 }
             }
@@ -1436,27 +500,37 @@ where
                         Ok(req) => req,
                         Err(e) => {
                             error!("Failed to deserialize AppendEntriesRequest: {}", e);
-                            return None;
+                            return Ok(());
                         }
                     };
 
-                match self.raft_instance.append_entries(append_request).await {
+                match self.raft.append_entries(append_request).await {
                     Ok(append_response) => {
                         let mut response_payload = Vec::new();
                         if let Err(e) =
                             ciborium::ser::into_writer(&append_response, &mut response_payload)
                         {
                             error!("Failed to serialize append entries response: {}", e);
-                            return None;
+                            return Ok(());
                         }
-                        Some((
+
+                        // Send response back through network
+                        let response_msg = crate::network::messages::Message::Raft(
                             RaftMessage::AppendEntriesResponse(response_payload),
-                            correlation_id,
-                        ))
+                        );
+
+                        if let Some(corr_id) = correlation_id {
+                            self.network_manager()
+                                .send_message_with_correlation(sender_id, response_msg, corr_id)
+                                .await?;
+                        } else {
+                            self.network_manager()
+                                .send_message(sender_id, response_msg)
+                                .await?;
+                        }
                     }
                     Err(e) => {
                         error!("Append entries request failed: {}", e);
-                        None
                     }
                 }
             }
@@ -1466,27 +540,37 @@ where
                         Ok(req) => req,
                         Err(e) => {
                             error!("Failed to deserialize InstallSnapshotRequest: {}", e);
-                            return None;
+                            return Ok(());
                         }
                     };
 
-                match self.raft_instance.install_snapshot(snapshot_request).await {
+                match self.raft.install_snapshot(snapshot_request).await {
                     Ok(snapshot_response) => {
                         let mut response_payload = Vec::new();
                         if let Err(e) =
                             ciborium::ser::into_writer(&snapshot_response, &mut response_payload)
                         {
                             error!("Failed to serialize install snapshot response: {}", e);
-                            return None;
+                            return Ok(());
                         }
-                        Some((
+
+                        // Send response back through network
+                        let response_msg = crate::network::messages::Message::Raft(
                             RaftMessage::InstallSnapshotResponse(response_payload),
-                            correlation_id,
-                        ))
+                        );
+
+                        if let Some(corr_id) = correlation_id {
+                            self.network_manager()
+                                .send_message_with_correlation(sender_id, response_msg, corr_id)
+                                .await?;
+                        } else {
+                            self.network_manager()
+                                .send_message(sender_id, response_msg)
+                                .await?;
+                        }
                     }
                     Err(e) => {
                         error!("Install snapshot request failed: {}", e);
-                        None
                     }
                 }
             }
@@ -1499,7 +583,6 @@ where
                     "VoteResponse",
                     |resp| RaftAdapterResponse::Vote(Box::new(resp)),
                 );
-                None
             }
             RaftMessage::AppendEntriesResponse(payload) => {
                 self.process_raft_response::<openraft::raft::AppendEntriesResponse<GlobalTypeConfig>>(
@@ -1509,7 +592,6 @@ where
                     "AppendEntriesResponse",
                     RaftAdapterResponse::AppendEntries,
                 );
-                None
             }
             RaftMessage::InstallSnapshotResponse(payload) => {
                 self.process_raft_response::<openraft::raft::InstallSnapshotResponse<GlobalTypeConfig>>(
@@ -1519,9 +601,10 @@ where
                     "InstallSnapshotResponse",
                     RaftAdapterResponse::InstallSnapshot,
                 );
-                None
             }
         }
+
+        Ok(())
     }
 
     /// Helper to process Raft responses
@@ -1559,12 +642,820 @@ where
         }
     }
 
+    /// Handle application-level messages
+    async fn handle_application_message(
+        &self,
+        node_id: NodeId,
+        message: crate::network::messages::ApplicationMessage,
+        correlation_id: Option<uuid::Uuid>,
+    ) -> ConsensusResult<()> {
+        use crate::network::messages::ApplicationMessage;
+
+        match message {
+            ApplicationMessage::ClusterDiscovery(req) => {
+                self.handle_cluster_discovery_request(node_id, req, correlation_id)
+                    .await
+            }
+            ApplicationMessage::ClusterDiscoveryResponse(resp) => {
+                self.handle_cluster_discovery_response(node_id, resp, correlation_id)
+                    .await
+            }
+            ApplicationMessage::ClusterJoinRequest(req) => {
+                self.handle_cluster_join_request(node_id, req, correlation_id)
+                    .await
+            }
+            ApplicationMessage::ClusterJoinResponse(resp) => {
+                self.handle_cluster_join_response(node_id, resp, correlation_id)
+                    .await
+            }
+            ApplicationMessage::ConsensusRequest(req) => {
+                self.handle_consensus_request(node_id, req, correlation_id)
+                    .await
+            }
+            ApplicationMessage::ConsensusResponse(resp) => {
+                self.handle_consensus_response(node_id, resp, correlation_id)
+                    .await
+            }
+            ApplicationMessage::PubSub(_msg) => {
+                // PubSub messages are handled by the PubSub manager
+                Ok(())
+            }
+        }
+    }
+
+    /// Handle cluster discovery request
+    async fn handle_cluster_discovery_request(
+        &self,
+        node_id: NodeId,
+        _request: crate::network::messages::ClusterDiscoveryRequest,
+        correlation_id: Option<uuid::Uuid>,
+    ) -> ConsensusResult<()> {
+        use crate::network::messages::{ApplicationMessage, ClusterDiscoveryResponse, Message};
+
+        info!("Handling cluster discovery request from {}", node_id);
+
+        // Create response with our cluster state
+        let response = ClusterDiscoveryResponse {
+            responder_id: self.node_id.clone(),
+            has_active_cluster: self.has_active_cluster().await,
+            current_term: self.current_term(),
+            current_leader: self
+                .current_leader()
+                .await
+                .and_then(|s| NodeId::from_hex(&s).ok()),
+            cluster_size: self.cluster_size(),
+        };
+
+        // Send response back through network manager
+        let message = Message::Application(Box::new(ApplicationMessage::ClusterDiscoveryResponse(
+            response.clone(),
+        )));
+
+        info!(
+            "Sending discovery response back to {}: has_active_cluster={}, current_term={:?}, cluster_size={:?}",
+            node_id, response.has_active_cluster, response.current_term, response.cluster_size
+        );
+
+        // Send response with correlation ID if provided
+        if let Some(corr_id) = correlation_id {
+            self.network_manager()
+                .send_message_with_correlation(node_id, message, corr_id)
+                .await
+                .map_err(|e| {
+                    Error::InvalidMessage(format!("Failed to send discovery response: {}", e))
+                })?;
+        } else {
+            self.network_manager()
+                .send_message(node_id, message)
+                .await
+                .map_err(|e| {
+                    Error::InvalidMessage(format!("Failed to send discovery response: {}", e))
+                })?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle cluster discovery response
+    async fn handle_cluster_discovery_response(
+        &self,
+        _node_id: NodeId,
+        response: crate::network::messages::ClusterDiscoveryResponse,
+        correlation_id: Option<uuid::Uuid>,
+    ) -> ConsensusResult<()> {
+        if let Some(corr_id) = correlation_id {
+            let mut pending = self.pending_discovery_responses.write().await;
+            if let Some(tx) = pending.remove(&corr_id) {
+                let _ = tx.send(response);
+            } else {
+                debug!(
+                    "No pending discovery request for correlation ID {}",
+                    corr_id
+                );
+            }
+        } else {
+            debug!(
+                "Received discovery response without correlation ID from {}",
+                response.responder_id
+            );
+        }
+        Ok(())
+    }
+
+    /// Handle cluster join request
+    async fn handle_cluster_join_request(
+        &self,
+        node_id: NodeId,
+        request: crate::network::messages::ClusterJoinRequest,
+        correlation_id: Option<uuid::Uuid>,
+    ) -> ConsensusResult<()> {
+        use crate::network::messages::{ApplicationMessage, ClusterJoinResponse, Message};
+
+        let response = if !self.is_leader().await {
+            // Not the leader - return error with current leader info
+            ClusterJoinResponse {
+                error_message: Some("Not the leader".to_string()),
+                cluster_size: None,
+                current_term: None,
+                responder_id: self.node_id.clone(),
+                success: false,
+                current_leader: self
+                    .current_leader()
+                    .await
+                    .and_then(|s| NodeId::from_hex(&s).ok()),
+            }
+        } else {
+            // We are the leader - try to add the node
+            let node = crate::node::Node::from(request.requester_node);
+            match self
+                .raft
+                .add_learner(request.requester_id.clone(), node, true)
+                .await
+            {
+                Ok(_) => {
+                    info!("Added node {:?} as learner", request.requester_id);
+
+                    // Wait a bit for the learner to sync
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                    // Get current membership and add the new node
+                    let metrics = self.raft.metrics();
+                    let current_membership = metrics.borrow().membership_config.clone();
+                    let mut new_voters: Vec<NodeId> =
+                        current_membership.membership().voter_ids().collect();
+
+                    // Add the new node to voters
+                    if !new_voters.contains(&request.requester_id) {
+                        new_voters.push(request.requester_id.clone());
+                    }
+
+                    // Promote learner to voter
+                    match self.raft.change_membership(new_voters, false).await {
+                        Ok(_) => {
+                            info!("Promoted node {:?} to voter", request.requester_id);
+                        }
+                        Err(e) => {
+                            warn!("Failed to promote learner to voter: {}", e);
+                        }
+                    }
+
+                    ClusterJoinResponse {
+                        error_message: None,
+                        cluster_size: self.cluster_size(),
+                        current_term: self.current_term(),
+                        responder_id: self.node_id.clone(),
+                        success: true,
+                        current_leader: Some(self.node_id.clone()),
+                    }
+                }
+                Err(e) => ClusterJoinResponse {
+                    error_message: Some(format!("Failed to add node: {}", e)),
+                    cluster_size: None,
+                    current_term: None,
+                    responder_id: self.node_id.clone(),
+                    success: false,
+                    current_leader: self
+                        .current_leader()
+                        .await
+                        .and_then(|s| NodeId::from_hex(&s).ok()),
+                },
+            }
+        };
+
+        // Send response back through network manager
+        let message =
+            Message::Application(Box::new(ApplicationMessage::ClusterJoinResponse(response)));
+
+        if let Some(corr_id) = correlation_id {
+            self.network_manager()
+                .send_message_with_correlation(node_id, message, corr_id)
+                .await
+                .map_err(|e| {
+                    Error::InvalidMessage(format!("Failed to send join response: {}", e))
+                })?;
+        } else {
+            self.network_manager()
+                .send_message(node_id, message)
+                .await
+                .map_err(|e| {
+                    Error::InvalidMessage(format!("Failed to send join response: {}", e))
+                })?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle cluster join response
+    async fn handle_cluster_join_response(
+        &self,
+        _node_id: NodeId,
+        response: crate::network::messages::ClusterJoinResponse,
+        correlation_id: Option<uuid::Uuid>,
+    ) -> ConsensusResult<()> {
+        if let Some(corr_id) = correlation_id {
+            let mut pending = self.pending_join_responses.write().await;
+            if let Some(tx) = pending.remove(&corr_id) {
+                let _ = tx.send(response);
+            } else {
+                debug!("No pending join request for correlation ID {}", corr_id);
+            }
+        } else {
+            debug!(
+                "Received join response without correlation ID from {}",
+                response.responder_id
+            );
+        }
+        Ok(())
+    }
+
+    /// Handle consensus request
+    async fn handle_consensus_request(
+        &self,
+        node_id: NodeId,
+        request: super::GlobalRequest,
+        correlation_id: Option<uuid::Uuid>,
+    ) -> ConsensusResult<()> {
+        use crate::network::messages::{ApplicationMessage, Message};
+
+        // Submit through consensus
+        let response = self.submit_operation(request.operation).await?;
+
+        // Send response back through network manager
+        let message =
+            Message::Application(Box::new(ApplicationMessage::ConsensusResponse(response)));
+
+        if let Some(corr_id) = correlation_id {
+            self.network_manager()
+                .send_message_with_correlation(node_id, message, corr_id)
+                .await
+                .map_err(|e| {
+                    Error::InvalidMessage(format!("Failed to send consensus response: {}", e))
+                })?;
+        } else {
+            self.network_manager()
+                .send_message(node_id, message)
+                .await
+                .map_err(|e| {
+                    Error::InvalidMessage(format!("Failed to send consensus response: {}", e))
+                })?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle consensus response
+    async fn handle_consensus_response(
+        &self,
+        _node_id: NodeId,
+        response: super::GlobalResponse,
+        correlation_id: Option<uuid::Uuid>,
+    ) -> ConsensusResult<()> {
+        // If we have a correlation ID, this is a response to a request we made
+        if let Some(request_id) = correlation_id {
+            // Extract the numeric ID from the UUID (temporary solution)
+            let id = request_id.as_u128() as u64;
+            self.handle_state_machine_response(id, response).await;
+        }
+
+        Ok(())
+    }
+
+    /// Start topology management
+    pub async fn start_topology(&self) -> ConsensusResult<()> {
+        // Refresh topology from governance to get all peers
+        if let Some(topology) = &self.topology {
+            topology.refresh_topology().await?;
+        }
+        Ok(())
+    }
+
+    /// Discover existing clusters
+    pub async fn discover_existing_clusters(
+        &self,
+    ) -> ConsensusResult<Vec<crate::network::messages::ClusterDiscoveryResponse>> {
+        use crate::network::messages::{ApplicationMessage, ClusterDiscoveryRequest, Message};
+        use tokio::time::{Duration, timeout};
+
+        // Get all peers from topology
+        let peers = self.topology().get_all_peers().await;
+        info!(
+            "Discovering existing clusters, found {} peers in topology",
+            peers.len()
+        );
+        for peer in &peers {
+            info!("  - Peer: {} at {}", peer.node_id(), peer.origin());
+        }
+
+        if peers.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Create channels for collecting responses
+        let mut response_receivers = Vec::new();
+        let mut pending_map = self.pending_discovery_responses.write().await;
+
+        // Send discovery request to each peer
+        for peer in &peers {
+            let correlation_id = Uuid::new_v4();
+            let (tx, rx) = oneshot::channel();
+
+            // Track pending response
+            pending_map.insert(correlation_id, tx);
+            response_receivers.push(rx);
+
+            // Create and send discovery request
+            let discovery_request = ClusterDiscoveryRequest {
+                requester_id: self.node_id.clone(),
+            };
+
+            let message = Message::Application(Box::new(ApplicationMessage::ClusterDiscovery(
+                discovery_request,
+            )));
+
+            // Send with correlation ID for response tracking
+            info!(
+                "Sending discovery request to {} with correlation_id={}",
+                peer.node_id(),
+                correlation_id
+            );
+            if let Err(e) = self
+                .network_manager()
+                .send_message_with_correlation(peer.node_id().clone(), message, correlation_id)
+                .await
+            {
+                warn!(
+                    "Failed to send discovery request to {}: {}",
+                    peer.node_id(),
+                    e
+                );
+            } else {
+                info!("Successfully sent discovery request to {}", peer.node_id());
+            }
+        }
+        drop(pending_map);
+
+        // Collect responses with timeout
+        let mut responses = Vec::new();
+        let discovery_timeout = Duration::from_secs(5);
+
+        for rx in response_receivers.into_iter() {
+            match timeout(discovery_timeout, rx).await {
+                Ok(Ok(response)) => {
+                    responses.push(response);
+                }
+                Ok(Err(_)) => {
+                    debug!("Discovery response channel closed");
+                }
+                Err(_) => {
+                    debug!("Discovery response timed out");
+                }
+            }
+        }
+
+        Ok(responses)
+    }
+
+    /// Get cluster state
+    pub async fn cluster_state(&self) -> crate::network::ClusterState {
+        self.cluster_state.read().await.clone()
+    }
+
+    /// Wait for leader election
+    pub async fn wait_for_leader(
+        &self,
+        timeout: Option<std::time::Duration>,
+    ) -> ConsensusResult<()> {
+        use tokio::time::sleep;
+
+        let timeout_duration = timeout.unwrap_or(std::time::Duration::from_secs(30));
+        let start = std::time::Instant::now();
+
+        while start.elapsed() < timeout_duration {
+            if self.is_leader().await || self.current_leader().await.is_some() {
+                return Ok(());
+            }
+            sleep(std::time::Duration::from_millis(100)).await;
+        }
+
+        Err(Error::Timeout {
+            seconds: timeout_duration.as_secs(),
+        })
+    }
+
+    /// Get topology manager
+    pub fn topology(&self) -> Arc<crate::topology::TopologyManager<G>> {
+        self.topology
+            .as_ref()
+            .expect("Topology manager not set. Call set_topology() first")
+            .clone()
+    }
+
+    /// Set topology manager
+    pub fn set_topology(&mut self, topology: Arc<crate::topology::TopologyManager<G>>) {
+        self.topology = Some(topology);
+    }
+
+    /// Get network manager
+    fn network_manager(&self) -> Arc<crate::network::network_manager::NetworkManager<G, A>> {
+        self.network_manager.clone()
+    }
+
+    /// Set cluster state
+    pub async fn set_cluster_state(&self, state: crate::network::ClusterState) {
+        *self.cluster_state.write().await = state;
+    }
+
+    /// Initialize single node cluster
+    pub async fn initialize_single_node_cluster(
+        &self,
+        node_id: NodeId,
+        reason: crate::network::InitiatorReason,
+    ) -> ConsensusResult<()> {
+        if node_id != self.node_id {
+            return Err(Error::InvalidOperation(
+                "Cannot initialize cluster for different node".to_string(),
+            ));
+        }
+
+        // Initialize the Raft cluster
+        self.initialize_cluster().await?;
+
+        // Set cluster state
+        self.set_cluster_state(crate::network::ClusterState::Initiator {
+            initiated_at: std::time::Instant::now(),
+            reason,
+        })
+        .await;
+
+        // Wait a bit for leader election
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Create a default consensus group after becoming leader
+        if self.is_leader().await {
+            info!("Creating default consensus group 1");
+
+            // Submit through Raft to ensure proper consensus
+            match self
+                .create_group(
+                    crate::allocation::ConsensusGroupId::new(1),
+                    vec![self.node_id.clone()],
+                )
+                .await
+            {
+                Ok(_) => {
+                    info!("Successfully created default consensus group 1");
+
+                    // Wait for the group to be applied to state machine
+                    let start = std::time::Instant::now();
+                    while start.elapsed() < std::time::Duration::from_secs(1) {
+                        if self
+                            .get_group(crate::allocation::ConsensusGroupId::new(1))
+                            .await
+                            .is_some()
+                        {
+                            info!("Default consensus group 1 is ready");
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                }
+                Err(e) => warn!("Failed to create default consensus group: {}", e),
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Initialize multi-node cluster
+    pub async fn initialize_multi_node_cluster(
+        &self,
+        node_id: NodeId,
+        reason: crate::network::InitiatorReason,
+        peers: Vec<crate::Node>,
+    ) -> ConsensusResult<()> {
+        info!(
+            "Initializing multi-node cluster as leader for node {} with {} peers",
+            node_id,
+            peers.len()
+        );
+
+        // Set cluster state to initiator
+        self.set_cluster_state(crate::network::ClusterState::Initiator {
+            initiated_at: std::time::Instant::now(),
+            reason,
+        })
+        .await;
+
+        // For now, start as single node - peers will join later via Raft
+        // Get our own GovernanceNode from topology
+        let own_node = self
+            .topology()
+            .get_own_node()
+            .await
+            .map_err(|e| Error::InvalidMessage(format!("Failed to get own node: {e}")))?;
+
+        let membership = std::collections::BTreeMap::from([(node_id.clone(), own_node)]);
+
+        self.raft
+            .initialize(membership)
+            .await
+            .map_err(|e| Error::Raft(format!("Failed to initialize leader Raft: {e}")))?;
+
+        info!("Successfully initialized multi-node cluster as leader");
+
+        // Wait a bit for leader election
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+        // Create a default consensus group after becoming leader
+        if self.is_leader().await {
+            info!("Creating default consensus group 1 for multi-node cluster");
+
+            // Submit through Raft to ensure proper consensus
+            match self
+                .create_group(
+                    crate::allocation::ConsensusGroupId::new(1),
+                    vec![self.node_id.clone()],
+                )
+                .await
+            {
+                Ok(_) => {
+                    info!("Successfully created default consensus group 1");
+
+                    // Wait for the group to be applied to state machine
+                    let start = std::time::Instant::now();
+                    while start.elapsed() < std::time::Duration::from_secs(1) {
+                        if self
+                            .get_group(crate::allocation::ConsensusGroupId::new(1))
+                            .await
+                            .is_some()
+                        {
+                            info!("Default consensus group 1 is ready");
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                }
+                Err(e) => warn!("Failed to create default consensus group: {}", e),
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Join existing cluster via Raft with retry logic
+    pub async fn join_existing_cluster_via_raft(
+        &self,
+        node_id: NodeId,
+        existing_cluster: &crate::network::messages::ClusterDiscoveryResponse,
+    ) -> ConsensusResult<()> {
+        use crate::network::messages::{ApplicationMessage, ClusterJoinRequest, Message};
+        use tokio::time::{sleep, timeout};
+
+        if node_id != self.node_id {
+            return Err(Error::InvalidOperation(
+                "Cannot join cluster for different node".to_string(),
+            ));
+        }
+
+        // Ensure we have a leader to send the join request to
+        let mut current_leader = existing_cluster
+            .current_leader
+            .as_ref()
+            .ok_or_else(|| {
+                Error::InvalidMessage(
+                    "Cannot join cluster: no leader reported in discovery response".to_string(),
+                )
+            })?
+            .clone();
+
+        info!(
+            "Joining existing cluster via Raft. Initial leader: {}, Term: {:?}",
+            current_leader, existing_cluster.current_term
+        );
+
+        // Set cluster state to waiting to join
+        self.set_cluster_state(crate::network::ClusterState::WaitingToJoin {
+            requested_at: std::time::Instant::now(),
+            leader_id: current_leader.clone(),
+        })
+        .await;
+
+        // Get our own node information for the join request
+        let requester_node = self
+            .topology()
+            .get_own_node()
+            .await
+            .map_err(|e| Error::InvalidMessage(format!("Failed to get own node: {e}")))?;
+
+        // Create join request
+        let join_request = ClusterJoinRequest {
+            requester_id: self.node_id.clone(),
+            requester_node: requester_node.into(),
+        };
+
+        let retry_config = &self.cluster_join_retry_config;
+        let mut last_error = None;
+        let mut retry_delay = retry_config.initial_delay;
+
+        for attempt in 1..=retry_config.max_attempts {
+            info!(
+                "Cluster join attempt {} of {}, targeting leader: {}",
+                attempt, retry_config.max_attempts, current_leader
+            );
+
+            // Generate correlation ID and create response channel
+            let correlation_id = Uuid::new_v4();
+            let (tx, rx) = oneshot::channel();
+
+            // Add pending request
+            {
+                let mut pending = self.pending_join_responses.write().await;
+                pending.insert(correlation_id, tx);
+            }
+
+            // Send join request with correlation ID
+            let message = Message::Application(Box::new(ApplicationMessage::ClusterJoinRequest(
+                join_request.clone(),
+            )));
+
+            match self
+                .network_manager()
+                .send_message_with_correlation(current_leader.clone(), message, correlation_id)
+                .await
+            {
+                Ok(()) => {
+                    info!(
+                        "Sent join request to {} with correlation ID {} (attempt {})",
+                        current_leader, correlation_id, attempt
+                    );
+                }
+                Err(e) => {
+                    warn!("Failed to send join request on attempt {}: {}", attempt, e);
+                    last_error = Some(Error::InvalidMessage(format!(
+                        "Failed to send join request: {}",
+                        e
+                    )));
+
+                    // Clean up pending request
+                    self.pending_join_responses
+                        .write()
+                        .await
+                        .remove(&correlation_id);
+
+                    // Wait before retrying, unless this is the last attempt
+                    if attempt < retry_config.max_attempts {
+                        sleep(retry_delay).await;
+                        retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
+                    }
+                    continue;
+                }
+            }
+
+            // Wait for join response with timeout
+            let join_response = match timeout(retry_config.request_timeout, rx).await {
+                Ok(Ok(response)) => response,
+                Ok(Err(_)) => {
+                    warn!("Join request channel was cancelled on attempt {}", attempt);
+                    last_error = Some(Error::InvalidMessage("Join request cancelled".to_string()));
+
+                    // Wait before retrying, unless this is the last attempt
+                    if attempt < retry_config.max_attempts {
+                        sleep(retry_delay).await;
+                        retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
+                    }
+                    continue;
+                }
+                Err(_) => {
+                    warn!("Join request timeout on attempt {}", attempt);
+                    last_error = Some(Error::InvalidMessage("Join request timeout".to_string()));
+
+                    // Clean up pending request
+                    self.pending_join_responses
+                        .write()
+                        .await
+                        .remove(&correlation_id);
+
+                    // Wait before retrying, unless this is the last attempt
+                    if attempt < retry_config.max_attempts {
+                        sleep(retry_delay).await;
+                        retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
+                    }
+                    continue;
+                }
+            };
+
+            if join_response.success {
+                info!(
+                    "Successfully joined cluster! Leader: {}, Size: {:?}, Term: {:?}",
+                    join_response.responder_id,
+                    join_response.cluster_size,
+                    join_response.current_term
+                );
+
+                self.set_cluster_state(crate::network::ClusterState::Joined {
+                    joined_at: std::time::Instant::now(),
+                    cluster_size: join_response.cluster_size.unwrap_or(1),
+                })
+                .await;
+
+                return Ok(());
+            } else {
+                let error_msg = join_response
+                    .error_message
+                    .unwrap_or_else(|| "Unknown join error".to_string());
+
+                warn!("Join request failed on attempt {}: {}", attempt, error_msg);
+
+                // Check if we have a new leader to try
+                if let Some(new_leader) = join_response.current_leader {
+                    if new_leader != current_leader {
+                        info!(
+                            "Received new leader {} from failed join response, will retry with new leader",
+                            new_leader
+                        );
+                        current_leader = new_leader;
+
+                        // Update cluster state with new leader
+                        self.set_cluster_state(crate::network::ClusterState::WaitingToJoin {
+                            requested_at: std::time::Instant::now(),
+                            leader_id: current_leader.clone(),
+                        })
+                        .await;
+                    }
+                }
+
+                last_error = Some(Error::InvalidMessage(format!(
+                    "Join request failed: {}",
+                    error_msg
+                )));
+
+                // Wait before retrying, unless this is the last attempt
+                if attempt < retry_config.max_attempts {
+                    sleep(retry_delay).await;
+                    retry_delay = std::cmp::min(retry_delay * 2, retry_config.max_delay);
+                }
+            }
+        }
+
+        // All attempts failed
+        let final_error = last_error.unwrap_or_else(|| {
+            Error::InvalidMessage("Unknown error after all retry attempts".to_string())
+        });
+
+        warn!(
+            "Failed to join cluster after {} attempts. Final error: {}",
+            retry_config.max_attempts, final_error
+        );
+
+        self.set_cluster_state(crate::network::ClusterState::Failed {
+            failed_at: std::time::Instant::now(),
+            error: format!(
+                "Failed after {} attempts: {}",
+                retry_config.max_attempts, final_error
+            ),
+        })
+        .await;
+
+        Err(final_error)
+    }
+
+    /// Shutdown all components
+    pub async fn shutdown_all(&self) -> ConsensusResult<()> {
+        // TODO: Implement comprehensive shutdown
+        Ok(())
+    }
+
+    /// Get current state
+    pub async fn get_current_state(&self) -> ConsensusResult<Arc<GlobalState>> {
+        Ok(self.state.clone())
+    }
+
     /// Process RaftAdapter requests and send them through the network
     async fn raft_adapter_processor_loop(
         mut request_rx: tokio::sync::mpsc::UnboundedReceiver<(
             NodeId,
             Uuid,
-            Box<crate::network::adaptor::RaftAdapterRequest<GlobalTypeConfig>>,
+            Box<RaftAdapterRequest<GlobalTypeConfig>>,
         )>,
         network_manager: Arc<crate::network::network_manager::NetworkManager<G, A>>,
     ) {
@@ -1573,7 +1464,7 @@ where
         while let Some((target_node_id, correlation_id, request)) = request_rx.recv().await {
             // Convert RaftAdapter request to network message
             let message = match *request {
-                crate::network::adaptor::RaftAdapterRequest::Vote(vote_req) => {
+                RaftAdapterRequest::Vote(vote_req) => {
                     let mut vote_data = Vec::new();
                     if let Err(e) = ciborium::ser::into_writer(&vote_req, &mut vote_data) {
                         error!("Failed to serialize Vote request: {}", e);
@@ -1583,7 +1474,7 @@ where
                         crate::network::messages::RaftMessage::Vote(vote_data),
                     )
                 }
-                crate::network::adaptor::RaftAdapterRequest::AppendEntries(append_req) => {
+                RaftAdapterRequest::AppendEntries(append_req) => {
                     let mut append_data = Vec::new();
                     if let Err(e) = ciborium::ser::into_writer(&append_req, &mut append_data) {
                         error!("Failed to serialize AppendEntries request: {}", e);
@@ -1593,7 +1484,7 @@ where
                         crate::network::messages::RaftMessage::AppendEntries(append_data),
                     )
                 }
-                crate::network::adaptor::RaftAdapterRequest::InstallSnapshot(snapshot_req) => {
+                RaftAdapterRequest::InstallSnapshot(snapshot_req) => {
                     let mut snapshot_data = Vec::new();
                     if let Err(e) = ciborium::ser::into_writer(&snapshot_req, &mut snapshot_data) {
                         error!("Failed to serialize InstallSnapshot request: {}", e);
@@ -1615,89 +1506,5 @@ where
         }
 
         debug!("RaftAdapter processor task exited");
-    }
-
-    /// Process Raft responses received from the network
-    async fn raft_response_processor_loop(
-        _raft_adapter_response_tx: tokio::sync::mpsc::UnboundedSender<(
-            NodeId,
-            Uuid,
-            Box<crate::network::adaptor::RaftAdapterResponse<GlobalTypeConfig>>,
-        )>,
-        _raft_instance: Arc<openraft::Raft<GlobalTypeConfig>>,
-        _network_manager: Arc<crate::network::network_manager::NetworkManager<G, A>>,
-    ) {
-        // This task would handle incoming Raft responses and forward them to the RaftAdapter
-        // For now, this is handled inline when Raft messages are received
-        debug!("Raft response processor task started");
-        // The actual processing happens in handle_network_message when Raft messages are received
-    }
-
-    /// Process correlated responses and complete pending requests
-    async fn response_correlation_loop(
-        mut response_rx: tokio::sync::mpsc::UnboundedReceiver<(
-            Uuid,
-            Box<dyn std::any::Any + Send + Sync>,
-        )>,
-        pending_requests: Arc<RwLock<HashMap<Uuid, Box<dyn std::any::Any + Send + Sync>>>>,
-    ) {
-        debug!("Response correlation task started");
-        while let Some((correlation_id, response)) = response_rx.recv().await {
-            let mut pending = pending_requests.write().await;
-            if let Some(pending_request) = pending.remove(&correlation_id) {
-                // Try to complete the pending request based on type matching
-                if Self::complete_pending_request_static(pending_request, response).is_err() {
-                    warn!(
-                        "Failed to complete pending request {} - type mismatch",
-                        correlation_id
-                    );
-                }
-            } else {
-                warn!(
-                    "No pending request found for correlation_id {}",
-                    correlation_id
-                );
-            }
-        }
-        debug!("Response correlation task exited");
-    }
-
-    /// Get the current global state
-    pub async fn get_current_state(&self) -> Result<super::GlobalState, Error> {
-        // Clone the current state
-        Ok((*self.global_state).clone())
-    }
-
-    /// Complete a pending request by sending the response through its channel
-    fn complete_pending_request_static(
-        pending_request: Box<dyn std::any::Any + Send + Sync>,
-        response: Box<dyn std::any::Any + Send + Sync>,
-    ) -> Result<(), ()> {
-        // Try ClusterDiscoveryResponse first
-        if pending_request.is::<PendingRequest<ClusterDiscoveryResponse>>()
-            && response.is::<ClusterDiscoveryResponse>()
-        {
-            let pending = pending_request.downcast::<PendingRequest<ClusterDiscoveryResponse>>();
-            let resp = response.downcast::<ClusterDiscoveryResponse>();
-            if let (Ok(pending), Ok(resp)) = (pending, resp) {
-                let _ = pending.response_tx.send(*resp);
-                return Ok(());
-            }
-            return Err(());
-        }
-
-        // Try ClusterJoinResponse
-        if pending_request.is::<PendingRequest<ClusterJoinResponse>>()
-            && response.is::<ClusterJoinResponse>()
-        {
-            let pending = pending_request.downcast::<PendingRequest<ClusterJoinResponse>>();
-            let resp = response.downcast::<ClusterJoinResponse>();
-            if let (Ok(pending), Ok(resp)) = (pending, resp) {
-                let _ = pending.response_tx.send(*resp);
-                return Ok(());
-            }
-        }
-
-        Err(())
     }
 }

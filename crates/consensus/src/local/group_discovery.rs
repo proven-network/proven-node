@@ -4,12 +4,12 @@
 //! by querying the global consensus state, and coordinating group formation.
 
 use super::LocalConsensusManager;
-use crate::allocation::ConsensusGroupId;
 use crate::error::ConsensusResult;
-use crate::global::{GlobalManager, GlobalOperation};
+use crate::global::global_manager::GlobalManager;
 use crate::node_id::NodeId;
-use proven_attestation::Attestor;
-use proven_governance::Governance;
+use crate::operations::GlobalOperation;
+use crate::{allocation::ConsensusGroupId, operations::GroupOperation};
+
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
@@ -18,8 +18,8 @@ use tracing::{debug, error, info, warn};
 /// Service that discovers and manages local group membership
 pub struct GroupDiscoveryService<G, A>
 where
-    G: Governance + Send + Sync + 'static,
-    A: Attestor + Send + Sync + 'static,
+    G: proven_governance::Governance + Send + Sync + 'static,
+    A: proven_attestation::Attestor + Send + Sync + 'static,
 {
     /// Node ID
     node_id: NodeId,
@@ -33,8 +33,8 @@ where
 
 impl<G, A> GroupDiscoveryService<G, A>
 where
-    G: Governance + Send + Sync + 'static,
-    A: Attestor + Send + Sync + 'static,
+    G: proven_governance::Governance + Send + Sync + 'static,
+    A: proven_attestation::Attestor + Send + Sync + 'static,
 {
     /// Create a new group discovery service
     pub fn new(
@@ -120,7 +120,14 @@ where
         &self,
     ) -> ConsensusResult<Vec<crate::global::state_machine::ConsensusGroupInfo>> {
         // Query the global manager for groups this node belongs to
-        Ok(self.global_manager.query_node_groups(&self.node_id).await)
+        Ok(self
+            .global_manager
+            .get_all_groups()
+            .await
+            .iter()
+            .filter(|g| g.members.contains(&self.node_id))
+            .cloned()
+            .collect())
     }
 
     /// Join a local consensus group
@@ -163,7 +170,10 @@ where
 /// Create a global consensus operation to form a new local group
 pub fn create_add_group_operation(
     group_id: ConsensusGroupId,
-    members: Vec<NodeId>,
+    initial_members: Vec<NodeId>,
 ) -> GlobalOperation {
-    GlobalOperation::AddConsensusGroup { group_id, members }
+    GlobalOperation::Group(GroupOperation::Create {
+        group_id,
+        initial_members,
+    })
 }
