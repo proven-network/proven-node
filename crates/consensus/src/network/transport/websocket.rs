@@ -7,8 +7,8 @@
 use super::{HttpIntegratedTransport, MessageHandler, NetworkTransport, PeerConnection};
 use crate::NodeId;
 use crate::error::{NetworkError, NetworkResult};
+use crate::network::verification::ConnectionVerification;
 use crate::topology::TopologyManager;
-use crate::verification::ConnectionVerification;
 
 use std::any::Any;
 use std::collections::HashMap;

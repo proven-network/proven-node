@@ -4,13 +4,14 @@
 //! COSE signing/verification, message serialization/deserialization,
 //! and message routing.
 
+use super::cose::CoseMetadata;
 use super::transport::{NetworkTransport, tcp::TcpTransport, websocket::WebSocketTransport};
 use crate::NodeId;
-use crate::attestation::AttestationVerifier;
-use crate::cose::CoseHandler;
 use crate::error::{Error, NetworkError};
+use crate::network::attestation::AttestationVerifier;
+use crate::network::cose::CoseHandler;
 use crate::network::messages::{ApplicationMessage, Message, RaftMessage};
-use crate::verification::{ConnectionVerification, ConnectionVerifier};
+use crate::network::verification::{ConnectionVerification, ConnectionVerifier};
 
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -505,7 +506,7 @@ where
         data: &[u8],
         sender_node_id: &NodeId,
         cose_handler: &CoseHandler,
-    ) -> Result<(Message, crate::cose::CoseMetadata), Error> {
+    ) -> Result<(Message, CoseMetadata), Error> {
         // Deserialize and verify COSE message
         let cose_message = cose_handler.deserialize_cose_message(data)?;
 

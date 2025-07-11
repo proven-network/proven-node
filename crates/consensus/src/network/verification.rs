@@ -18,9 +18,11 @@ use proven_attestation::{AttestationParams, Attestor};
 use proven_governance::Governance;
 
 use crate::NodeId;
-use crate::attestation::AttestationVerifier;
-use crate::cose::CoseHandler;
 use crate::error::{ConsensusResult, Error};
+use crate::network::attestation::AttestationVerifier;
+use crate::network::cose::CoseHandler;
+
+use super::cose::CoseMessage;
 
 /// Trait for connection verification to avoid generic complexity
 #[async_trait::async_trait]
@@ -361,7 +363,7 @@ where
     /// Extract verification message from COSE message without signature verification
     fn extract_verification_message(
         &self,
-        cose_message: &crate::cose::CoseMessage,
+        cose_message: &CoseMessage,
     ) -> ConsensusResult<VerificationMessage> {
         let sign1 = &cose_message.cose_sign1;
 

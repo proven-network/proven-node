@@ -11,11 +11,9 @@
 
 /// Stream allocation and consensus group management
 pub mod allocation;
-pub mod attestation;
 // pub mod cluster_discovery;
 pub mod config;
 pub mod consensus;
-pub mod cose;
 pub mod error;
 pub mod global;
 /// Group allocation algorithm for managing consensus groups
@@ -40,7 +38,6 @@ pub mod router;
 pub mod storage;
 pub mod subscription;
 pub mod topology;
-pub mod verification;
 /// Read-only views for orchestrator decision-making
 pub mod views;
 
@@ -63,8 +60,3 @@ pub use subscription::SubscriptionInvoker;
 
 // Re-export topology types
 pub use topology::TopologyManager;
-
-// Re-export verification types
-pub use verification::{
-    ConnectionState, ConnectionVerification, ConnectionVerifier, VerificationMessage,
-};
