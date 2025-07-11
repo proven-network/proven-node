@@ -1,150 +1,148 @@
-use crate::error::Result;
-
+use crate::{Error, Result};
 use std::net::Ipv4Addr;
-use std::sync::Arc;
-
-use cidr::Ipv4Cidr;
-use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
-use tokio::runtime::Handle;
+use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::Command;
 use tokio::task::JoinHandle;
-use tokio_tun::{Tun, TunBuilder};
 use tokio_util::sync::CancellationToken;
-use tokio_vsock::{VsockListener, VsockStream};
-use tracing::{error, info};
+use tokio_util::task::TaskTracker;
+use tracing::{debug, error, info};
 
-const FRAME_LEN: usize = 0xffff;
-const FRAME_SIZE_LEN: usize = 2;
+#[cfg(target_os = "linux")]
+use nix::sys::signal::{self, Signal};
+#[cfg(target_os = "linux")]
+use nix::unistd::Pid;
 
 pub struct Proxy {
-    tun: Arc<Tun>,
+    tun_addr: Ipv4Addr,
+    tun_mask: u8,
+    vsock_port: u32,
+    is_host: bool,
     shutdown_token: CancellationToken,
+    task_tracker: TaskTracker,
 }
 
 impl Proxy {
-    pub async fn new(
-        ip_addr: Ipv4Addr,
-        dest_addr: Ipv4Addr,
-        cidr: Ipv4Cidr,
-        tun_interface_name: String,
-    ) -> Result<Self> {
-        let tun = Arc::new(
-            TunBuilder::new()
-                .name(&tun_interface_name)
-                .mtu(FRAME_LEN as i32)
-                .address(ip_addr)
-                .destination(dest_addr)
-                .netmask(cidr.mask())
-                .up()
-                .try_build()?,
-        );
-
-        tokio::process::Command::new("tc")
-            .args([
-                "qdisc",
-                "replace",
-                "dev",
-                &tun_interface_name,
-                "root",
-                "pfifo_fast",
-            ])
-            .output()
-            .await?;
-
-        info!("created tun interface");
-
-        Ok(Self {
-            tun,
+    pub fn new(tun_addr: Ipv4Addr, tun_mask: u8, vsock_port: u32, is_host: bool) -> Self {
+        Self {
+            tun_addr,
+            tun_mask,
+            vsock_port,
+            is_host,
             shutdown_token: CancellationToken::new(),
-        })
+            task_tracker: TaskTracker::new(),
+        }
     }
 
-    pub fn start(&self, vsock_stream: VsockStream) -> JoinHandle<Result<()>> {
-        let (vsock_read, vsock_write) = split(vsock_stream);
+    pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
+        if self.task_tracker.is_closed() {
+            return Err(Error::AlreadyStarted);
+        }
 
-        let tun_read = Arc::clone(&self.tun);
-        let tun_write = Arc::clone(&self.tun);
+        // Try to find the binary in several locations
+        let binary_name = if self.is_host {
+            "vsock-proxy-host"
+        } else {
+            "vsock-proxy-enclave"
+        };
 
+        // Check common locations
+        let binary_path =
+            if std::path::Path::new(&format!("/usr/local/bin/{}", binary_name)).exists() {
+                format!("/usr/local/bin/{}", binary_name)
+            } else if std::path::Path::new(&format!("/usr/bin/{}", binary_name)).exists() {
+                format!("/usr/bin/{}", binary_name)
+            } else {
+                // Fallback to PATH
+                binary_name.to_string()
+            };
         let shutdown_token = self.shutdown_token.clone();
+        let task_tracker = self.task_tracker.clone();
+        let tun_addr = self.tun_addr.to_string();
+        let tun_mask = self.tun_mask.to_string();
+        let vsock_port = self.vsock_port.to_string();
 
-        tokio::spawn(async move {
+        let server_task = self.task_tracker.spawn(async move {
+            // Start the Zig proxy process
+            let mut cmd = Command::new(binary_path)
+                .arg("--tun-addr")
+                .arg(&tun_addr)
+                .arg("--tun-mask")
+                .arg(&tun_mask)
+                .arg("--vsock-port")
+                .arg(&vsock_port)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(Error::Spawn)?;
+
+            let stdout = cmd.stdout.take().ok_or(Error::OutputParse)?;
+            let stderr = cmd.stderr.take().ok_or(Error::OutputParse)?;
+
+            // Spawn task to handle stdout
+            task_tracker.spawn(async move {
+                let reader = BufReader::new(stdout);
+                let mut lines = reader.lines();
+
+                while let Ok(Some(line)) = lines.next_line().await {
+                    // Parse Zig output format
+                    if line.contains("error") {
+                        error!("{}", line);
+                    } else if line.contains("info") {
+                        info!("{}", line);
+                    } else {
+                        debug!("{}", line);
+                    }
+                }
+                Ok::<(), Error>(())
+            });
+
+            // Spawn task to handle stderr
+            task_tracker.spawn(async move {
+                let reader = BufReader::new(stderr);
+                let mut lines = reader.lines();
+
+                while let Ok(Some(line)) = lines.next_line().await {
+                    error!("{}", line);
+                }
+                Ok::<(), Error>(())
+            });
+
+            // Wait for process exit or shutdown
             tokio::select! {
-                _ = shutdown_token.cancelled() => {
-                    return Ok(());
+                result = cmd.wait() => {
+                    let status = result.map_err(Error::Spawn)?;
+                    if !status.success() {
+                        return Err(Error::NonZeroExitCode(status));
+                    }
+                    Ok(())
                 }
-                e = tokio::task::spawn_blocking(move || {
-                    Handle::current().block_on(tun_to_vsock(tun_read, vsock_write))
-                }) => {
-                    error!("tun_to_vsock error: {:?}", e);
-
-                    e?
-                }
-                e = tokio::task::spawn_blocking(move || {
-                    Handle::current().block_on(vsock_to_tun(vsock_read, tun_write))
-                }) => {
-                    error!("vsock_to_tun error: {:?}", e);
-
-                    e?
-                }
-            }?;
-
-            Ok(())
-        })
-    }
-
-    pub async fn start_host(self: Arc<Self>, mut vsock: VsockListener) {
-        loop {
-            tokio::select! {
-                _ = self.shutdown_token.cancelled() => {
-                    break;
-                }
-                Ok((vsock_stream, remote_addr)) = vsock.accept() => {
-                    info!("accepted vsock connection from {}", remote_addr);
-                    let proxy_clone = Arc::clone(&self);
-                    tokio::spawn(async move {
-                        let _ = proxy_clone.start(vsock_stream).await;
-                    });
+                () = shutdown_token.cancelled() => {
+                    #[cfg(target_os = "linux")]
+                    {
+                        #[allow(clippy::cast_possible_wrap)]
+                        let pid = Pid::from_raw(cmd.id().ok_or(Error::OutputParse)? as i32);
+                        signal::kill(pid, Signal::SIGTERM).map_err(Error::Signal)?;
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        // On non-Linux, just try to kill the process
+                        cmd.kill().await.ok();
+                    }
+                    let _ = cmd.wait().await;
+                    Ok(())
                 }
             }
-        }
+        });
+
+        self.task_tracker.close();
+        Ok(server_task)
     }
 
     pub async fn shutdown(&self) {
-        info!("proxy shutting down...");
-
+        info!("vsock-proxy shutting down...");
         self.shutdown_token.cancel();
-
-        info!("proxy shutdown");
-    }
-}
-
-async fn tun_to_vsock(tun: Arc<Tun>, mut vsock: WriteHalf<VsockStream>) -> Result<()> {
-    info!("listening for packets on tun interface");
-
-    let mut buf = [0; FRAME_LEN + FRAME_SIZE_LEN];
-
-    loop {
-        let n = tun.recv(&mut buf[FRAME_SIZE_LEN..]).await?;
-
-        if n == 0 {
-            continue;
-        }
-
-        buf[..FRAME_SIZE_LEN].copy_from_slice(&(n.to_le() as u16).to_le_bytes());
-
-        vsock.write_all(&buf[..n + FRAME_SIZE_LEN]).await?
-    }
-}
-
-async fn vsock_to_tun(mut vsock: ReadHalf<VsockStream>, tun: Arc<Tun>) -> Result<()> {
-    info!("listening for packets on vsock interface");
-
-    let mut buf = [0; FRAME_LEN];
-
-    loop {
-        let n = vsock.read_u16().await?.to_be() as usize;
-
-        vsock.read_exact(&mut buf[..n]).await?;
-
-        tun.send_all(&buf[..n]).await?;
+        self.task_tracker.wait().await;
+        info!("vsock-proxy shutdown");
     }
 }

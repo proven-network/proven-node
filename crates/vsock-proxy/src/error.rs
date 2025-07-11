@@ -4,16 +4,22 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error(transparent)]
-    Async(#[from] tokio::task::JoinError),
-
-    #[error("{0}")]
-    Callback(Box<dyn std::error::Error + Sync + Send>),
+    #[error("proxy already started")]
+    AlreadyStarted,
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
+    #[error("non-zero exit code: {0}")]
+    NonZeroExitCode(std::process::ExitStatus),
+
+    #[error("failed to parse output")]
+    OutputParse,
+
     #[cfg(target_os = "linux")]
-    #[error(transparent)]
-    Tun(#[from] tokio_tun::Error),
+    #[error("failed to send signal")]
+    Signal(#[source] nix::errno::Errno),
+
+    #[error("failed to spawn process")]
+    Spawn(#[source] std::io::Error),
 }

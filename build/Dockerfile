@@ -115,6 +115,37 @@ RUN mkdir -p /apps/proven/enclave && \
 # Remove target dir to speed up snapshot
 RUN rm -rf /proven-node/target
 
+# -------------------
+# ZIG/PROXY BUILD STEPS
+# -------------------
+FROM debian:bookworm-20240904-slim AS zig-builder
+WORKDIR /
+
+# Install Zig compiler
+RUN apt-get update && apt-get install -y \
+    wget \
+    xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Download and install Zig (latest stable)
+RUN wget https://ziglang.org/download/0.12.0/zig-linux-aarch64-0.12.0.tar.xz && \
+    tar -xf zig-linux-aarch64-0.12.0.tar.xz && \
+    mv zig-linux-aarch64-0.12.0 /opt/zig && \
+    ln -s /opt/zig/zig /usr/local/bin/zig
+
+# Copy proxy source code
+ARG COMMIT
+RUN git clone --recurse-submodules https://github.com/proven-network/proven-node.git
+WORKDIR /proven-node/crates/vsock-proxy/proxy
+
+# Build the proxy
+RUN zig build -Doptimize=ReleaseFast
+
+# Move proxy binary to apps directory
+RUN cp zig-out/bin/vsock-proxy-enclave /apps/provenvsock-proxy-enclave && \
+    chown root:root /apps/provenvsock-proxy-enclave && \
+    chmod 0755 /apps/proven/vsock-proxy-enclave
+
 # --------------
 # EXTRA BINARIES
 # --------------
@@ -194,6 +225,7 @@ COPY --from=dotnet-builder /apps/radix-gateway/v1.9.2 /apps/radix-gateway/v1.9.2
 COPY --from=postgres-builder /apps/postgres/v17.4 /apps/postgres/v17.4
 COPY --from=go-builder /apps/gocryptfs/v2.5.1 /apps/gocryptfs/v2.5.1
 COPY --from=rust-builder /apps/proven/enclave /apps/proven/enclave
+COPY --from=zig-builder /apps/proven/vsock-proxy-enclave /apps/proven/vsock-proxy-enclave
 COPY --from=extra-binaries /apps/bitcoin/v28.1 /apps/bitcoin/v28.1
 COPY --from=extra-binaries /apps/ethereum-reth/v1.3.12 /apps/ethereum-reth/v1.3.12
 COPY --from=extra-binaries /apps/ethereum-lighthouse/v7.0.0 /apps/ethereum-lighthouse/v7.0.0
@@ -203,5 +235,9 @@ COPY --from=extra-binaries /apps/dnscrypt-proxy/v2.1.7 /apps/dnscrypt-proxy/v2.1
 COPY --from=extra-binaries /apps/librespeed/v1.0.11 /apps/librespeed/v1.0.11
 COPY --from=openjdk:17-jdk-slim /usr/local/openjdk-17/lib/security/cacerts /etc/ssl/certs/java/cacerts
 
-# Run with increased file descriptor limit
-CMD ulimit -n 524288 && proven-enclave
+# Copy startup script
+COPY start-enclave.sh /usr/local/bin/start-enclave.sh
+RUN chmod +x /usr/local/bin/start-enclave.sh
+
+# Run the startup script instead of proven-enclave directly
+CMD ["/usr/local/bin/start-enclave.sh"]

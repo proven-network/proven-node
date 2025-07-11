@@ -66,12 +66,9 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tokio_vsock::{VsockAddr, VsockStream};
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
 use uuid::Uuid;
-
-static VMADDR_CID_EC2_HOST: u32 = 3;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
@@ -519,22 +516,13 @@ impl Bootstrap {
     }
 
     async fn start_network_proxy(&mut self) -> Result<()> {
-        let vsock_stream =
-            VsockStream::connect(VsockAddr::new(VMADDR_CID_EC2_HOST, self.args.proxy_port))
-                .await
-                .unwrap();
+        // Calculate TUN mask from CIDR
+        let tun_mask = self.args.cidr.network_length();
 
-        let proxy = Proxy::new(
-            self.args.enclave_ip,
-            self.args.host_ip,
-            self.args.cidr,
-            "tun0",
-        )
-        .await?;
+        let proxy = Proxy::new(self.args.enclave_ip, tun_mask, self.args.proxy_port, false);
+        let proxy_handle = proxy.start().await?;
 
         setup_default_gateway("tun0", self.args.host_ip, self.args.cidr).await?;
-
-        let proxy_handle = proxy.start(vsock_stream);
 
         self.proxy = Some(proxy);
         self.proxy_handle = Some(proxy_handle);

@@ -11571,12 +11571,11 @@ dependencies = [
 name = "proven-vsock-proxy"
 version = "0.1.0"
 dependencies = [
- "cidr",
+ "nix 0.27.1",
  "thiserror 2.0.12",
  "tokio",
- "tokio-tun",
  "tokio-util",
- "tokio-vsock",
+ "tracing",
 ]
 
 [[package]]
@@ -15125,18 +15124,6 @@ dependencies = [
  "futures-core",
  "tokio",
  "tokio-stream",
-]
-
-[[package]]
-name = "tokio-tun"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be25a316a2d10d0ddd46de9ddd73cdb4262678e1e52f4a32a31421f1e2b816b4"
-dependencies = [
- "libc",
- "nix 0.29.0",
- "thiserror 2.0.12",
- "tokio",
 ]
 
 [[package]]

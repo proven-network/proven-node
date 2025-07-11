@@ -6,7 +6,6 @@ use crate::systemctl;
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::Path;
-use std::sync::Arc;
 
 use axum::Router;
 use axum::http::Uri;
@@ -19,7 +18,7 @@ use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc_cac::{CacClient, InitializeRequest};
 use proven_vsock_tracing::host::VsockTracingConsumer;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio_vsock::{VMADDR_CID_ANY, VsockAddr, VsockListener};
+use tokio_vsock::VsockAddr;
 use tracing::{error, info};
 
 static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../../templates/allocator.yaml");
@@ -40,11 +39,11 @@ pub async fn start(args: StartArgs) -> Result<()> {
     info!("allocating enclave resources...");
     allocate_enclave_resources(args.enclave_cpus, args.enclave_memory)?;
 
-    let vsock = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, args.proxy_port)).unwrap();
+    // Calculate TUN mask from CIDR
+    let tun_mask = args.cidr.network_length();
 
-    let proxy =
-        Arc::new(Proxy::new(args.host_ip, args.enclave_ip, args.cidr, &args.tun_device).await?);
-    let proxy_handle = proxy.clone().start_host(vsock);
+    let proxy = Proxy::new(args.host_ip, tun_mask, args.proxy_port, true);
+    let proxy_handle = proxy.start().await?;
 
     NitroCli::run_enclave(
         args.enclave_cpus,
@@ -89,8 +88,12 @@ pub async fn start(args: StartArgs) -> Result<()> {
             () = http_server_clone.wait() => {
                 error!("http_server exited");
             }
-            () = proxy_handle => {
-                error!("proxy exited");
+            result = proxy_handle => {
+                match result {
+                    Ok(Ok(())) => info!("proxy exited normally"),
+                    Ok(Err(e)) => error!("proxy error: {}", e),
+                    Err(e) => error!("proxy task error: {}", e),
+                }
             }
             else => {
                 info!("all critical tasks exited normally");
