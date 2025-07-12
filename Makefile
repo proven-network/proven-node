@@ -18,7 +18,7 @@ install-service:
 
 cloc:
 	cloc \
-		--exclude-ext=js,mjs \
+		--exclude-ext=js,mjs,json,yaml,md,toml \
 		--not-match-d='node_modules' \
 		--not-match-d='dist' \
 		--not-match-d='target' \
@@ -26,5 +26,4 @@ cloc:
 		--not-match-d='vendor' \
 		--not-match-f='Cargo.lock' \
 		--not-match-f='codegen.rs' \
-		--not-match-f='package-lock.json' \
 		.
