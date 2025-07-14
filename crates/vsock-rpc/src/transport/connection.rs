@@ -260,6 +260,7 @@ impl ConnectionPool {
     }
 
     /// Handle incoming frames from a connection.
+    #[allow(clippy::cognitive_complexity)]
     async fn handle_stream(
         _conn: Arc<PooledConnection>,
         mut stream: SplitStream<Framed<VsockStream, FrameCodec>>,

@@ -1,0 +1,23 @@
+[package]
+name = "proven-topology"
+version.workspace = true
+edition = "2024"
+
+[features]
+default = []
+test-helpers = []
+
+[dependencies]
+async-trait.workspace = true
+ed25519-dalek.workspace = true
+hex.workspace = true
+proven-bootable.workspace = true
+proven-governance.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+proven-governance-mock.workspace = true

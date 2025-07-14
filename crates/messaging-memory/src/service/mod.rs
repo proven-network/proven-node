@@ -89,6 +89,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
+    #[allow(clippy::cognitive_complexity)] // TODO: Potential refactor
     async fn process_messages(
         last_seq: Arc<Mutex<u64>>,
         mut rx: broadcast::Receiver<crate::ClientRequest<T>>,

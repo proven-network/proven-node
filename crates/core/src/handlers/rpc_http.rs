@@ -21,7 +21,7 @@ pub struct SessionQuery {
     pub session: Uuid,
 }
 
-pub(crate) async fn http_rpc_handler<AM, RM, IM, PM, SM, A, G>(
+pub(crate) async fn http_rpc_handler<A, G, AM, RM, IM, PM, SM>(
     Path(application_id): Path<Uuid>,
     Query(SessionQuery {
         session: session_id,
@@ -32,17 +32,17 @@ pub(crate) async fn http_rpc_handler<AM, RM, IM, PM, SM, A, G>(
         identity_manager,
         sessions_manager,
         ..
-    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     body: Bytes,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
     // TODO: Could probably do a local LRU cache for sessions to avoid lookup on every request
     let session = match sessions_manager
@@ -88,7 +88,7 @@ where
     }
 }
 
-pub(crate) async fn management_http_rpc_handler<AM, RM, IM, PM, SM, A, G>(
+pub(crate) async fn management_http_rpc_handler<A, G, AM, RM, IM, PM, SM>(
     Query(SessionQuery {
         session: session_id,
     }): Query<SessionQuery>,
@@ -98,17 +98,17 @@ pub(crate) async fn management_http_rpc_handler<AM, RM, IM, PM, SM, A, G>(
         identity_manager,
         sessions_manager,
         ..
-    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     body: Bytes,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
     // TODO: Could probably do a local LRU cache for sessions to avoid lookup on every request
     let session = match sessions_manager.get_management_session(&session_id).await {

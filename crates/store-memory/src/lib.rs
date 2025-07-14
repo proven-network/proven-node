@@ -389,6 +389,7 @@ mod tests {
     #[derive(Clone, Debug, PartialEq)]
     struct CustomType(i32);
 
+    #[allow(clippy::infallible_try_from)]
     impl TryFrom<Bytes> for CustomType {
         type Error = Infallible;
 

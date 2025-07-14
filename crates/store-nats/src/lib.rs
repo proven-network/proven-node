@@ -395,19 +395,19 @@ impl_scoped_store!(
     1,
     NatsStore,
     Store,
-    "A single-scoped KV store using NATS JetStream."
+    "A single-scoped KV store using NATS `JetStream`."
 );
 impl_scoped_store!(
     2,
     NatsStore1,
     Store1,
-    "A double-scoped KV store using NATS JetStream."
+    "A double-scoped KV store using NATS `JetStream`."
 );
 impl_scoped_store!(
     3,
     NatsStore2,
     Store2,
-    "A triple-scoped KV store using NATS JetStream."
+    "A triple-scoped KV store using NATS `JetStream`."
 );
 
 #[cfg(test)]

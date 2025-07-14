@@ -13,8 +13,9 @@ mod state;
 mod utils;
 
 pub use error::Error;
+use proven_attestation::Attestor;
 pub use router::routes;
-pub use state::{BootstrapUpgrade, CoreMode, CoreOptions, FullContext, LightContext};
+pub use state::{BootstrapUpgrade, CoreMode, CoreOptions, FullContext};
 
 use application::ApplicationRouter;
 // Handlers are imported by the router module
@@ -28,13 +29,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::Router;
 use proven_applications::ApplicationManagement;
-use proven_attestation::Attestor;
 use proven_bootable::Bootable;
-use proven_consensus::Consensus;
 use proven_governance::Governance;
 use proven_http::HttpServer;
 use proven_identity::IdentityManagement;
-use proven_network::ProvenNetwork;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
@@ -51,60 +49,61 @@ pub use rpc::{
 };
 
 /// Unified core that can operate in Bootstrapping or Bootstrapped mode
-pub struct Core<A, G, HS>
+pub struct Core<A, G, H>
 where
     A: Attestor,
     G: Governance,
-    HS: HttpServer,
+    H: HttpServer,
 {
-    http_server: HS,
-    network: ProvenNetwork<G, A>,
-    consensus: Arc<Consensus<G, A>>,
-    mode: Arc<RwLock<CoreMode>>,
-    bootstrapped_state: Arc<RwLock<Option<Box<dyn std::any::Any + Send + Sync>>>>,
-    bootstrapped_router_builder: Arc<RwLock<Option<BootstrappedRouterBuilder>>>,
     application_test_router: Arc<RwLock<Option<Router>>>,
+    attestor: A,
+    bootstrapped_router_builder: Arc<RwLock<Option<BootstrappedRouterBuilder>>>,
+    bootstrapped_state: Arc<RwLock<Option<Box<dyn std::any::Any + Send + Sync>>>>,
+    engine_router: Router,
+    governance: G,
+    http_server: H,
+    mode: Arc<RwLock<CoreMode>>,
+    origin: String,
+    router_installed: Arc<RwLock<bool>>,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
-    router_installed: Arc<RwLock<bool>>,
 }
 
-impl<A, G, HS> Core<A, G, HS>
+impl<A, G, H> Core<A, G, H>
 where
-    A: Attestor + Clone + 'static,
-    G: Governance + Clone + 'static,
-    HS: HttpServer,
+    A: Attestor,
+    G: Governance,
+    H: HttpServer,
 {
     /// Create new unified core in Bootstrapping mode
     pub fn new(
         CoreOptions {
+            attestor,
+            governance,
+            engine_router,
             http_server,
-            network,
-            consensus,
-        }: CoreOptions<A, G, HS>,
+            origin,
+        }: CoreOptions<A, G, H>,
     ) -> Self {
         Self {
-            http_server,
-            network,
-            consensus,
-            mode: Arc::new(RwLock::new(CoreMode::Bootstrapping)),
+            application_test_router: Arc::new(RwLock::new(None)),
+            attestor,
             bootstrapped_state: Arc::new(RwLock::new(None)),
             bootstrapped_router_builder: Arc::new(RwLock::new(None)),
-            application_test_router: Arc::new(RwLock::new(None)),
+            engine_router,
+            governance,
+            http_server,
+            mode: Arc::new(RwLock::new(CoreMode::Bootstrapping)),
+            origin,
+            router_installed: Arc::new(RwLock::new(false)),
             shutdown_token: CancellationToken::new(),
             task_tracker: TaskTracker::new(),
-            router_installed: Arc::new(RwLock::new(false)),
         }
     }
 
     /// Get the current mode
     pub async fn mode(&self) -> CoreMode {
         self.mode.read().await.clone()
-    }
-
-    /// Get the consensus system
-    pub const fn consensus(&self) -> &Arc<Consensus<G, A>> {
-        &self.consensus
     }
 
     /// Bootstrap from Bootstrapping to Bootstrapped mode
@@ -132,14 +131,17 @@ where
         // Create the bootstrapped state
         let bootstrapped_state = BootstrappedState::new(
             upgrade.application_manager,
-            upgrade.runtime_pool_manager,
+            self.attestor.clone(),
+            self.governance.clone(),
             upgrade.identity_manager,
-            upgrade.passkey_manager,
+            self.origin.clone(),
+            upgrade.passkey_manager.clone(),
+            upgrade.runtime_pool_manager,
             upgrade.sessions_manager,
         );
 
         // Create the full context
-        let full_ctx = bootstrapped_state.to_full_context(self.network.clone());
+        let full_ctx = bootstrapped_state.to_full_context();
 
         // Create and store the bootstrapped router builder
         let router_builder = create_bootstrapped_router_builder(full_ctx.clone());
@@ -197,7 +199,7 @@ where
 
     /// Build and install the complete router for the main hostname atomically
     async fn build_and_install_main_router(&self) -> Result<(), Error> {
-        let router = RouterBuilder::create_base_router(&self.network);
+        let router = RouterBuilder::create_base_router(self.engine_router.clone());
 
         // Add bootstrapped routes if in bootstrapped mode
         let router = if let CoreMode::Bootstrapped = *self.mode.read().await {
@@ -206,22 +208,11 @@ where
             router
         };
 
-        // Add consensus routes if transport supports it
-        let router = if let Ok(consensus_router) = self.consensus.create_router() {
-            router.merge(consensus_router)
-        } else {
-            router
-        };
-
         // Finalize the router
         let router = RouterBuilder::finalize_router(router);
 
         // Set the complete router atomically
-        let fqdn = self
-            .network
-            .fqdn()
-            .await
-            .map_err(|e| Error::Network(e.to_string()))?;
+        let fqdn = self.origin.clone();
 
         RouterInstaller::install_router(&self.http_server, fqdn, router).await?;
 
@@ -258,8 +249,7 @@ where
     /// Install WebAuthn-related routes
     async fn install_webauthn_routes(&self) -> Result<(), Error> {
         let alternates_auth_gateways = self
-            .network
-            .governance()
+            .governance
             .get_alternates_auth_gateways()
             .await
             .map_err(|e| Error::Network(e.to_string()))?;
@@ -267,8 +257,7 @@ where
         let webauthn_router = RouterBuilder::create_webauthn_router(alternates_auth_gateways);
 
         let primary_auth_gateway = self
-            .network
-            .governance()
+            .governance
             .get_primary_auth_gateway()
             .await
             .map_err(|e| Error::Network(e.to_string()))?;
@@ -282,11 +271,11 @@ where
 }
 
 #[async_trait]
-impl<A, G, HS> Bootable for Core<A, G, HS>
+impl<A, G, H> Bootable for Core<A, G, H>
 where
-    A: Attestor + Clone + 'static,
-    G: Governance + Clone + 'static,
-    HS: HttpServer,
+    A: Attestor,
+    G: Governance,
+    H: HttpServer,
 {
     fn bootable_name(&self) -> &'static str {
         "core"
@@ -316,26 +305,17 @@ where
             return Err(Box::new(Error::HttpServer(e.to_string())));
         }
 
-        // Now start consensus system (it can connect to peers' WebSocket endpoints)
-        if let Err(e) = self.consensus.start().await {
-            error!("consensus system failed to start: {e}");
-            return Err(Box::new(e));
-        }
-
         let http_server = self.http_server.clone();
-        let consensus = Arc::clone(&self.consensus);
         let shutdown_token = self.shutdown_token.clone();
         self.task_tracker.spawn(async move {
             tokio::select! {
                 () = shutdown_token.cancelled() => {
                     info!("shutdown command received");
                     let _ = http_server.shutdown().await;
-                    let _ = consensus.shutdown().await;
                     Ok(())
                 }
                 () = http_server.wait() => {
                     error!("https server stopped unexpectedly");
-                    let _ = consensus.shutdown().await;
                     Err(Error::HttpServer("https server stopped unexpectedly".to_string()))
                 }
             }

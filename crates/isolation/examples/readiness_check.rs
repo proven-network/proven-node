@@ -61,10 +61,7 @@ impl IsolatedApplication for ReadinessCheckServer {
         match reqwest::get(&url).await {
             Ok(response) => {
                 if response.status() == StatusCode::OK {
-                    println!(
-                        "✅ Server is ready! Got HTTP 200 OK response on attempt {}",
-                        attempt
-                    );
+                    println!("✅ Server is ready! Got HTTP 200 OK response on attempt {attempt}");
                     true
                 } else {
                     println!(
@@ -76,10 +73,7 @@ impl IsolatedApplication for ReadinessCheckServer {
                 }
             }
             Err(e) => {
-                println!(
-                    "❌ Failed to connect to server on attempt {}: {}",
-                    attempt, e
-                );
+                println!("❌ Failed to connect to server on attempt {attempt}: {e}");
                 false
             }
         }

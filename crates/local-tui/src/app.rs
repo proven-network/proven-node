@@ -201,14 +201,15 @@ impl App {
 
         while !self.should_quit {
             // Check for shutdown signal
-            if let Some(shutdown_flag) = &self.shutdown_flag {
-                if shutdown_flag.load(Ordering::SeqCst) && !self.shutting_down {
-                    info!(
-                        "Signal-triggered shutdown initiated - sending shutdown command to all nodes"
-                    );
-                    self.node_manager.shutdown_all();
-                    self.shutting_down = true;
-                }
+            if let Some(shutdown_flag) = &self.shutdown_flag
+                && shutdown_flag.load(Ordering::SeqCst)
+                && !self.shutting_down
+            {
+                info!(
+                    "Signal-triggered shutdown initiated - sending shutdown command to all nodes"
+                );
+                self.node_manager.shutdown_all();
+                self.shutting_down = true;
             }
 
             // Check if shutdown is complete by polling NodeManager
@@ -240,14 +241,12 @@ impl App {
             })?;
 
             // Poll for events directly
-            if let Ok(available) = event::poll(Duration::from_millis(100)) {
-                if available {
-                    if let Ok(crossterm_event) = event::read() {
-                        let event = Event::Input(crossterm_event);
-                        // Process event (synchronous)
-                        self.handle_event(event);
-                    }
-                }
+            if matches!(event::poll(Duration::from_millis(100)), Ok(true))
+                && let Ok(crossterm_event) = event::read()
+            {
+                let event = Event::Input(crossterm_event);
+                // Process event (synchronous)
+                self.handle_event(event);
             }
 
             // Check mouse hold timeout for text selection
@@ -433,10 +432,8 @@ impl App {
             .iter()
             .enumerate()
         {
-            if is_selected {
-                if let Some(spec_type) = spec_types.get(i) {
-                    specializations.insert(spec_type.clone());
-                }
+            if is_selected && let Some(spec_type) = spec_types.get(i) {
+                specializations.insert(spec_type.clone());
             }
         }
 
@@ -598,14 +595,12 @@ impl App {
             KeyCode::Char('s') => {
                 if !self.ui_state.logs_sidebar_debug_selected
                     && self.ui_state.logs_sidebar_selected > 0
-                {
-                    if let Some(&selected_node_id) = self
+                    && let Some(&selected_node_id) = self
                         .ui_state
                         .logs_sidebar_nodes
                         .get(self.ui_state.logs_sidebar_selected - 1)
-                    {
-                        self.toggle_node(selected_node_id);
-                    }
+                {
+                    self.toggle_node(selected_node_id);
                 }
             }
 
@@ -613,14 +608,12 @@ impl App {
             KeyCode::Char('r') => {
                 if !self.ui_state.logs_sidebar_debug_selected
                     && self.ui_state.logs_sidebar_selected > 0
-                {
-                    if let Some(&selected_node_id) = self
+                    && let Some(&selected_node_id) = self
                         .ui_state
                         .logs_sidebar_nodes
                         .get(self.ui_state.logs_sidebar_selected - 1)
-                    {
-                        self.restart_node(selected_node_id);
-                    }
+                {
+                    self.restart_node(selected_node_id);
                 }
             }
 
@@ -683,10 +676,10 @@ impl App {
         self.ui_state.mouse_state.down_time = None;
 
         // If mouse capture was disabled, re-enable it
-        if !self.ui_state.mouse_state.capture_enabled {
-            if let Err(e) = self.re_enable_mouse_capture() {
-                warn!("Failed to re-enable mouse capture: {}", e);
-            }
+        if !self.ui_state.mouse_state.capture_enabled
+            && let Err(e) = self.re_enable_mouse_capture()
+        {
+            warn!("Failed to re-enable mouse capture: {}", e);
         }
     }
 
@@ -714,10 +707,10 @@ impl App {
 
         if let Some(down_time) = self.ui_state.mouse_state.down_time {
             let hold_duration = std::time::Duration::from_millis(250); // 250ms threshold
-            if down_time.elapsed() > hold_duration {
-                if let Err(e) = self.disable_mouse_capture() {
-                    warn!("Failed to disable mouse capture: {}", e);
-                }
+            if down_time.elapsed() > hold_duration
+                && let Err(e) = self.disable_mouse_capture()
+            {
+                warn!("Failed to disable mouse capture: {}", e);
             }
         }
     }
@@ -1245,11 +1238,11 @@ impl App {
         match key.code {
             // Add the origin
             KeyCode::Enter => {
-                if !self.ui_state.app_manager_origin_input.is_empty() {
-                    if let Some(app) = &self.ui_state.app_manager_selected_application {
-                        let origin_input = self.ui_state.app_manager_origin_input.clone();
-                        self.add_origin_to_application(app.id, &origin_input);
-                    }
+                if !self.ui_state.app_manager_origin_input.is_empty()
+                    && let Some(app) = &self.ui_state.app_manager_selected_application
+                {
+                    let origin_input = self.ui_state.app_manager_origin_input.clone();
+                    self.add_origin_to_application(app.id, &origin_input);
                 }
             }
 

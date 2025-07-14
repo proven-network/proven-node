@@ -75,10 +75,10 @@ impl LogFileInfo {
             .with_context(|| format!("Failed to open log file: {}", self.file_path.display()))?;
 
         // Update last modified time
-        if let Ok(metadata) = file.metadata() {
-            if let Ok(modified) = metadata.modified() {
-                self.last_modified = Some(modified);
-            }
+        if let Ok(metadata) = file.metadata()
+            && let Ok(modified) = metadata.modified()
+        {
+            self.last_modified = Some(modified);
         }
 
         let mut reader = BufReader::new(file);
@@ -193,12 +193,11 @@ impl MultiFileReader {
             let entry = entry?;
             let path = entry.path();
 
-            if path.is_file() {
-                if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                    if let Some(timestamp) = Self::parse_timestamp_from_filename(filename) {
-                        new_files.push(LogFileInfo::new(path, timestamp));
-                    }
-                }
+            if path.is_file()
+                && let Some(filename) = path.file_name().and_then(|n| n.to_str())
+                && let Some(timestamp) = Self::parse_timestamp_from_filename(filename)
+            {
+                new_files.push(LogFileInfo::new(path, timestamp));
             }
         }
 

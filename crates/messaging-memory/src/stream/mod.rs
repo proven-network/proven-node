@@ -527,11 +527,10 @@ where
         // Check if stream already exists (another thread may have created it while we were creating ours)
         if let Some(stream_map) =
             global_state.try_borrow::<HashMap<String, InitializedMemoryStream<T, D, S>>>()
+            && let Some(existing_stream) = stream_map.get(&stream_name)
         {
-            if let Some(existing_stream) = stream_map.get(&stream_name) {
-                // Use the existing stream and discard the one we just created
-                return Ok(existing_stream.clone());
-            }
+            // Use the existing stream and discard the one we just created
+            return Ok(existing_stream.clone());
         }
 
         // Initialize the map if it doesn't exist
@@ -575,11 +574,10 @@ where
         // Check if stream already exists (another thread may have created it while we were creating ours)
         if let Some(stream_map) =
             global_state.try_borrow::<HashMap<String, InitializedMemoryStream<T, D, S>>>()
+            && let Some(existing_stream) = stream_map.get(&stream_name)
         {
-            if let Some(existing_stream) = stream_map.get(&stream_name) {
-                // Use the existing stream and discard the one we just created
-                return Ok(existing_stream.clone());
-            }
+            // Use the existing stream and discard the one we just created
+            return Ok(existing_stream.clone());
         }
 
         // Initialize the map if it doesn't exist

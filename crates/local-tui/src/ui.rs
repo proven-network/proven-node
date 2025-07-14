@@ -341,10 +341,10 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
 /// Create colored spans for a log entry with proper alignment and wrapping
 #[allow(clippy::too_many_lines)]
 pub fn create_colored_log_lines(
-    entry: &crate::messages::LogEntry,
+    entry: &'_ crate::messages::LogEntry,
     show_node_name: bool,
     max_width: u16,
-) -> Vec<Line> {
+) -> Vec<Line<'_>> {
     let timestamp = format!("{}", entry.timestamp.format("%H:%M:%S%.3f"));
     let node_name = entry.node_id.pokemon_name();
 

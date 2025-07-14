@@ -134,12 +134,12 @@ where
         }
 
         // Check if origin is already in the allowed origins list
-        if let Some(app) = self.view.get_application(&application_id).await {
-            if app.allowed_origins.contains(&origin) {
-                return Response::Error {
-                    message: "Origin already in allowed origins".to_string(),
-                };
-            }
+        if let Some(app) = self.view.get_application(&application_id).await
+            && app.allowed_origins.contains(&origin)
+        {
+            return Response::Error {
+                message: "Origin already in allowed origins".to_string(),
+            };
         }
 
         let event = Event::AllowedOriginAdded {
@@ -224,12 +224,12 @@ where
         }
 
         // Check if origin is in the allowed origins list
-        if let Some(app) = self.view.get_application(&application_id).await {
-            if !app.allowed_origins.contains(&origin) {
-                return Response::Error {
-                    message: "Origin not in allowed origins".to_string(),
-                };
-            }
+        if let Some(app) = self.view.get_application(&application_id).await
+            && !app.allowed_origins.contains(&origin)
+        {
+            return Response::Error {
+                message: "Origin not in allowed origins".to_string(),
+            };
         }
 
         let event = Event::AllowedOriginRemoved {

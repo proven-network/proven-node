@@ -329,6 +329,7 @@ impl<G: Governance> Node<G> {
     /// # Errors
     ///
     /// Returns an error if the node fails to stop cleanly
+    #[allow(clippy::cognitive_complexity)]
     pub async fn stop(&mut self) -> Result<(), Error> {
         let current_status = self.status.read().await.clone();
 
@@ -382,6 +383,7 @@ impl<G: Governance> Node<G> {
 }
 
 /// Internal function to run a node
+#[allow(clippy::cognitive_complexity)]
 async fn run_node_internal<G: Governance>(
     config: NodeConfig<G>,
     shutdown_token: CancellationToken,

@@ -3,15 +3,15 @@
 //! This module defines all operations that can be performed on local
 //! consensus groups, including stream data operations and migrations.
 
-use crate::allocation::ConsensusGroupId;
-use crate::global::PubSubMessageSource;
+use crate::ConsensusGroupId;
+use crate::core::global::PubSubMessageSource;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Local stream operations handled by local consensus groups
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum LocalStreamOperation {
+pub enum GroupStreamOperation {
     /// Stream data operations
     Stream(StreamOperation),
     /// Migration operations
@@ -22,7 +22,7 @@ pub enum LocalStreamOperation {
     Maintenance(MaintenanceOperation),
 }
 
-impl LocalStreamOperation {
+impl GroupStreamOperation {
     /// Get the category of the operation
     pub fn category(&self) -> &'static str {
         match self {
@@ -73,6 +73,11 @@ impl LocalStreamOperation {
     /// Create a delete from stream operation
     pub fn delete_from_stream(stream: String, sequence: u64) -> Self {
         Self::Stream(StreamOperation::Delete { stream, sequence })
+    }
+
+    /// Create a direct get from stream operation
+    pub fn direct_get_from_stream(stream: String, sequence: u64) -> Self {
+        Self::Stream(StreamOperation::DirectGet { stream, sequence })
     }
 
     /// Create a publish from pubsub operation
@@ -185,6 +190,13 @@ pub enum StreamOperation {
         /// Sequence number of the message to delete
         sequence: u64,
     },
+    /// Direct get a message from a stream
+    DirectGet {
+        /// Stream name to read from
+        stream: String,
+        /// Sequence number of the message to read
+        sequence: u64,
+    },
 }
 
 impl StreamOperation {
@@ -195,6 +207,7 @@ impl StreamOperation {
             Self::PublishBatch { .. } => "publish_batch",
             Self::Rollup { .. } => "rollup",
             Self::Delete { .. } => "delete",
+            Self::DirectGet { .. } => "direct_get",
         }
     }
 
@@ -205,6 +218,7 @@ impl StreamOperation {
             Self::PublishBatch { stream, .. } => stream,
             Self::Rollup { stream, .. } => stream,
             Self::Delete { stream, .. } => stream,
+            Self::DirectGet { stream, .. } => stream,
         }
     }
 }

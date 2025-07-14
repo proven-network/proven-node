@@ -36,12 +36,12 @@ impl GothamState {
     /// Tries to borrow a value from the `GothamState` storage.
     pub fn try_borrow<T: Send + Sync + 'static>(&self) -> Option<&T> {
         let type_id = TypeId::of::<T>();
-        self.data.get(&type_id).and_then(|b| b.downcast_ref())
+        self.data.get(&type_id).and_then(|b| (**b).downcast_ref())
     }
 
     // For internal use.
     pub(crate) fn try_borrow_untyped<T: Send + Sync + 'static>(&self, t: TypeId) -> Option<&T> {
-        self.data.get(&t).and_then(|b| b.downcast_ref())
+        self.data.get(&t).and_then(|b| (**b).downcast_ref())
     }
 
     /// Borrows a value from the `GothamState` storage.
@@ -52,7 +52,9 @@ impl GothamState {
     /// Tries to mutably borrow a value from the `GothamState` storage.
     pub fn try_borrow_mut<T: Send + Sync + 'static>(&mut self) -> Option<&mut T> {
         let type_id = TypeId::of::<T>();
-        self.data.get_mut(&type_id).and_then(|b| b.downcast_mut())
+        self.data
+            .get_mut(&type_id)
+            .and_then(|b| (**b).downcast_mut())
     }
 
     /// Mutably borrows a value from the `GothamState` storage.

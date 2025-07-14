@@ -4,8 +4,7 @@
 //! including group assignments and decommissioning.
 
 use crate::{
-    NodeId,
-    allocation::ConsensusGroupId,
+    ConsensusGroupId, NodeId,
     error::{ConsensusResult, Error},
 };
 use serde::{Deserialize, Serialize};
@@ -87,8 +86,7 @@ impl NodeOperation {
         if current_count + adding > max_groups {
             // Note: node_id should be provided by the caller
             return Err(Error::InvalidOperation(format!(
-                "Too many groups: current {}, max {}, trying to add {}",
-                current_count, max_groups, adding
+                "Too many groups: current {current_count}, max {max_groups}, trying to add {adding}"
             )));
         }
         Ok(())

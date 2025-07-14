@@ -381,6 +381,7 @@ impl Postgres {
         Ok(())
     }
 
+    #[allow(clippy::cognitive_complexity)]
     async fn vacuum_database(&self) -> Result<(), Error> {
         info!("vacuuming database...");
 
@@ -461,12 +462,12 @@ impl Bootable for Postgres {
 
         self.process.lock().await.replace(process);
 
-        if !self.skip_vacuum {
-            if let Err(e) = self.vacuum_database().await {
-                let _ = self.shutdown().await;
+        if !self.skip_vacuum
+            && let Err(e) = self.vacuum_database().await
+        {
+            let _ = self.shutdown().await;
 
-                return Err(Box::new(e));
-            }
+            return Err(Box::new(e));
         }
 
         Ok(())

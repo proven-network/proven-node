@@ -10,9 +10,7 @@ use common::TestCluster;
 use ed25519_dalek::SigningKey;
 use futures::future;
 use proven_attestation_mock::MockAttestor;
-use proven_consensus::{
-    Consensus, ConsensusConfig, HierarchicalConsensusConfig, NodeId, allocation::ConsensusGroupId,
-};
+use proven_consensus::{ConsensusClient, ConsensusGroupId, Engine, EngineConfig, NodeId};
 use proven_governance::{GovernanceNode, Version};
 use proven_governance_mock::MockGovernance;
 use rand::rngs::OsRng;
@@ -38,10 +36,10 @@ pub struct MultiNodeTestCluster {
 pub struct TestNode {
     /// Node ID (ed25519 public key)
     node_id: NodeId,
-    /// Consensus instance
-    consensus: Option<Consensus<MockGovernance, MockAttestor>>,
-    /// Node configuration
-    config: ConsensusConfig<MockGovernance, MockAttestor>,
+    /// Consensus engine instance
+    engine: Option<Arc<Engine<common::MockTransport, MockGovernance>>>,
+    /// Consensus client instance
+    client: Option<ConsensusClient<common::MockTransport, MockGovernance>>,
     /// Whether this node is currently partitioned
     is_partitioned: bool,
     /// Network port for this node
@@ -60,36 +58,19 @@ impl MultiNodeTestCluster {
             .await
             .expect("Failed to start test cluster");
 
-        // Extract the consensus instances and wrap them in TestNode
+        // Extract the engine and client instances and wrap them in TestNode
         let mut nodes = Vec::new();
         for i in 0..node_count {
-            let consensus = test_cluster.consensus_instances.remove(0);
+            let engine = test_cluster.engines[i].clone();
+            let client = test_cluster.clients[i].clone();
             let port = test_cluster.ports[i];
-            let node_id = consensus.node_id().clone();
+            // Use the signing key to derive the node ID
+            let node_id = NodeId::new(test_cluster.signing_keys[i].verifying_key());
 
             let test_node = TestNode {
                 node_id,
-                consensus: Some(consensus),
-                config: ConsensusConfig {
-                    governance: test_cluster.governance.clone(),
-                    attestor: Arc::new(MockAttestor::new()),
-                    signing_key: test_cluster.signing_keys[i].clone(),
-                    raft_config: openraft::Config::default(),
-                    transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
-                        listen_addr: format!("127.0.0.1:{}", port).parse().unwrap(),
-                    },
-                    storage_config: proven_consensus::config::StorageConfig::Memory,
-                    cluster_discovery_timeout: Some(Duration::from_secs(10)),
-                    cluster_join_retry_config:
-                        proven_consensus::config::ClusterJoinRetryConfig::default(),
-                    hierarchical_config: {
-                        let mut config = HierarchicalConsensusConfig::default();
-                        config.monitoring.prometheus.enabled = false;
-                        config
-                    },
-                    stream_storage_backend:
-                        proven_consensus::local::stream_storage::StreamStorageBackend::default(),
-                },
+                engine: Some(engine),
+                client: Some(client),
                 is_partitioned: false,
                 port,
             };
@@ -215,8 +196,8 @@ impl MultiNodeTestCluster {
                 }
 
                 // Check if node is in a stable state
-                if let Some(consensus) = &node.consensus {
-                    if !consensus.is_leader() {
+                if let Some(client) = &node.client {
+                    if !client.is_leader().await {
                         // In a real implementation, check Raft state
                         // For now, assume stability after basic checks
                     }
@@ -243,30 +224,10 @@ impl TestNode {
         let governance = Self::create_test_governance(port, &signing_key);
         let attestor = Arc::new(MockAttestor::new());
 
-        // Disable Prometheus for tests to avoid port conflicts
-        let mut hierarchical_config = HierarchicalConsensusConfig::default();
-        hierarchical_config.monitoring.prometheus.enabled = false;
-
-        let config = ConsensusConfig {
-            governance: governance.clone(),
-            attestor: attestor.clone(),
-            signing_key: signing_key.clone(),
-            raft_config: openraft::Config::default(),
-            transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
-                listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            },
-            storage_config: proven_consensus::config::StorageConfig::Memory,
-            cluster_discovery_timeout: Some(Duration::from_secs(10)),
-            cluster_join_retry_config: proven_consensus::config::ClusterJoinRetryConfig::default(),
-            hierarchical_config,
-            stream_storage_backend:
-                proven_consensus::local::stream_storage::StreamStorageBackend::default(),
-        };
-
         Self {
             node_id,
-            consensus: None,
-            config,
+            engine: None,
+            client: None,
             is_partitioned: false,
             port,
         }
@@ -281,30 +242,10 @@ impl TestNode {
         let node_id = NodeId::new(signing_key.verifying_key());
         let attestor = Arc::new(MockAttestor::new());
 
-        // Disable Prometheus for tests to avoid port conflicts
-        let mut hierarchical_config = HierarchicalConsensusConfig::default();
-        hierarchical_config.monitoring.prometheus.enabled = false;
-
-        let config = ConsensusConfig {
-            governance: governance.clone(),
-            attestor: attestor.clone(),
-            signing_key: signing_key.clone(),
-            raft_config: openraft::Config::default(),
-            transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
-                listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            },
-            storage_config: proven_consensus::config::StorageConfig::Memory,
-            cluster_discovery_timeout: Some(Duration::from_secs(10)),
-            cluster_join_retry_config: proven_consensus::config::ClusterJoinRetryConfig::default(),
-            hierarchical_config,
-            stream_storage_backend:
-                proven_consensus::local::stream_storage::StreamStorageBackend::default(),
-        };
-
         Self {
             node_id,
-            consensus: None,
-            config,
+            engine: None,
+            client: None,
             is_partitioned: false,
             port,
         }
@@ -312,35 +253,37 @@ impl TestNode {
 
     /// Start the consensus node
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        // In the new design, consensus is already started in MultiNodeTestCluster::new()
+        // In the new design, engine is already started in MultiNodeTestCluster::new()
         // This method is kept for compatibility but doesn't need to do anything
-        if self.consensus.is_none() {
-            let consensus = Consensus::new(self.config.clone()).await?;
-            self.consensus = Some(consensus);
-            println!("Started node {} on port {}", self.node_id, self.port);
+        if self.engine.is_none() {
+            // Engine instances should be created via TestCluster
+            return Err("Use TestCluster to create engine instances".into());
         }
         Ok(())
     }
 
     /// Stop the consensus node
     pub async fn stop(&mut self) {
-        if let Some(_consensus) = self.consensus.take() {
-            // In a real implementation, properly shutdown the consensus instance
+        if let Some(engine) = self.engine.take() {
+            // Shutdown the engine
+            let _ = engine.shutdown().await;
             println!("Stopped node {}", self.node_id);
         }
+        self.client = None;
     }
 
     /// Check if this node is the leader
-    pub fn is_leader(&self) -> bool {
-        self.consensus
-            .as_ref()
-            .map(|c| c.is_leader())
-            .unwrap_or(false)
+    pub async fn is_leader(&self) -> bool {
+        if let Some(client) = &self.client {
+            client.is_leader().await
+        } else {
+            false
+        }
     }
 
-    /// Get consensus instance reference
-    pub fn consensus(&self) -> Option<&Consensus<MockGovernance, MockAttestor>> {
-        self.consensus.as_ref()
+    /// Get engine instance reference
+    pub fn consensus(&self) -> Option<&Arc<Engine<common::MockTransport, MockGovernance>>> {
+        self.engine.as_ref()
     }
 
     /// Create test governance for this node
@@ -356,7 +299,7 @@ impl TestNode {
 
         let topology_node = GovernanceNode {
             availability_zone: "test-az".to_string(),
-            origin: format!("127.0.0.1:{port}"),
+            origin: format!("http://127.0.0.1:{port}"),
             public_key: signing_key.verifying_key(),
             region: "test-region".to_string(),
             specializations: HashSet::new(),

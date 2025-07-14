@@ -3,13 +3,17 @@
 //! This module provides a comprehensive error hierarchy for all consensus operations,
 //! with specific error types for different subsystems and failure modes.
 
-use crate::NodeId;
-use crate::allocation::ConsensusGroupId;
+use crate::ConsensusGroupId;
+use proven_topology::NodeId;
 use thiserror::Error;
 
 /// Main consensus error type
 #[derive(Error, Debug, Clone)]
 pub enum Error {
+    /// Topology-related error
+    #[error("Topology error: {0}")]
+    Topology(#[from] proven_topology::TopologyError),
+
     /// Network-related error
     #[error("Network error: {0}")]
     Network(#[from] NetworkError),
@@ -503,6 +507,14 @@ pub type ConsensusResult<T> = Result<T, Error>;
 pub type NetworkResult<T> = Result<T, NetworkError>;
 
 // Conversion implementations
+
+// Implement conversion to network error for handler compatibility
+impl From<Error> for proven_network::NetworkError {
+    fn from(err: Error) -> Self {
+        // Since Error implements std::error::Error, we can box it
+        proven_network::NetworkError::Handler(Box::new(err))
+    }
+}
 
 impl From<std::io::Error> for NetworkError {
     fn from(err: std::io::Error) -> Self {

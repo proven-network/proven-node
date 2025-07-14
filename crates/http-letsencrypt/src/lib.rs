@@ -182,12 +182,11 @@ where
     async fn verify_domain_dns(domain: &str, expected_cname: &str) -> bool {
         let dns_resolver = Resolver::tokio(ResolverConfig::default(), ResolverOpts::default());
 
-        if let Ok(response) = dns_resolver.lookup(domain, RecordType::CNAME).await {
-            if let Some(RData::CNAME(cname)) = response.iter().next() {
-                if cname.to_ascii().trim_end_matches('.') == expected_cname {
-                    return true;
-                }
-            }
+        if let Ok(response) = dns_resolver.lookup(domain, RecordType::CNAME).await
+            && let Some(RData::CNAME(cname)) = response.iter().next()
+            && cname.to_ascii().trim_end_matches('.') == expected_cname
+        {
+            return true;
         }
 
         false

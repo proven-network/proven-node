@@ -133,13 +133,12 @@ impl LoggerApp {
     /// Handle stderr line
     fn parse_stderr_line(&self, line: &str) {
         // For stderr, we'll also try to extract the actual message without timestamp
-        if let Some(bracket_pos) = line.find('[') {
-            if let Some(end_bracket_pos) = line.find(']') {
-                if bracket_pos < end_bracket_pos {
-                    warn!(target: "isolated_app_err", "{}", line[end_bracket_pos+1..].trim());
-                    return;
-                }
-            }
+        if let Some(bracket_pos) = line.find('[')
+            && let Some(end_bracket_pos) = line.find(']')
+            && bracket_pos < end_bracket_pos
+        {
+            warn!(target: "isolated_app_err", "{}", line[end_bracket_pos+1..].trim());
+            return;
         }
 
         // If we couldn't parse it specially, just log the whole line

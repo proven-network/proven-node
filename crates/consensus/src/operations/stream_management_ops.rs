@@ -5,10 +5,10 @@
 //! These are administrative operations on streams, not data operations within streams.
 
 use crate::{
-    allocation::ConsensusGroupId,
+    ConsensusGroupId,
+    core::global::StreamConfig,
+    core::group::MigrationState,
     error::{ConsensusResult, Error, StreamError},
-    global::StreamConfig,
-    local::MigrationState,
 };
 use serde::{Deserialize, Serialize};
 

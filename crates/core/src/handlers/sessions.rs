@@ -26,22 +26,22 @@ pub struct CreateSessionRequest {
     public_key: Bytes,
 }
 
-pub(crate) async fn create_session_handler<AM, RM, IM, PM, SM, A, G>(
+pub(crate) async fn create_session_handler<A, G, AM, RM, IM, PM, SM>(
     Path(application_id): Path<Uuid>,
     State(FullContext {
         sessions_manager, ..
-    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     origin_header: Option<TypedHeader<Origin>>,
     data: TypedMultipart<CreateSessionRequest>,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
     let origin = match origin_header {
         Some(value) => value.to_string(),
@@ -92,21 +92,21 @@ where
     }
 }
 
-pub(crate) async fn create_management_session_handler<AM, RM, IM, PM, SM, A, G>(
+pub(crate) async fn create_management_session_handler<A, G, AM, RM, IM, PM, SM>(
     State(FullContext {
         sessions_manager, ..
-    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     origin_header: Option<TypedHeader<Origin>>,
     data: TypedMultipart<CreateSessionRequest>,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
     let origin = match origin_header {
         Some(value) => value.to_string(),

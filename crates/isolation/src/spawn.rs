@@ -621,6 +621,7 @@ impl IsolatedProcessSpawner {
     ///
     /// Returns an error if the process could not be spawned.
     #[allow(clippy::too_many_lines)] // TODO: Potential refactor
+    #[allow(clippy::cognitive_complexity)]
     pub async fn spawn(&mut self) -> Result<IsolatedProcess, Error> {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
@@ -905,27 +906,30 @@ impl IsolatedProcessSpawner {
                     // Always attempt to wait() on the child handle to reap the process and get the definitive status.
                     match child.wait().await {
                         Ok(final_status) => {
-                            let mut exit_status_guard = exit_status_for_task.lock().await;
-                            if exit_status_guard.is_none() { // Only set if not already set (e.g., by normal exit path)
-                                if killed_by_timeout {
-                                     warn!("Process {} was killed due to timeout. Final status from wait: {}", pid_for_task, final_status);
-                                     // We trust the final_status from wait() as the most accurate.
-                                } else if let Some(_graceful_status) = graceful_exit_status {
-                                     // Prefer the status obtained via waitpid if available and consistent?
-                                     // Let's trust the final wait() status as the definitive one from the OS.
-                                     info!("Process {} exited after signal. Final status from wait: {}", pid_for_task, final_status);
-                                } else {
-                                    // Process exited/disappeared during waitpid loop (e.g., ECHILD or other error)
-                                    info!("Process {} status unclear from waitpid loop. Final status from wait: {}", pid_for_task, final_status);
-                                }
+                            {
+                                let mut exit_status_guard = exit_status_for_task.lock().await;
+                                if exit_status_guard.is_none() { // Only set if not already set
+                                    if killed_by_timeout {
+                                         warn!("Process {} was killed due to timeout. Final status from wait: {}", pid_for_task, final_status);
+                                         // We trust the final_status from wait() as the most accurate.
+                                    } else if let Some(_graceful_status) = graceful_exit_status {
+                                         // Prefer the status obtained via waitpid if available and consistent?
+                                         // Let's trust the final wait() status as the definitive one from the OS.
+                                         info!("Process {} exited after signal. Final status from wait: {}", pid_for_task, final_status);
+                                    } else {
+                                        // Process exited/disappeared during waitpid loop (e.g., ECHILD or other error)
+                                        info!("Process {} status unclear from waitpid loop. Final status from wait: {}", pid_for_task, final_status);
+                                    }
 
-                                *exit_status_guard = Some(final_status);
-                            } else {
-                                 // Status was already set, likely by the normal exit path race condition. Log if different.
-                                 if Some(final_status) != *exit_status_guard {
-                                     warn!("Final status from wait ({}) differs from already set status ({:?}) for process {}", final_status, *exit_status_guard, pid_for_task);
-                                 }
+                                    *exit_status_guard = Some(final_status);
+                                }
                             }
+
+                            // Check for status differences outside the guard scope
+                            if let Some(existing_status) = exit_status_for_task.lock().await.as_ref()
+                                && Some(final_status) != Some(*existing_status) {
+                                    warn!("Final status from wait ({}) differs from already set status ({:?}) for process {}", final_status, existing_status, pid_for_task);
+                                }
                         }
                         Err(err) => {
                             error!("Final wait() failed for process {} after shutdown sequence: {}", pid_for_task, err);
@@ -1061,7 +1065,7 @@ impl IsolatedProcessSpawner {
 
             #[cfg(not(target_os = "linux"))]
             let ready_check_info = ReadyCheckInfo {
-                ip_address: std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+                ip_address: std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
                 pid,
             };
 
@@ -1073,13 +1077,13 @@ impl IsolatedProcessSpawner {
 
             attempts += 1;
 
-            if let Some(max) = max_attempts {
-                if attempts >= max {
-                    *readiness_status.lock().await = Some(false);
-                    return Err(Error::ReadinessCheck(format!(
-                        "Application not ready after {attempts} attempts"
-                    )));
-                }
+            if let Some(max) = max_attempts
+                && attempts >= max
+            {
+                *readiness_status.lock().await = Some(false);
+                return Err(Error::ReadinessCheck(format!(
+                    "Application not ready after {attempts} attempts"
+                )));
             }
 
             debug!("Application not ready, attempt {}, waiting...", attempts);

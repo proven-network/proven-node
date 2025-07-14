@@ -1,3 +1,5 @@
+#![allow(mismatched_lifetime_syntaxes)]
+
 mod codegen;
 
 pub use codegen::*;

@@ -1,2 +1,4 @@
 unstable_features = true
 format_code_in_doc_comments = true
+ignore = ["vendor/**/*", "vendor"]
+edition = "2024"

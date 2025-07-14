@@ -86,7 +86,7 @@ async fn main() -> Result<(), Error> {
     let start = Instant::now();
     join_all(handles).await;
     let duration = start.elapsed();
-    println!("{} tasks completed in {:?}", EXECUTIONS, duration);
+    println!("{EXECUTIONS} tasks completed in {duration:?}");
 
     let durations = durations.lock().await;
     let mut durations_vec: Vec<_> = durations.iter().cloned().collect();
@@ -95,16 +95,16 @@ async fn main() -> Result<(), Error> {
     let min_duration = durations_vec.first().unwrap();
     let max_duration = durations_vec.last().unwrap();
     let average_duration = durations_vec.iter().sum::<std::time::Duration>() / EXECUTIONS as u32;
-    let median_duration = if EXECUTIONS % 2 == 0 {
+    let median_duration = if EXECUTIONS.is_multiple_of(2) {
         (durations_vec[EXECUTIONS / 2 - 1] + durations_vec[EXECUTIONS / 2]) / 2
     } else {
         durations_vec[EXECUTIONS / 2]
     };
 
-    println!("Min execution time: {:?}", min_duration);
-    println!("Max execution time: {:?}", max_duration);
-    println!("Average execution time: {:?}", average_duration);
-    println!("Median execution time: {:?}", median_duration);
+    println!("Min execution time: {min_duration:?}");
+    println!("Max execution time: {max_duration:?}");
+    println!("Average execution time: {average_duration:?}");
+    println!("Median execution time: {median_duration:?}");
 
     Ok(())
 }

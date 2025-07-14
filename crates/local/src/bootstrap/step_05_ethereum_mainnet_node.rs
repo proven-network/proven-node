@@ -18,13 +18,12 @@ use proven_governance::{Governance, NodeSpecialization};
 use tracing::info;
 
 pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
-    let network = bootstrap.network.as_ref().unwrap_or_else(|| {
-        panic!("network not set before ethereum nodes step");
+    let node = bootstrap.node.as_ref().unwrap_or_else(|| {
+        panic!("node not set before ethereum nodes step");
     });
 
-    if network
+    if node
         .specializations()
-        .await?
         .contains(&NodeSpecialization::EthereumMainnet)
     {
         // Start Reth execution client

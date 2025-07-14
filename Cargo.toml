@@ -1,7 +1,7 @@
 [workspace.package]
 rust-version = "1.80"
 authors = ["Proven Labs Pte Ltd"]
-edition = "2021"
+edition = "2024"
 license = "FSL-1.1-MIT"
 repository = "https://github.com/proven-network/proven-node"
 version = "0.1.0"
@@ -20,7 +20,7 @@ members = [
     "crates/consensus",
     "crates/core",
     "crates/dnscrypt-proxy",
-    "crates/enclave",
+    # "crates/enclave",
     "crates/ethereum-lighthouse",
     "crates/ethereum-reth",
     "crates/external-fs",
@@ -46,11 +46,9 @@ members = [
     "crates/locks-memory",
     "crates/locks-nats",
     "crates/messaging",
-    "crates/messaging-consensus",
+    # "crates/messaging-consensus",
     "crates/messaging-memory",
     "crates/messaging-nats",
-    "crates/nats-monitor",
-    "crates/nats-server",
     "crates/network",
     "crates/passkeys",
     "crates/postgres",
@@ -74,7 +72,12 @@ members = [
     "crates/store-memory",
     "crates/store-nats",
     "crates/store-s3",
+    "crates/topology",
+    "crates/transport",
+    "crates/transport-tcp",
+    "crates/transport-ws",
     "crates/util",
+    "crates/verification",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
     "crates/vsock-rpc-cac",
@@ -92,7 +95,7 @@ default-members = [
     "crates/consensus",
     "crates/core",
     "crates/dnscrypt-proxy",
-    "crates/enclave",
+    # "crates/enclave",
     "crates/ethereum-lighthouse",
     "crates/ethereum-reth",
     "crates/external-fs",
@@ -118,11 +121,9 @@ default-members = [
     "crates/locks-memory",
     "crates/locks-nats",
     "crates/messaging",
-    "crates/messaging-consensus",
+    # "crates/messaging-consensus",
     "crates/messaging-memory",
     "crates/messaging-nats",
-    "crates/nats-monitor",
-    "crates/nats-server",
     "crates/network",
     "crates/passkeys",
     "crates/postgres",
@@ -146,7 +147,12 @@ default-members = [
     "crates/store-memory",
     "crates/store-nats",
     "crates/store-s3",
+    "crates/topology",
+    "crates/transport",
+    "crates/transport-tcp",
+    "crates/transport-ws",
     "crates/util",
+    "crates/verification",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
     "crates/vsock-rpc-cac",
@@ -429,7 +435,7 @@ proven-code-package = { path = "crates/code-package" }
 proven-consensus = { path = "crates/consensus" }
 proven-core = { path = "crates/core" }
 proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }
-proven-enclave = { path = "crates/enclave" }
+# proven-enclave = { path = "crates/enclave" }
 proven-ethereum-lighthouse = { path = "crates/ethereum-lighthouse" }
 proven-ethereum-reth = { path = "crates/ethereum-reth" }
 proven-external-fs = { path = "crates/external-fs" }
@@ -455,11 +461,9 @@ proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
 proven-locks-nats = { path = "crates/locks-nats" }
 proven-messaging = { path = "crates/messaging" }
-proven-messaging-consensus = { path = "crates/messaging-consensus" }
+# proven-messaging-consensus = { path = "crates/messaging-consensus" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
 proven-messaging-nats = { path = "crates/messaging-nats" }
-proven-nats-monitor = { path = "crates/nats-monitor" }
-proven-nats-server = { path = "crates/nats-server" }
 proven-network = { path = "crates/network" }
 proven-passkeys = { path = "crates/passkeys" }
 proven-postgres = { path = "crates/postgres" }
@@ -483,7 +487,12 @@ proven-store-fs = { path = "crates/store-fs" }
 proven-store-memory = { path = "crates/store-memory" }
 proven-store-nats = { path = "crates/store-nats" }
 proven-store-s3 = { path = "crates/store-s3" }
+proven-topology = { path = "crates/topology" }
+proven-transport = { path = "crates/transport" }
+proven-transport-tcp = { path = "crates/transport-tcp" }
+proven-transport-ws = { path = "crates/transport-ws" }
 proven-util = { path = "crates/util" }
+proven-verification = { path = "crates/verification" }
 proven-vsock-proxy = { path = "crates/vsock-proxy" }
 proven-vsock-rpc = { path = "crates/vsock-rpc" }
 proven-vsock-rpc-cac = { path = "crates/vsock-rpc-cac" }

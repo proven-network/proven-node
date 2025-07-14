@@ -5,6 +5,7 @@
 //! validator and handler.
 
 pub mod group_ops;
+pub mod handlers;
 pub mod local_stream_ops;
 pub mod node_ops;
 pub mod routing_ops;
@@ -18,7 +19,7 @@ use serde::{Deserialize, Serialize};
 // Re-export operation types
 pub use group_ops::GroupOperation;
 pub use local_stream_ops::{
-    LocalStreamOperation, MaintenanceOperation, MigrationOperation, PubSubOperation,
+    GroupStreamOperation, MaintenanceOperation, MigrationOperation, PubSubOperation,
     StreamOperation,
 };
 pub use node_ops::NodeOperation;
@@ -26,15 +27,8 @@ pub use routing_ops::RoutingOperation;
 pub use stream_management_ops::StreamManagementOperation;
 
 // Re-export validators
-pub use validators::{
-    GroupOperationValidator, LocalOperationValidator, LocalStreamOperationValidator,
-    NodeOperationValidator, RoutingOperationValidator, StreamManagementOperationValidator,
-};
 
 // Re-export sync validators
-pub use sync_validators::{
-    SyncGroupValidator, SyncNodeValidator, SyncRoutingValidator, SyncStreamValidator,
-};
 
 /// Categorized global operations for the consensus system
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,9 +68,9 @@ impl GlobalOperation {
 /// Operation context containing state needed for validation
 pub struct OperationContext<'a> {
     /// Reference to global state
-    pub global_state: &'a crate::global::global_state::GlobalState,
+    pub global_state: &'a crate::core::global::global_state::GlobalState,
     /// Current node ID
-    pub node_id: crate::NodeId,
+    pub node_id: proven_topology::NodeId,
     /// Whether this node is the leader
     pub is_leader: bool,
 }
@@ -84,11 +78,11 @@ pub struct OperationContext<'a> {
 /// Local operation context containing state needed for validation
 pub struct LocalOperationContext<'a> {
     /// Reference to local state
-    pub local_state: &'a crate::local::StorageBackedLocalState,
+    pub local_state: &'a crate::core::state_machine::LocalStateMachine,
     /// Current node ID
-    pub node_id: crate::NodeId,
+    pub node_id: proven_topology::NodeId,
     /// Consensus group ID
-    pub group_id: crate::allocation::ConsensusGroupId,
+    pub group_id: crate::ConsensusGroupId,
     /// Whether this node is the leader
     pub is_leader: bool,
 }

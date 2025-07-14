@@ -24,9 +24,7 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
 use proven_cert_store::CertStore;
 use proven_consensus::config::{ClusterJoinRetryConfig, StorageConfig, TransportConfig};
-use proven_consensus::{
-    Consensus, ConsensusConfigBuilder, HierarchicalConsensusConfig, RaftConfig,
-};
+use proven_consensus::{ConsensusConfigBuilder, ProvenEngine, RaftConfig};
 use proven_core::{BootstrapUpgrade, Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
@@ -1162,11 +1160,10 @@ impl Bootstrap {
                 max_delay: Duration::from_secs(10),
                 request_timeout: Duration::from_secs(5),
             })
-            .hierarchical_config(HierarchicalConsensusConfig::default())
             .build()
             .map_err(|e| Error::Consensus(format!("Failed to build consensus config: {e}")))?;
 
-        let consensus = Arc::new(Consensus::new(consensus_config).await.unwrap());
+        let consensus = Arc::new(ProvenEngine::new(consensus_config).await.unwrap());
 
         let core = Core::new(CoreOptions {
             consensus,

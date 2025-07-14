@@ -8,22 +8,25 @@ use crate::handlers::{
     bridge_iframe_html_handler, bridge_iframe_js_handler, broker_worker_js_handler,
     connect_iframe_html_handler, connect_iframe_js_handler, create_management_session_handler,
     create_session_handler, http_rpc_handler, management_http_rpc_handler,
-    management_ws_rpc_handler, nats_cluster_endpoint_handler, register_iframe_html_handler,
-    register_iframe_js_handler, rpc_iframe_html_handler, rpc_iframe_js_handler,
-    rpc_worker_js_handler, state_iframe_html_handler, state_iframe_js_handler,
-    state_worker_js_handler, webauthn_authentication_finish_handler,
-    webauthn_authentication_start_handler, webauthn_registration_finish_handler,
-    webauthn_registration_start_handler, whoami_handler, ws_rpc_handler,
+    management_ws_rpc_handler, register_iframe_html_handler, register_iframe_js_handler,
+    rpc_iframe_html_handler, rpc_iframe_js_handler, rpc_worker_js_handler,
+    state_iframe_html_handler, state_iframe_js_handler, state_worker_js_handler,
+    webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
+    webauthn_registration_finish_handler, webauthn_registration_start_handler, ws_rpc_handler,
 };
-use crate::state::{FullContext, LightContext};
+use crate::state::FullContext;
 
 use axum::http::StatusCode;
 use axum::response::Response as AxumResponse;
 use axum::routing::{any, get, post};
 use axum::{Json, Router};
+use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
-use proven_network::NATS_CLUSTER_ENDPOINT_API_PATH;
+use proven_identity::IdentityManagement;
+use proven_passkeys::PasskeyManagement;
+use proven_runtime::RuntimePoolManagement;
+use proven_sessions::SessionManagement;
 use serde_json::json;
 use tower_http::cors::CorsLayer;
 
@@ -91,46 +94,31 @@ pub struct RouterBuilder;
 
 impl RouterBuilder {
     /// Create a base router with common routes
-    pub fn create_base_router<A, G>(network: &proven_network::ProvenNetwork<G, A>) -> Router
-    where
-        A: Attestor,
-        G: Governance,
-    {
+    pub fn create_base_router(engine_router: Router) -> Router {
         let redirect_response = AxumResponse::builder()
             .status(301)
             .header("Location", "https://proven.network")
             .body(String::new())
             .expect("Failed to create redirect response");
 
-        let light_ctx = LightContext {
-            network: network.clone(),
-        };
-
-        let stateful_router = Router::new()
-            .route(
-                NATS_CLUSTER_ENDPOINT_API_PATH,
-                get(nats_cluster_endpoint_handler),
-            )
-            .with_state(light_ctx);
-
         Router::new()
             .route("/", get(|| async { redirect_response }))
-            .merge(stateful_router)
+            .merge(engine_router)
     }
 
     /// Add bootstrapped routes to a router
-    pub fn add_bootstrapped_routes<AM, RM, IM, PM, SM, A, G>(
+    pub fn add_bootstrapped_routes<A, G, AM, RM, IM, PM, SM>(
         router: Router,
-        full_ctx: FullContext<AM, RM, IM, PM, SM, A, G>,
+        full_ctx: FullContext<A, G, AM, RM, IM, PM, SM>,
     ) -> Router
     where
-        AM: proven_applications::ApplicationManagement + Clone,
-        RM: proven_runtime::RuntimePoolManagement + Clone,
-        IM: proven_identity::IdentityManagement + Clone,
-        PM: proven_passkeys::PasskeyManagement + Clone,
-        SM: proven_sessions::SessionManagement + Clone,
-        A: Attestor + Clone,
-        G: Governance + Clone,
+        A: Attestor,
+        G: Governance,
+        AM: ApplicationManagement,
+        RM: RuntimePoolManagement,
+        IM: IdentityManagement,
+        PM: PasskeyManagement,
+        SM: SessionManagement,
     {
         let stateful_router = Router::new()
             // ** Sessions **
@@ -167,8 +155,6 @@ impl RouterBuilder {
                 routes::WEBAUTHN_AUTHENTICATE_FINISH,
                 post(webauthn_authentication_finish_handler),
             )
-            // ** Inter-node communication **
-            .route(routes::WHOAMI, get(whoami_handler))
             // ** Static files **
             // Iframe HTML
             .route(routes::IFRAME_BRIDGE_HTML, get(bridge_iframe_html_handler))
@@ -225,13 +211,13 @@ pub struct RouterInstaller;
 
 impl RouterInstaller {
     /// Install a router to an HTTP server for a specific hostname
-    pub async fn install_router<HS>(
-        http_server: &HS,
+    pub async fn install_router<H>(
+        http_server: &H,
         hostname: String,
         router: Router,
     ) -> Result<(), Error>
     where
-        HS: proven_http::HttpServer,
+        H: proven_http::HttpServer,
     {
         http_server
             .set_router_for_hostname(hostname, router)
@@ -241,17 +227,17 @@ impl RouterInstaller {
 }
 
 /// Create a bootstrapped router builder closure
-pub fn create_bootstrapped_router_builder<AM, RM, IM, PM, SM, A, G>(
-    full_ctx: FullContext<AM, RM, IM, PM, SM, A, G>,
+pub fn create_bootstrapped_router_builder<A, G, AM, RM, IM, PM, SM>(
+    full_ctx: FullContext<A, G, AM, RM, IM, PM, SM>,
 ) -> BootstrappedRouterBuilder
 where
-    AM: proven_applications::ApplicationManagement + Clone + 'static,
-    RM: proven_runtime::RuntimePoolManagement + Clone + 'static,
-    IM: proven_identity::IdentityManagement + Clone + 'static,
-    PM: proven_passkeys::PasskeyManagement + Clone + 'static,
-    SM: proven_sessions::SessionManagement + Clone + 'static,
-    A: Attestor + Clone + 'static,
-    G: Governance + Clone + 'static,
+    A: Attestor,
+    G: Governance,
+    AM: ApplicationManagement,
+    RM: RuntimePoolManagement,
+    IM: IdentityManagement,
+    PM: PasskeyManagement,
+    SM: SessionManagement,
 {
     Box::new(move |router| RouterBuilder::add_bootstrapped_routes(router, full_ctx.clone()))
 }

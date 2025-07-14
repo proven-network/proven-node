@@ -10,16 +10,15 @@ mod messages;
 mod router;
 mod stream_bridge;
 mod subject;
+pub mod subscription;
 
 #[cfg(test)]
 mod tests;
 
 pub use manager::{PubSubManager, Subscription};
-pub use messages::{PubSubMessage, PubSubRequest, PubSubResponse};
+pub use messages::PubSubMessage;
 pub use stream_bridge::StreamBridge;
-pub use subject::{
-    SubjectRouter, subject_matches_pattern, validate_subject, validate_subject_pattern,
-};
+pub use subject::{SubjectRouter, subject_matches_pattern};
 
 // Re-export error types
 /// Result type for PubSub operations

@@ -286,13 +286,12 @@ impl rustyscript::module_loader::ImportProvider for ImportProvider {
         let extensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
         for ext in &extensions {
             let specifier_with_ext = format!("{specifier_with_pwd}{ext}");
-            if let Ok(extended_specifier) = ModuleSpecifier::parse(&specifier_with_ext) {
-                if let Some(source) = self
+            if let Ok(extended_specifier) = ModuleSpecifier::parse(&specifier_with_ext)
+                && let Some(source) = self
                     .module_loader
                     .get_module_source(&extended_specifier, self.processing_mode)
-                {
-                    return Some(Ok(source));
-                }
+            {
+                return Some(Ok(source));
             }
         }
 

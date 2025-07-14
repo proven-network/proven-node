@@ -17,17 +17,15 @@ static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 
 pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
-    let network = bootstrap.network.as_ref().unwrap_or_else(|| {
-        panic!("network not set before postgres step");
+    let node = bootstrap.node.as_ref().unwrap_or_else(|| {
+        panic!("node not set before postgres step");
     });
 
-    if network
+    if node
         .specializations()
-        .await?
         .contains(&NodeSpecialization::RadixMainnet)
-        || network
+        || node
             .specializations()
-            .await?
             .contains(&NodeSpecialization::RadixStokenet)
     {
         let postgres = Postgres::new(PostgresOptions {

@@ -18,22 +18,17 @@ use super::error::Error;
 use crate::NodeConfig;
 
 use std::net::IpAddr;
-use std::sync::Arc;
 
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
-use proven_consensus::Consensus;
 use proven_core::Core;
 use proven_governance::Governance;
 use proven_http_insecure::InsecureHttpServer;
-use proven_network::ProvenNetwork;
+use proven_topology::Node;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 use url::Url;
-
-// Type alias to simplify complex consensus type
-type LocalConsensus<G> = Consensus<G, MockAttestor>;
 
 /// Bootstrap struct for local node initialization.
 ///
@@ -46,11 +41,10 @@ pub struct Bootstrap<G: Governance> {
     config: NodeConfig<G>,
 
     attestor: MockAttestor,
-    consensus: Option<Arc<LocalConsensus<G>>>,
     external_ip: IpAddr,
+    node: Option<Node>,
 
     // Shared context fields that steps need access to
-    network: Option<ProvenNetwork<G, MockAttestor>>,
     postgres_ip_address: Option<IpAddr>,
     postgres_port: Option<u16>,
 
@@ -87,6 +81,7 @@ impl<G: Governance> Bootstrap<G> {
     }
 
     /// Clean up services if initialization fails
+    #[allow(clippy::cognitive_complexity)]
     async fn cleanup_on_init_failure(&mut self) {
         info!("Cleaning up services due to initialization failure...");
 
@@ -98,10 +93,10 @@ impl<G: Governance> Bootstrap<G> {
         }
 
         // Special case: shutdown light_core if it exists
-        if let Some(light_core) = self.bootstrapping_core.take() {
-            if let Err(e) = light_core.shutdown().await {
-                error!("Error shutting down light_core during cleanup: {:?}", e);
-            }
+        if let Some(light_core) = self.bootstrapping_core.take()
+            && let Err(e) = light_core.shutdown().await
+        {
+            error!("Error shutting down light_core during cleanup: {:?}", e);
         }
 
         info!("Cleanup complete");
@@ -122,10 +117,9 @@ impl<G: Governance> Bootstrap<G> {
             config: config.clone(),
 
             attestor: MockAttestor::new(),
-            consensus: None,
             external_ip,
+            node: None,
 
-            network: None,
             postgres_ip_address: None,
             postgres_port: None,
 
@@ -155,6 +149,7 @@ impl<G: Governance> Bootstrap<G> {
     /// # Errors
     ///
     /// This function returns an error if the node is already started or if a bootstrap step fails.
+    #[allow(clippy::cognitive_complexity)]
     pub async fn initialize(
         mut self,
         shutdown_token: CancellationToken,

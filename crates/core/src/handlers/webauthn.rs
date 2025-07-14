@@ -46,40 +46,34 @@ pub struct StateQuery {
 }
 
 #[allow(clippy::too_many_lines)] // TODO: Refactor this to be more readable
-pub(crate) async fn webauthn_registration_start_handler<AM, RM, IM, PM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+pub(crate) async fn webauthn_registration_start_handler<A, G, AM, RM, IM, PM, SM>(
+    State(FullContext {
+        governance, origin, ..
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(RegistrationStartData { user_name }): Json<RegistrationStartData>,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
     let user_unique_id = Uuid::new_v4();
 
-    let rp_origin = Url::parse(
-        &network
-            .governance()
-            .get_primary_auth_gateway()
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let rp_origin = Url::parse(&governance.get_primary_auth_gateway().await.unwrap()).unwrap();
 
     let rp_id = rp_origin.host_str().unwrap();
 
-    let origin = &network.origin().await.unwrap();
-    let origin_url = Url::parse(origin).unwrap();
+    let origin_url = Url::parse(&origin).unwrap();
 
     // Check origin_header and origin match
     if let Some(origin_header) = origin_header {
-        if &origin_header.0.to_string() != origin {
+        if origin_header.0.to_string() != origin {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body("Origin mismatch".to_string())
@@ -219,42 +213,35 @@ where
         .unwrap()
 }
 
-pub(crate) async fn webauthn_registration_finish_handler<AM, RM, IM, PM, SM, A, G>(
+pub(crate) async fn webauthn_registration_finish_handler<A, G, AM, RM, IM, PM, SM>(
     State(FullContext {
+        governance,
+        origin,
         passkey_manager,
-        network,
         ..
-    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(register_public_key_credential): Json<RegisterPublicKeyCredential>,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
-    let rp_origin = Url::parse(
-        &network
-            .governance()
-            .get_primary_auth_gateway()
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let rp_origin = Url::parse(&governance.get_primary_auth_gateway().await.unwrap()).unwrap();
 
     let rp_id = rp_origin.host_str().unwrap();
 
-    let origin = &network.origin().await.unwrap();
-    let origin_url = Url::parse(origin).unwrap();
+    let origin_url = Url::parse(&origin).unwrap();
 
     // Check origin_header and origin match
     if let Some(origin_header) = origin_header {
-        if &origin_header.0.to_string() != origin {
+        if origin_header.0.to_string() != origin {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body("Origin mismatch".to_string())
@@ -320,37 +307,31 @@ where
 }
 
 #[allow(clippy::too_many_lines)] // TODO: Refactor this to be more readable
-pub(crate) async fn webauthn_authentication_start_handler<AM, RM, IM, PM, SM, A, G>(
-    State(FullContext { network, .. }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+pub(crate) async fn webauthn_authentication_start_handler<A, G, AM, RM, IM, PM, SM>(
+    State(FullContext {
+        governance, origin, ..
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     origin_header: Option<TypedHeader<Origin>>,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
-    let rp_origin = Url::parse(
-        &network
-            .governance()
-            .get_primary_auth_gateway()
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let rp_origin = Url::parse(&governance.get_primary_auth_gateway().await.unwrap()).unwrap();
 
     let rp_id = rp_origin.host_str().unwrap();
 
-    let origin = &network.origin().await.unwrap();
-    let origin_url = Url::parse(origin).unwrap();
+    let origin_url = Url::parse(&origin).unwrap();
 
     // Check origin_header and origin match
     if let Some(origin_header) = origin_header {
-        if &origin_header.0.to_string() != origin {
+        if origin_header.0.to_string() != origin {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body("Origin mismatch".to_string())
@@ -482,42 +463,35 @@ where
         .unwrap()
 }
 
-pub(crate) async fn webauthn_authentication_finish_handler<AM, RM, IM, PM, SM, A, G>(
+pub(crate) async fn webauthn_authentication_finish_handler<A, G, AM, RM, IM, PM, SM>(
     State(FullContext {
+        governance,
+        origin,
         passkey_manager,
-        network,
         ..
-    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     origin_header: Option<TypedHeader<Origin>>,
     Query(StateQuery { state: state_id }): Query<StateQuery>,
     Json(auth_public_key_credential): Json<PublicKeyCredential>,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
-    let rp_origin = Url::parse(
-        &network
-            .governance()
-            .get_primary_auth_gateway()
-            .await
-            .unwrap(),
-    )
-    .unwrap();
+    let rp_origin = Url::parse(&governance.get_primary_auth_gateway().await.unwrap()).unwrap();
 
     let rp_id = rp_origin.host_str().unwrap();
 
-    let origin = &network.origin().await.unwrap();
-    let origin_url = Url::parse(origin).unwrap();
+    let origin_url = Url::parse(&origin).unwrap();
 
     // Check origin_header and origin match
     if let Some(origin_header) = origin_header {
-        if &origin_header.0.to_string() != origin {
+        if origin_header.0.to_string() != origin {
             return Response::builder()
                 .status(StatusCode::BAD_REQUEST)
                 .body("Origin mismatch".to_string())

@@ -4,8 +4,7 @@
 //! including creation, deletion, and membership updates.
 
 use crate::{
-    NodeId,
-    allocation::ConsensusGroupId,
+    ConsensusGroupId, NodeId,
     error::{ConsensusResult, Error, GroupError},
 };
 use serde::{Deserialize, Serialize};
@@ -92,8 +91,7 @@ impl GroupOperation {
         for node_id in members {
             if !unique.insert(node_id) {
                 return Err(Error::InvalidOperation(format!(
-                    "Duplicate node {} in member list",
-                    node_id
+                    "Duplicate node {node_id} in member list"
                 )));
             }
         }

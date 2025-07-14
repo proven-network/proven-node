@@ -36,41 +36,40 @@ impl SyncStreamValidator {
         Ok(())
     }
 
-    fn validate_stream_config(config: &crate::global::StreamConfig) -> ConsensusResult<()> {
+    fn validate_stream_config(config: &crate::core::global::StreamConfig) -> ConsensusResult<()> {
         // Validate retention settings based on retention policy
         match &config.retention_policy {
-            crate::global::RetentionPolicy::Limits => {
+            crate::core::global::RetentionPolicy::Limits => {
                 // No limits is valid - it means retain everything
 
                 // Validate individual limits if set
-                if let Some(max_age) = config.max_age_secs {
-                    if max_age == 0 {
-                        return Err(Error::InvalidOperation(
-                            "Retention time must be greater than 0".to_string(),
-                        ));
-                    }
+                if let Some(max_age) = config.max_age_secs
+                    && max_age == 0
+                {
+                    return Err(Error::InvalidOperation(
+                        "Retention time must be greater than 0".to_string(),
+                    ));
+                }
+                if let Some(max_messages) = config.max_messages
+                    && max_messages == 0
+                {
+                    return Err(Error::InvalidOperation(
+                        "Retention count must be greater than 0".to_string(),
+                    ));
                 }
 
-                if let Some(max_messages) = config.max_messages {
-                    if max_messages == 0 {
-                        return Err(Error::InvalidOperation(
-                            "Retention count must be greater than 0".to_string(),
-                        ));
-                    }
-                }
-
-                if let Some(max_bytes) = config.max_bytes {
-                    if max_bytes == 0 {
-                        return Err(Error::InvalidOperation(
-                            "Retention size must be greater than 0".to_string(),
-                        ));
-                    }
+                if let Some(max_bytes) = config.max_bytes
+                    && max_bytes == 0
+                {
+                    return Err(Error::InvalidOperation(
+                        "Retention size must be greater than 0".to_string(),
+                    ));
                 }
             }
-            crate::global::RetentionPolicy::WorkQueue => {
+            crate::core::global::RetentionPolicy::WorkQueue => {
                 // WorkQueue doesn't need specific validation
             }
-            crate::global::RetentionPolicy::Interest => {
+            crate::core::global::RetentionPolicy::Interest => {
                 // Interest-based retention doesn't need specific validation
             }
         }
@@ -133,14 +132,14 @@ impl Default for SyncNodeValidator {
 impl SyncNodeValidator {
     /// Validate a node operation synchronously (basic checks only)
     pub fn validate_sync(&self, operation: &NodeOperation) -> ConsensusResult<()> {
-        if let NodeOperation::UpdateGroups { node_id, group_ids } = operation {
-            if group_ids.len() > self.max_groups_per_node {
-                return Err(Error::Node(crate::error::NodeError::TooManyGroups {
-                    node_id: node_id.clone(),
-                    current: group_ids.len(),
-                    max: self.max_groups_per_node,
-                }));
-            }
+        if let NodeOperation::UpdateGroups { node_id, group_ids } = operation
+            && group_ids.len() > self.max_groups_per_node
+        {
+            return Err(Error::Node(crate::error::NodeError::TooManyGroups {
+                node_id: node_id.clone(),
+                current: group_ids.len(),
+                max: self.max_groups_per_node,
+            }));
         }
 
         Ok(())
@@ -176,8 +175,7 @@ impl SyncRoutingValidator {
                 for pattern in subject_patterns {
                     if !seen.insert(pattern) {
                         return Err(Error::InvalidOperation(format!(
-                            "Duplicate pattern '{}' in bulk subscribe",
-                            pattern
+                            "Duplicate pattern '{pattern}' in bulk subscribe"
                         )));
                     }
                 }

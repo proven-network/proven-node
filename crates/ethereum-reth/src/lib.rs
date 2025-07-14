@@ -226,12 +226,11 @@ impl IsolatedApplication for RethApp {
                         Ok(json) => {
                             if let Some(result) = json.get("result") {
                                 // Result is a hex string, convert it to a number
-                                if let Some(hex) = result.as_str() {
-                                    if let Ok(peer_count) =
+                                if let Some(hex) = result.as_str()
+                                    && let Ok(peer_count) =
                                         u64::from_str_radix(hex.trim_start_matches("0x"), 16)
-                                    {
-                                        return peer_count > 0;
-                                    }
+                                {
+                                    return peer_count > 0;
                                 }
                             }
                         }

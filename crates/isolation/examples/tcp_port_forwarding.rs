@@ -129,7 +129,7 @@ async fn main() {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!("Failed to compile HTTP server: {}", stderr);
+        panic!("Failed to compile HTTP server: {stderr}");
     }
 
     // Create the server
@@ -169,7 +169,7 @@ async fn main() {
     info!("Direct container access response: {}", text);
 
     // Then verify localhost port forwarding
-    let response = reqwest::get(&format!("http://127.0.0.1:{}", SERVER_PORT))
+    let response = reqwest::get(&format!("http://127.0.0.1:{SERVER_PORT}"))
         .await
         .expect("Failed to make localhost request");
 

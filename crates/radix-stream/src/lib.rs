@@ -124,6 +124,7 @@ where
         *self.last_state_version.lock().await
     }
 
+    #[allow(clippy::cognitive_complexity)]
     async fn poll_transactions(
         client: Client,
         transaction_stream: TS,

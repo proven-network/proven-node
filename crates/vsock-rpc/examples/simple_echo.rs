@@ -78,7 +78,7 @@ async fn main() -> Result<()> {
     let handler = EchoHandler;
     let config = ServerConfig::default();
     let _server = RpcServer::new(server_addr, handler, config);
-    println!("  Server created at {:?}", server_addr);
+    println!("  Server created at {server_addr:?}");
 
     // Client example
     println!("\nClient would connect and send request:");

@@ -8,55 +8,45 @@
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![allow(clippy::result_large_err)]
+// TODO: Remove this soon
+#![allow(dead_code)]
 
-/// Stream allocation and consensus group management
-pub mod allocation;
-// pub mod cluster_discovery;
+// Core modules
+/// Consensus client API
+pub mod client;
+/// Core consensus functionality
+pub(crate) mod core;
+/// Network transport and messaging
+pub(crate) mod network;
+/// Consensus operations
+pub(crate) mod operations;
+/// PubSub messaging
+pub(crate) mod pubsub;
+/// Storage backends
+pub(crate) mod storage_backends;
+
+// Infrastructure modules
+/// Engine builder
+pub mod builder;
+/// Configuration types
 pub mod config;
-pub mod consensus;
+/// Error types
 pub mod error;
-pub mod global;
-/// Group allocation algorithm for managing consensus groups
-pub mod group_allocator;
-/// Local consensus management
-pub mod local;
-/// Stream migration protocol
-pub mod migration;
-/// Monitoring and metrics
-pub mod monitoring;
-pub mod network;
-pub mod node;
-pub mod node_id;
-/// New categorized operations
-pub mod operations;
-/// Hierarchical consensus orchestrator
-pub mod orchestrator;
-pub mod pubsub;
-/// Consensus routing
-pub mod router;
-/// Storage adaptor layer for different backends
-pub mod storage;
-pub mod subscription;
-pub mod topology;
-/// Read-only views for orchestrator decision-making
-pub mod views;
+/// Group ID type
+pub mod group_id;
 
 // Re-export main types
-pub use consensus::Consensus;
+pub use client::ConsensusClient;
+pub use core::engine::Engine;
 pub use error::{ConsensusResult, Error};
-pub use global::{ConsensusStorage, GlobalTypeConfig};
-pub use node::Node;
-pub use node_id::NodeId;
 pub use openraft::Config as RaftConfig;
+pub use proven_topology::{Node, NodeId};
+
+pub use builder::EngineBuilder;
 
 // Re-export config types
 pub use config::{
-    ClusterJoinRetryConfig, ConsensusConfig, ConsensusConfigBuilder, HierarchicalConsensusConfig,
-    StorageConfig, TransportConfig,
+    AllocationConfig, ClusterJoinRetryConfig, EngineConfig, GlobalConsensusConfig, GroupsConfig,
+    MigrationConfig, MonitoringConfig, StorageConfig, TransportConfig,
 };
-
-// Re-export subscription types
-pub use subscription::SubscriptionInvoker;
-
-// Re-export topology types
-pub use topology::TopologyManager;
+pub use group_id::ConsensusGroupId;

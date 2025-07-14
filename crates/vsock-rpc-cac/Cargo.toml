@@ -9,21 +9,21 @@ proven-vsock-rpc.workspace = true
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }
-async-trait = { workspace = true }
+async-trait.workspace = true
 
 # Serialization
 serde = { workspace = true, features = ["derive"] }
-bytes = { workspace = true }
+bytes.workspace = true
 
 # Networking
-cidr = { workspace = true }
+cidr.workspace = true
 
 # Error handling
-thiserror = { workspace = true }
-anyhow = { workspace = true }
+thiserror.workspace = true
+anyhow.workspace = true
 
 # Logging
-tracing = { workspace = true }
+tracing.workspace = true
 
 [dev-dependencies]
-tokio-test = { workspace = true }
+tokio-test.workspace = true

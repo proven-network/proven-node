@@ -686,11 +686,11 @@ where
 
     async fn maybe_kill_idle_worker(&self, needed_hash: &str) -> bool {
         let mut last_killed_guard = self.last_killed.lock().await;
-        if let Some(last_killed) = last_killed_guard.as_ref() {
-            if last_killed.elapsed() < self.try_kill_interval {
-                drop(last_killed_guard);
-                return false;
-            }
+        if let Some(last_killed) = last_killed_guard.as_ref()
+            && last_killed.elapsed() < self.try_kill_interval
+        {
+            drop(last_killed_guard);
+            return false;
         }
         *last_killed_guard = Some(Instant::now());
         drop(last_killed_guard);

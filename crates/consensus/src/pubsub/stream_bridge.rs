@@ -4,6 +4,12 @@
 //! and the consensus-based Streams, allowing streams to automatically capture
 //! messages published via PubSub.
 
+use super::PubSubManager;
+use super::subscription::SubscriptionInvoker;
+use crate::core::engine::Engine;
+use crate::core::global::{PubSubMessageSource, global_state::GlobalState};
+use crate::operations::GroupStreamOperation;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -11,18 +17,10 @@ use std::time::SystemTime;
 use async_trait::async_trait;
 use bytes::Bytes;
 use parking_lot::RwLock;
-use tracing::{debug, error, info};
-
-use crate::NodeId;
-use crate::global::{
-    PubSubMessageSource, global_manager::GlobalManager, global_state::GlobalState,
-};
-use crate::operations::LocalStreamOperation;
-use crate::orchestrator::Orchestrator;
-use crate::subscription::SubscriptionInvoker;
 use proven_governance::Governance;
-
-use super::PubSubManager;
+use proven_network::Transport;
+use proven_topology::NodeId;
+use tracing::{debug, error, info};
 
 /// Handle for a stream subscription
 #[derive(Debug)]
@@ -38,43 +36,39 @@ pub struct StreamSubscriptionHandle {
 }
 
 /// Bridge between PubSub and Streams
-pub struct StreamBridge<G, A>
+pub struct StreamBridge<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     /// PubSub manager
     #[allow(dead_code)]
-    pubsub_manager: Arc<PubSubManager<G, A>>,
-    /// Global manager for consensus operations
-    global_manager: Arc<GlobalManager<G, A>>,
+    pubsub_manager: Arc<PubSubManager<T, G>>,
     /// Global state for registering handlers
     global_state: Arc<GlobalState>,
-    /// Hierarchical orchestrator
-    hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
+    /// Proven engine
+    engine: Arc<Engine<T, G>>,
     /// Stream subscriptions: stream_name -> (subject_pattern -> subscription_handle)
     stream_subscriptions: Arc<RwLock<HashMap<String, HashMap<String, StreamSubscriptionHandle>>>>,
     /// Background task handle
     task_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
-impl<G, A> StreamBridge<G, A>
+impl<T, G> StreamBridge<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     /// Create a new StreamBridge
     pub fn new(
-        pubsub_manager: Arc<PubSubManager<G, A>>,
-        global_manager: Arc<GlobalManager<G, A>>,
+        pubsub_manager: Arc<PubSubManager<T, G>>,
         global_state: Arc<GlobalState>,
-        hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
+        engine: Arc<Engine<T, G>>,
     ) -> Self {
         Self {
             pubsub_manager,
-            global_manager,
             global_state,
-            hierarchical_orchestrator,
+            engine,
             stream_subscriptions: Arc::new(RwLock::new(HashMap::new())),
             task_handle: None,
         }
@@ -95,8 +89,7 @@ where
         let handler = StreamSubscriptionHandler::new(
             stream_name.to_string(),
             subject_pattern.to_string(),
-            self.global_manager.clone(),
-            self.hierarchical_orchestrator.clone(),
+            self.engine.clone(),
         );
 
         // Register with the global state's subscription handlers
@@ -107,7 +100,7 @@ where
         let handle = StreamSubscriptionHandle {
             stream_name: stream_name.to_string(),
             subject_pattern: subject_pattern.to_string(),
-            subscription_id: format!("{}-{}", stream_name, subject_pattern),
+            subscription_id: format!("{stream_name}-{subject_pattern}"),
         };
 
         let mut subscriptions = self.stream_subscriptions.write();
@@ -130,7 +123,7 @@ where
             stream_name, subject_pattern
         );
 
-        let subscription_id = format!("{}-{}", stream_name, subject_pattern);
+        let subscription_id = format!("{stream_name}-{subject_pattern}");
 
         // Unregister from global state
         self.global_state
@@ -182,10 +175,10 @@ where
 
 /// Subscription handler that bridges PubSub messages to Streams
 #[derive(Clone)]
-struct StreamSubscriptionHandler<G, A>
+struct StreamSubscriptionHandler<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     /// Stream name
     stream_name: String,
@@ -193,39 +186,31 @@ where
     subject_pattern: String,
     /// Subscription ID
     subscription_id: String,
-    /// Global manager for consensus operations
-    _global_manager: Arc<GlobalManager<G, A>>,
-    /// Hierarchical orchestrator
-    hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
+    /// Proven engine
+    engine: Arc<Engine<T, G>>,
 }
 
-impl<G, A> StreamSubscriptionHandler<G, A>
+impl<T, G> StreamSubscriptionHandler<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     /// Create a new handler
-    fn new(
-        stream_name: String,
-        subject_pattern: String,
-        global_manager: Arc<GlobalManager<G, A>>,
-        hierarchical_orchestrator: Arc<Orchestrator<G, A>>,
-    ) -> Self {
-        let subscription_id = format!("{}-{}", stream_name, subject_pattern);
+    fn new(stream_name: String, subject_pattern: String, engine: Arc<Engine<T, G>>) -> Self {
+        let subscription_id = format!("{stream_name}-{subject_pattern}");
         Self {
             stream_name,
             subject_pattern,
             subscription_id,
-            _global_manager: global_manager,
-            hierarchical_orchestrator,
+            engine,
         }
     }
 }
 
-impl<G, A> std::fmt::Debug for StreamSubscriptionHandler<G, A>
+impl<T, G> std::fmt::Debug for StreamSubscriptionHandler<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StreamSubscriptionHandler")
@@ -237,10 +222,10 @@ where
 }
 
 #[async_trait]
-impl<G, A> SubscriptionInvoker for StreamSubscriptionHandler<G, A>
+impl<T, G> SubscriptionInvoker for StreamSubscriptionHandler<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     async fn invoke(
         &self,
@@ -269,7 +254,7 @@ where
 
         // Submit to consensus for persistent storage
         // Use hierarchical routing
-        let operation = LocalStreamOperation::publish_from_pubsub(
+        let operation = GroupStreamOperation::publish_from_pubsub(
             self.stream_name.clone(),
             subject.to_string(),
             message,
@@ -277,21 +262,22 @@ where
         );
 
         match self
-            .hierarchical_orchestrator
-            .router()
-            .route_stream_operation(&self.stream_name, operation, None)
+            .engine
+            .route_stream_operation(&self.stream_name, operation)
             .await
         {
             Ok(response) => {
-                if response.success {
+                if response.is_success() {
                     debug!(
                         "Successfully stored PubSub message to stream '{}' at sequence {:?}",
-                        self.stream_name, response.sequence
+                        self.stream_name,
+                        response.sequence()
                     );
                 } else {
                     error!(
                         "Failed to store PubSub message to stream '{}': {:?}",
-                        self.stream_name, response.error
+                        self.stream_name,
+                        response.error()
                     );
                 }
                 Ok(())
@@ -319,9 +305,9 @@ where
 mod tests {
     use super::*;
 
-    use crate::global::{GlobalRequest, GlobalResponse, PubSubMessageSource};
+    use crate::core::global::{GlobalRequest, GlobalResponse, PubSubMessageSource};
     use crate::operations::{GlobalOperation, StreamManagementOperation};
-    use crate::subscription::SubscriptionInvoker;
+    use crate::pubsub::subscription::SubscriptionInvoker;
     use bytes::Bytes;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -395,14 +381,14 @@ mod tests {
                         timestamp_secs: 123456789,
                     };
 
-                    // In the hierarchical model, this would be routed as a LocalStreamOperation
+                    // In the hierarchical model, this would be routed as a GroupStreamOperation
                     // For testing purposes, we'll use a create stream operation as placeholder
                     let request = GlobalRequest {
                         operation: GlobalOperation::StreamManagement(
                             StreamManagementOperation::Create {
                                 name: self.stream_name.clone(),
-                                config: crate::global::StreamConfig::default(),
-                                group_id: crate::allocation::ConsensusGroupId::new(1),
+                                config: crate::config::stream::StreamConfig::default(),
+                                group_id: crate::ConsensusGroupId::new(1),
                             },
                         ),
                     };
@@ -460,7 +446,7 @@ mod tests {
         let handle = StreamSubscriptionHandle {
             stream_name: stream_name.to_string(),
             subject_pattern: subject_pattern.to_string(),
-            subscription_id: format!("{}-{}", stream_name, subject_pattern),
+            subscription_id: format!("{stream_name}-{subject_pattern}"),
         };
 
         {
@@ -558,7 +544,7 @@ mod tests {
         assert_eq!(source.timestamp_secs, 1234567890);
 
         // Test with node ID
-        let node_id = crate::NodeId::from_hex(
+        let node_id = proven_topology::NodeId::from_hex(
             "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
         )
         .ok();
@@ -583,7 +569,7 @@ mod tests {
         // Test extraction logic
         let source_node_id = metadata
             .get("source_node")
-            .and_then(|s| crate::NodeId::from_hex(s).ok());
+            .and_then(|s| proven_topology::NodeId::from_hex(s).ok());
 
         assert!(source_node_id.is_some());
 
@@ -593,7 +579,7 @@ mod tests {
 
         let bad_node_id = bad_metadata
             .get("source_node")
-            .and_then(|s| crate::NodeId::from_hex(s).ok());
+            .and_then(|s| proven_topology::NodeId::from_hex(s).ok());
 
         assert!(bad_node_id.is_none());
     }

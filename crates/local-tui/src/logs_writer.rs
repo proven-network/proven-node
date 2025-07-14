@@ -417,10 +417,10 @@ impl Drop for LogWriter {
         }
 
         // Wait for writer thread to finish
-        if let Some(handle) = self.writer_thread.take() {
-            if let Err(e) = handle.join() {
-                error!("Failed to join async writer thread: {:?}", e);
-            }
+        if let Some(handle) = self.writer_thread.take()
+            && let Err(e) = handle.join()
+        {
+            error!("Failed to join async writer thread: {:?}", e);
         }
     }
 }
@@ -461,18 +461,17 @@ where
         let target = Some(event.metadata().target().to_string());
 
         // Ignore targets from certain sources
-        if let Some(target_str) = target.as_deref() {
-            if target_str.starts_with("async_nats")
+        if let Some(target_str) = target.as_deref()
+            && (target_str.starts_with("async_nats")
                 || target_str.starts_with("openraft")
                 || target_str.starts_with("hyper_util")
                 || target_str.starts_with("swc_ecma_transforms_base")
                 || target_str.starts_with("swc_ecma_transforms_base")
                 || target_str.starts_with("h2::")
                 || target_str.starts_with("hickory")
-                || target_str == "log"
-            {
-                return;
-            }
+                || target_str == "log")
+        {
+            return;
         }
 
         // Extract message using visitor pattern

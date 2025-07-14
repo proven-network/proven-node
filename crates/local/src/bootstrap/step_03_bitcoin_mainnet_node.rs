@@ -22,9 +22,10 @@ use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
 use tracing::info;
 use url::Url;
 
+#[allow(clippy::cognitive_complexity)]
 pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
-    let network = bootstrap.network.as_ref().unwrap_or_else(|| {
-        panic!("network not set before bitcoin mainnet node step");
+    let node = bootstrap.node.as_ref().unwrap_or_else(|| {
+        panic!("node not set before bitcoin mainnet node step");
     });
 
     let bitcoin_mainnet_proxy_stream =
@@ -33,9 +34,8 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 
-    if network
+    if node
         .specializations()
-        .await?
         .contains(&NodeSpecialization::BitcoinMainnet)
     {
         // Start Bitcoin mainnet node

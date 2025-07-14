@@ -122,88 +122,85 @@ fn split_out_inherited_discriminated_types(schema: &mut Value) {
 
     // Second pass - update references to new types
     for type_name in &original_type_names {
-        if let Some(type_data) = types.get_mut(type_name) {
-            if let Some(all_of) = type_data.get_mut("allOf") {
-                if let Some(all_of_seq) = all_of.as_sequence_mut() {
-                    let mut match_details = None;
+        if let Some(type_data) = types.get_mut(type_name)
+            && let Some(all_of) = type_data.get_mut("allOf")
+            && let Some(all_of_seq) = all_of.as_sequence_mut()
+        {
+            let mut match_details = None;
 
-                    // Update inherited type references
-                    for inherited_type in all_of_seq.iter_mut() {
-                        if let Some(ref_val) = inherited_type.get("$ref") {
-                            let ref_str = ref_val.as_str().unwrap().to_string();
-                            if let Some((base_ref, discriminator)) = type_refs_changed.get(&ref_str)
-                            {
-                                inherited_type.as_mapping_mut().unwrap().insert(
-                                    Value::String("$ref".to_string()),
-                                    Value::String(base_ref.clone()),
-                                );
-                                match_details = Some((discriminator.clone(), ref_str));
-                            }
-                        }
+            // Update inherited type references
+            for inherited_type in all_of_seq.iter_mut() {
+                if let Some(ref_val) = inherited_type.get("$ref") {
+                    let ref_str = ref_val.as_str().unwrap().to_string();
+                    if let Some((base_ref, discriminator)) = type_refs_changed.get(&ref_str) {
+                        inherited_type.as_mapping_mut().unwrap().insert(
+                            Value::String("$ref".to_string()),
+                            Value::String(base_ref.clone()),
+                        );
+                        match_details = Some((discriminator.clone(), ref_str));
                     }
+                }
+            }
 
-                    // Add discriminator property if needed
-                    if let Some((discriminator, _parent_ref)) = match_details {
-                        if let Some(mapping) = discriminator.get("mapping") {
-                            let own_tag = mapping
-                                .as_mapping()
-                                .unwrap()
-                                .iter()
-                                .find(|(_, v)| {
-                                    v.as_str().unwrap()
-                                        == format!("#/components/schemas/{}", type_name)
-                                })
-                                .map(|(k, _)| k.as_str().unwrap().to_string());
+            // Add discriminator property if needed
+            if let Some((discriminator, _parent_ref)) = match_details
+                && let Some(mapping) = discriminator.get("mapping")
+            {
+                let own_tag = mapping
+                    .as_mapping()
+                    .unwrap()
+                    .iter()
+                    .find(|(_, v)| {
+                        v.as_str().unwrap() == format!("#/components/schemas/{type_name}")
+                    })
+                    .map(|(k, _)| k.as_str().unwrap().to_string());
 
-                            if let Some(tag) = own_tag {
-                                let property_name =
-                                    discriminator.get("propertyName").unwrap().as_str().unwrap();
+                if let Some(tag) = own_tag {
+                    let property_name =
+                        discriminator.get("propertyName").unwrap().as_str().unwrap();
 
-                                // Find or create inner type data
-                                let inner_type_idx = all_of_seq.iter().position(|v| {
-                                    v.get("type").is_some_and(|t| t == "object")
-                                        && v.get("properties").is_some()
-                                });
+                    // Find or create inner type data
+                    let inner_type_idx = all_of_seq.iter().position(|v| {
+                        v.get("type").is_some_and(|t| t == "object")
+                            && v.get("properties").is_some()
+                    });
 
-                                let inner_type = if let Some(idx) = inner_type_idx {
-                                    &mut all_of_seq[idx]
-                                } else {
-                                    let mut new_inner = serde_yaml::Mapping::new();
-                                    new_inner.insert(
-                                        Value::String("type".to_string()),
-                                        Value::String("object".to_string()),
-                                    );
-                                    new_inner.insert(
-                                        Value::String("properties".to_string()),
-                                        Value::Mapping(serde_yaml::Mapping::new()),
-                                    );
-                                    all_of_seq.push(Value::Mapping(new_inner));
-                                    all_of_seq.last_mut().unwrap()
-                                };
+                    let inner_type = if let Some(idx) = inner_type_idx {
+                        &mut all_of_seq[idx]
+                    } else {
+                        let mut new_inner = serde_yaml::Mapping::new();
+                        new_inner.insert(
+                            Value::String("type".to_string()),
+                            Value::String("object".to_string()),
+                        );
+                        new_inner.insert(
+                            Value::String("properties".to_string()),
+                            Value::Mapping(serde_yaml::Mapping::new()),
+                        );
+                        all_of_seq.push(Value::Mapping(new_inner));
+                        all_of_seq.last_mut().unwrap()
+                    };
 
-                                // Add discriminator property
-                                let mut enum_prop = serde_yaml::Mapping::new();
-                                enum_prop.insert(
-                                    Value::String("type".to_string()),
-                                    Value::String("string".to_string()),
-                                );
-                                enum_prop.insert(
-                                    Value::String("enum".to_string()),
-                                    Value::Sequence(vec![Value::String(tag)]),
-                                );
+                    // Add discriminator property
+                    let mut enum_prop = serde_yaml::Mapping::new();
+                    enum_prop.insert(
+                        Value::String("type".to_string()),
+                        Value::String("string".to_string()),
+                    );
+                    enum_prop.insert(
+                        Value::String("enum".to_string()),
+                        Value::Sequence(vec![Value::String(tag)]),
+                    );
 
-                                inner_type
-                                    .get_mut("properties")
-                                    .unwrap()
-                                    .as_mapping_mut()
-                                    .unwrap()
-                                    .insert(
-                                        Value::String(property_name.to_string()),
-                                        Value::Mapping(enum_prop),
-                                    );
-                            }
-                        }
-                    }
+                    inner_type
+                        .get_mut("properties")
+                        .unwrap()
+                        .as_mapping_mut()
+                        .unwrap()
+                        .insert(
+                            Value::String(property_name.to_string()),
+                            Value::Mapping(enum_prop),
+                        );
                 }
             }
         }

@@ -134,8 +134,7 @@ impl RoutingOperation {
                     'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '*' | '>' => {}
                     _ => {
                         return Err(Error::InvalidOperation(format!(
-                            "Invalid character '{}' in subject pattern",
-                            ch
+                            "Invalid character '{ch}' in subject pattern"
                         )));
                     }
                 }

@@ -58,7 +58,7 @@ async fn main() -> Result<(), Error> {
 
     assert!(matches!(result, ExecutionResult::Ok { .. }));
 
-    println!("Result: {:?}", result);
+    println!("Result: {result:?}");
 
     Ok(())
 }

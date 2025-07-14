@@ -41,22 +41,22 @@ fn read_file_content(compile_time_content: &'static str, runtime_path: &str) -> 
 
 macro_rules! iframe_handler {
     ($handler_name:ident, $html_const:ident, $runtime_path:expr) => {
-        pub(crate) async fn $handler_name<AM, RM, IM, PM, SM, A, G>(
+        pub(crate) async fn $handler_name<A, G, AM, RM, IM, PM, SM>(
             Path(application_id): Path<Uuid>,
             State(FullContext {
                 application_manager,
                 ..
-            }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+            }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
             referer_header: TypedHeader<Referer>,
         ) -> impl IntoResponse
         where
+            A: Attestor,
+            G: Governance,
             AM: ApplicationManagement,
             RM: RuntimePoolManagement,
             IM: IdentityManagement,
             PM: PasskeyManagement,
             SM: SessionManagement,
-            A: Attestor,
-            G: Governance,
         {
             let application = match application_manager.get_application(&application_id).await {
                 Ok(Some(application)) => application,

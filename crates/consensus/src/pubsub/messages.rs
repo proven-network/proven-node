@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use crate::NodeId;
+use proven_topology::NodeId;
 
 /// PubSub protocol messages
 #[derive(Debug, Clone, Serialize, Deserialize)]

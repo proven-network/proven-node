@@ -1,4 +1,4 @@
-use crate::NodeId;
+use proven_topology::NodeId;
 
 /// Reason for becoming cluster initiator
 #[derive(Debug, Clone, PartialEq, Eq)]

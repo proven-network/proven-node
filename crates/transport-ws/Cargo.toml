@@ -1,0 +1,28 @@
+[package]
+name = "proven-transport-ws"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+bytes.workspace = true
+dashmap.workspace = true
+ed25519-dalek.workspace = true
+futures.workspace = true
+proven-attestation.workspace = true
+proven-governance.workspace = true
+proven-topology.workspace = true
+proven-transport.workspace = true
+proven-verification.workspace = true
+tokio = { workspace = true, features = ["net", "rt", "sync"] }
+tokio-tungstenite.workspace = true
+tracing.workspace = true
+url.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+proven-attestation-mock.workspace = true
+proven-governance-mock.workspace = true
+tokio-test.workspace = true
+tracing-subscriber.workspace = true

@@ -118,6 +118,7 @@ impl ExternalFs {
     /// - Failed to perform integrity check
     /// - The gocryptfs process exits with a non-zero status
     /// - Failed to wait for process completion
+    #[allow(clippy::cognitive_complexity)]
     pub async fn start(&self) -> Result<JoinHandle<Result<()>>> {
         if self.task_tracker.is_closed() {
             return Err(Error::AlreadyStarted);

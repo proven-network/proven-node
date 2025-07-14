@@ -1,0 +1,19 @@
+[package]
+name = "proven-transport"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+bytes.workspace = true
+ed25519-dalek.workspace = true
+futures.workspace = true
+proven-topology.workspace = true
+proven-verification.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tokio-test.workspace = true

@@ -282,6 +282,7 @@ where
     }
 
     /// Try to acquire leadership with exponential backoff retry for transient failures.
+    #[allow(clippy::cognitive_complexity)]
     async fn try_acquire_leadership_with_retry(&self) -> Result<(), Error> {
         let max_attempts = 3;
         let mut attempt = 0;
@@ -411,6 +412,7 @@ where
     }
 
     /// Background task to monitor leadership status.
+    #[allow(clippy::cognitive_complexity)]
     async fn leadership_monitor_task(
         leadership_guard: Arc<Mutex<Option<LM::Guard>>>,
         lock_manager: LM,
@@ -462,11 +464,11 @@ where
     /// bypasses the command stream for better performance when we're the leader.
     async fn execute_command(&self, command: Command) -> Result<Response, Error> {
         // Check if we're the leader and have a cached handler
-        if self.is_leader().await {
-            if let Some(handler) = OnceLock::get(&self.handler) {
-                // Direct execution path - bypass command stream entirely
-                return Ok(handler.handle_command(command).await);
-            }
+        if self.is_leader().await
+            && let Some(handler) = OnceLock::get(&self.handler)
+        {
+            // Direct execution path - bypass command stream entirely
+            return Ok(handler.handle_command(command).await);
         }
 
         // Fallback to client path with retry logic (non-leader or handler not available)
@@ -474,6 +476,7 @@ where
     }
 
     /// Execute a command via the client path with retry logic for transient failures.
+    #[allow(clippy::cognitive_complexity)]
     async fn execute_command_via_client_with_retry(
         &self,
         command: Command,

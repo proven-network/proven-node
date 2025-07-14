@@ -24,14 +24,14 @@ static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 static POSTGRES_RADIX_MAINNET_DATABASE: &str = "radix-mainnet-db";
 
+#[allow(clippy::cognitive_complexity)]
 pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
-    let network = bootstrap.network.as_ref().unwrap_or_else(|| {
-        panic!("network not set before radix mainnet node step");
+    let node = bootstrap.node.as_ref().unwrap_or_else(|| {
+        panic!("node not set before radix mainnet node step");
     });
 
-    if network
+    if node
         .specializations()
-        .await?
         .contains(&NodeSpecialization::RadixMainnet)
     {
         let postgres_ip_address = bootstrap.postgres_ip_address.unwrap_or_else(|| {

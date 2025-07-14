@@ -92,15 +92,15 @@ where
                     let path = entry.path();
                     if path.is_dir() {
                         visit_dirs(&path, base, prefix, out)?;
-                    } else if let Ok(rel_path) = path.strip_prefix(base) {
-                        if let Some(path_str) = rel_path.to_str() {
-                            if let Some(prefix) = prefix {
-                                if path_str.starts_with(prefix) {
-                                    out.push(path_str.to_string());
-                                }
-                            } else {
+                    } else if let Ok(rel_path) = path.strip_prefix(base)
+                        && let Some(path_str) = rel_path.to_str()
+                    {
+                        if let Some(prefix) = prefix {
+                            if path_str.starts_with(prefix) {
                                 out.push(path_str.to_string());
                             }
+                        } else {
+                            out.push(path_str.to_string());
                         }
                     }
                 }
@@ -168,10 +168,10 @@ where
 
     async fn put<K: AsRef<str> + Send>(&self, key: K, value: T) -> Result<(), Self::Error> {
         let path = self.get_file_path(key);
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).map_err(|e| Error::Io("error creating directory", e))?;
-            }
+        if let Some(parent) = path.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).map_err(|e| Error::Io("error creating directory", e))?;
         }
         let value: Bytes = value
             .try_into()

@@ -59,17 +59,9 @@ pub enum Error {
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
 
-    /// NATS server error.
-    #[error(transparent)]
-    NatsServer(#[from] proven_nats_server::Error),
-
     /// Postgres error.
     #[error(transparent)]
     Postgres(#[from] proven_postgres::Error),
-
-    /// Proven network error.
-    #[error(transparent)]
-    ProvenNetwork(#[from] proven_network::Error),
 
     /// Babylon aggregator error.
     #[error(transparent)]
@@ -90,4 +82,12 @@ pub enum Error {
     /// Stream error
     #[error("stream error: {0}")]
     Stream(String),
+
+    /// Topology error
+    #[error("topology error: {0}")]
+    Topology(String),
+
+    /// Transport error
+    #[error("transport error: {0}")]
+    Transport(String),
 }

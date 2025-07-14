@@ -9,6 +9,7 @@ use tracing::{error, info};
 
 /// Checks if a hostname can be resolved via DNS or hosts file.
 /// Exits the process if the hostname cannot be resolved.
+#[allow(clippy::cognitive_complexity)]
 pub async fn check_hostname_resolution(hostname: &str) -> Result<(), Error> {
     // First try DNS resolution using Hickory resolver
     let resolver = match Resolver::tokio_from_system_conf() {

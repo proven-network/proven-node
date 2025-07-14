@@ -227,6 +227,7 @@ impl<H: RpcHandler> RpcServer<H> {
     }
 
     /// Handle a single request.
+    #[allow(clippy::cognitive_complexity)]
     async fn handle_request(
         frame: Frame,
         handler: Arc<H>,

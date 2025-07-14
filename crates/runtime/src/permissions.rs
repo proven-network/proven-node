@@ -31,11 +31,11 @@ impl OriginAllowlistWebPermissions {
         })))
     }
 
-    fn borrow(&self) -> std::sync::RwLockReadGuard<OriginAllowlistWebPermissionsSet> {
+    fn borrow(&'_ self) -> std::sync::RwLockReadGuard<'_, OriginAllowlistWebPermissionsSet> {
         self.0.read().expect("Could not lock permissions")
     }
 
-    fn borrow_mut(&self) -> std::sync::RwLockWriteGuard<OriginAllowlistWebPermissionsSet> {
+    fn borrow_mut(&'_ self) -> std::sync::RwLockWriteGuard<'_, OriginAllowlistWebPermissionsSet> {
         self.0.write().expect("Could not lock permissions")
     }
 

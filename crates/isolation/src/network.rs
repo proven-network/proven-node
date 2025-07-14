@@ -63,6 +63,7 @@ impl VethPair {
     ///
     /// Returns an error if the setup fails
     #[allow(clippy::too_many_lines)] // TODO: Potential refactor
+    #[allow(clippy::cognitive_complexity)] // TODO: Potential refactor
     pub async fn new(
         VethPairOptions {
             host_ip_address,
@@ -1467,10 +1468,10 @@ fn get_docker_dns_tcp_port() -> Result<Option<u16>> {
                 .find(|&part| part.starts_with("spt:"))
             {
                 // Extract the port number after "spt:"
-                if let Some(port_str) = spt_part.strip_prefix("spt:") {
-                    if let Ok(port) = port_str.parse::<u16>() {
-                        return Ok(Some(port));
-                    }
+                if let Some(port_str) = spt_part.strip_prefix("spt:")
+                    && let Ok(port) = port_str.parse::<u16>()
+                {
+                    return Ok(Some(port));
                 }
             }
         }
@@ -1496,10 +1497,10 @@ fn get_docker_dns_udp_port() -> Result<Option<u16>> {
                 .find(|&part| part.starts_with("spt:"))
             {
                 // Extract the port number after "spt:"
-                if let Some(port_str) = spt_part.strip_prefix("spt:") {
-                    if let Ok(port) = port_str.parse::<u16>() {
-                        return Ok(Some(port)); // Found the UDP source port
-                    }
+                if let Some(port_str) = spt_part.strip_prefix("spt:")
+                    && let Ok(port) = port_str.parse::<u16>()
+                {
+                    return Ok(Some(port)); // Found the UDP source port
                 }
             }
         }

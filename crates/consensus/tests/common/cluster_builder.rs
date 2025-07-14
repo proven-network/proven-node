@@ -3,13 +3,13 @@
 //! This module provides a builder pattern for creating test clusters
 //! with various configurations, making tests more readable and maintainable.
 
-use proven_consensus::allocation::ConsensusGroupId;
+use proven_consensus::ConsensusGroupId;
 use proven_consensus::config::{
-    ConsensusConfigBuilder, HierarchicalConsensusConfig, StorageConfig, TransportConfig,
+    AllocationConfig, GlobalConsensusConfig, GroupsConfig, MigrationConfig, MonitoringConfig,
+    StorageConfig, StreamConfig, TransportConfig,
 };
-use proven_consensus::global::{GlobalRequest, StreamConfig};
-use proven_consensus::operations::GlobalOperation;
-use proven_consensus::{Consensus, Node, NodeId};
+
+use proven_consensus::{EngineBuilder, Node, NodeId};
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -19,6 +19,8 @@ use ed25519_dalek::SigningKey;
 use proven_attestation_mock::MockAttestor;
 use proven_governance::{GovernanceNode, Version};
 use proven_governance_mock::MockGovernance;
+use proven_network::NetworkManager;
+use proven_topology::TopologyManager;
 use rand::rngs::OsRng;
 use tempfile::TempDir;
 
@@ -35,7 +37,11 @@ pub struct TestClusterBuilder {
     /// Streams to pre-create
     streams: Vec<StreamDefinition>,
     /// Custom hierarchical configuration
-    hierarchical_config: Option<HierarchicalConsensusConfig>,
+    // Individual config options
+    global_config: Option<GlobalConsensusConfig>,
+    groups_config: Option<GroupsConfig>,
+    allocation_config: Option<AllocationConfig>,
+    migration_config: Option<MigrationConfig>,
     /// Whether to start nodes automatically
     auto_start: bool,
     /// Whether to wait for cluster formation
@@ -64,8 +70,6 @@ pub enum StorageType {
     Memory,
     /// RocksDB storage with temporary directories
     RocksDB,
-    /// Mixed storage (some memory, some RocksDB)
-    Mixed { rocksdb_nodes: Vec<usize> },
 }
 
 /// Stream definition for pre-creating streams
@@ -114,7 +118,10 @@ impl Default for TestClusterBuilder {
             storage: StorageType::Memory,
             default_groups: 1,
             streams: Vec::new(),
-            hierarchical_config: None,
+            global_config: None,
+            groups_config: None,
+            allocation_config: None,
+            migration_config: None,
             auto_start: true,
             wait_for_formation: true,
             formation_timeout: Duration::from_secs(10),
@@ -174,12 +181,6 @@ impl TestClusterBuilder {
         self
     }
 
-    /// Set custom hierarchical configuration
-    pub fn with_hierarchical_config(mut self, config: HierarchicalConsensusConfig) -> Self {
-        self.hierarchical_config = Some(config);
-        self
-    }
-
     /// Configure whether to auto-start nodes
     pub fn auto_start(mut self, enabled: bool) -> Self {
         self.auto_start = enabled;
@@ -231,7 +232,8 @@ impl TestClusterBuilder {
         ));
 
         // Create nodes and consensus instances
-        let mut consensus_instances = Vec::new();
+        let mut engines = Vec::new();
+        let mut clients = Vec::new();
         let mut nodes = Vec::new();
         let mut temp_dirs = Vec::new();
 
@@ -276,40 +278,61 @@ impl TestClusterBuilder {
                     temp_dirs.push(temp_dir);
                     StorageConfig::RocksDB { path }
                 }
-                StorageType::Mixed { rocksdb_nodes } => {
-                    if rocksdb_nodes.contains(&i) {
-                        let temp_dir = tempfile::tempdir()?;
-                        let path = temp_dir.path().to_path_buf();
-                        temp_dirs.push(temp_dir);
-                        StorageConfig::RocksDB { path }
-                    } else {
-                        StorageConfig::Memory
-                    }
-                }
             };
 
-            // Configure hierarchical settings
-            let mut hierarchical_config = self.hierarchical_config.clone().unwrap_or_default();
-            hierarchical_config.monitoring.prometheus.enabled = self.enable_monitoring;
-            hierarchical_config.local.initial_groups = self.default_groups as u32;
+            // Configure monitoring
+            let mut monitoring_config = MonitoringConfig::default();
+            monitoring_config.prometheus.enabled = self.enable_monitoring;
 
-            // Build consensus config
-            let config = ConsensusConfigBuilder::new()
+            // Configure groups
+            let mut groups_config = GroupsConfig::default();
+            groups_config.initial_groups = self.default_groups as u32;
+
+            // Create mock transport - using the parent module's MockTransport
+            let transport = super::MockTransport::new(signing_key.clone());
+
+            // Create topology manager
+            let topology_manager = Arc::new(
+                TopologyManager::new(governance.clone(), NodeId::new(signing_key.verifying_key()))
+                    .await?,
+            );
+
+            // Create network manager
+            let network_manager = Arc::new(NetworkManager::new(
+                NodeId::new(signing_key.verifying_key()),
+                transport,
+                topology_manager.clone(),
+            ));
+
+            // Build engine and client
+            let (engine, client) = EngineBuilder::new()
+                .network_manager(network_manager.clone())
+                .topology_manager(topology_manager)
                 .governance(governance.clone())
-                .attestor(attestor.clone())
                 .signing_key(signing_key.clone())
+                .raft_config(openraft::Config::default())
                 .transport_config(transport_config)
                 .storage_config(storage_config)
-                .hierarchical_config(hierarchical_config)
-                .build()?;
+                .cluster_join_retry_config(
+                    proven_consensus::config::ClusterJoinRetryConfig::default(),
+                )
+                .global_config(GlobalConsensusConfig::default())
+                .groups_config(groups_config)
+                .allocation_config(AllocationConfig::default())
+                .migration_config(MigrationConfig::default())
+                .monitoring_config(monitoring_config)
+                .stream_storage_backend(Default::default())
+                .build()
+                .await?;
 
-            let consensus = Consensus::new(config).await?;
-            consensus_instances.push(consensus);
+            engines.push(engine);
+            clients.push(client);
         }
 
         // Create the test cluster
         let cluster = super::TestCluster {
-            consensus_instances,
+            engines,
+            clients,
             governance,
             nodes,
             ports,
@@ -317,33 +340,28 @@ impl TestClusterBuilder {
             task_handles: Arc::new(std::sync::Mutex::new(Vec::new())),
         };
 
-        // Before starting, ensure all nodes refresh their topology
-        println!("📡 Initializing transport for all nodes...");
-        for (i, consensus) in cluster.consensus_instances.iter().enumerate() {
-            // Initialize transport (which includes topology refresh)
-            consensus.initialize_transport().await?;
-            println!("  ✅ Node {} transport initialized", i);
-        }
+        // Transport is already initialized via NetworkManager
+        println!("📡 Transport already initialized via NetworkManager");
 
         // Start nodes if requested
         if self.auto_start {
-            // For single node, complete startup after transport init
-            if cluster.consensus_instances.len() == 1 {
-                println!("🔍 Completing startup for single node cluster...");
-                cluster.consensus_instances[0].complete_startup().await?;
+            // For single node, start the engine
+            if cluster.engines.len() == 1 {
+                println!("🔍 Starting single node cluster...");
+                cluster.engines[0].clone().start().await?;
                 println!("  ✅ Single node completed startup");
             } else {
-                // For multi-node clusters, complete startup for all nodes in parallel
-                // This triggers discovery after transport is initialized
-                println!("🔍 Completing startup with discovery for all nodes...");
+                // For multi-node clusters, start all engines in parallel
+                println!("🔍 Starting all nodes...");
                 let start_futures: Vec<_> = cluster
-                    .consensus_instances
+                    .engines
                     .iter()
                     .enumerate()
-                    .filter_map(|(i, consensus)| {
+                    .filter_map(|(i, engine)| {
                         let node_config = self.node_configs.get(&i);
                         if node_config.map(|c| !c.start_offline).unwrap_or(true) {
-                            Some(consensus.complete_startup())
+                            let engine = engine.clone();
+                            Some(async move { engine.start().await.map_err(|e| format!("{}", e)) })
                         } else {
                             None
                         }
@@ -355,12 +373,10 @@ impl TestClusterBuilder {
                 // Check for errors
                 for (i, result) in results.iter().enumerate() {
                     match result {
-                        Ok(_) => println!("  ✅ Node {} completed startup", i),
+                        Ok(_) => println!("  ✅ Node {} started", i),
                         Err(e) => {
-                            println!("  ❌ Node {} failed to complete startup: {}", i, e);
-                            return Err(
-                                format!("Node {} failed to complete startup: {}", i, e).into()
-                            );
+                            println!("  ❌ Node {} failed to start: {}", i, e);
+                            return Err(format!("Node {} failed to start: {}", i, e).into());
                         }
                     }
                 }
@@ -380,14 +396,13 @@ impl TestClusterBuilder {
             }
         }
 
-        // Get the leader for creating groups and streams
-        let leader = cluster.get_leader();
+        // Get the first engine and client for creating groups and streams
         let mut group_ids = Vec::new();
 
-        if let Some(leader) = leader {
+        if let (Some(engine), Some(client)) = (cluster.engines.first(), cluster.clients.first()) {
             // The default group should already exist from cluster initialization
             // Just collect the existing groups
-            let global_state = leader.global_state();
+            let global_state = engine.global_state();
             let existing_groups = global_state.get_all_groups().await;
             group_ids.extend(existing_groups.iter().map(|g| g.id));
 
@@ -395,18 +410,9 @@ impl TestClusterBuilder {
             let groups_to_create = self.default_groups.saturating_sub(existing_groups.len());
             for i in 0..groups_to_create {
                 let group_id = ConsensusGroupId::new((existing_groups.len() + i + 1) as u32);
-                let members = vec![leader.node_id().clone()]; // Start with just the leader
+                let members = vec![cluster.nodes[0].node_id().clone()]; // Start with just the first node
 
-                let request = GlobalRequest {
-                    operation: GlobalOperation::Group(
-                        proven_consensus::operations::GroupOperation::Create {
-                            group_id,
-                            initial_members: members,
-                        },
-                    ),
-                };
-
-                leader.submit_request(request).await?;
+                client.create_group(group_id, members).await?;
                 group_ids.push(group_id);
             }
 
@@ -423,14 +429,18 @@ impl TestClusterBuilder {
 
                 // Note: The group_id will be automatically assigned by create_stream
                 // The builder just ensures streams are created after groups
-                leader
-                    .create_stream(&stream_def.name, stream_def.config.clone())
+                client
+                    .create_stream(
+                        stream_def.name.clone(),
+                        stream_def.config.clone(),
+                        stream_def.group_id,
+                    )
                     .await?;
 
-                // Add subscriptions
+                // Add subscriptions using the client's subscribe method
                 for pattern in &stream_def.subscriptions {
-                    leader
-                        .subscribe_stream_to_subject(&stream_def.name, pattern)
+                    client
+                        .subscribe(&stream_def.name, pattern.clone(), None)
                         .await?;
                 }
             }

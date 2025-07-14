@@ -56,9 +56,9 @@ async fn main() -> Result<(), Error> {
     for i in 0..EXECUTIONS {
         // Add the invocation number to every 2nd script to make it unique
         // This tests a mix of unique and duplicate scripts
-        let module_loader = if i % 2 == 0 {
+        let module_loader = if i.is_multiple_of(2) {
             ModuleLoader::new(
-                CodePackage::from_str(&format!("// Invocation: {}\n{}", i, base_script))
+                CodePackage::from_str(&format!("// Invocation: {i}\n{base_script}"))
                     .await
                     .unwrap(),
             )
@@ -91,7 +91,7 @@ async fn main() -> Result<(), Error> {
     let start = Instant::now();
     futures::future::join_all(handles).await;
     let duration = start.elapsed();
-    println!("{} tasks completed in {:?}", EXECUTIONS, duration);
+    println!("{EXECUTIONS} tasks completed in {duration:?}");
 
     let durations = durations.lock().await;
     let mut durations_vec: Vec<_> = durations.iter().cloned().collect();
@@ -100,20 +100,17 @@ async fn main() -> Result<(), Error> {
     let min_duration = durations_vec.first().unwrap();
     let max_duration = durations_vec.last().unwrap();
     let average_duration = durations_vec.iter().sum::<std::time::Duration>() / EXECUTIONS as u32;
-    let median_duration = if EXECUTIONS % 2 == 0 {
+    let median_duration = if EXECUTIONS.is_multiple_of(2) {
         (durations_vec[EXECUTIONS / 2 - 1] + durations_vec[EXECUTIONS / 2]) / 2
     } else {
         durations_vec[EXECUTIONS / 2]
     };
     let executions_per_second = EXECUTIONS as f64 / duration.as_secs_f64();
-    println!("Min execution time: {:?}", min_duration);
-    println!("Max execution time: {:?}", max_duration);
-    println!("Average execution time: {:?}", average_duration);
-    println!("Median execution time: {:?}", median_duration);
-    println!(
-        "Executions per second: {}",
-        (executions_per_second * 100.0).round() / 100.0
-    );
+    println!("Min execution time: {min_duration:?}");
+    println!("Max execution time: {max_duration:?}");
+    println!("Average execution time: {average_duration:?}");
+    println!("Median execution time: {median_duration:?}");
+    println!("Executions per second: {executions_per_second:.2}");
 
     Ok(())
 }

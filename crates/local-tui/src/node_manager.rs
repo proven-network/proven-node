@@ -127,16 +127,16 @@ impl NodeManager {
         // Send start command to the newly created node
         {
             let nodes_guard = self.nodes.read();
-            if let Some(NodeRecord::Running(node_handle)) = nodes_guard.get(&id) {
-                if let Err(e) = node_handle.send_command(NodeOperation::Start {
+            if let Some(NodeRecord::Running(node_handle)) = nodes_guard.get(&id)
+                && let Err(e) = node_handle.send_command(NodeOperation::Start {
                     config: Some(Box::new(node_config)),
                     specializations: Some(specializations),
-                }) {
-                    error!(
-                        "Failed to send start command to node {} ({}): {}",
-                        name, id, e
-                    );
-                }
+                })
+            {
+                error!(
+                    "Failed to send start command to node {} ({}): {}",
+                    name, id, e
+                );
             }
         }
     }
@@ -240,16 +240,13 @@ impl NodeManager {
         let mut existing_dirs = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&proven_dir) {
             for entry in entries.flatten() {
-                if let Some(dir_name) = entry.file_name().to_str() {
-                    if dir_name.starts_with(&format!("{specialization_prefix}-")) {
-                        if let Some(number_part) =
-                            dir_name.strip_prefix(&format!("{specialization_prefix}-"))
-                        {
-                            if let Ok(num) = number_part.parse::<u32>() {
-                                existing_dirs.push(num);
-                            }
-                        }
-                    }
+                if let Some(dir_name) = entry.file_name().to_str()
+                    && dir_name.starts_with(&format!("{specialization_prefix}-"))
+                    && let Some(number_part) =
+                        dir_name.strip_prefix(&format!("{specialization_prefix}-"))
+                    && let Ok(num) = number_part.parse::<u32>()
+                {
+                    existing_dirs.push(num);
                 }
             }
         }
@@ -295,15 +292,14 @@ impl NodeManager {
         let node_config = records::create_node_config(id, name, &self.governance, &self.session_id);
 
         // Handle persistent directories for specializations
-        if !specializations.is_empty() {
-            if let Err(e) =
+        if !specializations.is_empty()
+            && let Err(e) =
                 self.create_persistent_symlinks_with_tracking(id, specializations, &node_config)
-            {
-                error!(
-                    "Failed to create persistent symlinks for node {} ({}): {}. Continuing with temporary storage.",
-                    name, id, e
-                );
-            }
+        {
+            error!(
+                "Failed to create persistent symlinks for node {} ({}): {}. Continuing with temporary storage.",
+                name, id, e
+            );
         }
 
         node_config
@@ -650,20 +646,20 @@ impl NodeManager {
                         }
 
                         let mut nodes = self.nodes.write();
-                        if let Some(record) = nodes.get_mut(&id) {
-                            if matches!(record, NodeRecord::Running(_)) {
-                                *record = NodeRecord::Stopped {
-                                    _id: id,
-                                    name,
-                                    final_status,
-                                    specializations,
-                                    _stopped_at: std::time::Instant::now(),
-                                };
-                                info!(
-                                    "Transitioned node {} to Stopped state",
-                                    id.full_pokemon_name()
-                                );
-                            }
+                        if let Some(record) = nodes.get_mut(&id)
+                            && matches!(record, NodeRecord::Running(_))
+                        {
+                            *record = NodeRecord::Stopped {
+                                _id: id,
+                                name,
+                                final_status,
+                                specializations,
+                                _stopped_at: std::time::Instant::now(),
+                            };
+                            info!(
+                                "Transitioned node {} to Stopped state",
+                                id.full_pokemon_name()
+                            );
                         }
                     }
                 }

@@ -5900,16 +5900,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fdlimit"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e182f7dbc2ef73d9ef67351c5fbbea084729c48362d3ce9dd44c28e32e277fe5"
-dependencies = [
- "libc",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "ff"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8682,71 +8672,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "netlink-packet-core"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72724faf704479d67b388da142b186f916188505e7e0b26719019c525882eda4"
-dependencies = [
- "anyhow",
- "byteorder",
- "netlink-packet-utils",
-]
-
-[[package]]
-name = "netlink-packet-route"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56d83370a96813d7c977f8b63054f1162df6e5784f1c598d689236564fb5a6f2"
-dependencies = [
- "anyhow",
- "bitflags 2.9.1",
- "byteorder",
- "libc",
- "log",
- "netlink-packet-core",
- "netlink-packet-utils",
-]
-
-[[package]]
-name = "netlink-packet-utils"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ede8a08c71ad5a95cdd0e4e52facd37190977039a4704eb82a283f713747d34"
-dependencies = [
- "anyhow",
- "byteorder",
- "paste",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "netlink-proto"
-version = "0.11.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72452e012c2f8d612410d89eea01e2d9b56205274abb35d53f60200b2ec41d60"
-dependencies = [
- "bytes",
- "futures",
- "log",
- "netlink-packet-core",
- "netlink-sys",
- "thiserror 2.0.12",
-]
-
-[[package]]
-name = "netlink-sys"
-version = "0.8.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16c903aa70590cb93691bf97a767c8d1d6122d2cc9070433deb3bbf36ce8bd23"
-dependencies = [
- "bytes",
- "futures",
- "libc",
- "log",
- "tokio",
-]
-
-[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10383,6 +10308,7 @@ dependencies = [
  "aws-types",
  "axum 0.8.4",
  "base64 0.22.1",
+ "bincode",
  "byteorder",
  "bytes",
  "chrono",
@@ -10406,7 +10332,11 @@ dependencies = [
  "proven-bootable",
  "proven-governance",
  "proven-governance-mock",
+ "proven-network",
+ "proven-topology",
+ "proven-transport",
  "proven-util",
+ "proven-verification",
  "proven-vsock-rpc",
  "rand 0.8.5",
  "rocksdb",
@@ -10453,12 +10383,12 @@ dependencies = [
  "proven-headers",
  "proven-http",
  "proven-identity",
- "proven-network",
  "proven-passkeys",
  "proven-runtime",
  "proven-sessions",
  "proven-sql",
  "proven-store",
+ "proven-transport",
  "proven-util",
  "rand 0.8.5",
  "serde",
@@ -10486,78 +10416,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
-]
-
-[[package]]
-name = "proven-enclave"
-version = "0.1.0"
-dependencies = [
- "async-nats",
- "async-trait",
- "axum 0.8.4",
- "bytes",
- "ciborium",
- "cidr",
- "ed25519-dalek",
- "fdlimit",
- "futures",
- "hex",
- "http 1.3.1",
- "proven-applications",
- "proven-attestation",
- "proven-attestation-nsm",
- "proven-bootable",
- "proven-cert-store",
- "proven-consensus",
- "proven-core",
- "proven-dnscrypt-proxy",
- "proven-external-fs",
- "proven-governance",
- "proven-governance-mock",
- "proven-http-letsencrypt",
- "proven-identity",
- "proven-imds",
- "proven-instance-details",
- "proven-kms",
- "proven-locks-nats",
- "proven-messaging",
- "proven-messaging-nats",
- "proven-nats-monitor",
- "proven-nats-server",
- "proven-network",
- "proven-passkeys",
- "proven-postgres",
- "proven-radix-aggregator",
- "proven-radix-gateway",
- "proven-radix-nft-verifier-gateway",
- "proven-radix-node",
- "proven-runtime",
- "proven-sessions",
- "proven-sql",
- "proven-sql-streamed",
- "proven-store",
- "proven-store-asm",
- "proven-store-nats",
- "proven-store-s3",
- "proven-vsock-proxy",
- "proven-vsock-rpc",
- "proven-vsock-rpc-cac",
- "proven-vsock-tracing",
- "radix-common 1.3.0",
- "rand 0.8.5",
- "rlimit",
- "rtnetlink",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "tokio-vsock",
- "tower-http",
- "tracing",
- "tracing-panic",
- "tracing-subscriber 0.3.19",
- "uuid",
 ]
 
 [[package]]
@@ -10651,6 +10509,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "proven-governance",
+ "proven-topology",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
@@ -10901,7 +10760,6 @@ dependencies = [
  "proven-locks-memory",
  "proven-messaging",
  "proven-messaging-memory",
- "proven-nats-server",
  "proven-network",
  "proven-passkeys",
  "proven-postgres",
@@ -10916,7 +10774,11 @@ dependencies = [
  "proven-store-fs",
  "proven-store-memory",
  "proven-store-nats",
+ "proven-topology",
+ "proven-transport",
+ "proven-transport-ws",
  "proven-util",
+ "proven-verification",
  "radix-common 1.3.0",
  "reqwest",
  "serde",
@@ -11045,38 +10907,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-messaging-consensus"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "ed25519-dalek",
- "futures",
- "hex",
- "parking_lot 0.12.4",
- "proven-attestation",
- "proven-attestation-mock",
- "proven-bootable",
- "proven-consensus",
- "proven-governance",
- "proven-governance-mock",
- "proven-messaging",
- "proven-util",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "serial_test",
- "tempfile",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
- "tracing-test",
- "uuid",
-]
-
-[[package]]
 name = "proven-messaging-memory"
 version = "0.1.0"
 dependencies = [
@@ -11118,74 +10948,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-nats-monitor"
-version = "0.1.0"
-dependencies = [
- "http 1.3.1",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tracing",
-]
-
-[[package]]
-name = "proven-nats-server"
-version = "0.1.0"
-dependencies = [
- "async-nats",
- "async-trait",
- "bytes",
- "ed25519-dalek",
- "nix 0.27.1",
- "pem",
- "proven-attestation",
- "proven-attestation-mock",
- "proven-bootable",
- "proven-cert-store",
- "proven-governance",
- "proven-governance-mock",
- "proven-isolation",
- "proven-messaging",
- "proven-messaging-nats",
- "proven-nats-monitor",
- "proven-network",
- "proven-store",
- "proven-store-memory",
- "rand 0.8.5",
- "regex",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tokio",
- "tokio-rustls-acme",
- "tracing",
- "tracing-subscriber 0.3.19",
- "uuid",
- "which 6.0.3",
-]
-
-[[package]]
 name = "proven-network"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "ciborium",
+ "dashmap 6.1.0",
  "ed25519-dalek",
- "headers",
+ "futures",
  "hex",
- "proven-attestation",
- "proven-attestation-mock",
+ "proven-bootable",
  "proven-governance",
- "proven-governance-mock",
- "proven-headers",
- "rand 0.8.5",
- "reqwest",
+ "proven-topology",
+ "proven-transport",
+ "proven-verification",
  "serde",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-test",
  "tracing",
- "url",
+ "uuid",
 ]
 
 [[package]]
@@ -11557,6 +11340,90 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-topology"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "ed25519-dalek",
+ "hex",
+ "proven-bootable",
+ "proven-governance",
+ "proven-governance-mock",
+ "serde",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "proven-transport"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum 0.8.4",
+ "bytes",
+ "ed25519-dalek",
+ "futures",
+ "proven-topology",
+ "proven-verification",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-test",
+ "uuid",
+]
+
+[[package]]
+name = "proven-transport-tcp"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "dashmap 6.1.0",
+ "ed25519-dalek",
+ "futures",
+ "hex",
+ "proven-attestation",
+ "proven-attestation-mock",
+ "proven-governance",
+ "proven-governance-mock",
+ "proven-topology",
+ "proven-transport",
+ "proven-verification",
+ "tokio",
+ "tokio-test",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "proven-transport-ws"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum 0.8.4",
+ "bytes",
+ "dashmap 6.1.0",
+ "ed25519-dalek",
+ "futures",
+ "proven-attestation",
+ "proven-attestation-mock",
+ "proven-governance",
+ "proven-governance-mock",
+ "proven-topology",
+ "proven-transport",
+ "proven-verification",
+ "tokio",
+ "tokio-test",
+ "tokio-tungstenite 0.27.0",
+ "tracing",
+ "tracing-subscriber 0.3.19",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "proven-util"
 version = "0.1.0"
 dependencies = [
@@ -11565,6 +11432,28 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "url",
+]
+
+[[package]]
+name = "proven-verification"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "ciborium",
+ "coset",
+ "ed25519-dalek",
+ "hex",
+ "proven-attestation",
+ "proven-governance",
+ "proven-topology",
+ "rand 0.8.5",
+ "serde",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -12609,15 +12498,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rlimit"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7043b63bd0cd1aaa628e476b80e6d4023a3b50eb32789f2728908107bd0c793a"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "rlp"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12673,24 +12553,6 @@ dependencies = [
  "spki 0.7.3",
  "subtle",
  "zeroize",
-]
-
-[[package]]
-name = "rtnetlink"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbe0a03f6b9b483c67d4b328fc5d66c8db0b6aa274e0fa2def71b5e442a69acf"
-dependencies = [
- "futures",
- "log",
- "netlink-packet-core",
- "netlink-packet-route",
- "netlink-packet-utils",
- "netlink-proto",
- "netlink-sys",
- "nix 0.29.0",
- "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]
@@ -15434,16 +15296,6 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
-]
-
-[[package]]
-name = "tracing-panic"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bf1298a179837099f9309243af3b554e840f7f67f65e9f55294913299bd4cc5"
-dependencies = [
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]

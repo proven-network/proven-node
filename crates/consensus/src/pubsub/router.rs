@@ -13,7 +13,7 @@ use super::PubSubResult;
 use super::interest::InterestTracker;
 use super::messages::PubSubMessage;
 use super::subject::subject_matches_pattern;
-use crate::NodeId;
+use proven_topology::NodeId;
 
 /// Routes messages to interested nodes based on subject patterns
 #[derive(Debug, Clone)]

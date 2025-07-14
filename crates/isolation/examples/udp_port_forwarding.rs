@@ -166,7 +166,7 @@ async fn main() {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        panic!("Failed to compile UDP server: {}", stderr);
+        panic!("Failed to compile UDP server: {stderr}");
     }
 
     // Create the server

@@ -4,22 +4,23 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
+async-trait.workspace = true
 bytes.workspace = true
+ciborium.workspace = true
+dashmap.workspace = true
 ed25519-dalek.workspace = true
-headers.workspace = true
+futures.workspace = true
 hex.workspace = true
-proven-attestation.workspace = true
+proven-bootable.workspace = true
 proven-governance.workspace = true
-proven-headers.workspace = true
-rand.workspace = true
-reqwest.workspace = true
-serde.workspace = true
+proven-topology.workspace = true
+proven-transport.workspace = true
+proven-verification.workspace = true
+serde = { workspace = true, features = ["derive"] }
 thiserror.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tracing.workspace = true
-url.workspace = true
+uuid = { workspace = true, features = ["v4", "serde"] }
 
 [dev-dependencies]
-async-trait.workspace = true
-proven-attestation-mock.workspace = true
-proven-governance-mock.workspace = true
+tokio-test.workspace = true

@@ -280,7 +280,7 @@ where
     origin_allowlist_web_permissions: Arc<OriginAllowlistWebPermissions>,
     personal_sql_store: PSS,
     personal_store: PS,
-    runtime: rustyscript::Runtime,
+    rustyscript: rustyscript::Runtime,
     _marker: PhantomData<(FSS, RNV)>,
 }
 
@@ -391,7 +391,7 @@ where
             origin_allowlist_web_permissions,
             personal_sql_store,
             personal_store,
-            runtime,
+            rustyscript: runtime,
             _marker: PhantomData,
         })
     }
@@ -550,21 +550,21 @@ where
         }
 
         // Reset the console state before each execution
-        rustyscript::Runtime::put(&mut self.runtime, ConsoleState::default())?;
+        rustyscript::Runtime::put(&mut self.rustyscript, ConsoleState::default())?;
 
         // Reset the crypto key cache before each execution
-        rustyscript::Runtime::put(&mut self.runtime, CryptoState::default())?;
+        rustyscript::Runtime::put(&mut self.rustyscript, CryptoState::default())?;
 
         // Set the kv stores for the storage extension
         rustyscript::Runtime::put(
-            &mut self.runtime,
+            &mut self.rustyscript,
             self.application_store
                 .clone()
                 .scope(application_id.to_string()),
         )?;
 
         rustyscript::Runtime::put(
-            &mut self.runtime,
+            &mut self.rustyscript,
             match session_state {
                 IdentityState::Identity(ref identity_id) => Some(
                     self.personal_store
@@ -587,11 +587,11 @@ where
         // )?;
 
         // Set the sql stores for the storage extension
-        rustyscript::Runtime::put(&mut self.runtime, SqlParamListManager::new())?;
-        rustyscript::Runtime::put(&mut self.runtime, SqlQueryResultsManager::new())?;
+        rustyscript::Runtime::put(&mut self.rustyscript, SqlParamListManager::new())?;
+        rustyscript::Runtime::put(&mut self.rustyscript, SqlQueryResultsManager::new())?;
 
         rustyscript::Runtime::put(
-            &mut self.runtime,
+            &mut self.rustyscript,
             ApplicationSqlConnectionManager::new(
                 self.application_sql_store
                     .clone()
@@ -601,7 +601,7 @@ where
         )?;
 
         rustyscript::Runtime::put(
-            &mut self.runtime,
+            &mut self.rustyscript,
             match session_state {
                 IdentityState::Identity(ref identity_id) => {
                     Some(PersonalSqlConnectionManager::new(
@@ -628,20 +628,20 @@ where
         // )?;
 
         // Set the context for the session extension
-        rustyscript::Runtime::put(&mut self.runtime, session_state)?;
+        rustyscript::Runtime::put(&mut self.rustyscript, session_state)?;
 
         let module_handle = self.get_module_for_handler_specifier(&handler_specifier)?;
 
         let result: std::result::Result<Value, rustyscript::Error> =
             match handler_specifier.handler_name() {
                 Some(ref handler_name) => {
-                    self.runtime
+                    self.rustyscript
                         .call_function(Some(&module_handle), handler_name, &args)
                 }
-                None => self.runtime.call_entrypoint(&module_handle, &args),
+                None => self.rustyscript.call_entrypoint(&module_handle, &args),
             };
 
-        let console_state: ConsoleState = self.runtime.take().unwrap_or_default();
+        let console_state: ConsoleState = self.rustyscript.take().unwrap_or_default();
         let duration = start.elapsed();
 
         let logs: Vec<ExecutionLogs> = console_state
@@ -649,7 +649,7 @@ where
             .into_iter()
             .map(|message| {
                 let args: rustyscript::serde_json::Value =
-                    Value::from_v8(message.args).try_into(&mut self.runtime)?;
+                    Value::from_v8(message.args).try_into(&mut self.rustyscript)?;
 
                 Ok(ExecutionLogs {
                     level: message.level,
@@ -660,7 +660,7 @@ where
 
         match result {
             Ok(output) => {
-                let handler_output: HandlerOutput = output.try_into(&mut self.runtime)?;
+                let handler_output: HandlerOutput = output.try_into(&mut self.rustyscript)?;
 
                 Ok(ExecutionResult::Ok {
                     duration,
@@ -695,7 +695,7 @@ where
             return Err(Error::SpecifierNotFoundInCodePackage(module_specifier));
         };
 
-        let module_handle = self.runtime.load_module(&module)?;
+        let module_handle = self.rustyscript.load_module(&module)?;
 
         self.module_handle_cache
             .insert(module_specifier, module_handle.clone());

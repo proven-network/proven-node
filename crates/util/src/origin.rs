@@ -171,7 +171,7 @@ impl fmt::Display for Origin {
                 _ => unreachable!(),
             };
             if port != default_port {
-                write!(f, ":{}", port)?;
+                write!(f, ":{port}")?;
             }
         }
         Ok(())

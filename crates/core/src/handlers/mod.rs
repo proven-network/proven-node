@@ -1,14 +1,11 @@
 mod application_http;
-mod node;
 mod rpc_http;
 mod rpc_ws;
 mod sessions;
 mod static_files;
 mod webauthn;
-mod whoami;
 
 pub(crate) use application_http::{ApplicationHttpContext, application_http_handler};
-pub(crate) use node::nats_cluster_endpoint_handler;
 pub(crate) use rpc_http::http_rpc_handler;
 pub(crate) use rpc_ws::ws_rpc_handler;
 pub(crate) use sessions::{create_management_session_handler, create_session_handler};
@@ -23,7 +20,6 @@ pub(crate) use webauthn::{
     webauthn_authentication_finish_handler, webauthn_authentication_start_handler,
     webauthn_registration_finish_handler, webauthn_registration_start_handler,
 };
-pub(crate) use whoami::whoami_handler;
 
 pub(crate) use rpc_http::management_http_rpc_handler;
 pub(crate) use rpc_ws::management_ws_rpc_handler;

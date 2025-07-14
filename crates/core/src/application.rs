@@ -15,7 +15,7 @@ use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
 use proven_governance::Governance;
 use proven_identity::IdentityManagement;
-use proven_network::ProvenNetwork;
+use proven_passkeys::PasskeyManagement;
 use proven_runtime::{ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
 use tower_http::cors::CorsLayer;
@@ -26,22 +26,21 @@ pub struct ApplicationRouter;
 
 impl ApplicationRouter {
     /// Creates a router for handling HTTP requests to application endpoints.
-    pub async fn create_application_http_router<AM, RM, IM, SM, A, G>(
+    pub async fn create_application_http_router<A, AM, RM, IM, SM>(
+        attestor: &A,
         code_package: CodePackage,
         module_specifier: url::Url,
         _application_manager: &AM,
         runtime_pool_manager: &RM,
         identity_manager: &IM,
         sessions_manager: &SM,
-        network: &ProvenNetwork<G, A>,
     ) -> Result<Router, Error>
     where
+        A: Attestor + Clone,
         AM: ApplicationManagement + Clone,
         RM: RuntimePoolManagement + Clone,
         IM: IdentityManagement + Clone,
         SM: SessionManagement + Clone,
-        A: Attestor + Clone,
-        G: Governance + Clone,
     {
         let module_options = ModuleOptions::from_code_package(&code_package, &module_specifier)
             .await
@@ -57,7 +56,7 @@ impl ApplicationRouter {
         for endpoint in module_options.http_endpoints {
             let ctx = ApplicationHttpContext {
                 application_id: Uuid::max(), // TODO: Fix this
-                attestor: network.attestor().clone(),
+                attestor: attestor.clone(),
                 handler_specifier: endpoint.handler_specifier.clone(),
                 module_loader: ModuleLoader::new(code_package.clone()),
                 requires_session: false, // TODO: Make this configurable
@@ -84,17 +83,17 @@ impl ApplicationRouter {
     }
 
     /// Create a test application router with predefined endpoints
-    pub async fn create_application_test_router<AM, RM, IM, PM, SM, A, G>(
-        full_ctx: &FullContext<AM, RM, IM, PM, SM, A, G>,
+    pub async fn create_application_test_router<A, G, AM, RM, IM, PM, SM>(
+        full_ctx: &FullContext<A, G, AM, RM, IM, PM, SM>,
     ) -> Result<Router, Error>
     where
-        AM: ApplicationManagement + Clone,
-        RM: RuntimePoolManagement + Clone,
-        IM: IdentityManagement + Clone,
-        PM: proven_passkeys::PasskeyManagement + Clone,
-        SM: SessionManagement + Clone,
-        A: Attestor + Clone,
-        G: Governance + Clone,
+        A: Attestor,
+        G: Governance,
+        AM: ApplicationManagement,
+        RM: RuntimePoolManagement,
+        IM: IdentityManagement,
+        PM: PasskeyManagement,
+        SM: SessionManagement,
     {
         let code_package = CodePackage::from_str(
             r#"
@@ -133,13 +132,13 @@ impl ApplicationRouter {
             ModuleSpecifier::parse("file:///main.ts").map_err(|e| Error::Runtime(e.to_string()))?;
 
         Self::create_application_http_router(
+            &full_ctx.attestor,
             code_package,
             module_specifier,
             &full_ctx.application_manager,
             &full_ctx.runtime_pool_manager,
             &full_ctx.identity_manager,
             &full_ctx.sessions_manager,
-            &full_ctx.network,
         )
         .await
     }

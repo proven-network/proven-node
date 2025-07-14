@@ -10,12 +10,14 @@ static NEXT_PORT: LazyLock<Mutex<u16>> = LazyLock::new(|| Mutex::new(3000));
 
 /// Allocate the next available port, starting from 3000
 pub fn allocate_port() -> Result<u16> {
-    let mut port_guard = NEXT_PORT.lock().unwrap();
-
     // Try up to 10000 ports from the current position
     for _ in 0..10000 {
-        let port = *port_guard;
-        *port_guard += 1;
+        let port = {
+            let mut port_guard = NEXT_PORT.lock().unwrap();
+            let port = *port_guard;
+            *port_guard += 1;
+            port
+        };
 
         // Check if port is actually available on the system
         if is_port_available(port) {
@@ -23,9 +25,10 @@ pub fn allocate_port() -> Result<u16> {
         }
     }
 
+    let start_port = NEXT_PORT.lock().unwrap().saturating_sub(10000);
     anyhow::bail!(
         "No available ports found after trying 10000 ports from {}",
-        *port_guard - 10000
+        start_port
     )
 }
 

@@ -34,7 +34,7 @@ async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
         .ok();
 }
 
-pub(crate) async fn ws_rpc_handler<AM, RM, IM, PM, SM, A, G>(
+pub(crate) async fn ws_rpc_handler<A, G, AM, RM, IM, PM, SM>(
     Path(application_id): Path<Uuid>,
     Query(SessionQuery {
         session: session_id,
@@ -45,17 +45,17 @@ pub(crate) async fn ws_rpc_handler<AM, RM, IM, PM, SM, A, G>(
         sessions_manager,
         runtime_pool_manager,
         ..
-    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
     let session = match sessions_manager
         .get_session(&application_id, &session_id)
@@ -82,7 +82,7 @@ where
     ws.on_upgrade(move |socket| handle_socket(socket, rpc_handler))
 }
 
-pub(crate) async fn management_ws_rpc_handler<AM, RM, IM, PM, SM, A, G>(
+pub(crate) async fn management_ws_rpc_handler<A, G, AM, RM, IM, PM, SM>(
     Query(SessionQuery {
         session: session_id,
     }): Query<SessionQuery>,
@@ -92,17 +92,17 @@ pub(crate) async fn management_ws_rpc_handler<AM, RM, IM, PM, SM, A, G>(
         sessions_manager,
         runtime_pool_manager,
         ..
-    }): State<FullContext<AM, RM, IM, PM, SM, A, G>>,
+    }): State<FullContext<A, G, AM, RM, IM, PM, SM>>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse
 where
+    A: Attestor,
+    G: Governance,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
     PM: PasskeyManagement,
     SM: SessionManagement,
-    A: Attestor,
-    G: Governance,
 {
     let session = match sessions_manager.get_management_session(&session_id).await {
         Ok(Some(session)) => session,

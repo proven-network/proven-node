@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let blockchain_info: Value = node
         .rpc_call::<Vec<String>, Value>("getblockchaininfo", vec![])
         .await?;
-    println!("Blockchain info: {:#?}", blockchain_info);
+    println!("Blockchain info: {blockchain_info:#?}");
 
     // Create a wallet to get a valid address
     println!("Creating a new wallet...");
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let address: String = node
         .rpc_call::<Vec<String>, String>("getnewaddress", vec![])
         .await?;
-    println!("Generated address: {}", address);
+    println!("Generated address: {address}");
 
     // Generate some blocks in regtest mode
     println!("Generating blocks...");
@@ -56,13 +56,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let blocks: Value = node
         .rpc_call::<Value, Value>("generatetoaddress", params)
         .await?;
-    println!("Generated blocks: {:#?}", blocks);
+    println!("Generated blocks: {blocks:#?}");
 
     // Get updated blockchain info
     let updated_info: Value = node
         .rpc_call::<Vec<String>, Value>("getblockchaininfo", vec![])
         .await?;
-    println!("Updated blockchain info: {:#?}", updated_info);
+    println!("Updated blockchain info: {updated_info:#?}");
 
     // Shutdown the node when done
     println!("Shutting down Bitcoin Core node...");

@@ -6,9 +6,9 @@ mod pubsub_tests {
     use bytes::Bytes;
     use std::sync::Arc;
 
-    use crate::NodeId;
     use crate::pubsub::interest::InterestTracker;
     use crate::pubsub::router::MessageRouter;
+    use proven_topology::NodeId;
 
     #[tokio::test]
     async fn test_basic_pubsub_operations() {
@@ -373,16 +373,13 @@ mod pubsub_tests {
             assert_eq!(
                 matched.len(),
                 expected_subs.len(),
-                "Failed for subject: {}",
-                subject
+                "Failed for subject: {subject}"
             );
 
             for expected_sub in expected_subs {
                 assert!(
                     matched.contains(&expected_sub.to_string()),
-                    "Expected {} to match {}",
-                    expected_sub,
-                    subject
+                    "Expected {expected_sub} to match {subject}"
                 );
             }
         }

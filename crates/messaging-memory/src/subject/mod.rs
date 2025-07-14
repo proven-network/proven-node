@@ -194,10 +194,9 @@ where
                 .iter()
                 .zip(subscriber_parts.iter())
                 .all(|(n, s)| *s == "*" || *s == ">" || *n == *s)
+                && let Some(sender) = subjects.get(&subscriber)
             {
-                if let Some(sender) = subjects.get(&subscriber) {
-                    let _ = sender.send(message.clone());
-                }
+                let _ = sender.send(message.clone());
             }
         }
         Ok(())

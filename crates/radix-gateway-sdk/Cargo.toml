@@ -24,3 +24,9 @@ prettyplease.workspace = true
 progenitor.workspace = true
 serde_yaml.workspace = true
 syn.workspace = true
+
+[lints.rust]
+all = "allow"
+
+[lints.clippy]
+all = "allow"

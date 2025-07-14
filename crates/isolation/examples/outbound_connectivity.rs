@@ -50,7 +50,7 @@ impl OutboundConnectivityTest {
             let stderr = String::from_utf8_lossy(&output.stderr);
             return Err(Error::Io(
                 "Failed to compile test program",
-                std::io::Error::other(format!("Compilation failed: {}", stderr)),
+                std::io::Error::other(format!("Compilation failed: {stderr}")),
             ));
         }
 

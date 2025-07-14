@@ -331,10 +331,10 @@ where
         };
 
         // Handle truncation
-        if open_options.truncate {
-            if let Entry::File(file) = &entry {
-                file.truncate();
-            }
+        if open_options.truncate
+            && let Entry::File(file) = &entry
+        {
+            file.truncate();
         }
 
         match entry {

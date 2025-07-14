@@ -7,6 +7,7 @@ use tokio::time::{Duration, sleep};
 use tokio_vsock::VsockAddr;
 use tracing::info;
 
+#[allow(clippy::cognitive_complexity)]
 pub async fn stop(args: StopArgs) -> Result<()> {
     if !NitroCli::is_enclave_running().await? {
         info!("enclave is not running");

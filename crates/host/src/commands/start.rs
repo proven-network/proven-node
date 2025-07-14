@@ -23,6 +23,7 @@ use tracing::{error, info};
 
 static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../../templates/allocator.yaml");
 
+#[allow(clippy::cognitive_complexity)]
 pub async fn start(args: StartArgs) -> Result<()> {
     if !Uid::effective().is_root() {
         return Err(Error::NotRoot);

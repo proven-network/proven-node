@@ -13,12 +13,11 @@ fn get_newest_source_time() -> Option<SystemTime> {
     // Check TypeScript source files
     if let Ok(entries) = glob::glob("src/extensions/**/*.ts") {
         for entry in entries.flatten() {
-            if let Ok(metadata) = fs::metadata(&entry) {
-                if let Ok(modified) = metadata.modified() {
-                    if newest_time.is_none_or(|current| modified > current) {
-                        newest_time = Some(modified);
-                    }
-                }
+            if let Ok(metadata) = fs::metadata(&entry)
+                && let Ok(modified) = metadata.modified()
+                && newest_time.is_none_or(|current| modified > current)
+            {
+                newest_time = Some(modified);
             }
         }
     }
@@ -30,12 +29,11 @@ fn get_newest_source_time() -> Option<SystemTime> {
         "tsconfig.json",
         "vite.config.ts",
     ] {
-        if let Ok(metadata) = fs::metadata(file) {
-            if let Ok(modified) = metadata.modified() {
-                if newest_time.is_none_or(|current| modified > current) {
-                    newest_time = Some(modified);
-                }
-            }
+        if let Ok(metadata) = fs::metadata(file)
+            && let Ok(modified) = metadata.modified()
+            && newest_time.is_none_or(|current| modified > current)
+        {
+            newest_time = Some(modified);
         }
     }
 
@@ -59,10 +57,10 @@ fn get_oldest_output_time() -> Option<SystemTime> {
 
     for file in &output_files {
         if let Ok(metadata) = fs::metadata(file) {
-            if let Ok(modified) = metadata.modified() {
-                if oldest_time.is_none_or(|current| modified < current) {
-                    oldest_time = Some(modified);
-                }
+            if let Ok(modified) = metadata.modified()
+                && oldest_time.is_none_or(|current| modified < current)
+            {
+                oldest_time = Some(modified);
             }
         } else {
             // File doesn't exist, definitely need to rebuild
@@ -90,7 +88,7 @@ fn need_import_replacement() -> bool {
         if let Ok(content) = fs::read_to_string(file_path) {
             // Check if file contains any of the old import patterns
             if content.contains("@proven-network/") {
-                println!("cargo:warning=Import replacement needed in {}", file_path);
+                println!("cargo:warning=Import replacement needed in {file_path}");
                 return true;
             }
         }

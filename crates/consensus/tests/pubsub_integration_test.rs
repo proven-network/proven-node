@@ -2,20 +2,79 @@
 
 #[cfg(test)]
 mod pubsub_tests {
+    use async_trait::async_trait;
     use bytes::Bytes;
     use ed25519_dalek::SigningKey;
+    use futures::Stream;
     use openraft::Config as RaftConfig;
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::{Consensus, ConsensusConfig, HierarchicalConsensusConfig};
+    use proven_consensus::EngineBuilder;
     use proven_governance::{GovernanceNode, Version};
     use proven_governance_mock::MockGovernance;
+    use proven_network::NetworkManager;
+    use proven_topology::{NodeId, TopologyManager};
+    use proven_transport::{Transport, TransportEnvelope, error::TransportError};
+    use proven_verification::CoseHandler;
     use rand::rngs::OsRng;
+    use std::pin::Pin;
     use std::{collections::HashSet, sync::Arc, time::Duration};
+    use tokio::sync::broadcast;
     use tokio::time::timeout;
     use tracing_test::traced_test;
+    use uuid::Uuid;
 
     fn next_port() -> u16 {
         proven_util::port_allocator::allocate_port()
+    }
+
+    // Mock transport for testing
+    struct MockTransport {
+        incoming_tx: broadcast::Sender<TransportEnvelope>,
+        cose_handler: Arc<CoseHandler>,
+    }
+
+    impl MockTransport {
+        fn new(signing_key: SigningKey) -> Self {
+            let (tx, _rx) = broadcast::channel(1024);
+            Self {
+                incoming_tx: tx,
+                cose_handler: Arc::new(CoseHandler::new(signing_key)),
+            }
+        }
+    }
+
+    impl Clone for MockTransport {
+        fn clone(&self) -> Self {
+            Self {
+                incoming_tx: self.incoming_tx.clone(),
+                cose_handler: self.cose_handler.clone(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Transport for MockTransport {
+        async fn send_envelope(
+            &self,
+            _recipient: &NodeId,
+            _payload: &Bytes,
+            _message_type: &str,
+            _correlation_id: Option<Uuid>,
+        ) -> Result<(), TransportError> {
+            Ok(())
+        }
+
+        fn incoming(&self) -> Pin<Box<dyn Stream<Item = TransportEnvelope> + Send>> {
+            Box::pin(futures::stream::empty())
+        }
+
+        fn cose_handler(&self) -> &CoseHandler {
+            &*self.cose_handler
+        }
+
+        async fn shutdown(&self) -> Result<(), TransportError> {
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -24,7 +83,8 @@ mod pubsub_tests {
         println!("🧪 Testing PubSub functionality with 3-node cluster");
 
         let num_nodes = 3;
-        let mut nodes = Vec::new();
+        let mut engines = Vec::new();
+        let mut clients = Vec::new();
         let mut ports = Vec::new();
         let mut signing_keys = Vec::new();
 
@@ -34,7 +94,7 @@ mod pubsub_tests {
             signing_keys.push(SigningKey::generate(&mut OsRng));
         }
 
-        println!("📋 Allocated ports: {:?}", ports);
+        println!("📋 Allocated ports: {ports:?}");
 
         // Create shared governance that knows about all nodes
         let shared_governance = {
@@ -57,7 +117,7 @@ mod pubsub_tests {
             for (&port, signing_key) in ports.iter().zip(signing_keys.iter()) {
                 let node = GovernanceNode {
                     availability_zone: "test-az".to_string(),
-                    origin: format!("http://127.0.0.1:{}", port),
+                    origin: format!("http://127.0.0.1:{port}"),
                     public_key: signing_key.verifying_key(),
                     region: "test-region".to_string(),
                     specializations: HashSet::new(),
@@ -70,34 +130,59 @@ mod pubsub_tests {
 
         // Create consensus nodes
         for (&port, signing_key) in ports.iter().zip(signing_keys.iter()) {
-            let attestor = Arc::new(MockAttestor::new());
+            // Create mock transport
+            let transport = MockTransport::new(signing_key.clone());
 
-            let config = ConsensusConfig {
-                governance: shared_governance.clone(),
-                attestor: attestor.clone(),
-                signing_key: signing_key.clone(),
-                raft_config: RaftConfig::default(),
-                transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
+            // Create topology manager first
+            let topology_manager = Arc::new(
+                TopologyManager::new(
+                    shared_governance.clone(),
+                    proven_topology::NodeId::new(signing_key.verifying_key()),
+                )
+                .await
+                .unwrap(),
+            );
+
+            // Create network manager with topology manager
+            let network_manager = Arc::new(NetworkManager::new(
+                proven_topology::NodeId::new(signing_key.verifying_key()),
+                transport,
+                topology_manager.clone(),
+            ));
+
+            // Build engine and client using the new API
+            let (engine, client) = EngineBuilder::new()
+                .network_manager(network_manager.clone())
+                .topology_manager(topology_manager)
+                .governance(shared_governance.clone())
+                .signing_key(signing_key.clone())
+                .raft_config(RaftConfig::default())
+                .transport_config(proven_consensus::config::TransportConfig::Tcp {
                     listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-                },
-                storage_config: proven_consensus::config::StorageConfig::Memory,
-                cluster_discovery_timeout: None,
-                cluster_join_retry_config:
+                })
+                .storage_config(proven_consensus::config::StorageConfig::Memory)
+                .cluster_join_retry_config(
                     proven_consensus::config::ClusterJoinRetryConfig::default(),
-                hierarchical_config: HierarchicalConsensusConfig::default(),
-                stream_storage_backend:
-                    proven_consensus::local::stream_storage::StreamStorageBackend::default(),
-            };
+                )
+                .global_config(proven_consensus::config::GlobalConsensusConfig::default())
+                .groups_config(proven_consensus::config::GroupsConfig::default())
+                .allocation_config(proven_consensus::config::AllocationConfig::default())
+                .migration_config(proven_consensus::config::MigrationConfig::default())
+                .monitoring_config(proven_consensus::config::MonitoringConfig::default())
+                .stream_storage_backend(Default::default())
+                .build()
+                .await
+                .unwrap();
 
-            let consensus = Consensus::new(config).await.unwrap();
-            nodes.push(consensus);
+            engines.push(engine);
+            clients.push(client);
         }
 
         // Start all nodes
         println!("🚀 Starting all nodes...");
-        for (i, node) in nodes.iter().enumerate() {
-            println!("Starting node {}", i);
-            node.start().await.unwrap();
+        for (i, engine) in engines.iter().enumerate() {
+            println!("Starting node {i}");
+            engine.clone().start().await.unwrap();
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
@@ -109,16 +194,16 @@ mod pubsub_tests {
         println!("\n📤 Test 1: Basic publish/subscribe");
         {
             // Node 0 subscribes to "test.foo"
-            let mut sub1 = nodes[0].pubsub_subscribe("test.foo").await.unwrap();
+            let mut sub1 = engines[0].pubsub_subscribe("test.foo").await.unwrap();
 
             // Node 1 subscribes to "test.*" (wildcard)
-            let mut sub2 = nodes[1].pubsub_subscribe("test.*").await.unwrap();
+            let mut sub2 = engines[1].pubsub_subscribe("test.*").await.unwrap();
 
             // Give time for interest propagation
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Node 2 publishes to "test.foo"
-            let publish_result = nodes[2]
+            let publish_result = engines[2]
                 .pubsub_publish("test.foo", Bytes::from("Hello PubSub!"))
                 .await;
             assert!(publish_result.is_ok(), "Publish should succeed");
@@ -143,21 +228,21 @@ mod pubsub_tests {
         println!("\n📤 Test 2: Wildcard pattern matching");
         {
             // Node 0 subscribes to "weather.>"
-            let mut sub_weather = nodes[0].pubsub_subscribe("weather.>").await.unwrap();
+            let mut sub_weather = engines[0].pubsub_subscribe("weather.>").await.unwrap();
 
             // Give time for interest propagation
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Node 1 publishes to various weather topics
-            nodes[1]
+            engines[1]
                 .pubsub_publish("weather.temp", Bytes::from("72F"))
                 .await
                 .unwrap();
-            nodes[1]
+            engines[1]
                 .pubsub_publish("weather.humidity", Bytes::from("45%"))
                 .await
                 .unwrap();
-            nodes[1]
+            engines[1]
                 .pubsub_publish("weather.pressure.sea", Bytes::from("1013mb"))
                 .await
                 .unwrap();
@@ -183,13 +268,13 @@ mod pubsub_tests {
         println!("\n📤 Test 3: Subject isolation");
         {
             // Node 0 subscribes to "private.data"
-            let mut sub_private = nodes[0].pubsub_subscribe("private.data").await.unwrap();
+            let mut sub_private = engines[0].pubsub_subscribe("private.data").await.unwrap();
 
             // Give time for interest propagation
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Node 1 publishes to different subject
-            nodes[1]
+            engines[1]
                 .pubsub_publish("public.data", Bytes::from("public info"))
                 .await
                 .unwrap();
@@ -202,7 +287,7 @@ mod pubsub_tests {
             );
 
             // Now publish to the correct subject
-            nodes[1]
+            engines[1]
                 .pubsub_publish("private.data", Bytes::from("private info"))
                 .await
                 .unwrap();
@@ -224,18 +309,18 @@ mod pubsub_tests {
         println!("\n📤 Test 4: Multiple subscriptions per node");
         {
             // Node 0 creates multiple subscriptions
-            let mut sub1 = nodes[0].pubsub_subscribe("multi.one").await.unwrap();
-            let mut sub2 = nodes[0].pubsub_subscribe("multi.two").await.unwrap();
+            let mut sub1 = engines[0].pubsub_subscribe("multi.one").await.unwrap();
+            let mut sub2 = engines[0].pubsub_subscribe("multi.two").await.unwrap();
 
             // Give time for interest propagation
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Node 1 publishes to both subjects
-            nodes[1]
+            engines[1]
                 .pubsub_publish("multi.one", Bytes::from("message one"))
                 .await
                 .unwrap();
-            nodes[1]
+            engines[1]
                 .pubsub_publish("multi.two", Bytes::from("message two"))
                 .await
                 .unwrap();
@@ -259,7 +344,7 @@ mod pubsub_tests {
         {
             // Create and immediately drop a subscription
             {
-                let _sub = nodes[0].pubsub_subscribe("temp.subject").await.unwrap();
+                let _sub = engines[0].pubsub_subscribe("temp.subject").await.unwrap();
                 // Subscription dropped here
             }
 
@@ -267,16 +352,16 @@ mod pubsub_tests {
             tokio::time::sleep(Duration::from_millis(500)).await;
 
             // Node 1 publishes to the subject
-            nodes[1]
+            engines[1]
                 .pubsub_publish("temp.subject", Bytes::from("should not receive"))
                 .await
                 .unwrap();
 
             // Create a new subscription to verify messages are still flowing
-            let mut sub_verify = nodes[2].pubsub_subscribe("verify.subject").await.unwrap();
+            let mut sub_verify = engines[2].pubsub_subscribe("verify.subject").await.unwrap();
             tokio::time::sleep(Duration::from_millis(500)).await;
 
-            nodes[1]
+            engines[1]
                 .pubsub_publish("verify.subject", Bytes::from("verify message"))
                 .await
                 .unwrap();
@@ -289,9 +374,9 @@ mod pubsub_tests {
 
         // Shutdown all nodes
         println!("\n🛑 Shutting down all nodes...");
-        for (i, node) in nodes.iter().enumerate() {
-            println!("Shutting down node {}", i);
-            node.shutdown().await.unwrap();
+        for (i, engine) in engines.iter().enumerate() {
+            println!("Shutting down node {i}");
+            engine.clone().shutdown().await.unwrap();
         }
 
         println!("\n✅ All PubSub integration tests passed!");
@@ -303,7 +388,8 @@ mod pubsub_tests {
         println!("🧪 Testing PubSub request/response pattern");
 
         // Create a simple 2-node cluster
-        let mut nodes = Vec::new();
+        let mut engines = Vec::new();
+        let mut clients = Vec::new();
         let ports = [next_port(), next_port()];
         let signing_keys = vec![
             SigningKey::generate(&mut OsRng),
@@ -330,7 +416,7 @@ mod pubsub_tests {
             for (&port, signing_key) in ports.iter().zip(signing_keys.iter()) {
                 let node = GovernanceNode {
                     availability_zone: "test-az".to_string(),
-                    origin: format!("http://127.0.0.1:{}", port),
+                    origin: format!("http://127.0.0.1:{port}"),
                     public_key: signing_key.verifying_key(),
                     region: "test-region".to_string(),
                     specializations: HashSet::new(),
@@ -343,28 +429,53 @@ mod pubsub_tests {
 
         // Create and start nodes
         for (&port, signing_key) in ports.iter().zip(signing_keys.iter()) {
-            let attestor = Arc::new(MockAttestor::new());
+            // Create mock transport
+            let transport = MockTransport::new(signing_key.clone());
 
-            let config = ConsensusConfig {
-                governance: shared_governance.clone(),
-                attestor: attestor.clone(),
-                signing_key: signing_key.clone(),
-                raft_config: RaftConfig::default(),
-                transport_config: proven_consensus::network::transport::TransportConfig::Tcp {
+            // Create topology manager first
+            let topology_manager = Arc::new(
+                TopologyManager::new(
+                    shared_governance.clone(),
+                    proven_topology::NodeId::new(signing_key.verifying_key()),
+                )
+                .await
+                .unwrap(),
+            );
+
+            // Create network manager with topology manager
+            let network_manager = Arc::new(NetworkManager::new(
+                proven_topology::NodeId::new(signing_key.verifying_key()),
+                transport,
+                topology_manager.clone(),
+            ));
+
+            // Build engine and client using the new API
+            let (engine, client) = EngineBuilder::new()
+                .network_manager(network_manager.clone())
+                .topology_manager(topology_manager)
+                .governance(shared_governance.clone())
+                .signing_key(signing_key.clone())
+                .raft_config(RaftConfig::default())
+                .transport_config(proven_consensus::config::TransportConfig::Tcp {
                     listen_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-                },
-                storage_config: proven_consensus::config::StorageConfig::Memory,
-                cluster_discovery_timeout: None,
-                cluster_join_retry_config:
+                })
+                .storage_config(proven_consensus::config::StorageConfig::Memory)
+                .cluster_join_retry_config(
                     proven_consensus::config::ClusterJoinRetryConfig::default(),
-                hierarchical_config: HierarchicalConsensusConfig::default(),
-                stream_storage_backend:
-                    proven_consensus::local::stream_storage::StreamStorageBackend::default(),
-            };
+                )
+                .global_config(proven_consensus::config::GlobalConsensusConfig::default())
+                .groups_config(proven_consensus::config::GroupsConfig::default())
+                .allocation_config(proven_consensus::config::AllocationConfig::default())
+                .migration_config(proven_consensus::config::MigrationConfig::default())
+                .monitoring_config(proven_consensus::config::MonitoringConfig::default())
+                .stream_storage_backend(Default::default())
+                .build()
+                .await
+                .unwrap();
 
-            let consensus = Consensus::new(config).await.unwrap();
-            consensus.start().await.unwrap();
-            nodes.push(consensus);
+            engines.push(engine.clone());
+            engine.start().await.unwrap();
+            clients.push(client);
         }
 
         // Wait for cluster formation
@@ -374,12 +485,12 @@ mod pubsub_tests {
         println!("\n📤 Testing request/response...");
 
         // Node 1 subscribes to "echo.service" to act as a responder
-        let mut echo_sub = nodes[1].pubsub_subscribe("echo.service").await.unwrap();
+        let mut echo_sub = engines[1].pubsub_subscribe("echo.service").await.unwrap();
 
         // Spawn a task to handle echo requests
         tokio::spawn(async move {
             while let Some((subject, payload)) = echo_sub.receiver.recv().await {
-                println!("Echo service received: {} - {:?}", subject, payload);
+                println!("Echo service received: {subject} - {payload:?}");
                 // In a real implementation, we would parse the reply-to subject
                 // and send a response. For now, we'll just consume the message.
             }
@@ -390,17 +501,17 @@ mod pubsub_tests {
 
         // Node 0 makes a request (this will timeout as we haven't implemented
         // the responder side yet, but it tests the request mechanism)
-        let request_result = nodes[0]
+        let request_result = engines[0]
             .pubsub_request(
                 "echo.service",
                 Bytes::from("Hello Echo!"),
-                Duration::from_secs(1),
+                Some(Duration::from_secs(1)),
             )
             .await;
 
         // For now, this will timeout or error as we haven't implemented
         // the response mechanism fully
-        println!("Request result: {:?}", request_result);
+        println!("Request result: {request_result:?}");
 
         // The test passes if the request was sent without panicking
         // Full request/response would require implementing the reply-to handling
@@ -408,8 +519,8 @@ mod pubsub_tests {
         println!("✅ Request/response mechanism test completed");
 
         // Shutdown
-        for node in nodes.iter() {
-            node.shutdown().await.unwrap();
+        for engine in engines.iter() {
+            engine.clone().shutdown().await.unwrap();
         }
     }
 }

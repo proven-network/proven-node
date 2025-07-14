@@ -9,17 +9,16 @@ use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use parking_lot::RwLock;
+use proven_network::{NetworkManager, TopologyManager, Transport};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use super::subject::validate_subject;
-use crate::NodeId;
-use crate::network::messages::{ApplicationMessage, Message};
-use crate::network::network_manager::NetworkManager;
-use crate::topology::TopologyManager;
+use crate::network::messages::Message;
 use proven_governance::Governance;
+use proven_topology::NodeId;
 
 use super::interest::InterestTracker;
 use super::messages::{InterestUpdateAck as InterestUpdateAckStruct, PubSubMessage};
@@ -42,10 +41,10 @@ struct PendingInterestUpdate {
 }
 
 /// Handle for an active subscription
-pub struct Subscription<G, A>
+pub struct Subscription<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     /// Unique subscription ID
     pub id: String,
@@ -54,23 +53,23 @@ where
     /// Channel to receive messages
     pub receiver: mpsc::UnboundedReceiver<(String, Bytes)>,
     /// Handle to unsubscribe
-    _handle: SubscriptionHandle<G, A>,
+    _handle: SubscriptionHandle<T, G>,
 }
 
 /// Internal handle to manage subscription lifecycle
-struct SubscriptionHandle<G, A>
+struct SubscriptionHandle<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     subscription_id: String,
-    manager: Arc<PubSubManagerInner<G, A>>,
+    manager: Arc<PubSubManagerInner<T, G>>,
 }
 
-impl<G, A> Drop for SubscriptionHandle<G, A>
+impl<T, G> Drop for SubscriptionHandle<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     fn drop(&mut self) {
         // Automatically unsubscribe when dropped
@@ -83,10 +82,10 @@ where
 }
 
 /// Internal state for PubSubManager
-struct PubSubManagerInner<G, A>
+struct PubSubManagerInner<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     /// Our node ID
     local_node_id: NodeId,
@@ -99,7 +98,7 @@ where
     /// Pending requests waiting for responses
     pending_requests: Arc<RwLock<HashMap<Uuid, oneshot::Sender<Bytes>>>>,
     /// Network manager reference
-    network_manager: Arc<NetworkManager<G, A>>,
+    network_manager: Arc<NetworkManager<T, G>>,
     /// Topology manager for discovering peers
     topology_manager: Arc<TopologyManager<G>>,
     /// Pending interest update requests
@@ -107,24 +106,36 @@ where
 }
 
 /// PubSub manager
-#[derive(Clone)]
-pub struct PubSubManager<G, A>
+pub struct PubSubManager<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
-    inner: Arc<PubSubManagerInner<G, A>>,
+    inner: Arc<PubSubManagerInner<T, G>>,
 }
 
-impl<G, A> PubSubManager<G, A>
+// Manual Clone implementation that doesn't require T: Clone
+impl<T, G> Clone for PubSubManager<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
+{
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<T, G> PubSubManager<T, G>
+where
+    T: Transport,
+    G: Governance,
 {
     /// Create a new PubSubManager
     pub fn new(
         local_node_id: NodeId,
-        network_manager: Arc<NetworkManager<G, A>>,
+        network_manager: Arc<NetworkManager<T, G>>,
         topology_manager: Arc<TopologyManager<G>>,
     ) -> Self {
         let interest_tracker = Arc::new(InterestTracker::new());
@@ -164,13 +175,12 @@ where
 
         // Send to each interested node
         for node_id in target_nodes {
-            let app_msg = ApplicationMessage::PubSub(Box::new(message.clone()));
-            let net_msg = Message::Application(Box::new(app_msg));
+            let net_msg = Message::PubSub(Box::new(message.clone()));
 
             if let Err(e) = self
                 .inner
                 .network_manager
-                .send_message(node_id.clone(), net_msg)
+                .send(node_id.clone(), net_msg)
                 .await
             {
                 warn!("Failed to send publish to {}: {}", node_id, e);
@@ -186,7 +196,7 @@ where
     }
 
     /// Subscribe to a subject pattern
-    pub async fn subscribe(&self, subject: &str) -> PubSubResult<Subscription<G, A>> {
+    pub async fn subscribe(&self, subject: &str) -> PubSubResult<Subscription<T, G>> {
         let subscription_id = Uuid::new_v4().to_string();
         let (tx, rx) = mpsc::unbounded_channel();
 
@@ -255,13 +265,12 @@ where
         }
 
         for node_id in target_nodes {
-            let app_msg = ApplicationMessage::PubSub(Box::new(message.clone()));
-            let net_msg = Message::Application(Box::new(app_msg));
+            let net_msg = Message::PubSub(Box::new(message.clone()));
 
             if let Err(e) = self
                 .inner
                 .network_manager
-                .send_message(node_id.clone(), net_msg)
+                .send(node_id.clone(), net_msg)
                 .await
             {
                 warn!("Failed to send request to {}: {}", node_id, e);
@@ -329,14 +338,9 @@ where
                 let forward_nodes = self.inner.message_router.route_message(&message)?;
                 for node_id in forward_nodes {
                     if node_id != sender_node_id {
-                        let app_msg = ApplicationMessage::PubSub(Box::new(message.clone()));
-                        let net_msg = Message::Application(Box::new(app_msg));
+                        let net_msg = Message::PubSub(Box::new(message.clone()));
 
-                        let _ = self
-                            .inner
-                            .network_manager
-                            .send_message(node_id, net_msg)
-                            .await;
+                        let _ = self.inner.network_manager.send(node_id, net_msg).await;
                     }
                 }
             }
@@ -348,31 +352,9 @@ where
                     .interest_tracker
                     .update_node_interests(node_id.clone(), interests);
 
-                // Send acknowledgment if we have a correlation ID
-                if let Some(corr_id) = correlation_id {
-                    let (success, error) = match &update_result {
-                        Ok(_) => (true, None),
-                        Err(e) => (false, Some(e.to_string())),
-                    };
-
-                    let ack = PubSubMessage::InterestUpdateAck {
-                        node_id: self.inner.local_node_id.clone(),
-                        success,
-                        error,
-                    };
-
-                    let app_msg = ApplicationMessage::PubSub(Box::new(ack));
-                    let net_msg = Message::Application(Box::new(app_msg));
-
-                    if let Err(e) = self
-                        .inner
-                        .network_manager
-                        .send_message_with_correlation(sender_node_id.clone(), net_msg, corr_id)
-                        .await
-                    {
-                        warn!("Failed to send interest update acknowledgment: {}", e);
-                    }
-                }
+                // Note: In the new NetworkManager design, responses should be returned
+                // from handlers, not sent separately. The acknowledgment handling
+                // happens at a higher level through the handler return value.
 
                 if update_result.is_ok() {
                     debug!("Updated interests for node {}", sender_node_id);
@@ -479,21 +461,25 @@ where
                 .write()
                 .insert(correlation_id, pending);
 
-            let app_msg = ApplicationMessage::PubSub(Box::new(message.clone()));
-            let net_msg = Message::Application(Box::new(app_msg));
+            let net_msg = Message::PubSub(Box::new(message.clone()));
 
             let network_manager = self.inner.network_manager.clone();
             let node_id_clone = node_id.clone();
 
             // Create future for sending and waiting for response
             let future = async move {
-                // Send with correlation ID
-                if let Err(e) = network_manager
-                    .send_message_with_correlation(node_id_clone.clone(), net_msg, correlation_id)
+                // Use request method for messages that expect responses
+                match network_manager
+                    .request(node_id_clone.clone(), net_msg, Duration::from_secs(5))
                     .await
                 {
-                    warn!("Failed to send interest update to {}: {}", node_id_clone, e);
-                    return Err(PubSubError::Network(format!("Failed to send: {}", e)));
+                    Ok(_response_bytes) => {
+                        // Response will be handled through the rx channel
+                    }
+                    Err(e) => {
+                        warn!("Failed to send interest update to {}: {}", node_id_clone, e);
+                        return Err(PubSubError::Network(format!("Failed to send: {e}")));
+                    }
                 }
 
                 // Wait for acknowledgment with timeout
@@ -613,20 +599,24 @@ where
                 .write()
                 .insert(correlation_id, pending);
 
-            let app_msg = ApplicationMessage::PubSub(Box::new(message.clone()));
-            let net_msg = Message::Application(Box::new(app_msg));
+            let net_msg = Message::PubSub(Box::new(message.clone()));
 
             let network_manager = self.inner.network_manager.clone();
             let node_id_clone = node_id.clone();
 
             // Create future for sending and waiting for response
             let future = async move {
-                // Send with correlation ID
-                if let Err(e) = network_manager
-                    .send_message_with_correlation(node_id_clone.clone(), net_msg, correlation_id)
+                // Use request method for messages that expect responses
+                match network_manager
+                    .request(node_id_clone.clone(), net_msg, Duration::from_secs(5))
                     .await
                 {
-                    return Err(PubSubError::Network(format!("Failed to send: {}", e)));
+                    Ok(_response_bytes) => {
+                        // Response will be handled through the rx channel
+                    }
+                    Err(e) => {
+                        return Err(PubSubError::Network(format!("Failed to send: {e}")));
+                    }
                 }
 
                 // Wait for acknowledgment with timeout
@@ -676,10 +666,10 @@ where
     }
 }
 
-impl<G, A> PubSubManagerInner<G, A>
+impl<T, G> PubSubManagerInner<T, G>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
-    A: proven_attestation::Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
+    T: Transport,
+    G: Governance,
 {
     /// Internal unsubscribe
     async fn unsubscribe_internal(&self, subscription_id: &str) -> PubSubResult<()> {

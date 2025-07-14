@@ -132,7 +132,7 @@ async fn main() {
 
         // Wait for the process to exit
         let exit_status = process.wait().await;
-        println!("exit status: {:?}", exit_status);
+        println!("exit status: {exit_status:?}");
 
         // Clean up the process
         process

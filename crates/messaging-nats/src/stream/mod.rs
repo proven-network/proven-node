@@ -280,7 +280,7 @@ where
     /// Publishes a batch of messages atomically to the stream.
     /// Returns the sequence number of the last published message.
     ///
-    /// TODO: Update this implementation once NATS JetStream supports atomic batch publishing.
+    /// TODO: Update this implementation once NATS `JetStream` supports atomic batch publishing.
     /// For now, we publish messages sequentially and return the last sequence number.
     async fn publish_batch(&self, messages: Vec<T>) -> Result<u64, Self::Error> {
         if messages.is_empty() {

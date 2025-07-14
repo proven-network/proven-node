@@ -112,6 +112,7 @@ impl NatsLockManager {
     }
 
     /// Executes an operation with retry logic and exponential backoff.
+    #[allow(clippy::cognitive_complexity)]
     async fn with_retry<F, Fut, R, E>(&self, operation_name: &str, operation: F) -> Result<R, Error>
     where
         F: Fn() -> Fut,

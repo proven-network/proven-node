@@ -26,7 +26,7 @@ async fn main() {
             let _ = handle.await.unwrap(); // This will keep running until the task completes
         }
         Err(e) => {
-            eprintln!("Failed to start stream: {:?}", e);
+            eprintln!("Failed to start stream: {e:?}");
         }
     }
 }

@@ -45,6 +45,10 @@ rand.workspace = true
 proven-attestation.workspace = true
 proven-bootable.workspace = true
 proven-governance.workspace = true
+proven-network.workspace = true
+proven-topology.workspace = true
+proven-transport.workspace = true
+proven-verification.workspace = true
 proven-vsock-rpc = { workspace = true, optional = true }
 sha2.workspace = true
 chrono.workspace = true
@@ -108,6 +112,7 @@ workspace = true
 optional = true
 
 [dev-dependencies]
+bincode.workspace = true
 proven-attestation-mock.workspace = true
 proven-governance-mock.workspace = true
 proven-util.workspace = true

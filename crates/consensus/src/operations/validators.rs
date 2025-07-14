@@ -5,9 +5,10 @@
 //! before they are applied to the state machine.
 
 use crate::{
+    core::global::{RetentionPolicy, StreamConfig},
     error::{ConsensusResult, Error, GroupError, NodeError, StreamError},
     operations::{
-        LocalOperationContext, LocalStreamOperation, MaintenanceOperation, MigrationOperation,
+        GroupStreamOperation, LocalOperationContext, MaintenanceOperation, MigrationOperation,
         OperationContext, OperationValidator, PubSubOperation, StreamOperation,
         group_ops::GroupOperation, node_ops::NodeOperation, routing_ops::RoutingOperation,
         stream_management_ops::StreamManagementOperation,
@@ -15,6 +16,7 @@ use crate::{
 };
 
 /// Validator for stream management operations
+#[derive(Clone)]
 pub struct StreamManagementOperationValidator;
 
 #[async_trait::async_trait]
@@ -138,8 +140,7 @@ impl OperationValidator<StreamManagementOperation> for StreamManagementOperation
                 // Verify current allocation
                 if stream_config.consensus_group != Some(*from_group) {
                     return Err(Error::InvalidOperation(format!(
-                        "Stream is not allocated to group {:?}",
-                        from_group
+                        "Stream is not allocated to group {from_group:?}"
                     )));
                 }
 
@@ -176,41 +177,41 @@ impl OperationValidator<StreamManagementOperation> for StreamManagementOperation
 
 impl StreamManagementOperationValidator {
     /// Validate stream configuration
-    fn validate_stream_config(&self, config: &crate::global::StreamConfig) -> ConsensusResult<()> {
+    fn validate_stream_config(&self, config: &StreamConfig) -> ConsensusResult<()> {
         // Validate retention settings based on retention policy
         match &config.retention_policy {
-            crate::global::RetentionPolicy::Limits => {
+            RetentionPolicy::Limits => {
                 // No limits is valid - it means retain everything
 
                 // Validate individual limits if set
-                if let Some(max_age) = config.max_age_secs {
-                    if max_age == 0 {
-                        return Err(Error::InvalidOperation(
-                            "Retention time must be greater than 0".to_string(),
-                        ));
-                    }
+                if let Some(max_age) = config.max_age_secs
+                    && max_age == 0
+                {
+                    return Err(Error::InvalidOperation(
+                        "Retention time must be greater than 0".to_string(),
+                    ));
                 }
 
-                if let Some(max_messages) = config.max_messages {
-                    if max_messages == 0 {
-                        return Err(Error::InvalidOperation(
-                            "Retention count must be greater than 0".to_string(),
-                        ));
-                    }
+                if let Some(max_messages) = config.max_messages
+                    && max_messages == 0
+                {
+                    return Err(Error::InvalidOperation(
+                        "Retention count must be greater than 0".to_string(),
+                    ));
                 }
 
-                if let Some(max_bytes) = config.max_bytes {
-                    if max_bytes == 0 {
-                        return Err(Error::InvalidOperation(
-                            "Retention size must be greater than 0".to_string(),
-                        ));
-                    }
+                if let Some(max_bytes) = config.max_bytes
+                    && max_bytes == 0
+                {
+                    return Err(Error::InvalidOperation(
+                        "Retention size must be greater than 0".to_string(),
+                    ));
                 }
             }
-            crate::global::RetentionPolicy::WorkQueue => {
+            RetentionPolicy::WorkQueue => {
                 // WorkQueue doesn't need specific validation
             }
-            crate::global::RetentionPolicy::Interest => {
+            RetentionPolicy::Interest => {
                 // Interest-based retention doesn't need specific validation
             }
         }
@@ -220,6 +221,7 @@ impl StreamManagementOperationValidator {
 }
 
 /// Validator for group operations
+#[derive(Clone)]
 pub struct GroupOperationValidator {
     /// Minimum nodes required for a group
     pub min_nodes: usize,
@@ -301,6 +303,7 @@ impl OperationValidator<GroupOperation> for GroupOperationValidator {
 }
 
 /// Validator for node operations
+#[derive(Clone)]
 pub struct NodeOperationValidator {
     /// Maximum groups per node
     pub max_groups_per_node: usize,
@@ -412,6 +415,7 @@ impl OperationValidator<NodeOperation> for NodeOperationValidator {
 }
 
 /// Validator for routing operations
+#[derive(Clone)]
 pub struct RoutingOperationValidator;
 
 #[async_trait::async_trait]
@@ -470,8 +474,7 @@ impl OperationValidator<RoutingOperation> for RoutingOperationValidator {
                 for pattern in subject_patterns {
                     if !seen.insert(pattern) {
                         return Err(Error::InvalidOperation(format!(
-                            "Duplicate pattern '{}' in bulk subscribe",
-                            pattern
+                            "Duplicate pattern '{pattern}' in bulk subscribe"
                         )));
                     }
                 }
@@ -493,7 +496,7 @@ impl OperationValidator<RoutingOperation> for RoutingOperationValidator {
 }
 
 /// Validator for local stream operations
-pub struct LocalStreamOperationValidator;
+pub struct GroupStreamOperationValidator;
 
 /// Trait for validating local operations
 #[async_trait::async_trait]
@@ -507,26 +510,26 @@ pub trait LocalOperationValidator<T: Send + Sync> {
 }
 
 #[async_trait::async_trait]
-impl LocalOperationValidator<LocalStreamOperation> for LocalStreamOperationValidator {
+impl LocalOperationValidator<GroupStreamOperation> for GroupStreamOperationValidator {
     async fn validate(
         &self,
-        operation: &LocalStreamOperation,
+        operation: &GroupStreamOperation,
         context: &LocalOperationContext<'_>,
     ) -> ConsensusResult<()> {
         match operation {
-            LocalStreamOperation::Stream(op) => self.validate_stream_operation(op, context).await,
-            LocalStreamOperation::Migration(op) => {
+            GroupStreamOperation::Stream(op) => self.validate_stream_operation(op, context).await,
+            GroupStreamOperation::Migration(op) => {
                 self.validate_migration_operation(op, context).await
             }
-            LocalStreamOperation::PubSub(op) => self.validate_pubsub_operation(op, context).await,
-            LocalStreamOperation::Maintenance(op) => {
+            GroupStreamOperation::PubSub(op) => self.validate_pubsub_operation(op, context).await,
+            GroupStreamOperation::Maintenance(op) => {
                 self.validate_maintenance_operation(op, context).await
             }
         }
     }
 }
 
-impl LocalStreamOperationValidator {
+impl GroupStreamOperationValidator {
     /// Validate stream operations
     async fn validate_stream_operation(
         &self,
@@ -552,38 +555,35 @@ impl LocalStreamOperationValidator {
                     .get_stream_metadata(stream_name)
                     .await
                     .map_err(|e| {
-                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                        Error::InvalidOperation(format!("Failed to check stream existence: {e}"))
                     })? {
                     Some(metadata) => {
                         if metadata.is_paused {
                             return Err(Error::InvalidOperation(format!(
-                                "Stream '{}' is paused for migration",
-                                stream_name
+                                "Stream '{stream_name}' is paused for migration"
                             )));
                         }
                     }
                     None => {
                         return Err(Error::InvalidOperation(format!(
-                            "Stream '{}' does not exist",
-                            stream_name
+                            "Stream '{stream_name}' does not exist"
                         )));
                     }
                 }
             }
-            StreamOperation::Delete { .. } => {
+            StreamOperation::Delete { .. } | StreamOperation::DirectGet { .. } => {
                 // Check if stream exists
                 if context
                     .local_state
                     .get_stream_metadata(stream_name)
                     .await
                     .map_err(|e| {
-                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                        Error::InvalidOperation(format!("Failed to check stream existence: {e}"))
                     })?
                     .is_none()
                 {
                     return Err(Error::InvalidOperation(format!(
-                        "Stream '{}' does not exist",
-                        stream_name
+                        "Stream '{stream_name}' does not exist"
                     )));
                 }
             }
@@ -594,10 +594,9 @@ impl LocalStreamOperationValidator {
             stream: _,
             messages,
         } = operation
+            && messages.is_empty()
         {
-            if messages.is_empty() {
-                return Err(Error::InvalidOperation("Batch cannot be empty".to_string()));
-            }
+            return Err(Error::InvalidOperation("Batch cannot be empty".to_string()));
         }
 
         if let StreamOperation::Rollup { expected_seq, .. } = operation {
@@ -622,13 +621,12 @@ impl LocalStreamOperationValidator {
                     .get_stream_metadata(stream_name)
                     .await
                     .map_err(|e| {
-                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                        Error::InvalidOperation(format!("Failed to check stream existence: {e}"))
                     })?
                     .is_some()
                 {
                     return Err(Error::InvalidOperation(format!(
-                        "Stream '{}' already exists",
-                        stream_name
+                        "Stream '{stream_name}' already exists"
                     )));
                 }
             }
@@ -643,13 +641,12 @@ impl LocalStreamOperationValidator {
                     .get_stream_metadata(stream_name)
                     .await
                     .map_err(|e| {
-                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                        Error::InvalidOperation(format!("Failed to check stream existence: {e}"))
                     })?
                     .is_none()
                 {
                     return Err(Error::InvalidOperation(format!(
-                        "Stream '{}' does not exist",
-                        stream_name
+                        "Stream '{stream_name}' does not exist"
                     )));
                 }
             }
@@ -677,20 +674,18 @@ impl LocalStreamOperationValidator {
                     .get_stream_metadata(stream_name)
                     .await
                     .map_err(|e| {
-                        Error::InvalidOperation(format!("Failed to check stream existence: {}", e))
+                        Error::InvalidOperation(format!("Failed to check stream existence: {e}"))
                     })? {
                     Some(metadata) => {
                         if metadata.is_paused {
                             return Err(Error::InvalidOperation(format!(
-                                "Stream '{}' is paused for migration",
-                                stream_name
+                                "Stream '{stream_name}' is paused for migration"
                             )));
                         }
                     }
                     None => {
                         return Err(Error::InvalidOperation(format!(
-                            "Stream '{}' does not exist",
-                            stream_name
+                            "Stream '{stream_name}' does not exist"
                         )));
                     }
                 }

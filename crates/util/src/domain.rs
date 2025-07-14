@@ -186,7 +186,7 @@ impl FromStr for Domain {
             Ok(etld_plus_one) => {
                 // Get the effective TLD by removing the eTLD+1 from the full domain
                 let etld = domain
-                    .strip_suffix(&format!(".{}", etld_plus_one))
+                    .strip_suffix(&format!(".{etld_plus_one}"))
                     .or_else(|| {
                         if domain == etld_plus_one {
                             Some("")

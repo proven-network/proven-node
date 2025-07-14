@@ -195,10 +195,10 @@ impl Database {
                 let mut words = upper_query.split_whitespace();
                 while let Some(word) = words.next() {
                     if word == "TABLE" {
-                        if let Some(next_word) = words.next() {
-                            if next_word.contains('.') {
-                                return Err(Error::SchemaNameNotAllowed);
-                            }
+                        if let Some(next_word) = words.next()
+                            && next_word.contains('.')
+                        {
+                            return Err(Error::SchemaNameNotAllowed);
                         }
                         break;
                     }
@@ -217,12 +217,11 @@ impl Database {
                     )
                     .await?;
 
-                if let Some(row) = rows.next().await? {
-                    if let Value::Integer(int) = row.get(0)? {
-                        if int > 0 {
-                            return Ok(false);
-                        }
-                    }
+                if let Some(row) = rows.next().await?
+                    && let Value::Integer(int) = row.get(0)?
+                    && int > 0
+                {
+                    return Ok(false);
                 }
 
                 let transation = self.get_connection()?.transaction().await?;

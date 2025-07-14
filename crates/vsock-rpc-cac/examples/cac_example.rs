@@ -37,7 +37,7 @@ impl CacCommandHandler for ExampleHandler {
     async fn handle_shutdown(&self, request: ShutdownRequest) -> Result<ShutdownResponse> {
         println!("Received shutdown request:");
         if let Some(grace_period) = request.grace_period_secs {
-            println!("  Grace period: {} seconds", grace_period);
+            println!("  Grace period: {grace_period} seconds");
         }
 
         // In a real implementation, you would:
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
     // Server setup
     println!("Server Configuration:");
     let server_addr = VsockAddr::new(2, 5001); // CID 2, Port 5001
-    println!("  Address: {:?}", server_addr);
+    println!("  Address: {server_addr:?}");
 
     let handler = ExampleHandler;
     let _server = CacServer::new(server_addr, handler);
@@ -123,7 +123,7 @@ async fn main() -> Result<()> {
         testnet: false,
     };
 
-    println!("{:#?}", sample_request);
+    println!("{sample_request:#?}");
 
     Ok(())
 }

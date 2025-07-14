@@ -92,16 +92,29 @@ impl CodePackageNpmResolver {
     /// Clears expired entries from the cache.
     #[allow(dead_code)]
     pub async fn cleanup_cache(&self) {
-        let mut cache = self.cache.write().await;
         let ttl = self.cache_ttl;
-        cache.retain(|name, cached_info| {
-            let should_keep = !cached_info.is_expired(ttl);
-            if !should_keep {
-                debug!("Removing expired cache entry for {}", name);
-            }
-            should_keep
-        });
-        debug!("Cache cleanup completed, {} entries remaining", cache.len());
+        let expired_count = {
+            let cache = self.cache.read().await;
+            cache
+                .iter()
+                .filter(|(_, cached_info)| cached_info.is_expired(ttl))
+                .count()
+        };
+
+        if expired_count > 0 {
+            let mut cache = self.cache.write().await;
+            cache.retain(|name, cached_info| {
+                let should_keep = !cached_info.is_expired(ttl);
+                if !should_keep {
+                    debug!("Removing expired cache entry for {}", name);
+                }
+                should_keep
+            });
+        }
+        debug!(
+            "Cache cleanup completed, {} entries remaining",
+            self.cache.read().await.len()
+        );
     }
 
     /// Gets cache statistics for monitoring and debugging.

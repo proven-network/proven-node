@@ -39,6 +39,7 @@ impl ConsumerOptions for NatsConsumerOptions {}
 
 /// A NATS consumer.
 #[derive(Debug)]
+#[allow(clippy::struct_field_names)]
 pub struct NatsConsumer<X, T, D, S>
 where
     X: ConsumerHandler<T, D, S> + Clone + Debug + Send + Sync + 'static,

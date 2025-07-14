@@ -10,7 +10,7 @@ use tracing::{debug, trace};
 
 use super::subject::{subject_matches_pattern, validate_subject_pattern};
 use super::{PubSubError, PubSubResult};
-use crate::NodeId;
+use proven_topology::NodeId;
 
 /// Tracks interest subscriptions across the cluster
 #[derive(Debug, Clone)]
