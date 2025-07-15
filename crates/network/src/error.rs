@@ -50,6 +50,10 @@ pub enum NetworkError {
     #[error("Network manager not started")]
     NotStarted,
 
+    /// Internal error
+    #[error("Internal error: {0}")]
+    Internal(String),
+
     /// Other errors
     #[error("{0}")]
     Other(String),

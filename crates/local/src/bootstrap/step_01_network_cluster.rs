@@ -18,19 +18,23 @@ use std::time::Duration;
 use axum::Router;
 use axum::routing::any;
 use http::StatusCode;
-use openraft::Config as RaftConfig;
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
-use proven_consensus::EngineBuilder;
-use proven_consensus::config::{ClusterJoinRetryConfig, StorageConfig};
+use proven_consensus::{
+    EngineBuilder, EngineConfig,
+    config::{
+        ConsensusConfig, GlobalConsensusConfig, GroupConsensusConfig,
+        NetworkConfig as ConsensusNetworkConfig, ServiceConfig, StorageConfig,
+    },
+};
 use proven_core::{Core, CoreOptions};
 use proven_governance::{Governance, Version};
 use proven_http_insecure::InsecureHttpServer;
-use proven_network::{NetworkManager, TopologyManager};
-use proven_topology::NodeId;
+use proven_network::NetworkManager;
+use proven_storage_memory::MemoryStorage;
+use proven_topology::{NodeId, TopologyManager};
 use proven_transport::HttpIntegratedTransport;
 use proven_transport_ws::{WebsocketConfig, WebsocketTransport};
-use proven_verification::{AttestationVerifier, ConnectionVerifier, CoseHandler};
 use tower_http::cors::CorsLayer;
 use url::Url;
 
@@ -59,36 +63,21 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         )));
     }
 
-    // TODO: simplify setup of all these components
+    // Simplified setup with new constructor pattern
     let node_id = NodeId::from(bootstrap.config.node_key.verifying_key());
     let governance = Arc::new(bootstrap.config.governance.clone());
 
-    let topology_manager = Arc::new(
-        TopologyManager::new(governance.clone(), node_id.clone())
-            .await
-            .map_err(|e| Error::Topology(e.to_string()))?,
-    );
-    let cose_handler = Arc::new(CoseHandler::new(bootstrap.config.node_key.clone()));
-
-    let attestation_verifier = Arc::new(AttestationVerifier::new(
-        bootstrap.config.governance.clone(),
-        bootstrap.attestor.clone(),
-    ));
-
-    let connection_verifier = Arc::new(ConnectionVerifier::new(
-        attestation_verifier,
-        cose_handler,
-        node_id.clone(),
-    ));
+    let topology_manager = Arc::new(TopologyManager::new(governance.clone(), node_id.clone()));
 
     let websocket_config = WebsocketConfig::default();
 
-    let transport = WebsocketTransport::new(
+    let transport = Arc::new(WebsocketTransport::new(
         websocket_config,
+        Arc::new(bootstrap.attestor.clone()),
+        governance,
         bootstrap.config.node_key.clone(),
-        connection_verifier,
         topology_manager.clone(),
-    );
+    ));
 
     let engine_router = transport
         .create_router_integration()
@@ -100,7 +89,7 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
         topology_manager.clone(),
     ));
 
-    // TODO: fix bootable trait for network manager so we can start here
+    network_manager.start().await.map_err(Error::Bootable)?;
 
     let my_node = topology_manager
         .get_node_by_id(&node_id)
@@ -115,25 +104,48 @@ pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), 
     // Check /etc/hosts to ensure the node's FQDN is properly configured
     check_hostname_resolution(origin_url.host_str().unwrap()).await?;
 
-    let (engine, _engine_client) = EngineBuilder::new()
-        .governance(governance)
-        .signing_key(bootstrap.config.node_key.clone())
-        .network_manager(network_manager)
-        .topology_manager(topology_manager)
-        .raft_config(RaftConfig {
-            heartbeat_interval: 500,    // 500ms
-            election_timeout_min: 1500, // 1.5s
-            election_timeout_max: 3000, // 3s
-            ..RaftConfig::default()
-        })
-        .storage_config(StorageConfig::Memory)
-        .cluster_discovery_timeout(Duration::from_secs(30))
-        .cluster_join_retry_config(ClusterJoinRetryConfig {
-            max_attempts: 20,
-            initial_delay: Duration::from_secs(1),
-            max_delay: Duration::from_secs(10),
-            request_timeout: Duration::from_secs(5),
-        })
+    // Create engine configuration
+    let engine_config = EngineConfig {
+        node_name: format!("node-{node_id}"),
+        services: ServiceConfig::default(),
+        consensus: ConsensusConfig {
+            global: GlobalConsensusConfig {
+                election_timeout_min: Duration::from_millis(1500),
+                election_timeout_max: Duration::from_millis(3000),
+                heartbeat_interval: Duration::from_millis(500),
+                snapshot_interval: 1000,
+                max_entries_per_append: 64,
+            },
+            group: GroupConsensusConfig {
+                election_timeout_min: Duration::from_millis(150),
+                election_timeout_max: Duration::from_millis(300),
+                heartbeat_interval: Duration::from_millis(50),
+                snapshot_interval: 1000,
+                max_entries_per_append: 64,
+            },
+        },
+        network: ConsensusNetworkConfig {
+            listen_addr: format!("0.0.0.0:{}", bootstrap.config.port),
+            public_addr: origin.clone(),
+            connection_timeout: Duration::from_secs(10),
+            request_timeout: Duration::from_secs(30),
+        },
+        storage: StorageConfig {
+            path: "./data".to_string(),
+            max_log_size: 1024 * 1024 * 1024,
+            compaction_interval: Duration::from_secs(3600),
+            cache_size: 1000,
+        },
+    };
+
+    // Create memory storage
+    let storage = MemoryStorage::new();
+
+    let mut engine = EngineBuilder::new(node_id.clone())
+        .with_config(engine_config)
+        .with_network(network_manager.clone())
+        .with_topology(topology_manager.clone())
+        .with_storage(storage)
         .build()
         .await
         .map_err(|e| Error::Consensus(format!("failed to build engine: {e}")))?;

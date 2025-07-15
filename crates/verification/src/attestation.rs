@@ -3,7 +3,7 @@
 use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor, Pcrs};
 use proven_governance::{Governance, Version};
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 use tracing::warn;
 
 use crate::error::{VerificationError, VerificationResult};
@@ -14,8 +14,8 @@ where
     G: Governance + Send + Sync + 'static,
     A: Attestor + Send + Sync + 'static,
 {
-    governance: G,
-    attestor: A,
+    governance: Arc<G>,
+    attestor: Arc<A>,
 }
 
 impl<G, A> AttestationVerifier<G, A>
@@ -24,7 +24,7 @@ where
     A: Attestor + Send + Sync + 'static + Debug,
 {
     /// Create a new attestation verifier
-    pub const fn new(governance: G, attestor: A) -> Self {
+    pub fn new(governance: Arc<G>, attestor: Arc<A>) -> Self {
         Self {
             governance,
             attestor,
@@ -83,13 +83,13 @@ where
     }
 
     /// Get reference to governance system
-    pub const fn governance(&self) -> &G {
-        &self.governance
+    pub fn governance(&self) -> Arc<G> {
+        self.governance.clone()
     }
 
     /// Get reference to attestor
-    pub const fn attestor(&self) -> &A {
-        &self.attestor
+    pub fn attestor(&self) -> Arc<A> {
+        self.attestor.clone()
     }
 
     /// Check if PCRs match any known version

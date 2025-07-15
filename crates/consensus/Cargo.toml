@@ -1,6 +1,6 @@
 [package]
 name = "proven-consensus"
-version = "0.1.0"
+version.workspace = true
 edition = "2024"
 
 [dependencies]
@@ -30,6 +30,10 @@ hex.workspace = true
 # Consensus and Raft
 openraft.workspace = true
 rocksdb.workspace = true
+
+# Storage backends
+proven-storage = { path = "../storage" }
+proven-storage-memory = { path = "../storage-memory" }
 byteorder.workspace = true
 maplit.workspace = true
 
@@ -49,7 +53,6 @@ proven-network.workspace = true
 proven-topology.workspace = true
 proven-transport.workspace = true
 proven-verification.workspace = true
-proven-vsock-rpc = { workspace = true, optional = true }
 sha2.workspace = true
 chrono.workspace = true
 
@@ -60,34 +63,10 @@ lazy_static = "1.4"
 # Compression
 flate2 = "1.0"
 
-# S3 and cloud storage dependencies (optional)
-aws-config = { version = "1.1", optional = true }
-aws-sdk-s3 = { version = "1.5", optional = true }
-aws-types = { version = "1.1", optional = true }
-
-# Encryption and security for S3
-aes-gcm = { version = "0.10", optional = true }
-miniz_oxide = { version = "0.7", optional = true }
-
-# Additional utilities for S3
-lru = { version = "0.12", optional = true }
-crossbeam = { version = "0.8", optional = true }
-crc32fast = { version = "1.3", optional = true }
 # ciborium is already in workspace dependencies
 
 [features]
-default = ["s3"]
-s3 = [
-    "dep:aws-config",
-    "dep:aws-sdk-s3", 
-    "dep:aws-types",
-    "dep:aes-gcm",
-    "dep:miniz_oxide",
-    "dep:lru",
-    "dep:crossbeam",
-    "dep:crc32fast",
-    "dep:proven-vsock-rpc"
-]
+default = []
 test-helpers = [
     "dep:proven-attestation-mock", 
     "dep:proven-governance-mock", 
@@ -112,11 +91,14 @@ workspace = true
 optional = true
 
 [dev-dependencies]
+async-stream.workspace = true
 bincode.workspace = true
 proven-attestation-mock.workspace = true
 proven-governance-mock.workspace = true
+proven-transport-tcp.workspace = true
 proven-util.workspace = true
 tempfile.workspace = true
+tokio-stream.workspace = true
 tracing-subscriber.workspace = true
 tracing-test.workspace = true
 serde_yaml = "0.9"

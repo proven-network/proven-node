@@ -1,0 +1,15 @@
+[package]
+name = "proven-storage-memory"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+proven-storage.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tracing-subscriber = "0.3"

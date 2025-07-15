@@ -4,18 +4,18 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use dashmap::DashMap;
 use ed25519_dalek::SigningKey;
 use futures::Stream;
 use proven_attestation::Attestor;
 use proven_governance::Governance;
 use proven_topology::{NodeId, TopologyManager};
-use proven_transport::{Config, Transport, TransportEnvelope, error::TransportError};
-use proven_verification::{ConnectionVerifier, CoseHandler};
+use proven_transport::connection::ConnectionManager;
+use proven_transport::error::TransportError;
+use proven_transport::{Config, Transport, TransportEnvelope};
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::SystemTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{RwLock, broadcast, mpsc};
@@ -46,21 +46,8 @@ impl Default for TcpConfig {
     }
 }
 
-/// Connection state
-#[derive(Debug)]
-// TODO: transport trait should probably have query methods for this
-struct ConnectionState {
-    /// Node ID of the peer
-    #[allow(dead_code)]
-    node_id: NodeId,
-    /// Channel for sending messages
-    sender: mpsc::UnboundedSender<Bytes>,
-    /// Whether this is an outgoing connection
-    #[allow(dead_code)]
-    is_outgoing: bool,
-    /// Last activity time
-    last_activity: SystemTime,
-}
+/// Outgoing message sender for a specific connection
+type OutgoingSender = mpsc::Sender<TransportEnvelope>;
 
 /// TCP transport implementation
 #[derive(Debug)]
@@ -71,16 +58,14 @@ where
 {
     /// Configuration
     config: TcpConfig,
-    /// Active connections
-    connections: Arc<DashMap<NodeId, ConnectionState>>,
+    /// Connection manager for handling all connection logic
+    connection_manager: Arc<ConnectionManager<G, A>>,
+    /// Outgoing message senders by connection ID
+    outgoing_senders: Arc<RwLock<HashMap<String, OutgoingSender>>>,
     /// Incoming message broadcast channel
     incoming_tx: broadcast::Sender<TransportEnvelope>,
     /// Shutdown signal
     shutdown_tx: broadcast::Sender<()>,
-    /// Connection verifier
-    verifier: Arc<ConnectionVerifier<G, A>>,
-    /// COSE handler for message signing/verification
-    cose_handler: Arc<CoseHandler>,
     /// Listener handle
     listener_handle: Arc<RwLock<Option<tokio::task::JoinHandle<()>>>>,
     /// Topology manager for getting connection details
@@ -89,26 +74,30 @@ where
 
 impl<G, A> TcpTransport<G, A>
 where
-    G: Governance,
-    A: Attestor,
+    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
+    A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
     /// Create a new TCP transport with verification and topology management
     pub fn new(
         config: TcpConfig,
+        attestor: Arc<A>,
+        governance: Arc<G>,
         signing_key: SigningKey,
-        verifier: Arc<ConnectionVerifier<G, A>>,
         topology_manager: Arc<TopologyManager<G>>,
     ) -> Self {
         let (incoming_tx, _) = broadcast::channel(1024);
         let (shutdown_tx, _) = broadcast::channel(1);
 
+        // Create connection manager with internal verification components
+        let connection_manager =
+            Arc::new(ConnectionManager::new(attestor, governance, signing_key));
+
         Self {
             config,
-            connections: Arc::new(DashMap::new()),
+            connection_manager,
+            outgoing_senders: Arc::new(RwLock::new(HashMap::new())),
             incoming_tx,
             shutdown_tx,
-            verifier,
-            cose_handler: Arc::new(CoseHandler::new(signing_key)),
             listener_handle: Arc::new(RwLock::new(None)),
             topology_manager,
         }
@@ -123,12 +112,9 @@ where
         let local_addr = listener.local_addr().map_err(TransportError::Io)?;
         info!("TCP transport listening on {}", local_addr);
 
-        let connections = self.connections.clone();
+        let connection_manager = self.connection_manager.clone();
         let incoming_tx = self.incoming_tx.clone();
         let mut shutdown_rx = self.shutdown_tx.subscribe();
-        let config = self.config.clone();
-        let verifier = self.verifier.clone();
-        let cose_handler = self.cose_handler.clone();
 
         let handle = tokio::spawn(async move {
             loop {
@@ -137,21 +123,15 @@ where
                         match accept_result {
                             Ok((stream, addr)) => {
                                 debug!("Accepted connection from {}", addr);
-                                let connections = connections.clone();
+                                let connection_manager = connection_manager.clone();
                                 let incoming_tx = incoming_tx.clone();
-                                let config = config.clone();
-                                let verifier = verifier.clone();
-                                let cose_handler = cose_handler.clone();
 
                                 tokio::spawn(async move {
                                     if let Err(e) = Self::handle_incoming_connection(
                                         stream,
                                         addr,
-                                        connections,
+                                        connection_manager,
                                         incoming_tx,
-                                        config,
-                                        verifier,
-                                        cose_handler,
                                     ).await {
                                         warn!("Failed to handle incoming connection from {}: {}", addr, e);
                                     }
@@ -174,197 +154,127 @@ where
         Ok(local_addr)
     }
 
-    /// Handle an incoming connection
+    /// Handle an incoming connection - just provide I/O functions to the manager
     async fn handle_incoming_connection(
         stream: TcpStream,
         addr: SocketAddr,
-        connections: Arc<DashMap<NodeId, ConnectionState>>,
+        connection_manager: Arc<ConnectionManager<G, A>>,
         incoming_tx: broadcast::Sender<TransportEnvelope>,
-        config: TcpConfig,
-        verifier: Arc<ConnectionVerifier<G, A>>,
-        cose_handler: Arc<CoseHandler>,
     ) -> Result<(), TransportError> {
-        // Create connection ID
         let connection_id = format!("tcp-incoming-{addr}");
+        debug!("Handling incoming connection with ID: {}", connection_id);
 
-        // Initialize verification
-        verifier.initialize_connection(connection_id.clone()).await;
+        // Store the stream in a shared location for the I/O functions
+        let stream_arc = Arc::new(tokio::sync::Mutex::new(stream));
 
-        // Handle verification handshake
-        let node_id = match Self::handle_verification(
-            &stream,
-            &connection_id,
-            &verifier,
-            false, // incoming connection
-        )
-        .await
-        {
-            Ok(id) => id,
-            Err(e) => {
-                verifier.remove_connection(&connection_id).await;
-                return Err(e);
-            }
+        // Create I/O functions for the connection manager
+        let send_stream = stream_arc.clone();
+        let send_fn = move |data: Bytes| {
+            let stream = send_stream.clone();
+            Box::pin(async move {
+                let mut stream_guard = stream.lock().await;
+                Self::write_raw(&mut stream_guard, &data).await
+            })
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send>,
+                >
         };
 
-        debug!("Incoming connection verified from {} ({})", node_id, addr);
+        let recv_stream = stream_arc.clone();
+        let recv_fn = move || {
+            let stream = recv_stream.clone();
+            Box::pin(async move {
+                let mut stream_guard = stream.lock().await;
+                Self::read_raw(&mut stream_guard).await
+            })
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<Bytes, TransportError>> + Send>,
+                >
+        };
 
-        // Create channel for outgoing messages
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        // Let the connection manager handle everything
+        connection_manager
+            .handle_incoming_connection(connection_id.clone(), send_fn, recv_fn, incoming_tx)
+            .await?;
 
-        // Store connection
-        connections.insert(
-            node_id.clone(),
-            ConnectionState {
-                node_id: node_id.clone(),
-                sender: tx,
-                is_outgoing: false,
-                last_activity: SystemTime::now(),
-            },
-        );
-
-        // Split the stream
-        let (reader, writer) = stream.into_split();
-        let reader = Arc::new(tokio::sync::Mutex::new(reader));
-        let writer = Arc::new(tokio::sync::Mutex::new(writer));
-
-        // Spawn task to handle outgoing messages
-        let writer_clone = writer.clone();
-        let node_id_clone = node_id.clone();
-        let connections_clone = connections.clone();
-        tokio::spawn(async move {
-            while let Some(data) = rx.recv().await {
-                if let Err(e) = Self::write_message(&writer_clone, &data).await {
-                    warn!("Failed to write message to {}: {}", node_id_clone, e);
-                    break;
-                }
-            }
-            connections_clone.remove(&node_id_clone);
-        });
-
-        // Handle incoming messages
-        let node_id_clone = node_id.clone();
-        let connections_clone = connections.clone();
-        tokio::spawn(async move {
-            loop {
-                match Self::read_message(&reader, &config.transport).await {
-                    Ok(payload) => {
-                        // Update last activity
-                        if let Some(mut conn) = connections_clone.get_mut(&node_id_clone) {
-                            conn.last_activity = SystemTime::now();
-                        }
-
-                        // Deserialize and verify COSE message
-                        match cose_handler.deserialize_cose_message(&payload) {
-                            Ok(cose_sign1) => {
-                                match cose_handler
-                                    .verify_signed_message(&cose_sign1, node_id_clone.clone())
-                                    .await
-                                {
-                                    Ok((payload, metadata)) => {
-                                        // Send to incoming channel
-                                        let _ = incoming_tx.send(TransportEnvelope {
-                                            sender: node_id_clone.clone(),
-                                            payload,
-                                            message_type: metadata.message_type.unwrap_or_default(),
-                                            correlation_id: metadata.correlation_id,
-                                        });
-                                    }
-                                    Err(e) => {
-                                        warn!(
-                                            "Failed to verify message from {}: {}",
-                                            node_id_clone, e
-                                        );
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                warn!(
-                                    "Failed to deserialize COSE message from {}: {}",
-                                    node_id_clone, e
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        debug!("Connection closed with {}: {}", node_id_clone, e);
-                        break;
-                    }
-                }
-            }
-            connections_clone.remove(&node_id_clone);
-        });
-
+        debug!("Incoming connection {} completed", connection_id);
         Ok(())
     }
 
-    /// Handle connection verification
-    async fn handle_verification(
-        stream: &TcpStream,
-        connection_id: &str,
-        verifier: &Arc<ConnectionVerifier<G, A>>,
-        is_outgoing: bool,
-    ) -> Result<NodeId, TransportError> {
-        if is_outgoing {
-            // For outgoing connections, send initial verification request
-            let request = verifier
-                .create_verification_request_for_connection(connection_id.to_string())
-                .await
-                .map_err(|e| TransportError::AuthenticationFailed(e.to_string()))?;
+    /// Handle outgoing connection - just provide I/O functions to the manager
+    async fn handle_outgoing_connection(
+        stream: TcpStream,
+        connection_id: String,
+        expected_node_id: NodeId,
+        connection_manager: Arc<ConnectionManager<G, A>>,
+        outgoing_rx: mpsc::Receiver<TransportEnvelope>,
+    ) -> Result<(), TransportError> {
+        debug!(
+            "Starting outgoing connection handling for: {}",
+            connection_id
+        );
 
-            Self::write_raw(stream, &request).await?;
-        }
+        // Store the stream in a shared location for the I/O functions
+        let stream_arc = Arc::new(tokio::sync::Mutex::new(stream));
 
-        // Handle verification messages
-        loop {
-            let data = Self::read_raw(stream).await?;
+        // Create I/O functions for the connection manager
+        let send_stream = stream_arc.clone();
+        let send_fn = move |data: Bytes| {
+            let stream = send_stream.clone();
+            Box::pin(async move {
+                let mut stream_guard = stream.lock().await;
+                Self::write_raw(&mut stream_guard, &data).await
+            })
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<(), TransportError>> + Send>,
+                >
+        };
 
-            match verifier
-                .process_verification_message(connection_id.to_string(), data)
-                .await
-            {
-                Ok(Some(response)) => {
-                    // Send response
-                    Self::write_raw(stream, &response).await?;
-                }
-                Ok(None) => {
-                    // Check if verified
-                    if verifier.is_connection_verified(connection_id).await
-                        && let Some(node_id) = verifier.get_verified_public_key(connection_id).await
-                    {
-                        return Ok(node_id);
-                    }
-                }
-                Err(e) => {
-                    return Err(TransportError::AuthenticationFailed(e.to_string()));
-                }
-            }
-        }
+        let recv_stream = stream_arc.clone();
+        let recv_fn = move || {
+            let stream = recv_stream.clone();
+            Box::pin(async move {
+                let mut stream_guard = stream.lock().await;
+                Self::read_raw(&mut stream_guard).await
+            })
+                as std::pin::Pin<
+                    Box<dyn std::future::Future<Output = Result<Bytes, TransportError>> + Send>,
+                >
+        };
+
+        // Let the connection manager handle everything including verification and ongoing messages
+        connection_manager
+            .handle_outgoing_connection(
+                connection_id.clone(),
+                expected_node_id,
+                send_fn,
+                recv_fn,
+                outgoing_rx,
+            )
+            .await?;
+
+        debug!("Outgoing connection {} completed", connection_id);
+        Ok(())
     }
 
-    /// Read a message from the stream
-    async fn read_message(
-        reader: &Arc<tokio::sync::Mutex<tokio::net::tcp::OwnedReadHalf>>,
-        config: &Config,
-    ) -> Result<Bytes, TransportError> {
-        let mut reader = reader.lock().await;
-
+    /// Read raw data from stream
+    async fn read_raw(stream: &mut TcpStream) -> Result<Bytes, TransportError> {
         // Read length prefix (4 bytes)
         let mut len_buf = [0u8; 4];
-        reader
+        stream
             .read_exact(&mut len_buf)
             .await
             .map_err(TransportError::Io)?;
 
         let len = u32::from_be_bytes(len_buf) as usize;
-        if len > config.max_message_size {
-            return Err(TransportError::InvalidMessage(
-                "Message too large".to_string(),
-            ));
+        if len > 10 * 1024 * 1024 {
+            // 10MB max
+            return Err(TransportError::invalid_message("Message too large"));
         }
 
         // Read message data
         let mut data = vec![0u8; len];
-        reader
+        stream
             .read_exact(&mut data)
             .await
             .map_err(TransportError::Io)?;
@@ -372,69 +282,18 @@ where
         Ok(Bytes::from(data))
     }
 
-    /// Write a message to the stream
-    async fn write_message(
-        writer: &Arc<tokio::sync::Mutex<tokio::net::tcp::OwnedWriteHalf>>,
-        data: &Bytes,
-    ) -> Result<(), TransportError> {
-        let mut writer = writer.lock().await;
-
+    /// Write raw data to stream
+    async fn write_raw(stream: &mut TcpStream, data: &Bytes) -> Result<(), TransportError> {
         // Write length prefix
         let len = data.len() as u32;
-        writer
+        stream
             .write_all(&len.to_be_bytes())
             .await
             .map_err(TransportError::Io)?;
 
         // Write message data
-        writer.write_all(data).await.map_err(TransportError::Io)?;
-
-        writer.flush().await.map_err(TransportError::Io)?;
-
-        Ok(())
-    }
-
-    /// Read raw data from stream (for verification)
-    async fn read_raw(stream: &TcpStream) -> Result<Bytes, TransportError> {
-        let mut len_buf = [0u8; 4];
-        stream.readable().await.map_err(TransportError::Io)?;
-
-        let mut buf = vec![0u8; 4];
-        let n = stream.try_read(&mut buf).map_err(TransportError::Io)?;
-        if n < 4 {
-            return Err(TransportError::ConnectionFailed {
-                peer: "unknown".to_string(),
-                reason: "Failed to read length prefix".to_string(),
-            });
-        }
-        len_buf.copy_from_slice(&buf[..4]);
-
-        let len = u32::from_be_bytes(len_buf) as usize;
-
-        let mut data = vec![0u8; len];
-        let mut total_read = 0;
-        while total_read < len {
-            stream.readable().await.map_err(TransportError::Io)?;
-            let n = stream
-                .try_read(&mut data[total_read..])
-                .map_err(TransportError::Io)?;
-            total_read += n;
-        }
-
-        Ok(Bytes::from(data))
-    }
-
-    /// Write raw data to stream (for verification)
-    async fn write_raw(stream: &TcpStream, data: &Bytes) -> Result<(), TransportError> {
-        let len = data.len() as u32;
-
-        stream.writable().await.map_err(TransportError::Io)?;
-        stream
-            .try_write(&len.to_be_bytes())
-            .map_err(TransportError::Io)?;
-
-        stream.writable().await.map_err(TransportError::Io)?;
-        stream.try_write(data).map_err(TransportError::Io)?;
+        stream.write_all(data).await.map_err(TransportError::Io)?;
+        stream.flush().await.map_err(TransportError::Io)?;
 
         Ok(())
     }
@@ -445,168 +304,73 @@ where
         node_id: NodeId,
         addr: SocketAddr,
     ) -> Result<(), TransportError> {
-        // Check if already connected
-        if self.connections.contains_key(&node_id) {
+        let connection_id = format!("tcp-outgoing-{addr}");
+
+        // Check if we already have this connection
+        if self
+            .outgoing_senders
+            .read()
+            .await
+            .contains_key(&connection_id)
+        {
             return Ok(());
         }
 
         let config = self.config.clone();
-        let verifier = self.verifier.clone();
+        let mut last_error = None;
 
         // Try to connect with retries
-        let mut last_error = None;
         for attempt in 1..=config.retry_attempts {
-            let timeout_duration = Duration::from_millis(config.transport.connection_timeout_ms);
+            let timeout_duration = config.transport.connection.connection_timeout;
+
+            debug!(
+                "Attempting connection to {} (attempt {} of {})",
+                addr, attempt, config.retry_attempts
+            );
 
             match timeout(timeout_duration, TcpStream::connect(addr)).await {
                 Ok(Ok(stream)) => {
-                    // Create connection ID
-                    let connection_id = format!("tcp-outgoing-{addr}");
+                    debug!("TCP connection established to {}", addr);
 
-                    // Initialize verification
-                    verifier.initialize_connection(connection_id.clone()).await;
+                    // Create channels for outgoing messages
+                    let (outgoing_tx, outgoing_rx) = mpsc::channel(1000);
 
-                    // Handle verification
-                    match Self::handle_verification(
-                        &stream,
-                        &connection_id,
-                        &verifier,
-                        true, // outgoing connection
-                    )
-                    .await
-                    {
-                        Ok(verified_node_id) => {
-                            if verified_node_id != node_id {
-                                verifier.remove_connection(&connection_id).await;
-                                return Err(TransportError::AuthenticationFailed(
-                                    "Node ID mismatch".to_string(),
-                                ));
-                            }
+                    // Store the outgoing sender
+                    self.outgoing_senders
+                        .write()
+                        .await
+                        .insert(connection_id.clone(), outgoing_tx);
 
-                            debug!("Outgoing connection verified to {} ({})", node_id, addr);
+                    // Handle the entire outgoing connection lifecycle
+                    let connection_manager = self.connection_manager.clone();
+                    let outgoing_senders = self.outgoing_senders.clone();
+                    let connection_id_clone = connection_id.clone();
 
-                            // Create channel for outgoing messages
-                            let (tx, mut rx) = mpsc::unbounded_channel();
-
-                            // Store connection
-                            self.connections.insert(
-                                node_id.clone(),
-                                ConnectionState {
-                                    node_id: node_id.clone(),
-                                    sender: tx,
-                                    is_outgoing: true,
-                                    last_activity: SystemTime::now(),
-                                },
-                            );
-
-                            // Split the stream
-                            let (reader, writer) = stream.into_split();
-                            let reader = Arc::new(tokio::sync::Mutex::new(reader));
-                            let writer = Arc::new(tokio::sync::Mutex::new(writer));
-
-                            // Spawn task to handle outgoing messages
-                            let writer_clone = writer.clone();
-                            let node_id_clone = node_id.clone();
-                            let connections = self.connections.clone();
-                            tokio::spawn(async move {
-                                while let Some(data) = rx.recv().await {
-                                    if let Err(e) = Self::write_message(&writer_clone, &data).await
-                                    {
-                                        warn!(
-                                            "Failed to write message to {}: {}",
-                                            node_id_clone, e
-                                        );
-                                        break;
-                                    }
-                                }
-                                connections.remove(&node_id_clone);
-                            });
-
-                            // Spawn task to handle incoming messages
-                            let node_id_clone = node_id.clone();
-                            let connections = self.connections.clone();
-                            let incoming_tx = self.incoming_tx.clone();
-                            let config = config.clone();
-                            let cose_handler = self.cose_handler.clone();
-                            tokio::spawn(async move {
-                                loop {
-                                    match Self::read_message(&reader, &config.transport).await {
-                                        Ok(payload) => {
-                                            // Update last activity
-                                            if let Some(mut conn) =
-                                                connections.get_mut(&node_id_clone)
-                                            {
-                                                conn.last_activity = SystemTime::now();
-                                            }
-
-                                            // Deserialize and verify COSE message
-                                            match cose_handler.deserialize_cose_message(&payload) {
-                                                Ok(cose_sign1) => {
-                                                    match cose_handler
-                                                        .verify_signed_message(
-                                                            &cose_sign1,
-                                                            node_id_clone.clone(),
-                                                        )
-                                                        .await
-                                                    {
-                                                        Ok((payload, metadata)) => {
-                                                            // Send to incoming channel
-                                                            let _ = incoming_tx.send(
-                                                                TransportEnvelope {
-                                                                    sender: node_id_clone.clone(),
-                                                                    payload,
-                                                                    message_type: metadata
-                                                                        .message_type
-                                                                        .unwrap_or_default(),
-                                                                    correlation_id: metadata
-                                                                        .correlation_id,
-                                                                },
-                                                            );
-                                                        }
-                                                        Err(e) => {
-                                                            warn!(
-                                                                "Failed to verify message from {}: {}",
-                                                                node_id_clone, e
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    warn!(
-                                                        "Failed to deserialize COSE message from {}: {}",
-                                                        node_id_clone, e
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            debug!(
-                                                "Connection closed with {}: {}",
-                                                node_id_clone, e
-                                            );
-                                            break;
-                                        }
-                                    }
-                                }
-                                connections.remove(&node_id_clone);
-                            });
-
-                            verifier.remove_connection(&connection_id).await;
-                            return Ok(());
+                    tokio::spawn(async move {
+                        if let Err(e) = Self::handle_outgoing_connection(
+                            stream,
+                            connection_id_clone.clone(),
+                            node_id,
+                            connection_manager,
+                            outgoing_rx,
+                        )
+                        .await
+                        {
+                            warn!("Outgoing connection failed: {}", e);
                         }
-                        Err(e) => {
-                            verifier.remove_connection(&connection_id).await;
-                            last_error = Some(e);
-                        }
-                    }
+
+                        // Clean up the sender when connection ends
+                        outgoing_senders.write().await.remove(&connection_id_clone);
+                    });
+
+                    debug!("Connection established and handlers started for {}", addr);
+                    return Ok(());
                 }
                 Ok(Err(e)) => {
                     last_error = Some(TransportError::Io(e));
                 }
                 Err(_) => {
-                    last_error = Some(TransportError::Timeout {
-                        operation: format!("Connection to {addr}"),
-                    });
+                    last_error = Some(TransportError::timeout(format!("Connection to {addr}")));
                 }
             }
 
@@ -616,20 +380,17 @@ where
             }
         }
 
-        Err(
-            last_error.unwrap_or_else(|| TransportError::ConnectionFailed {
-                peer: node_id.to_string(),
-                reason: "Failed after all retry attempts".to_string(),
-            }),
-        )
+        Err(last_error.unwrap_or_else(|| {
+            TransportError::connection_failed(node_id, "Failed after all retry attempts")
+        }))
     }
 }
 
 #[async_trait]
 impl<G, A> Transport for TcpTransport<G, A>
 where
-    G: Governance,
-    A: Attestor,
+    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
+    A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
     async fn send_envelope(
         &self,
@@ -638,85 +399,90 @@ where
         message_type: &str,
         correlation_id: Option<uuid::Uuid>,
     ) -> Result<(), TransportError> {
-        // Create COSE-signed message
-        let cose_sign1 = self
-            .cose_handler
-            .create_signed_message(payload, message_type, correlation_id)
-            .map_err(|e| TransportError::InvalidMessage(format!("Failed to sign message: {e}")))?;
-
-        let cose_bytes = self
-            .cose_handler
-            .serialize_cose_message(&cose_sign1)
-            .map_err(|e| {
-                TransportError::InvalidMessage(format!("Failed to serialize COSE: {e}"))
-            })?;
-        // Check if we already have a connection
-        if let Some(conn) = self.connections.get(recipient) {
-            conn.sender
-                .send(cose_bytes.clone())
-                .map_err(|_| TransportError::ConnectionFailed {
-                    peer: recipient.to_string(),
-                    reason: "Channel closed".to_string(),
-                })?;
-            return Ok(());
-        }
+        debug!(
+            "Sending message to {} with type: {}",
+            recipient, message_type
+        );
 
         // Get connection details from topology manager
         let node = self
             .topology_manager
             .get_peer_by_node_id(recipient)
             .await
-            .ok_or_else(|| TransportError::ConnectionFailed {
-                peer: recipient.to_string(),
-                reason: "Peer not found in topology".to_string(),
+            .ok_or_else(|| {
+                TransportError::connection_failed(recipient, "Peer not found in topology")
             })?;
 
         // Get TCP socket address for the peer
-        let addr = node
-            .tcp_socket_addr()
+        let addr = node.tcp_socket_addr().await.map_err(|e| {
+            TransportError::connection_failed(recipient, format!("Invalid TCP address: {e}"))
+        })?;
+
+        let connection_id = format!("tcp-outgoing-{addr}");
+
+        // Ensure we have a connection
+        if !self
+            .outgoing_senders
+            .read()
             .await
-            .map_err(|e| TransportError::ConnectionFailed {
-                peer: recipient.to_string(),
-                reason: format!("Invalid TCP address: {e}"),
+            .contains_key(&connection_id)
+        {
+            debug!(
+                "No existing connection, establishing one to {} at {}",
+                recipient, addr
+            );
+            self.connect_to_address(recipient.clone(), addr).await?;
+        }
+
+        // Create the envelope
+        let envelope = TransportEnvelope {
+            correlation_id,
+            message_type: message_type.to_string(),
+            payload: payload.clone(),
+            sender: self.connection_manager.our_node_id().clone(),
+        };
+
+        // Send through the connection's outgoing channel
+        if let Some(sender) = self.outgoing_senders.read().await.get(&connection_id) {
+            sender.send(envelope).await.map_err(|_| {
+                TransportError::connection_failed(recipient, "Connection channel closed")
             })?;
-
-        // Connect to the peer
-        self.connect_to_address(recipient.clone(), addr).await?;
-
-        // Now send the message
-        if let Some(conn) = self.connections.get(recipient) {
-            conn.sender
-                .send(cose_bytes)
-                .map_err(|_| TransportError::ConnectionFailed {
-                    peer: recipient.to_string(),
-                    reason: "Channel closed".to_string(),
-                })?;
+            debug!("Message sent successfully to {}", recipient);
             Ok(())
         } else {
-            Err(TransportError::ConnectionFailed {
-                peer: recipient.to_string(),
-                reason: "Failed to establish connection".to_string(),
-            })
+            Err(TransportError::connection_failed(
+                recipient,
+                "Connection not found after establishment",
+            ))
         }
     }
 
     fn incoming(&self) -> Pin<Box<dyn Stream<Item = TransportEnvelope> + Send>> {
+        debug!("TCP transport incoming() called, creating subscriber");
         let rx = self.incoming_tx.subscribe();
         Box::pin(futures::stream::unfold(rx, |mut rx| async move {
             match rx.recv().await {
-                Ok(msg) => Some((msg, rx)),
+                Ok(msg) => {
+                    debug!("TCP transport received message from {}", msg.sender);
+                    Some((msg, rx))
+                }
                 Err(_) => None,
             }
         }))
     }
 
-    fn cose_handler(&self) -> &CoseHandler {
-        &self.cose_handler
-    }
-
     async fn shutdown(&self) -> Result<(), TransportError> {
-        // Close all connections
-        self.connections.clear();
+        // Send shutdown signal
+        let _ = self.shutdown_tx.send(());
+
+        // Clear all outgoing senders
+        self.outgoing_senders.write().await.clear();
+
+        // Stop the listener
+        if let Some(handle) = self.listener_handle.write().await.take() {
+            handle.abort();
+        }
+
         Ok(())
     }
 }
@@ -724,41 +490,37 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::net::SocketAddr;
-
     use ed25519_dalek::{SigningKey, VerifyingKey};
     use futures::StreamExt;
     use proven_attestation_mock::MockAttestor;
     use proven_governance_mock::MockGovernance;
-    use proven_verification::{AttestationVerifier, ConnectionVerifier, CoseHandler};
+    use std::net::SocketAddr;
 
     async fn create_test_transport() -> TcpTransport<MockGovernance, MockAttestor> {
         let config = TcpConfig::default();
-        let governance = MockGovernance::new(
-            vec![],                              // empty nodes
-            vec![],                              // empty versions
-            "http://localhost:3200".to_string(), // primary auth gateway
-            vec![],                              // alternate auth gateways
-        );
-        let attestor = MockAttestor::new();
-        let node_id = NodeId::from(VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
-        let verifier = Arc::new(ConnectionVerifier::new(
-            Arc::new(AttestationVerifier::new(governance.clone(), attestor)),
-            Arc::new(CoseHandler::new(SigningKey::from_bytes(&[0u8; 32]))),
-            node_id.clone(),
+        let governance = Arc::new(MockGovernance::new(
+            vec![],
+            vec![],
+            "http://localhost:3200".to_string(),
+            vec![],
         ));
-        let topology_manager = TopologyManager::new(Arc::new(governance), node_id)
-            .await
-            .unwrap();
+        let attestor = Arc::new(MockAttestor::new());
+        let node_id = NodeId::from(VerifyingKey::from_bytes(&[0u8; 32]).unwrap());
+        let topology_manager = TopologyManager::new(governance.clone(), node_id);
         let signing_key = SigningKey::from_bytes(&[0u8; 32]);
-        TcpTransport::new(config, signing_key, verifier, Arc::new(topology_manager))
+
+        TcpTransport::new(
+            config,
+            attestor,
+            governance,
+            signing_key,
+            Arc::new(topology_manager),
+        )
     }
 
     #[tokio::test]
     async fn test_shutdown() {
         let transport = create_test_transport().await;
-        // Should not panic
         let result = transport.shutdown().await;
         assert!(result.is_ok());
     }
@@ -769,14 +531,11 @@ mod tests {
         let mut incoming = transport.incoming();
         // Use a timeout to avoid hanging
         match tokio::time::timeout(Duration::from_millis(100), incoming.next()).await {
-            Ok(None) => {
-                // Expected - no messages
+            Ok(None) | Err(_) => {
+                // Expected - no messages or timeout
             }
             Ok(Some(_)) => {
                 panic!("Expected no messages");
-            }
-            Err(_) => {
-                // Timeout - this is expected for an empty stream
             }
         }
     }
@@ -786,7 +545,10 @@ mod tests {
         let config = TcpConfig::default();
         assert_eq!(config.retry_attempts, 3);
         assert_eq!(config.retry_delay_ms, 500);
-        assert_eq!(config.transport.connection_timeout_ms, 5000);
+        assert_eq!(
+            config.transport.connection.connection_timeout,
+            Duration::from_secs(5)
+        );
         assert_eq!(config.transport.max_message_size, 10 * 1024 * 1024);
         assert_eq!(
             config.local_addr,
@@ -795,18 +557,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transport_debug_format() {
-        let transport = create_test_transport().await;
-        let debug_str = format!("{transport:?}");
-        // Should contain transport name
-        assert!(debug_str.contains("TcpTransport"));
-    }
-
-    #[tokio::test]
-    async fn test_config_debug_format() {
+    async fn test_simplified_constructor() {
         let config = TcpConfig::default();
-        let debug_str = format!("{config:?}");
-        // Should contain config name
-        assert!(debug_str.contains("TcpConfig"));
+        let governance = Arc::new(MockGovernance::new(
+            vec![],
+            vec![],
+            "http://localhost:3200".to_string(),
+            vec![],
+        ));
+        let attestor = Arc::new(MockAttestor::new());
+        let node_id = NodeId::from(VerifyingKey::from_bytes(&[1u8; 32]).unwrap());
+        let topology_manager = Arc::new(TopologyManager::new(governance.clone(), node_id));
+        let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+
+        // This should work without manually creating verification components
+        let transport =
+            TcpTransport::new(config, attestor, governance, signing_key, topology_manager);
+
+        // Verify the transport was created successfully
+        let debug_str = format!("{transport:?}");
+        assert!(debug_str.contains("TcpTransport"));
     }
 }

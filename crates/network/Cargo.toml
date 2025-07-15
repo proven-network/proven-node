@@ -16,11 +16,17 @@ proven-governance.workspace = true
 proven-topology.workspace = true
 proven-transport.workspace = true
 proven-verification.workspace = true
-serde = { workspace = true, features = ["derive"] }
+serde.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
+tokio.workspace = true
+tokio-util.workspace = true
 tracing.workspace = true
-uuid = { workspace = true, features = ["v4", "serde"] }
+uuid.workspace = true
 
 [dev-dependencies]
+proven-attestation-mock.workspace = true
+proven-governance-mock.workspace = true
+proven-transport-tcp.workspace = true
+proven-util.workspace = true
 tokio-test.workspace = true
+tracing-subscriber.workspace = true

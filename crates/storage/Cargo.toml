@@ -1,0 +1,17 @@
+[package]
+name = "proven-storage"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+hex.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }

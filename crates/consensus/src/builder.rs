@@ -1,298 +1,627 @@
-//! Engine builder for the consensus system
-//!
-//! This module provides a builder pattern for creating Engine and ConsensusClient instances
-//! with all necessary dependencies and configuration.
-
-use crate::client::ConsensusClient;
-use crate::config::{
-    AllocationConfig, ClusterJoinRetryConfig, EngineConfig, GlobalConsensusConfig, GroupsConfig,
-    MigrationConfig, MonitoringConfig, StorageConfig, TransportConfig,
-};
-use crate::core::engine::Engine;
-use crate::core::global::global_state::GlobalState;
-use crate::core::stream::StreamStorageBackend;
-use crate::error::{ConfigurationError, ConsensusResult, Error};
+//! Engine builder pattern
 
 use std::sync::Arc;
-use std::time::Duration;
 
-use ed25519_dalek::SigningKey;
-use openraft::Config;
 use proven_governance::Governance;
 use proven_network::NetworkManager;
-use proven_topology::NodeId;
-use proven_topology::TopologyManager;
+use proven_storage::LogStorage;
+use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
-use tracing::info;
 
-/// Builder for creating Engine and ConsensusClient instances
-///
-/// This builder provides a fluent API for configuring and creating
-/// the consensus engine with all necessary dependencies.
-pub struct EngineBuilder<T, G>
+use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
+use crate::foundation::traits::ServiceLifecycle;
+use crate::services::{
+    cluster::ClusterService, event::EventService, lifecycle::LifecycleService,
+    migration::MigrationService, monitoring::MonitoringService, network::NetworkService,
+    pubsub::PubSubService, routing::RoutingService,
+};
+use tracing::{error, info};
+
+use super::config::EngineConfig;
+use super::coordinator::ServiceCoordinator;
+use super::engine::Engine;
+
+/// Engine builder
+pub struct EngineBuilder<T, G, L>
 where
     T: Transport,
     G: Governance,
+    L: LogStorage,
 {
-    // External dependencies
+    /// Node ID
+    node_id: NodeId,
+
+    /// Configuration
+    config: Option<EngineConfig>,
+
+    /// Network manager
     network_manager: Option<Arc<NetworkManager<T, G>>>,
+
+    /// Topology manager
     topology_manager: Option<Arc<TopologyManager<G>>>,
 
-    // Core configuration
-    governance: Option<Arc<G>>,
-    signing_key: Option<SigningKey>,
-
-    // Consensus configurations
-    raft_config: Config,
-    transport_config: Option<TransportConfig>,
-    storage_config: StorageConfig,
-
-    // Cluster configuration
-    cluster_discovery_timeout: Option<Duration>,
-    cluster_join_retry_config: ClusterJoinRetryConfig,
-
-    // Component configurations
-    global_config: GlobalConsensusConfig,
-    groups_config: GroupsConfig,
-    allocation_config: AllocationConfig,
-    migration_config: MigrationConfig,
-    monitoring_config: MonitoringConfig,
-    stream_storage_backend: StreamStorageBackend,
+    /// Storage
+    storage: Option<L>,
 }
 
-impl<T, G> EngineBuilder<T, G>
+impl<T, G, L> EngineBuilder<T, G, L>
 where
-    T: Transport,
-    G: Governance,
+    T: Transport + 'static,
+    G: Governance + 'static,
+    L: LogStorage + 'static,
 {
-    /// Create a new engine builder with default values
-    pub fn new() -> Self {
+    /// Create a new engine builder
+    pub fn new(node_id: NodeId) -> Self {
         Self {
+            node_id,
+            config: None,
             network_manager: None,
             topology_manager: None,
-            governance: None,
-            signing_key: None,
-            raft_config: Config::default(),
-            transport_config: None,
-            storage_config: StorageConfig::Memory,
-            cluster_discovery_timeout: None,
-            cluster_join_retry_config: ClusterJoinRetryConfig::default(),
-            global_config: GlobalConsensusConfig::default(),
-            groups_config: GroupsConfig::default(),
-            allocation_config: AllocationConfig::default(),
-            migration_config: MigrationConfig::default(),
-            monitoring_config: MonitoringConfig::default(),
-            stream_storage_backend: StreamStorageBackend::default(),
+            storage: None,
         }
     }
 
-    // External dependencies
-
-    /// Set the network manager
-    pub fn network_manager(mut self, network_manager: Arc<NetworkManager<T, G>>) -> Self {
-        self.network_manager = Some(network_manager);
+    /// Set configuration
+    pub fn with_config(mut self, config: EngineConfig) -> Self {
+        self.config = Some(config);
         self
     }
 
-    /// Set the topology manager
-    pub fn topology_manager(mut self, topology_manager: Arc<TopologyManager<G>>) -> Self {
-        self.topology_manager = Some(topology_manager);
+    /// Set network manager
+    pub fn with_network(mut self, network: Arc<NetworkManager<T, G>>) -> Self {
+        self.network_manager = Some(network);
         self
     }
 
-    // Core configuration
-
-    /// Set the governance instance
-    pub fn governance(mut self, governance: Arc<G>) -> Self {
-        self.governance = Some(governance);
+    /// Set topology manager
+    pub fn with_topology(mut self, topology: Arc<TopologyManager<G>>) -> Self {
+        self.topology_manager = Some(topology);
         self
     }
 
-    /// Set the node signing key
-    pub fn signing_key(mut self, signing_key: SigningKey) -> Self {
-        self.signing_key = Some(signing_key);
+    /// Set storage
+    pub fn with_storage(mut self, storage: L) -> Self {
+        self.storage = Some(storage);
         self
     }
 
-    // Consensus configurations
-
-    /// Set the Raft configuration
-    pub fn raft_config(mut self, raft_config: Config) -> Self {
-        self.raft_config = raft_config;
-        self
-    }
-
-    /// Set the transport configuration
-    pub fn transport_config(mut self, transport_config: TransportConfig) -> Self {
-        self.transport_config = Some(transport_config);
-        self
-    }
-
-    /// Set the storage configuration
-    pub fn storage_config(mut self, storage_config: StorageConfig) -> Self {
-        self.storage_config = storage_config;
-        self
-    }
-
-    // Cluster configuration
-
-    /// Set the cluster discovery timeout
-    pub fn cluster_discovery_timeout(mut self, timeout: Duration) -> Self {
-        self.cluster_discovery_timeout = Some(timeout);
-        self
-    }
-
-    /// Set the cluster join retry configuration
-    pub fn cluster_join_retry_config(mut self, config: ClusterJoinRetryConfig) -> Self {
-        self.cluster_join_retry_config = config;
-        self
-    }
-
-    // Component configurations
-
-    /// Set the global consensus configuration
-    pub fn global_config(mut self, config: GlobalConsensusConfig) -> Self {
-        self.global_config = config;
-        self
-    }
-
-    /// Set the groups configuration
-    pub fn groups_config(mut self, config: GroupsConfig) -> Self {
-        self.groups_config = config;
-        self
-    }
-
-    /// Set the allocation configuration
-    pub fn allocation_config(mut self, config: AllocationConfig) -> Self {
-        self.allocation_config = config;
-        self
-    }
-
-    /// Set the migration configuration
-    pub fn migration_config(mut self, config: MigrationConfig) -> Self {
-        self.migration_config = config;
-        self
-    }
-
-    /// Set the monitoring configuration
-    pub fn monitoring_config(mut self, config: MonitoringConfig) -> Self {
-        self.monitoring_config = config;
-        self
-    }
-
-    /// Set the stream storage backend
-    pub fn stream_storage_backend(mut self, backend: StreamStorageBackend) -> Self {
-        self.stream_storage_backend = backend;
-        self
-    }
-
-    /// Build the engine configuration from current settings
-    fn build_config(self) -> Result<EngineConfig<G>, Error> {
-        let governance = self.governance.ok_or_else(|| {
-            Error::Configuration(ConfigurationError::MissingRequired {
-                key: "governance".to_string(),
-            })
-        })?;
-        let signing_key = self.signing_key.ok_or_else(|| {
-            Error::Configuration(ConfigurationError::MissingRequired {
-                key: "signing_key".to_string(),
-            })
-        })?;
-        let transport_config = self.transport_config.ok_or_else(|| {
-            Error::Configuration(ConfigurationError::MissingRequired {
-                key: "transport_config".to_string(),
-            })
+    /// Build the engine
+    pub async fn build(self) -> ConsensusResult<Engine<T, G, L>> {
+        // Validate required fields
+        let config = self.config.ok_or_else(|| {
+            ConsensusError::with_context(ErrorKind::Configuration, "Config not set")
         })?;
 
-        Ok(EngineConfig {
-            governance,
-            signing_key,
-            raft_config: self.raft_config,
-            transport_config,
-            storage_config: self.storage_config,
-            cluster_discovery_timeout: self.cluster_discovery_timeout,
-            cluster_join_retry_config: self.cluster_join_retry_config,
-            global_config: self.global_config,
-            groups_config: self.groups_config,
-            allocation_config: self.allocation_config,
-            migration_config: self.migration_config,
-            monitoring_config: self.monitoring_config,
-            stream_storage_backend: self.stream_storage_backend,
-        })
-    }
-
-    /// Build the engine and client
-    pub async fn build(self) -> ConsensusResult<(Arc<Engine<T, G>>, ConsensusClient<T, G>)> {
-        // Get required external dependencies
-        let network_manager = self.network_manager.clone().ok_or_else(|| {
-            Error::Configuration(ConfigurationError::MissingRequired {
-                key: "network_manager".to_string(),
-            })
-        })?;
-        let topology_manager = self.topology_manager.clone().ok_or_else(|| {
-            Error::Configuration(ConfigurationError::MissingRequired {
-                key: "topology_manager".to_string(),
-            })
+        let network_manager = self.network_manager.ok_or_else(|| {
+            ConsensusError::with_context(ErrorKind::Configuration, "Network manager not set")
         })?;
 
-        // Build config from the rest of the fields
-        let config = self.build_config()?;
+        let topology_manager = self.topology_manager.as_ref().ok_or_else(|| {
+            ConsensusError::with_context(ErrorKind::Configuration, "Topology manager not set")
+        })?;
 
-        // Generate node ID from public key
-        let node_id = NodeId::new(config.signing_key.verifying_key());
+        let storage = self.storage.ok_or_else(|| {
+            ConsensusError::with_context(ErrorKind::Configuration, "Storage not set")
+        })?;
 
-        info!("Creating engine for node {}", node_id);
+        // Create service coordinator
+        let coordinator = Arc::new(ServiceCoordinator::new());
 
-        // Create global state store
-        let global_state = Arc::new(GlobalState::new());
-
-        // Create global storage factory based on configuration
-        let storage_factory =
-            crate::core::global::storage::create_global_storage_factory(&config.storage_config)?;
-        let components = storage_factory
-            .create_components(global_state.clone())
-            .await?;
-
-        // Create Raft network factory for global consensus
-        let network_factory =
-            crate::core::global::global_network_adaptor::GlobalNetworkFactory::new(
-                network_manager.clone(),
-            );
-
-        // Create Engine
-        let engine = Arc::new(
-            Engine::new(
-                node_id.clone(),
-                config.raft_config.clone(),
-                network_factory,
-                components.log_storage,
-                components.state_machine,
-                global_state.clone(),
-                topology_manager.clone(),
-                network_manager.clone(),
-                config.raft_config.clone(), // local_base_config
-                &config.storage_config,
-                config.stream_storage_backend.clone(),
-                config.cluster_join_retry_config.clone(),
-                config.monitoring_config.clone(),
-            )
-            .await
-            .map_err(|e| Error::Raft(format!("Failed to create Engine: {e}")))?,
+        // Create network service first as others depend on it
+        let network_service = NetworkService::new(
+            crate::services::network::NetworkConfig::default(),
+            self.node_id.clone(),
+            network_manager.clone(),
         );
 
-        // Create the client
-        let client = ConsensusClient::new(engine.clone(), node_id.clone());
+        // Create other services
+        let mut event_service = EventService::new(config.services.event.clone());
+        event_service.start().await?;
+        let event_service = Arc::new(event_service);
 
-        Ok((engine, client))
+        // Create consensus services
+        use crate::services::global_consensus::{GlobalConsensusConfig, GlobalConsensusService};
+        use crate::services::group_consensus::{GroupConsensusConfig, GroupConsensusService};
+
+        let global_consensus_config = GlobalConsensusConfig {
+            election_timeout_min: config.consensus.global.election_timeout_min,
+            election_timeout_max: config.consensus.global.election_timeout_max,
+            heartbeat_interval: config.consensus.global.heartbeat_interval,
+            max_entries_per_append: config.consensus.global.max_entries_per_append,
+            snapshot_interval: config.consensus.global.snapshot_interval,
+        };
+
+        let global_consensus_service = Arc::new(
+            GlobalConsensusService::new(
+                global_consensus_config,
+                self.node_id.clone(),
+                network_manager.clone(),
+                storage.clone(),
+            )
+            .with_topology(topology_manager.clone())
+            .with_event_publisher(event_service.create_publisher()),
+        );
+
+        let group_consensus_config = GroupConsensusConfig {
+            election_timeout_min: config.consensus.group.election_timeout_min,
+            election_timeout_max: config.consensus.group.election_timeout_max,
+            heartbeat_interval: config.consensus.group.heartbeat_interval,
+            max_entries_per_append: config.consensus.group.max_entries_per_append,
+            snapshot_interval: config.consensus.group.snapshot_interval,
+        };
+
+        let group_consensus_service = Arc::new(
+            GroupConsensusService::new(
+                group_consensus_config,
+                self.node_id.clone(),
+                network_manager.clone(),
+                storage.clone(),
+            )
+            .with_event_publisher(event_service.create_publisher()),
+        );
+
+        // Get the formation callback from the global consensus service
+        let formation_callback = global_consensus_service.get_formation_callback();
+
+        let cluster_service = Arc::new(
+            ClusterService::new(config.services.cluster.clone(), self.node_id.clone())
+                .with_discovery(
+                    network_manager.clone(),
+                    topology_manager.clone(),
+                    event_service.create_publisher(),
+                )
+                .with_formation_callback(formation_callback),
+        );
+
+        // Create system view for monitoring
+        let system_view = Arc::new(crate::services::monitoring::SystemView::new());
+        let monitoring_service = Arc::new(MonitoringService::new(
+            config.services.monitoring.clone(),
+            self.node_id.clone(),
+            system_view,
+        ));
+
+        let routing_service = Arc::new(RoutingService::new(config.services.routing.clone()));
+
+        let migration_service = Arc::new(MigrationService::new(config.services.migration.clone()));
+
+        let lifecycle_service = Arc::new(LifecycleService::new(config.services.lifecycle.clone()));
+
+        // Create PubSub service
+        let pubsub_service = Arc::new(PubSubService::new(
+            config.services.pubsub.clone(),
+            self.node_id.clone(),
+        ));
+
+        // Create service wrappers that implement ServiceLifecycle
+        let network_service = Arc::new(network_service);
+        let network_wrapper = Arc::new(ServiceWrapper::new("network", network_service.clone()));
+        let cluster_wrapper = Arc::new(ServiceWrapper::new("cluster", cluster_service.clone()));
+        let event_wrapper = Arc::new(ServiceWrapper::new("event", event_service.clone()));
+        let monitoring_wrapper = Arc::new(ServiceWrapper::new(
+            "monitoring",
+            monitoring_service.clone(),
+        ));
+        let routing_wrapper = Arc::new(ServiceWrapper::new("routing", routing_service.clone()));
+        let migration_wrapper =
+            Arc::new(ServiceWrapper::new("migration", migration_service.clone()));
+        let lifecycle_wrapper =
+            Arc::new(ServiceWrapper::new("lifecycle", lifecycle_service.clone()));
+        let pubsub_wrapper = Arc::new(ServiceWrapper::new("pubsub", pubsub_service.clone()));
+
+        // Create consensus service wrappers
+        let global_consensus_wrapper = Arc::new(ServiceWrapper::new(
+            "global_consensus",
+            global_consensus_service.clone(),
+        ));
+        let group_consensus_wrapper = Arc::new(ServiceWrapper::new(
+            "group_consensus",
+            group_consensus_service.clone(),
+        ));
+
+        // Register services with coordinator
+        coordinator
+            .register("network".to_string(), network_wrapper)
+            .await;
+        coordinator
+            .register("event".to_string(), event_wrapper)
+            .await;
+        coordinator
+            .register("monitoring".to_string(), monitoring_wrapper)
+            .await;
+        coordinator
+            .register("cluster".to_string(), cluster_wrapper)
+            .await;
+        coordinator
+            .register("routing".to_string(), routing_wrapper)
+            .await;
+        coordinator
+            .register("migration".to_string(), migration_wrapper)
+            .await;
+        coordinator
+            .register("lifecycle".to_string(), lifecycle_wrapper)
+            .await;
+        coordinator
+            .register("pubsub".to_string(), pubsub_wrapper)
+            .await;
+        coordinator
+            .register("global_consensus".to_string(), global_consensus_wrapper)
+            .await;
+        coordinator
+            .register("group_consensus".to_string(), group_consensus_wrapper)
+            .await;
+
+        // Set start order
+        coordinator
+            .set_start_order(vec![
+                "network".to_string(),
+                "event".to_string(),
+                "monitoring".to_string(),
+                "global_consensus".to_string(),
+                "group_consensus".to_string(),
+                "cluster".to_string(),
+                "routing".to_string(),
+                "pubsub".to_string(),
+                "migration".to_string(),
+                "lifecycle".to_string(),
+            ])
+            .await;
+
+        // Create engine
+        let mut engine = Engine::new(
+            self.node_id,
+            config,
+            coordinator,
+            network_service,
+            cluster_service,
+            event_service,
+            monitoring_service,
+            routing_service,
+            migration_service,
+            lifecycle_service,
+            pubsub_service,
+            network_manager,
+            storage,
+        );
+
+        // Set consensus services
+        engine.set_consensus_services(global_consensus_service, group_consensus_service);
+
+        // Set the topology manager
+        if let Some(ref topology) = self.topology_manager {
+            engine.set_topology_manager(topology.clone());
+        }
+
+        // Now create engine handle wrapper and set it in the network service
+        // This needs to be done after engine construction but before starting services
+        // We'll add a method to Engine to set this up
+
+        Ok(engine)
     }
 }
 
-impl<T, G> Default for EngineBuilder<T, G>
+/// Service wrapper to adapt services to ServiceLifecycle trait
+struct ServiceWrapper<S> {
+    name: String,
+    service: Arc<S>,
+}
+
+impl<S> ServiceWrapper<S> {
+    fn new(name: &str, service: Arc<S>) -> Self {
+        Self {
+            name: name.to_string(),
+            service,
+        }
+    }
+}
+
+// Implement ServiceLifecycle for each service wrapper
+use crate::foundation::traits::{HealthStatus, ServiceHealth};
+use async_trait::async_trait;
+
+#[async_trait]
+impl<T, G> ServiceLifecycle for ServiceWrapper<ClusterService<T, G>>
 where
-    T: Transport,
-    G: Governance,
+    T: Transport + 'static,
+    G: Governance + 'static,
 {
-    fn default() -> Self {
-        Self::new()
+    async fn start(&self) -> ConsensusResult<()> {
+        self.service.start().await.map_err(|e| e.into())
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        self.service.stop().await.map_err(|e| e.into())
+    }
+
+    async fn is_running(&self) -> bool {
+        // ClusterService would need an is_running method
+        true
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        let health = self
+            .service
+            .get_health()
+            .await
+            .map_err(ConsensusError::from)?;
+
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: match health.status {
+                crate::services::cluster::HealthStatus::Healthy => HealthStatus::Healthy,
+                crate::services::cluster::HealthStatus::Degraded => HealthStatus::Degraded,
+                crate::services::cluster::HealthStatus::Unhealthy => HealthStatus::Unhealthy,
+            },
+            message: None,
+            subsystems: Vec::new(),
+        })
+    }
+}
+
+#[async_trait]
+impl ServiceLifecycle for ServiceWrapper<EventService> {
+    async fn start(&self) -> ConsensusResult<()> {
+        // Already started in builder
+        Ok(())
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        self.service.stop().await.map_err(|e| e.into())
+    }
+
+    async fn is_running(&self) -> bool {
+        true
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: HealthStatus::Healthy,
+            message: None,
+            subsystems: Vec::new(),
+        })
+    }
+}
+
+// Implement for DiscoveryService
+
+// Implement for MonitoringService
+#[async_trait]
+impl ServiceLifecycle for ServiceWrapper<MonitoringService> {
+    async fn start(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self) -> bool {
+        true
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: HealthStatus::Healthy,
+            message: None,
+            subsystems: Vec::new(),
+        })
+    }
+}
+
+// Implement for RoutingService
+#[async_trait]
+impl ServiceLifecycle for ServiceWrapper<RoutingService> {
+    async fn start(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self) -> bool {
+        true
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: HealthStatus::Healthy,
+            message: None,
+            subsystems: Vec::new(),
+        })
+    }
+}
+
+// Implement for MigrationService
+#[async_trait]
+impl ServiceLifecycle for ServiceWrapper<MigrationService> {
+    async fn start(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self) -> bool {
+        true
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: HealthStatus::Healthy,
+            message: None,
+            subsystems: Vec::new(),
+        })
+    }
+}
+
+// Implement for LifecycleService
+#[async_trait]
+impl ServiceLifecycle for ServiceWrapper<LifecycleService> {
+    async fn start(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self) -> bool {
+        true
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: HealthStatus::Healthy,
+            message: None,
+            subsystems: Vec::new(),
+        })
+    }
+}
+
+// Implement for NetworkService
+#[async_trait]
+impl<T, G> ServiceLifecycle for ServiceWrapper<NetworkService<T, G>>
+where
+    T: Transport + Send + Sync + 'static,
+    G: Governance + Send + Sync + 'static,
+{
+    async fn start(&self) -> ConsensusResult<()> {
+        // Already started in builder
+        Ok(())
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        // NetworkService would need a stop method
+        Ok(())
+    }
+
+    async fn is_running(&self) -> bool {
+        true
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: HealthStatus::Healthy,
+            message: None,
+            subsystems: Vec::new(),
+        })
+    }
+}
+
+// Implement for PubSubService
+#[async_trait]
+impl<T, G> ServiceLifecycle for ServiceWrapper<PubSubService<T, G>>
+where
+    T: Transport + Send + Sync + 'static,
+    G: Governance + Send + Sync + 'static,
+{
+    async fn start(&self) -> ConsensusResult<()> {
+        // PubSubService needs to be mutable to start, so we'll handle this differently
+        // For now, just return Ok as the service will be started separately
+        Ok(())
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        // PubSubService needs to be mutable to stop
+        Ok(())
+    }
+
+    async fn is_running(&self) -> bool {
+        true
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        match self.service.health_check().await {
+            Ok(_) => Ok(ServiceHealth {
+                name: self.name.clone(),
+                status: HealthStatus::Healthy,
+                message: None,
+                subsystems: Vec::new(),
+            }),
+            Err(e) => Ok(ServiceHealth {
+                name: self.name.clone(),
+                status: HealthStatus::Unhealthy,
+                message: Some(e.to_string()),
+                subsystems: Vec::new(),
+            }),
+        }
+    }
+}
+
+// Implement for GlobalConsensusService
+#[async_trait]
+impl<T, G, L> ServiceLifecycle
+    for ServiceWrapper<crate::services::global_consensus::GlobalConsensusService<T, G, L>>
+where
+    T: Transport + Send + Sync + 'static,
+    G: Governance + Send + Sync + 'static,
+    L: LogStorage + Send + Sync + 'static,
+{
+    async fn start(&self) -> ConsensusResult<()> {
+        self.service.start().await
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        self.service.stop().await
+    }
+
+    async fn is_running(&self) -> bool {
+        self.service.is_healthy().await
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: if self.service.is_healthy().await {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Unhealthy
+            },
+            message: None,
+            subsystems: Vec::new(),
+        })
+    }
+}
+
+// Implement for GroupConsensusService
+#[async_trait]
+impl<T, G, L> ServiceLifecycle
+    for ServiceWrapper<crate::services::group_consensus::GroupConsensusService<T, G, L>>
+where
+    T: Transport + Send + Sync + 'static,
+    G: Governance + Send + Sync + 'static,
+    L: LogStorage + Send + Sync + 'static,
+{
+    async fn start(&self) -> ConsensusResult<()> {
+        self.service.start().await
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        self.service.stop().await
+    }
+
+    async fn is_running(&self) -> bool {
+        self.service.is_healthy().await
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        Ok(ServiceHealth {
+            name: self.name.clone(),
+            status: if self.service.is_healthy().await {
+                HealthStatus::Healthy
+            } else {
+                HealthStatus::Unhealthy
+            },
+            message: None,
+            subsystems: Vec::new(),
+        })
     }
 }

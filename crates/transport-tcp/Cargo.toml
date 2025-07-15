@@ -22,5 +22,8 @@ uuid.workspace = true
 
 [dev-dependencies]
 proven-attestation-mock.workspace = true
+proven-bootable.workspace = true
 proven-governance-mock.workspace = true
+proven-util.workspace = true
 tokio-test.workspace = true
+tracing-subscriber.workspace = true

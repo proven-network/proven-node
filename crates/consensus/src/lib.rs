@@ -5,48 +5,39 @@
 //! - Transports handle pure networking
 //! - No circular dependencies
 //! - Single builder pattern for initialization
+
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![allow(clippy::result_large_err)]
 // TODO: Remove this soon
 #![allow(dead_code)]
+#![allow(unused_imports)]
 
-// Core modules
-/// Consensus client API
-pub mod client;
-/// Core consensus functionality
-pub(crate) mod core;
-/// Network transport and messaging
-pub(crate) mod network;
-/// Consensus operations
-pub(crate) mod operations;
-/// PubSub messaging
-pub(crate) mod pubsub;
-/// Storage backends
-pub(crate) mod storage_backends;
-
-// Infrastructure modules
-/// Engine builder
+/// Builder for the engine
 pub mod builder;
+
 /// Configuration types
 pub mod config;
+
+/// Coordinator for the engine
+pub(crate) mod coordinator;
+
+/// Pure consensus logic
+pub(crate) mod consensus;
+
+/// Engine - orchestration layer
+pub(crate) mod engine;
+
 /// Error types
 pub mod error;
-/// Group ID type
-pub mod group_id;
 
-// Re-export main types
-pub use client::ConsensusClient;
-pub use core::engine::Engine;
-pub use error::{ConsensusResult, Error};
-pub use openraft::Config as RaftConfig;
-pub use proven_topology::{Node, NodeId};
+/// Foundation module with core types and traits
+pub(crate) mod foundation;
 
-pub use builder::EngineBuilder;
+/// Services
+pub(crate) mod services;
 
-// Re-export config types
-pub use config::{
-    AllocationConfig, ClusterJoinRetryConfig, EngineConfig, GlobalConsensusConfig, GroupsConfig,
-    MigrationConfig, MonitoringConfig, StorageConfig, TransportConfig,
-};
-pub use group_id::ConsensusGroupId;
+/// Stream subsystem
+pub(crate) mod stream;
+
+pub use {builder::EngineBuilder, config::EngineConfig, engine::Engine, engine::EngineState};

@@ -23,6 +23,7 @@ use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 use bytes::Bytes;
 use proven_governance::Governance;
 use proven_network::Transport;
+use proven_storage::LogStorage;
 
 /// A type-safe handle to a consensus stream
 ///
@@ -43,30 +44,32 @@ use proven_network::Transport;
 ///     println!("Message: {:?}", msg.data);
 /// }
 /// ```
-pub struct Stream<M, T, G>
+pub struct Stream<M, T, G, L>
 where
     M: MessageType,
     T: Transport,
     G: Governance,
+    L: LogStorage,
 {
     /// Stream name
     name: String,
     /// Stream configuration
     config: StreamConfig,
     /// Reference to the consensus engine
-    engine: Arc<Engine<T, G>>,
+    engine: Arc<Engine<T, G, L>>,
     /// Phantom data for the message type
     _marker: PhantomData<M>,
 }
 
-impl<M, T, G> Stream<M, T, G>
+impl<M, T, G, L> Stream<M, T, G, L>
 where
     M: MessageType,
     T: Transport,
     G: Governance,
+    L: LogStorage,
 {
     /// Create a new stream handle
-    pub(crate) fn new(name: String, config: StreamConfig, engine: Arc<Engine<T, G>>) -> Self {
+    pub(crate) fn new(name: String, config: StreamConfig, engine: Arc<Engine<T, G, L>>) -> Self {
         Self {
             name,
             config,
@@ -222,7 +225,7 @@ where
     }
 
     /// Create a consumer for this stream
-    pub async fn consumer(&self, config: ConsumerConfig) -> ClientResult<Consumer<M, T, G>> {
+    pub async fn consumer(&self, config: ConsumerConfig) -> ClientResult<Consumer<M, T, G, L>> {
         Consumer::new(self.name.clone(), config, self.engine.clone()).await
     }
 
@@ -324,11 +327,12 @@ impl<T> Message<T> {
 }
 
 // Clone implementation for Stream
-impl<M, T, G> Clone for Stream<M, T, G>
+impl<M, T, G, L> Clone for Stream<M, T, G, L>
 where
     M: MessageType + Send + Sync + 'static,
     T: Transport,
     G: Governance,
+    L: LogStorage,
 {
     fn clone(&self) -> Self {
         Self {

@@ -8,6 +8,8 @@ use proven_topology::NodeId;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
+use crate::namespace::MessageType;
+
 /// Base trait for all network messages
 pub trait NetworkMessage: Send + Sync + Any + Debug + 'static {
     /// Get as Any for downcasting
@@ -26,22 +28,17 @@ pub trait HandledMessage: NetworkMessage {
     type Response: NetworkMessage;
 }
 
-/// Helper trait for implementing NetworkMessage on types that implement Serialize
-pub trait SerializableMessage:
-    Serialize + DeserializeOwned + Send + Sync + Any + Debug + 'static
+// Blanket implementation for types that implement MessageType + Serialize
+impl<T> NetworkMessage for T
+where
+    T: MessageType + Serialize + DeserializeOwned + Send + Sync + Any + Debug + 'static,
 {
-    /// Get the message type identifier for routing
-    fn message_type(&self) -> &'static str;
-}
-
-// Blanket implementation for types that implement SerializableMessage
-impl<T: SerializableMessage> NetworkMessage for T {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn message_type(&self) -> &'static str {
-        SerializableMessage::message_type(self)
+        MessageType::message_type(self)
     }
 
     fn serialize(&self) -> Result<Bytes, crate::error::NetworkError> {

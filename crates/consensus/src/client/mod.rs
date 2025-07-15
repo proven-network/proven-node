@@ -30,6 +30,7 @@ use crate::{
     },
     pubsub::PubSubManager,
 };
+use proven_storage::LogStorage;
 
 use bytes::Bytes;
 use proven_governance::Governance;
@@ -44,25 +45,33 @@ use tracing::{debug, info};
 /// - Admin operations (node management, group management)
 /// - Monitoring and health checks
 #[derive(Clone)]
-pub struct ConsensusClient<T, G>
+pub struct ConsensusClient<T, G, L>
 where
     T: Transport,
     G: Governance,
+    L: LogStorage,
 {
     /// Proven engine
-    engine: Arc<Engine<T, G>>,
+    engine: Arc<Engine<T, G, L>>,
     /// Node ID
     node_id: NodeId,
+    /// Type markers
+    _phantom: std::marker::PhantomData<(T, G, L)>,
 }
 
-impl<T, G> ConsensusClient<T, G>
+impl<T, G, L> ConsensusClient<T, G, L>
 where
     T: Transport,
     G: Governance,
+    L: LogStorage,
 {
     /// Create a new consensus client
-    pub(crate) fn new(engine: Arc<Engine<T, G>>, node_id: NodeId) -> Self {
-        Self { engine, node_id }
+    pub(crate) fn new(engine: Arc<Engine<T, G, L>>, node_id: NodeId) -> Self {
+        Self {
+            engine,
+            node_id,
+            _phantom: std::marker::PhantomData,
+        }
     }
 
     // Stream Operations
@@ -364,7 +373,7 @@ where
     ///
     /// Returns a `Stream<T>` that can be used to publish and read typed messages.
     /// Returns an error if the stream doesn't exist.
-    pub async fn get_stream<M>(&self, name: &str) -> ClientResult<Stream<M, T, G>>
+    pub async fn get_stream<M>(&self, name: &str) -> ClientResult<Stream<M, T, G, L>>
     where
         M: MessageType + Send + Sync + 'static,
     {
@@ -376,7 +385,7 @@ where
             .map_err(ClientError::Consensus)?
             .ok_or_else(|| ClientError::StreamNotFound(name.to_string()))?;
 
-        Ok(Stream::<M, T, G>::new(
+        Ok(Stream::new(
             name.to_string(),
             stream_info.config,
             self.engine.clone(),
@@ -391,7 +400,7 @@ where
         name: &str,
         config: StreamConfig,
         group_id: Option<ConsensusGroupId>,
-    ) -> ClientResult<Stream<M, T, G>>
+    ) -> ClientResult<Stream<M, T, G, L>>
     where
         M: MessageType,
     {
@@ -410,11 +419,7 @@ where
             ));
         }
 
-        Ok(Stream::<M, T, G>::new(
-            name.to_string(),
-            config,
-            self.engine.clone(),
-        ))
+        Ok(Stream::new(name.to_string(), config, self.engine.clone()))
     }
 
     /// Get or create a typed stream
@@ -426,7 +431,7 @@ where
         name: &str,
         config: StreamConfig,
         group_id: Option<ConsensusGroupId>,
-    ) -> ClientResult<Stream<M, T, G>>
+    ) -> ClientResult<Stream<M, T, G, L>>
     where
         M: MessageType,
     {

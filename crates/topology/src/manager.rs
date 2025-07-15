@@ -42,10 +42,10 @@ where
     G: Governance,
 {
     /// Create a new topology manager
-    pub async fn new(governance: Arc<G>, node_id: NodeId) -> Result<Self, TopologyError> {
+    pub fn new(governance: Arc<G>, node_id: NodeId) -> Self {
         info!("Creating topology manager for node {}", node_id);
 
-        let topology_manager = Self {
+        Self {
             governance,
             node_id,
             cached_nodes: Arc::new(RwLock::new(Vec::new())),
@@ -54,11 +54,7 @@ where
                 refresh_task: None,
                 shutdown_signal: None,
             })),
-        };
-
-        topology_manager.refresh_topology().await?;
-
-        Ok(topology_manager)
+        }
     }
 
     /// Start the topology manager (refresh topology)
@@ -737,9 +733,7 @@ mod tests {
         ));
         let node_id = NodeId::from_seed(1);
 
-        let topology_manager = TopologyManager::new(governance, node_id.clone())
-            .await
-            .unwrap();
+        let topology_manager = TopologyManager::new(governance, node_id.clone());
         assert_eq!(topology_manager.node_id, node_id);
     }
 
@@ -774,7 +768,7 @@ mod tests {
         governance.add_node(self_governance_node).unwrap();
         governance.add_node(other_governance_node).unwrap();
 
-        let topology_manager = TopologyManager::new(governance, node_id).await.unwrap();
+        let topology_manager = TopologyManager::new(governance, node_id);
         let peers = topology_manager.get_all_peers().await;
 
         assert_eq!(peers.len(), 1);

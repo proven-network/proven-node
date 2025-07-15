@@ -19,6 +19,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use proven_governance::Governance;
 use proven_network::Transport;
+use proven_storage::LogStorage;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
@@ -67,11 +68,12 @@ impl Default for ConsumerConfig {
 ///     }
 /// }
 /// ```
-pub struct Consumer<M, T, G>
+pub struct Consumer<M, T, G, L>
 where
     M: MessageType,
     T: Transport,
     G: Governance,
+    L: LogStorage,
 {
     /// Stream name
     stream_name: String,
@@ -82,20 +84,21 @@ where
     /// Background task handle
     _task_handle: JoinHandle<()>,
     /// Phantom data for the message type and generics
-    _phantom: PhantomData<(M, T, G)>,
+    _phantom: PhantomData<(M, T, G, L)>,
 }
 
-impl<M, T, G> Consumer<M, T, G>
+impl<M, T, G, L> Consumer<M, T, G, L>
 where
     M: MessageType,
     T: Transport,
     G: Governance,
+    L: LogStorage,
 {
     /// Create a new consumer
     pub(crate) async fn new(
         stream_name: String,
         config: ConsumerConfig,
-        engine: Arc<Engine<T, G>>,
+        engine: Arc<Engine<T, G, L>>,
     ) -> ClientResult<Self> {
         // Verify stream exists
         engine
@@ -128,7 +131,7 @@ where
     async fn fetch_loop(
         stream_name: String,
         config: ConsumerConfig,
-        engine: Arc<Engine<T, G>>,
+        engine: Arc<Engine<T, G, L>>,
         sender: mpsc::Sender<ClientResult<Message<M>>>,
     ) {
         let mut current_sequence = config.start_sequence;
