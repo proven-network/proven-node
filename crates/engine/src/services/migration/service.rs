@@ -408,8 +408,8 @@ impl MigrationService {
 
     /// Spawn progress monitor task
     fn spawn_progress_monitor(&self) -> JoinHandle<()> {
-        let stream_coordinator = self.stream_coordinator.clone();
-        let node_coordinator = self.node_coordinator.clone();
+        let _stream_coordinator = self.stream_coordinator.clone();
+        let _node_coordinator = self.node_coordinator.clone();
         let active_migrations = self.active_migrations.clone();
         let shutdown = self.shutdown.clone();
 

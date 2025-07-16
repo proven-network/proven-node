@@ -9,10 +9,11 @@ test-helpers = []
 
 [dependencies]
 async-trait.workspace = true
+bytes.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
+proven-attestation.workspace = true
 proven-bootable.workspace = true
-proven-governance.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
@@ -20,4 +21,4 @@ tracing.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-proven-governance-mock.workspace = true
+proven-topology-mock.workspace = true

@@ -16,7 +16,7 @@ use tokio::sync::RwLock;
 use tracing::warn;
 
 use proven_attestation::{AttestationParams, Attestor};
-use proven_governance::Governance;
+use proven_topology::TopologyAdaptor;
 
 use crate::attestation::AttestationVerifier;
 use crate::cose::{CoseHandler, CoseSign1};
@@ -100,7 +100,7 @@ pub enum ConnectionState {
 #[derive(Debug)]
 pub struct ConnectionVerifier<G, A>
 where
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
     A: Attestor + Send + Sync + 'static,
 {
     /// Attestation verifier for document validation
@@ -115,7 +115,7 @@ where
 
 impl<G, A> ConnectionVerifier<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug + Clone,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
     /// Create a new connection verifier

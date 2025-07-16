@@ -16,7 +16,7 @@ use tracing::{debug, info, warn};
 
 use proven_attestation::Attestor;
 use proven_engine::{Consensus, SubscriptionInvoker};
-use proven_governance::Governance;
+use proven_topology::TopologyAdaptor;
 
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
 use proven_messaging::subscription_handler::SubscriptionHandler;
@@ -27,7 +27,7 @@ use crate::subscription_responder::ConsensusSubscriptionResponder;
 #[derive(Debug)]
 pub struct ConsensusSubscriptionInvoker<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
@@ -52,7 +52,7 @@ where
 
 impl<G, A, X, T, D, S> ConsensusSubscriptionInvoker<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
@@ -79,7 +79,7 @@ where
 #[async_trait]
 impl<G, A, X, T, D, S> SubscriptionInvoker for ConsensusSubscriptionInvoker<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
@@ -158,7 +158,7 @@ where
 #[derive(Debug)]
 struct ConsensusSubscriptionInner<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
     /// Subject name being subscribed to
@@ -173,7 +173,7 @@ where
 
 impl<G, A> Drop for ConsensusSubscriptionInner<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
     fn drop(&mut self) {
@@ -191,7 +191,7 @@ where
 #[derive(Debug)]
 pub struct ConsensusSubscription<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
@@ -214,7 +214,7 @@ where
 
 impl<G, A, X, T, D, S> Clone for ConsensusSubscription<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
@@ -261,7 +261,7 @@ impl SubscriptionOptions for ConsensusSubscriptionOptions {}
 #[async_trait]
 impl<G, A, X, T, D, S> Subscription<X, T, D, S> for ConsensusSubscription<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
@@ -348,7 +348,7 @@ where
 
 impl<G, A, X, T, D, S> ConsensusSubscription<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
@@ -390,7 +390,7 @@ mod tests {
     use proven_engine::{
         Consensus, HierarchicalConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
     };
-    use proven_governance_mock::MockGovernance;
+    use proven_topology_mock::MockTopologyAdaptor;
 
     use crate::subject::ConsensusSubject;
 
@@ -457,9 +457,9 @@ mod tests {
     }
 
     // Helper function to create test consensus
-    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockTopologyAdaptor, MockAttestor>> {
         use ed25519_dalek::SigningKey;
-        use proven_governance::GovernanceNode;
+        use proven_topology::Node;
         use rand::rngs::OsRng;
         use std::collections::HashSet;
 
@@ -468,16 +468,21 @@ mod tests {
         let verifying_key = signing_key.verifying_key();
 
         // Create governance with the node
-        let governance_node = GovernanceNode {
-            availability_zone: "test-az".to_string(),
-            origin: format!("http://127.0.0.1:{port}"),
-            public_key: verifying_key,
-            region: "test-region".to_string(),
-            specializations: HashSet::new(),
-        };
+        let governance_node = Node::new(
+            verifying_key,
+            "test-region".to_string(),
+            "test-az".to_string(),
+            format!("http://127.0.0.1:{port}"),
+            HashSet::new(),
+        );
 
         let nodes = vec![governance_node.clone()];
-        let governance = Arc::new(MockGovernance::new(nodes, vec![], String::new(), vec![]));
+        let governance = Arc::new(MockTopologyAdaptor::new(
+            nodes,
+            vec![],
+            String::new(),
+            vec![],
+        ));
 
         // Create attestor
         let attestor = Arc::new(MockAttestor::new());
@@ -508,8 +513,9 @@ mod tests {
 
     fn create_test_subject(
         name: &str,
-        consensus: &Arc<Consensus<MockGovernance, MockAttestor>>,
-    ) -> ConsensusSubject<MockGovernance, MockAttestor, TestMessage, TestError, TestError> {
+        consensus: &Arc<Consensus<MockTopologyAdaptor, MockAttestor>>,
+    ) -> ConsensusSubject<MockTopologyAdaptor, MockAttestor, TestMessage, TestError, TestError>
+    {
         crate::subject::ConsensusSubject::new(name.to_string(), consensus.clone())
     }
 

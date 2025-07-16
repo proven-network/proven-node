@@ -12,9 +12,9 @@ use openraft::{
 };
 use tokio::sync::RwLock;
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use super::messages::*;
@@ -25,7 +25,7 @@ use crate::services::network::NetworkStats;
 pub struct GlobalNetworkFactory<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     network_manager: Arc<NetworkManager<T, G>>,
     stats: Arc<RwLock<NetworkStats>>,
@@ -34,7 +34,7 @@ where
 impl<T, G> GlobalNetworkFactory<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create a new global network factory
     pub fn new(
@@ -51,15 +51,11 @@ where
 impl<T, G> RaftNetworkFactory<GlobalTypeConfig> for GlobalNetworkFactory<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     type Network = GlobalRaftNetworkAdapter<T, G>;
 
-    async fn new_client(
-        &mut self,
-        target: NodeId,
-        _node: &proven_governance::GovernanceNode,
-    ) -> Self::Network {
+    async fn new_client(&mut self, target: NodeId, _node: &proven_topology::Node) -> Self::Network {
         GlobalRaftNetworkAdapter {
             network_manager: self.network_manager.clone(),
             stats: self.stats.clone(),
@@ -72,7 +68,7 @@ where
 pub struct GlobalRaftNetworkAdapter<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Network manager for sending messages
     network_manager: Arc<NetworkManager<T, G>>,
@@ -85,7 +81,7 @@ where
 impl<T, G> GlobalRaftNetworkAdapter<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create a new global Raft network adapter
     pub fn new(
@@ -103,7 +99,7 @@ where
 impl<T, G> RaftNetwork<GlobalTypeConfig> for GlobalRaftNetworkAdapter<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     async fn append_entries(
         &mut self,

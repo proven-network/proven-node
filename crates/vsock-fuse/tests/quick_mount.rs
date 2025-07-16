@@ -1,5 +1,7 @@
 //! Quick test to check FUSE mount
 
+#![allow(clippy::field_reassign_with_default)]
+
 use proven_vsock_fuse::{
     config::{Config, HotTierConfig, RpcConfig},
     enclave::EnclaveServiceBuilder,
@@ -71,9 +73,9 @@ async fn test_quick_mount() -> anyhow::Result<()> {
     match fs::read_dir(mount_dir.path()) {
         Ok(entries) => {
             let count = entries.count();
-            println!("SUCCESS! Found {} entries", count);
+            println!("SUCCESS! Found {count} entries");
         }
-        Err(e) => println!("ERROR listing directory: {}", e),
+        Err(e) => println!("ERROR listing directory: {e}"),
     }
 
     // Clean up

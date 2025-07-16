@@ -14,12 +14,17 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
+use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+
+/// Type alias for cluster state tuple
+type ClusterState = (bool, Option<u64>, Option<NodeId>, Option<usize>);
+/// Type alias for optional cluster state reference
+type OptionalClusterState = Arc<RwLock<Option<ClusterState>>>;
 
 /// Configuration for discovery service
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,7 +51,7 @@ impl Default for DiscoveryConfig {
 pub struct DiscoveryManager<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Local node ID
     local_node_id: NodeId,
@@ -63,14 +68,13 @@ where
     /// Event publisher
     event_publisher: EventPublisher,
     /// Cluster state (shared with cluster service)
-    pub(crate) cluster_state:
-        Arc<RwLock<Option<(bool, Option<u64>, Option<NodeId>, Option<usize>)>>>,
+    pub(crate) cluster_state: OptionalClusterState,
 }
 
 impl<T, G> DiscoveryManager<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create new discovery service
     pub fn new(
@@ -343,9 +347,7 @@ where
     }
 
     /// Get current cluster state
-    pub async fn get_cluster_state(
-        &self,
-    ) -> Option<(bool, Option<u64>, Option<NodeId>, Option<usize>)> {
+    pub async fn get_cluster_state(&self) -> Option<ClusterState> {
         self.cluster_state.read().await.clone()
     }
 }

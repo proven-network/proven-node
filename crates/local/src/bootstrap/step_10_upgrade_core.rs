@@ -16,7 +16,6 @@ use crate::error::Error;
 use proven_applications::{ApplicationManagement, ApplicationManager};
 
 use proven_core::BootstrapUpgrade;
-use proven_governance::Governance;
 use proven_identity::IdentityManager;
 use proven_locks_memory::MemoryLockManager;
 use proven_messaging::stream::Stream;
@@ -35,12 +34,13 @@ use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_store_memory::{MemoryStore, MemoryStore1, MemoryStore2, MemoryStore3};
+use proven_topology::TopologyAdaptor;
 use tracing::info;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
 #[allow(clippy::too_many_lines)]
-pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
+pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let lock_manager = MemoryLockManager::default();
 
     let identity_manager = IdentityManager::new(

@@ -7,7 +7,7 @@ use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use futures::Stream;
 use proven_attestation::Attestor;
-use proven_governance::Governance;
+use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::connection::ConnectionManager;
 use proven_transport::error::TransportError;
@@ -53,7 +53,7 @@ type OutgoingSender = mpsc::Sender<TransportEnvelope>;
 #[derive(Debug)]
 pub struct TcpTransport<G, A>
 where
-    G: Governance,
+    G: TopologyAdaptor,
     A: Attestor,
 {
     /// Configuration
@@ -74,7 +74,7 @@ where
 
 impl<G, A> TcpTransport<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug + Clone,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
     /// Create a new TCP transport with verification and topology management
@@ -389,7 +389,7 @@ where
 #[async_trait]
 impl<G, A> Transport for TcpTransport<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug + Clone,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
     async fn send_envelope(
@@ -493,12 +493,12 @@ mod tests {
     use ed25519_dalek::{SigningKey, VerifyingKey};
     use futures::StreamExt;
     use proven_attestation_mock::MockAttestor;
-    use proven_governance_mock::MockGovernance;
+    use proven_topology_mock::MockTopologyAdaptor;
     use std::net::SocketAddr;
 
-    async fn create_test_transport() -> TcpTransport<MockGovernance, MockAttestor> {
+    async fn create_test_transport() -> TcpTransport<MockTopologyAdaptor, MockAttestor> {
         let config = TcpConfig::default();
-        let governance = Arc::new(MockGovernance::new(
+        let governance = Arc::new(MockTopologyAdaptor::new(
             vec![],
             vec![],
             "http://localhost:3200".to_string(),
@@ -559,7 +559,7 @@ mod tests {
     #[tokio::test]
     async fn test_simplified_constructor() {
         let config = TcpConfig::default();
-        let governance = Arc::new(MockGovernance::new(
+        let governance = Arc::new(MockTopologyAdaptor::new(
             vec![],
             vec![],
             "http://localhost:3200".to_string(),

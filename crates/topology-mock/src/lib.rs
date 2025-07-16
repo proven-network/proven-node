@@ -1,4 +1,4 @@
-//! Mock implementation of the governance interface for testing purposes.
+//! Mock implementation of the topology adaptor interface for testing purposes.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -20,22 +20,22 @@ use std::vec::Vec;
 use async_trait::async_trait;
 use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use proven_governance::{Governance, GovernanceNode, NodeSpecialization, Version};
+use proven_topology::{Node, NodeId, NodeSpecialization, TopologyAdaptor, Version};
 
-/// Mock implementation of the governance interface.
+/// Mock implementation of the topology adaptor interface.
 #[derive(Debug, Clone)]
-pub struct MockGovernance {
+pub struct MockTopologyAdaptor {
     alternate_auth_gateways: Vec<String>,
     primary_auth_gateway: String,
-    nodes: Arc<Mutex<Vec<GovernanceNode>>>,
+    nodes: Arc<Mutex<Vec<Node>>>,
     versions: Vec<Version>,
 }
 
-impl MockGovernance {
-    /// Create a new mock governance implementation with the given nodes and versions.
+impl MockTopologyAdaptor {
+    /// Create a new mock topology adaptor implementation with the given nodes and versions.
     #[must_use]
     pub fn new(
-        nodes: Vec<GovernanceNode>,
+        nodes: Vec<Node>,
         versions: Vec<Version>,
         primary_auth_gateway: String,
         alternate_auth_gateways: Vec<String>,
@@ -48,16 +48,16 @@ impl MockGovernance {
         }
     }
 
-    /// Create a new mock governance implementation with a single node.
+    /// Create a new mock topology adaptor implementation with a single node.
     #[must_use]
     pub fn for_single_node(origin: String, private_key: &SigningKey, version: Version) -> Self {
-        let node = GovernanceNode {
-            availability_zone: "local".to_string(),
+        let node = Node::new(
+            "local".to_string(),
             origin,
-            public_key: private_key.verifying_key(),
-            region: "local".to_string(),
-            specializations: HashSet::new(),
-        };
+            NodeId::from(private_key.verifying_key()),
+            "local".to_string(),
+            HashSet::new(),
+        );
 
         Self::new(
             vec![node],
@@ -67,7 +67,7 @@ impl MockGovernance {
         )
     }
 
-    /// Create a new mock governance instance from a topology file
+    /// Create a new mock topology adaptor instance from a topology file
     ///
     /// # Errors
     ///
@@ -123,13 +123,13 @@ impl MockGovernance {
                     .unwrap();
                 let public_key = VerifyingKey::from_bytes(&public_key_bytes).unwrap();
 
-                GovernanceNode {
-                    availability_zone: "local".to_string(),
-                    origin: n.origin,
-                    public_key,
-                    region: "local".to_string(),
+                Node::new(
+                    "local".to_string(),
+                    n.origin,
+                    NodeId::from(public_key),
+                    "local".to_string(),
                     specializations,
-                }
+                )
             })
             .collect();
 
@@ -160,14 +160,14 @@ impl MockGovernance {
     /// # Panics
     ///
     /// Panics if the nodes cannot be locked.
-    pub fn add_node(&self, node: GovernanceNode) -> Result<(), Error> {
+    pub fn add_node(&self, node: Node) -> Result<(), Error> {
         let mut nodes = self.nodes.lock().unwrap();
 
         // Check if node already exists
-        if nodes.iter().any(|n| n.public_key == node.public_key) {
+        if nodes.iter().any(|n| n.node_id == node.node_id) {
             return Err(Error::NodeManagement(format!(
                 "Node with public key {} already exists",
-                hex::encode(node.public_key.to_bytes())
+                node.node_id
             )));
         }
 
@@ -189,7 +189,7 @@ impl MockGovernance {
         let mut nodes = self.nodes.lock().unwrap();
 
         let original_len = nodes.len();
-        nodes.retain(|n| n.public_key != public_key);
+        nodes.retain(|n| n.node_id != public_key);
 
         if nodes.len() == original_len {
             return Err(Error::NodeNotFound(format!(
@@ -210,12 +210,12 @@ impl MockGovernance {
     #[must_use]
     pub fn has_node(&self, public_key: VerifyingKey) -> bool {
         let nodes = self.nodes.lock().unwrap();
-        nodes.iter().any(|n| n.public_key == public_key)
+        nodes.iter().any(|n| n.node_id == public_key)
     }
 }
 
 #[async_trait]
-impl Governance for MockGovernance {
+impl TopologyAdaptor for MockTopologyAdaptor {
     type Error = Error;
 
     async fn get_active_versions(&self) -> Result<Vec<Version>, Self::Error> {
@@ -230,7 +230,7 @@ impl Governance for MockGovernance {
         Ok(self.primary_auth_gateway.clone())
     }
 
-    async fn get_topology(&self) -> Result<Vec<GovernanceNode>, Self::Error> {
+    async fn get_topology(&self) -> Result<Vec<Node>, Self::Error> {
         Ok(self.nodes.lock().unwrap().clone())
     }
 }
@@ -240,32 +240,32 @@ mod tests {
     use std::collections::HashSet;
 
     use bytes::Bytes;
-    use proven_governance::{GovernanceNode, NodeSpecialization, Version};
+    use proven_topology::{Node, NodeSpecialization, Version};
 
     use super::*;
 
     #[tokio::test]
-    async fn test_mock_governance() {
+    async fn test_mock_topology_adaptor() {
         // Create test nodes
-        let node_1 = GovernanceNode {
-            availability_zone: "az1".to_string(),
-            origin: "http://node1.example.com".to_string(),
-            public_key: VerifyingKey::from_bytes(&[0; 32]).unwrap(),
-            region: "region1".to_string(),
-            specializations: HashSet::new(),
-        };
+        let node_1 = Node::new(
+            "az1".to_string(),
+            "http://node1.example.com".to_string(),
+            NodeId::from(VerifyingKey::from_bytes(&[0; 32]).unwrap()),
+            "region1".to_string(),
+            HashSet::new(),
+        );
 
-        let node_2 = GovernanceNode {
-            availability_zone: "az2".to_string(),
-            origin: "http://node2.example.com".to_string(),
-            public_key: VerifyingKey::from_bytes(&[1; 32]).unwrap(),
-            region: "region2".to_string(),
-            specializations: {
+        let node_2 = Node::new(
+            "az2".to_string(),
+            "http://node2.example.com".to_string(),
+            NodeId::from(VerifyingKey::from_bytes(&[1; 32]).unwrap()),
+            "region2".to_string(),
+            {
                 let mut specs = HashSet::new();
                 specs.insert(NodeSpecialization::RadixMainnet);
                 specs
             },
-        };
+        );
 
         // Create test versions
         let version_1 = Version {
@@ -280,8 +280,8 @@ mod tests {
             ne_pcr2: Bytes::from("pcr2-2"),
         };
 
-        // Create mock governance
-        let governance = MockGovernance::new(
+        // Create mock topology adaptor
+        let topology_adaptor = MockTopologyAdaptor::new(
             vec![node_1.clone(), node_2.clone()],
             vec![version_1.clone(), version_2.clone()],
             "http://localhost:3200".to_string(),
@@ -289,23 +289,26 @@ mod tests {
         );
 
         // Test get_topology
-        let topology = governance.get_topology().await.unwrap();
+        let topology = topology_adaptor.get_topology().await.unwrap();
         assert_eq!(topology.len(), 2);
         assert!(topology.contains(&node_1));
         assert!(topology.contains(&node_2));
 
         // Test get_active_versions
-        let active_versions = governance.get_active_versions().await.unwrap();
+        let active_versions = topology_adaptor.get_active_versions().await.unwrap();
         assert_eq!(active_versions.len(), 2);
         assert!(active_versions.contains(&version_1));
         assert!(active_versions.contains(&version_2));
 
         // Test get_alternates_auth_gateways
-        let alternates = governance.get_alternates_auth_gateways().await.unwrap();
+        let alternates = topology_adaptor
+            .get_alternates_auth_gateways()
+            .await
+            .unwrap();
         assert_eq!(alternates.len(), 0);
 
         // Test get_primary_auth_gateway
-        let primary = governance.get_primary_auth_gateway().await.unwrap();
+        let primary = topology_adaptor.get_primary_auth_gateway().await.unwrap();
         assert_eq!(primary, "http://localhost:3200");
     }
 }

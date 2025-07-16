@@ -9,8 +9,8 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
+use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
 
@@ -51,7 +51,7 @@ pub enum ClusterFormationEvent {
 pub struct ClusterService<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Service configuration
     config: ClusterConfig,
@@ -100,7 +100,7 @@ enum ServiceState {
 impl<T, G> ClusterService<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create a new cluster service
     pub fn new(config: ClusterConfig, node_id: NodeId) -> Self {
@@ -795,7 +795,7 @@ where
 impl<T, G> Drop for ClusterService<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     fn drop(&mut self) {
         // Ensure shutdown on drop

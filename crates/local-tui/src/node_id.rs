@@ -12,21 +12,21 @@ static USED_POKEMON_IDS: LazyLock<Mutex<HashSet<u8>>> =
 static NEXT_EXECUTION_ORDER: LazyLock<Mutex<u8>> = LazyLock::new(|| Mutex::new(1));
 
 /// Special node ID for main/TUI thread (non-node threads)
-pub const MAIN_THREAD_NODE_ID: NodeId = NodeId {
+pub const MAIN_THREAD_NODE_ID: TuiNodeId = TuiNodeId {
     execution_order: 0,
     pokemon_id: 255,
 };
 
 /// Node identifier consisting of execution order and pokemon ID
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NodeId {
+pub struct TuiNodeId {
     /// Execution order (1, 2, 3, etc.) - used for naming and coloring
     pub execution_order: u8,
     /// Pokemon ID (0-149 for Kanto Pokemon) - used for pokemon names
     pub pokemon_id: u8,
 }
 
-impl NodeId {
+impl TuiNodeId {
     /// Create a new `NodeId` with incremental execution order and random pokemon
     pub fn new() -> Self {
         let mut used_pokemon_ids = USED_POKEMON_IDS.lock().unwrap();
@@ -118,13 +118,13 @@ impl NodeId {
     }
 }
 
-impl Default for NodeId {
+impl Default for TuiNodeId {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl fmt::Display for NodeId {
+impl fmt::Display for TuiNodeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if *self == MAIN_THREAD_NODE_ID {
             write!(f, "main")
@@ -167,11 +167,11 @@ mod tests {
     #[test]
     #[serial]
     fn test_node_id_creation() {
-        NodeId::reset_global_state();
+        TuiNodeId::reset_global_state();
 
-        let node1 = NodeId::new();
-        let node2 = NodeId::new();
-        let node3 = NodeId::new();
+        let node1 = TuiNodeId::new();
+        let node2 = TuiNodeId::new();
+        let node3 = TuiNodeId::new();
 
         // Execution orders should be sequential
         assert_eq!(node1.execution_order(), 1);
@@ -187,10 +187,10 @@ mod tests {
     #[test]
     #[serial]
     fn test_first_node_detection() {
-        NodeId::reset_global_state();
+        TuiNodeId::reset_global_state();
 
-        let node1 = NodeId::new();
-        let node2 = NodeId::new();
+        let node1 = TuiNodeId::new();
+        let node2 = TuiNodeId::new();
 
         assert!(node1.is_first_node());
         assert!(!node2.is_first_node());
@@ -199,10 +199,10 @@ mod tests {
     #[test]
     #[serial]
     fn test_display_name() {
-        NodeId::reset_global_state();
+        TuiNodeId::reset_global_state();
 
-        let node1 = NodeId::new();
-        let node2 = NodeId::new();
+        let node1 = TuiNodeId::new();
+        let node2 = TuiNodeId::new();
 
         assert_eq!(node1.display_name(), "node-1");
         assert_eq!(node2.display_name(), "node-2");
@@ -212,7 +212,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_pokemon_names() {
-        let node = NodeId::with_values(1, 0);
+        let node = TuiNodeId::with_values(1, 0);
         let name = node.pokemon_name();
 
         // Should be a valid pokemon name (bulbasaur for ID 0)
@@ -223,7 +223,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_execution_order_wrapping() {
-        NodeId::reset_global_state();
+        TuiNodeId::reset_global_state();
 
         // Set the execution order to near the limit
         {
@@ -231,9 +231,9 @@ mod tests {
             *next_order = 254;
         }
 
-        let node1 = NodeId::new();
-        let node2 = NodeId::new();
-        let node3 = NodeId::new();
+        let node1 = TuiNodeId::new();
+        let node2 = TuiNodeId::new();
+        let node3 = TuiNodeId::new();
 
         assert_eq!(node1.execution_order(), 254);
         assert_eq!(node2.execution_order(), 255);
@@ -243,12 +243,12 @@ mod tests {
     #[test]
     #[serial]
     fn test_pokemon_id_reuse() {
-        NodeId::reset_global_state();
+        TuiNodeId::reset_global_state();
 
         // Create more nodes than available Pokemon (150)
         let mut nodes = Vec::new();
         for _ in 0..151 {
-            nodes.push(NodeId::new());
+            nodes.push(TuiNodeId::new());
         }
 
         // After 150 nodes, pokemon IDs should start being reused
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn test_copy_trait() {
-        let node = NodeId::new();
+        let node = TuiNodeId::new();
         let copied_node = node; // This should work since NodeId is Copy
 
         assert_eq!(node, copied_node);
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_with_values_constructor() {
-        let node = NodeId::with_values(42, 25);
+        let node = TuiNodeId::with_values(42, 25);
         assert_eq!(node.execution_order(), 42);
         assert_eq!(node.pokemon_id(), 25);
         assert_eq!(node.display_name(), "node-42");
@@ -291,7 +291,7 @@ mod tests {
     #[test]
     #[serial]
     fn test_debug_and_display() {
-        let node = NodeId::with_values(5, 10);
+        let node = TuiNodeId::with_values(5, 10);
 
         // Debug should show the struct fields
         let debug_str = format!("{node:?}");

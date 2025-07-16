@@ -3,7 +3,7 @@
 use crate::error::NetworkResult;
 use crate::manager::NetworkManager;
 use crate::message::{HandledMessage, NetworkMessage};
-use proven_governance::Governance;
+use proven_topology::TopologyAdaptor;
 use proven_topology::{Node, NodeId};
 use proven_transport::Transport;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use std::time::Duration;
 pub struct Peer<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// The underlying node information
     node: Node,
@@ -25,7 +25,7 @@ where
 impl<T, G> Peer<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create a new peer
     pub(crate) fn new(node: Node, manager: Arc<NetworkManager<T, G>>) -> Self {

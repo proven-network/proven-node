@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument};
 
 use crate::{
     BlobId, DirectoryId, FileId, FileMetadata, TierHint,
@@ -200,7 +200,14 @@ impl FuseAsyncHandler {
                         data,
                         reply,
                     } => {
+                        info!(
+                            "Handling WriteFile operation: file_id={:?}, offset={}, data_len={}",
+                            file_id,
+                            offset,
+                            data.len()
+                        );
                         let result = handler.handle_write_file(file_id, offset, data).await;
+                        info!("WriteFile result: {:?}", result);
                         let _ = reply.send(result);
                     }
                     FuseOperation::DeleteFile {
@@ -363,97 +370,238 @@ impl FuseAsyncHandler {
         offset: u64,
         data: Vec<u8>,
     ) -> Result<usize> {
+        debug!(
+            "handle_write_file: file_id={:?}, offset={}, data_len={}",
+            file_id,
+            offset,
+            data.len()
+        );
+
         // Load metadata
         let mut metadata = self.metadata.get_metadata(&file_id).await?.ok_or_else(|| {
             VsockFuseError::NotFound {
                 path: std::path::PathBuf::from(format!("file_id: {file_id:?}")),
             }
         })?;
+        debug!("Loaded metadata for file");
 
         // Calculate affected blocks
         let start_block = offset / self.block_size as u64;
         let end_block = (offset + data.len() as u64 - 1) / self.block_size as u64;
+        debug!("Affected blocks: {} to {}", start_block, end_block);
 
         let mut written = 0;
 
-        for block_num in start_block..=end_block {
-            let block_start = block_num * self.block_size as u64;
-            let block_end = block_start + self.block_size as u64;
+        // Check if we should use streaming (more than 2 blocks)
+        let num_blocks = (end_block - start_block + 1) as usize;
+        let use_streaming = num_blocks > 2;
 
-            // Determine data range for this block
-            let data_start = if block_num == start_block {
-                0
-            } else {
-                ((block_start - offset) as usize).min(data.len())
-            };
-            let data_end = if block_num == end_block {
-                data.len()
-            } else {
-                ((block_end - offset) as usize).min(data.len())
-            };
+        if use_streaming {
+            debug!("Using streaming for {} blocks", num_blocks);
 
-            // Handle partial block updates
-            let block_data = if (block_num == start_block && offset > block_start)
-                || (block_num == end_block && (offset + data.len() as u64) < block_end)
-            {
-                // Need to read existing block for partial update
-                let mut existing_data = vec![0u8; self.block_size];
+            // Create a channel for block processing
+            let (tx, rx) = mpsc::channel::<(u64, BlobId, Vec<u8>)>(4);
 
-                if let Some(block_loc) = metadata.blocks.iter().find(|b| b.block_num == block_num) {
-                    let blob_data = self.storage.get_blob(block_loc.blob_id).await?;
-                    let decrypted = self.crypto.decrypt_block(
-                        &file_id,
-                        block_num,
-                        &blob_data.data[block_loc.offset as usize
-                            ..block_loc.offset as usize + block_loc.encrypted_size],
-                    )?;
-                    existing_data[..decrypted.len()].copy_from_slice(&decrypted);
+            // Spawn a task to process blocks in parallel
+            let file_id_clone = file_id;
+            let crypto_clone = self.crypto.clone();
+            let storage_clone = self.storage.clone();
+            let metadata_clone = metadata.clone();
+            let data_clone = data.clone();
+            let block_size = self.block_size;
+
+            let processor = tokio::spawn(async move {
+                for block_num in start_block..=end_block {
+                    let block_start = block_num * block_size as u64;
+                    let block_end = block_start + block_size as u64;
+
+                    // Determine data range for this block
+                    let data_start = if block_num == start_block {
+                        0
+                    } else {
+                        ((block_start - offset) as usize).min(data_clone.len())
+                    };
+                    let data_end = if block_num == end_block {
+                        data_clone.len()
+                    } else {
+                        ((block_end - offset) as usize).min(data_clone.len())
+                    };
+
+                    // Handle partial block updates
+                    let block_data = if (block_num == start_block && offset > block_start)
+                        || (block_num == end_block
+                            && (offset + data_clone.len() as u64) < block_end)
+                    {
+                        // Need to read existing block for partial update
+                        let mut existing_data = vec![0u8; block_size];
+
+                        if let Some(block_loc) = metadata_clone
+                            .blocks
+                            .iter()
+                            .find(|b| b.block_num == block_num)
+                            && let Ok(blob_data) = storage_clone.get_blob(block_loc.blob_id).await
+                            && let Ok(decrypted) = crypto_clone.decrypt_block(
+                                &file_id_clone,
+                                block_num,
+                                &blob_data.data[block_loc.offset as usize
+                                    ..block_loc.offset as usize + block_loc.encrypted_size],
+                            )
+                        {
+                            existing_data[..decrypted.len()].copy_from_slice(&decrypted);
+                        }
+
+                        // Update with new data
+                        let block_offset = if block_num == start_block {
+                            (offset - block_start) as usize
+                        } else {
+                            0
+                        };
+                        existing_data[block_offset..block_offset + (data_end - data_start)]
+                            .copy_from_slice(&data_clone[data_start..data_end]);
+
+                        existing_data
+                    } else {
+                        data_clone[data_start..data_end].to_vec()
+                    };
+
+                    // Encrypt the block
+                    if let Ok(encrypted) =
+                        crypto_clone.encrypt_block(&file_id_clone, block_num, &block_data)
+                    {
+                        let blob_id = BlobId::new();
+
+                        // Send encrypted block for storage
+                        if tx.send((block_num, blob_id, encrypted)).await.is_err() {
+                            break;
+                        }
+                    }
                 }
+            });
 
-                // Update with new data
-                let block_offset = if block_num == start_block {
-                    (offset - block_start) as usize
-                } else {
-                    0
-                };
-                existing_data[block_offset..block_offset + (data_end - data_start)]
-                    .copy_from_slice(&data[data_start..data_end]);
+            // Collect encrypted blocks and store them
+            let mut block_updates = Vec::new();
+            let mut rx = rx;
 
-                existing_data
-            } else {
-                data[data_start..data_end].to_vec()
-            };
+            while let Some((block_num, blob_id, encrypted)) = rx.recv().await {
+                let encrypted_len = encrypted.len();
 
-            // Encrypt the block
-            let encrypted = self
-                .crypto
-                .encrypt_block(&file_id, block_num, &block_data)?;
+                // Store the blob
+                self.storage
+                    .store_blob(blob_id, encrypted, TierHint::PreferHot)
+                    .await?;
 
-            // Create a new blob for this block
-            let blob_id = BlobId::new();
-            self.storage
-                .store_blob(blob_id, encrypted.clone(), TierHint::PreferHot)
-                .await?;
-
-            // Update block location
-            if let Some(block_loc) = metadata
-                .blocks
-                .iter_mut()
-                .find(|b| b.block_num == block_num)
-            {
-                block_loc.blob_id = blob_id;
-                block_loc.offset = 0;
-                block_loc.encrypted_size = encrypted.len();
-            } else {
-                metadata.blocks.push(crate::BlockLocation {
-                    block_num,
-                    blob_id,
-                    offset: 0,
-                    encrypted_size: encrypted.len(),
-                });
+                block_updates.push((block_num, blob_id, encrypted_len));
             }
 
-            written += data_end - data_start;
+            // Wait for processor to complete
+            let _ = processor.await;
+
+            // Calculate total written bytes
+            written = data.len();
+
+            // Update metadata with new block locations
+            for (block_num, blob_id, encrypted_len) in block_updates {
+                if let Some(block_loc) = metadata
+                    .blocks
+                    .iter_mut()
+                    .find(|b| b.block_num == block_num)
+                {
+                    block_loc.blob_id = blob_id;
+                    block_loc.offset = 0;
+                    block_loc.encrypted_size = encrypted_len;
+                } else {
+                    metadata.blocks.push(crate::BlockLocation {
+                        block_num,
+                        blob_id,
+                        offset: 0,
+                        encrypted_size: encrypted_len,
+                    });
+                }
+            }
+        } else {
+            // Use the original sequential approach for small writes
+            for block_num in start_block..=end_block {
+                debug!("Processing block {}", block_num);
+                let block_start = block_num * self.block_size as u64;
+                let block_end = block_start + self.block_size as u64;
+
+                // Determine data range for this block
+                let data_start = if block_num == start_block {
+                    0
+                } else {
+                    ((block_start - offset) as usize).min(data.len())
+                };
+                let data_end = if block_num == end_block {
+                    data.len()
+                } else {
+                    ((block_end - offset) as usize).min(data.len())
+                };
+
+                // Handle partial block updates
+                let block_data = if (block_num == start_block && offset > block_start)
+                    || (block_num == end_block && (offset + data.len() as u64) < block_end)
+                {
+                    // Need to read existing block for partial update
+                    let mut existing_data = vec![0u8; self.block_size];
+
+                    if let Some(block_loc) =
+                        metadata.blocks.iter().find(|b| b.block_num == block_num)
+                    {
+                        let blob_data = self.storage.get_blob(block_loc.blob_id).await?;
+                        let decrypted = self.crypto.decrypt_block(
+                            &file_id,
+                            block_num,
+                            &blob_data.data[block_loc.offset as usize
+                                ..block_loc.offset as usize + block_loc.encrypted_size],
+                        )?;
+                        existing_data[..decrypted.len()].copy_from_slice(&decrypted);
+                    }
+
+                    // Update with new data
+                    let block_offset = if block_num == start_block {
+                        (offset - block_start) as usize
+                    } else {
+                        0
+                    };
+                    existing_data[block_offset..block_offset + (data_end - data_start)]
+                        .copy_from_slice(&data[data_start..data_end]);
+
+                    existing_data
+                } else {
+                    data[data_start..data_end].to_vec()
+                };
+
+                // Encrypt the block
+                let encrypted = self
+                    .crypto
+                    .encrypt_block(&file_id, block_num, &block_data)?;
+
+                // Create a new blob for this block
+                let blob_id = BlobId::new();
+                self.storage
+                    .store_blob(blob_id, encrypted.clone(), TierHint::PreferHot)
+                    .await?;
+
+                // Update block location
+                if let Some(block_loc) = metadata
+                    .blocks
+                    .iter_mut()
+                    .find(|b| b.block_num == block_num)
+                {
+                    block_loc.blob_id = blob_id;
+                    block_loc.offset = 0;
+                    block_loc.encrypted_size = encrypted.len();
+                } else {
+                    metadata.blocks.push(crate::BlockLocation {
+                        block_num,
+                        blob_id,
+                        offset: 0,
+                        encrypted_size: encrypted.len(),
+                    });
+                }
+
+                written += data_end - data_start;
+            }
         }
 
         // Update file size and modification time

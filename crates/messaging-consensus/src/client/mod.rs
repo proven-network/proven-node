@@ -14,9 +14,9 @@ use tokio::time::timeout;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_messaging::client::{Client, ClientError, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
+use proven_topology::TopologyAdaptor;
 
 use crate::error::MessagingConsensusError;
 use crate::stream::InitializedConsensusStream;
@@ -54,7 +54,7 @@ impl ClientError for ConsensusClientError {}
 #[derive(Debug)]
 pub struct ConsensusClient<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
@@ -81,7 +81,7 @@ where
 
 impl<G, A, X, T, D, S> Clone for ConsensusClient<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
@@ -110,7 +110,7 @@ where
 #[async_trait]
 impl<G, A, X, T, D, S> Client<X, T, D, S> for ConsensusClient<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
@@ -231,8 +231,8 @@ mod tests {
     use proven_engine::TransportConfig;
     use proven_engine::config::ClusterJoinRetryConfig;
     use proven_engine::config::ConsensusConfigBuilder;
-    use proven_governance_mock::MockGovernance;
     use proven_messaging::stream::{InitializedStream, Stream};
+    use proven_topology_mock::MockTopologyAdaptor;
     use serde::{Deserialize, Serialize};
     use serial_test::serial;
     use tokio::sync::Mutex;
@@ -417,9 +417,9 @@ mod tests {
     }
 
     // Helper to create a simple single-node governance for testing (like consensus_manager tests)
-    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockTopologyAdaptor, MockAttestor>> {
         use ed25519_dalek::SigningKey;
-        use proven_governance::{GovernanceNode, Version};
+        use proven_topology::{Node, Version};
         use rand::rngs::OsRng;
         use std::collections::HashSet;
 
@@ -428,20 +428,20 @@ mod tests {
         let verifying_key = signing_key.verifying_key();
 
         // Create governance with the node
-        let node = GovernanceNode {
-            availability_zone: "test".to_string(),
-            origin: format!("http://127.0.0.1:{port}"),
-            public_key: verifying_key,
-            region: "test".to_string(),
-            specializations: HashSet::new(),
-        };
+        let node = Node::new(
+            verifying_key,
+            "test".to_string(),
+            "test".to_string(),
+            format!("http://127.0.0.1:{port}"),
+            HashSet::new(),
+        );
 
         let nodes = vec![node.clone()];
         // Create attestor
         let attestor = Arc::new(MockAttestor::new());
         let version = Version::from_pcrs(attestor.pcrs().await.unwrap());
-        let governance = Arc::new(MockGovernance::new(
-            nodes.into_iter().collect(),
+        let governance = Arc::new(MockTopologyAdaptor::new(
+            nodes,
             vec![version],
             String::new(),
             vec![],
@@ -469,7 +469,7 @@ mod tests {
 
     async fn create_test_options(
         port: u16,
-    ) -> ConsensusStreamOptions<MockGovernance, MockAttestor> {
+    ) -> ConsensusStreamOptions<MockTopologyAdaptor, MockAttestor> {
         let consensus = create_test_consensus(port).await;
         ConsensusStreamOptions { consensus }
     }
@@ -485,7 +485,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -523,7 +523,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -559,7 +559,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -604,7 +604,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -657,7 +657,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -692,7 +692,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -744,7 +744,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -801,7 +801,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -880,7 +880,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -956,7 +956,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -1024,7 +1024,7 @@ mod tests {
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,

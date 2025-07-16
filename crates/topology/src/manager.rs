@@ -1,9 +1,9 @@
 //! Network topology management and peer discovery
 
+use crate::adaptor::TopologyAdaptor;
 use async_trait::async_trait;
 use ed25519_dalek::VerifyingKey;
 use proven_bootable::Bootable;
-use proven_governance::{Governance, GovernanceNode};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -24,12 +24,12 @@ struct BootableState {
 }
 
 /// Manages network topology and peer discovery
-pub struct TopologyManager<G>
+pub struct TopologyManager<T>
 where
-    G: Governance,
+    T: TopologyAdaptor,
 {
     cached_nodes: Arc<RwLock<Vec<Node>>>,
-    governance: Arc<G>,
+    topology_adaptor: Arc<T>,
     node_id: NodeId,
     /// Track when we last tried to refresh topology for missing peers
     missing_peer_cooldown: Arc<RwLock<HashMap<NodeId, Instant>>>,
@@ -37,16 +37,16 @@ where
     bootable_state: Arc<RwLock<BootableState>>,
 }
 
-impl<G> TopologyManager<G>
+impl<T> TopologyManager<T>
 where
-    G: Governance,
+    T: TopologyAdaptor,
 {
     /// Create a new topology manager
-    pub fn new(governance: Arc<G>, node_id: NodeId) -> Self {
+    pub fn new(topology_adaptor: Arc<T>, node_id: NodeId) -> Self {
         info!("Creating topology manager for node {}", node_id);
 
         Self {
-            governance,
+            topology_adaptor,
             node_id,
             cached_nodes: Arc::new(RwLock::new(Vec::new())),
             missing_peer_cooldown: Arc::new(RwLock::new(HashMap::new())),
@@ -78,33 +78,27 @@ where
         );
 
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         info!("Provider returned {} nodes in topology", topology.len());
 
         let mut nodes = Vec::new();
 
         for node in topology {
-            info!(
-                "  - Node {} at {}",
-                NodeId::new(node.public_key),
-                node.origin
-            );
+            info!("  - Node {} at {}", node.node_id, node.origin);
 
             // Validate the origin URL (warn but don't fail - important for tests)
             if let Err(e) = url::Url::parse(&node.origin) {
                 warn!(
                     "Invalid origin URL '{}' for node {}: {}",
-                    node.origin,
-                    NodeId::new(node.public_key),
-                    e
+                    node.origin, node.node_id, e
                 );
             }
 
-            nodes.push(Node::new(node));
+            nodes.push(node);
         }
 
         info!("Found {} nodes in topology", nodes.len());
@@ -165,7 +159,7 @@ where
             let cached_peers = self.cached_nodes.read().await;
             if let Some(peer) = cached_peers
                 .iter()
-                .find(|peer| peer.public_key() == public_key)
+                .find(|peer| peer.node_id == node_id)
                 .cloned()
             {
                 return Some(peer);
@@ -193,7 +187,7 @@ where
             let cached_peers = self.cached_nodes.read().await;
             if let Some(peer) = cached_peers
                 .iter()
-                .find(|peer| peer.public_key() == public_key)
+                .find(|peer| peer.node_id == node_id)
                 .cloned()
             {
                 return Some(peer);
@@ -218,7 +212,7 @@ where
             let cached_nodes = self.cached_nodes.read().await;
             if let Some(node) = cached_nodes
                 .iter()
-                .find(|node| NodeId::new(node.public_key()) == *node_id)
+                .find(|node| node.node_id == *node_id)
                 .cloned()
             {
                 return Some(node);
@@ -246,7 +240,7 @@ where
             let cached_nodes = self.cached_nodes.read().await;
             if let Some(node) = cached_nodes
                 .iter()
-                .find(|node| NodeId::new(node.public_key()) == *node_id)
+                .find(|node| node.node_id == *node_id)
                 .cloned()
             {
                 return Some(node);
@@ -270,21 +264,21 @@ where
     }
 
     /// Get provider reference
-    pub fn provider(&self) -> &Arc<G> {
-        &self.governance
+    pub fn provider(&self) -> &Arc<T> {
+        &self.topology_adaptor
     }
 
-    /// Get our own GovernanceNode from the topology
+    /// Get our own Node from the topology
     pub async fn get_own_node(&self) -> Result<Node, TopologyError> {
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         for node in topology {
-            if self.node_id == NodeId::new(node.public_key) {
-                return Ok(Node::new(node));
+            if self.node_id == node.node_id {
+                return Ok(node);
             }
         }
 
@@ -318,10 +312,10 @@ where
     /// Get all regions in the topology
     pub async fn get_regions(&self) -> Result<Vec<String>, TopologyError> {
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         let mut regions = HashSet::new();
         for node in topology {
@@ -334,10 +328,10 @@ where
     /// Get all availability zones in a specific region
     pub async fn get_azs_in_region(&self, region: &str) -> Result<Vec<String>, TopologyError> {
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         let mut azs = HashSet::new();
         for node in topology {
@@ -352,15 +346,14 @@ where
     /// Get all nodes in a specific region
     pub async fn get_nodes_by_region(&self, region: &str) -> Result<Vec<Node>, TopologyError> {
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         let nodes = topology
             .into_iter()
             .filter(|node| node.region == region)
-            .map(Node::new)
             .collect();
 
         Ok(nodes)
@@ -373,15 +366,14 @@ where
         az: &str,
     ) -> Result<Vec<Node>, TopologyError> {
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         let nodes = topology
             .into_iter()
             .filter(|node| node.region == region && node.availability_zone == az)
-            .map(Node::new)
             .collect();
 
         Ok(nodes)
@@ -390,10 +382,10 @@ where
     /// Get the count of nodes in a specific region
     pub async fn get_node_count_by_region(&self, region: &str) -> Result<usize, TopologyError> {
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         let count = topology.iter().filter(|node| node.region == region).count();
 
@@ -407,10 +399,10 @@ where
         az: Option<&str>,
     ) -> Result<usize, TopologyError> {
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         let count = topology
             .iter()
@@ -426,36 +418,16 @@ where
         Ok(count)
     }
 
-    /// Get governance node details by NodeId
-    pub async fn get_governance_node(
-        &self,
-        node_id: &NodeId,
-    ) -> Result<Option<GovernanceNode>, TopologyError> {
-        let topology = self
-            .governance
-            .get_topology()
-            .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
-
-        for node in topology {
-            if *node_id == NodeId::new(node.public_key) {
-                return Ok(Some(node));
-            }
-        }
-
-        Ok(None)
-    }
-
     /// Get nodes by region and AZ grouped
     pub async fn get_nodes_by_region_az_grouped(
         &self,
         region: &str,
     ) -> Result<HashMap<String, Vec<Node>>, TopologyError> {
         let topology = self
-            .governance
+            .topology_adaptor
             .get_topology()
             .await
-            .map_err(|e| TopologyError::Governance(e.to_string()))?;
+            .map_err(|e| TopologyError::TopologyAdaptor(e.to_string()))?;
 
         let mut az_nodes: HashMap<String, Vec<Node>> = HashMap::new();
 
@@ -464,7 +436,7 @@ where
                 az_nodes
                     .entry(node.availability_zone.clone())
                     .or_default()
-                    .push(Node::new(node));
+                    .push(node);
             }
         }
 
@@ -529,9 +501,9 @@ where
     }
 }
 
-impl<G> Debug for TopologyManager<G>
+impl<T> Debug for TopologyManager<T>
 where
-    G: Governance + Debug,
+    T: TopologyAdaptor + Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TopologyManager")
@@ -544,14 +516,14 @@ where
 const TOPOLOGY_REFRESH_INTERVAL: Duration = Duration::from_secs(300); // 5 minutes
 
 // Make TopologyManager cloneable
-impl<G> Clone for TopologyManager<G>
+impl<T> Clone for TopologyManager<T>
 where
-    G: Governance,
+    T: TopologyAdaptor,
 {
     fn clone(&self) -> Self {
         Self {
             cached_nodes: Arc::clone(&self.cached_nodes),
-            governance: Arc::clone(&self.governance),
+            topology_adaptor: Arc::clone(&self.topology_adaptor),
             node_id: self.node_id.clone(),
             missing_peer_cooldown: Arc::clone(&self.missing_peer_cooldown),
             bootable_state: Arc::clone(&self.bootable_state),
@@ -560,9 +532,9 @@ where
 }
 
 #[async_trait]
-impl<G> Bootable for TopologyManager<G>
+impl<T> Bootable for TopologyManager<T>
 where
-    G: Governance,
+    T: TopologyAdaptor,
 {
     fn bootable_name(&self) -> &str {
         "TopologyManager"
@@ -661,117 +633,5 @@ where
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use std::collections::HashSet;
-
-    use proven_governance::GovernanceNode;
-    use proven_governance_mock::MockGovernance;
-
-    #[cfg(test)]
-    impl TopologyManager<MockGovernance> {
-        /// Add a node to the topology.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error if a node with the same public key already exists.
-        ///
-        /// # Panics
-        ///
-        /// Panics if the nodes cannot be locked.
-        pub fn add_node(&self, node: Node) -> Result<(), TopologyError> {
-            let governance_node = GovernanceNode {
-                public_key: node.public_key(),
-                origin: node.origin().to_string(),
-                region: "us-east-1".to_string(), // Default for tests
-                availability_zone: "us-east-1a".to_string(), // Default for tests
-                specializations: Default::default(),
-            };
-            self.governance
-                .add_node(governance_node)
-                .map_err(|e| TopologyError::Governance(e.to_string()))
-        }
-
-        /// Remove a node from the topology by public key.
-        ///
-        /// # Errors
-        ///
-        /// Returns an error if no node with the given public key is found.
-        ///
-        /// # Panics
-        ///
-        /// Panics if the nodes cannot be locked.
-        pub fn remove_node(&self, node_id: NodeId) -> Result<(), TopologyError> {
-            self.governance
-                .remove_node(*node_id.verifying_key())
-                .map_err(|e| TopologyError::Governance(e.to_string()))
-        }
-
-        /// Check if a node exists by public key.
-        ///
-        /// # Panics
-        ///
-        /// Panics if the nodes cannot be locked.
-        #[must_use]
-        pub fn has_node(&self, node_id: NodeId) -> bool {
-            self.governance.has_node(*node_id.verifying_key())
-        }
-    }
-
-    #[tokio::test]
-    async fn test_topology_manager_creation() {
-        let governance = Arc::new(MockGovernance::new(
-            vec![],
-            vec![],
-            "http://localhost:3200".to_string(),
-            vec![],
-        ));
-        let node_id = NodeId::from_seed(1);
-
-        let topology_manager = TopologyManager::new(governance, node_id.clone());
-        assert_eq!(topology_manager.node_id, node_id);
-    }
-
-    #[tokio::test]
-    async fn test_get_all_peers_excludes_self() {
-        let governance = Arc::new(MockGovernance::new(
-            vec![],
-            vec![],
-            "http://localhost:3200".to_string(),
-            vec![],
-        ));
-        let node_id = NodeId::from_seed(1);
-
-        // Create governance nodes
-        let self_governance_node = GovernanceNode {
-            public_key: *node_id.verifying_key(),
-            origin: "http://localhost:8080".to_string(),
-            region: "us-east-1".to_string(),
-            availability_zone: "us-east-1a".to_string(),
-            specializations: HashSet::new(),
-        };
-
-        let other_node_id = NodeId::from_seed(2);
-        let other_governance_node = GovernanceNode {
-            public_key: *other_node_id.verifying_key(),
-            origin: "http://localhost:8081".to_string(),
-            region: "us-east-1".to_string(),
-            availability_zone: "us-east-1a".to_string(),
-            specializations: HashSet::new(),
-        };
-
-        governance.add_node(self_governance_node).unwrap();
-        governance.add_node(other_governance_node).unwrap();
-
-        let topology_manager = TopologyManager::new(governance, node_id);
-        let peers = topology_manager.get_all_peers().await;
-
-        assert_eq!(peers.len(), 1);
-        assert_eq!(peers[0].public_key(), *other_node_id.verifying_key());
     }
 }

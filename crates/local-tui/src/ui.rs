@@ -1,6 +1,6 @@
 //! TUI interface components
 
-use crate::{logs_viewer::LogReader, messages::NodeId};
+use crate::{logs_viewer::LogReader, messages::TuiNodeId};
 
 use proven_applications::Application;
 use std::collections::{HashMap, HashSet};
@@ -65,7 +65,7 @@ pub struct UiState {
     /// Whether debug is selected in the sidebar
     pub logs_sidebar_debug_selected: bool,
     /// List of nodes that have logs
-    pub logs_sidebar_nodes: Vec<NodeId>,
+    pub logs_sidebar_nodes: Vec<TuiNodeId>,
     /// Whether to show help overlay
     pub show_help: bool,
     /// Whether to show log level selection modal
@@ -81,7 +81,7 @@ pub struct UiState {
     /// Result of last RPC command execution
     pub rpc_modal_result: Option<String>,
     /// Last applied node filter to prevent redundant calls
-    last_applied_node_filter: Option<NodeId>,
+    last_applied_node_filter: Option<TuiNodeId>,
     /// Whether to show node type selection modal
     pub show_node_type_modal: bool,
     /// Selected specializations for new node,
@@ -201,7 +201,7 @@ impl UiState {
     /// Update node filter only if it has changed (prevents redundant calls that cause auto-scroll jumping)
     pub fn update_node_filter_if_changed(
         &mut self,
-        new_filter: Option<NodeId>,
+        new_filter: Option<TuiNodeId>,
         log_reader: &LogReader,
     ) {
         if self.last_applied_node_filter != new_filter {
@@ -229,7 +229,7 @@ const fn get_status_icon(status: &NodeStatus) -> &'static str {
 }
 
 /// Get the color for a node based on its execution order
-fn get_node_color(node_id: NodeId) -> Color {
+fn get_node_color(node_id: TuiNodeId) -> Color {
     if node_id == crate::node_id::MAIN_THREAD_NODE_ID {
         Color::White
     } else {
@@ -552,11 +552,11 @@ pub fn render_ui<S: std::hash::BuildHasher>(
     frame: &mut Frame,
     ui_state: &mut UiState,
     nodes: &HashMap<
-        NodeId,
+        TuiNodeId,
         (
             String,
             NodeStatus,
-            HashSet<proven_governance::NodeSpecialization>,
+            HashSet<proven_topology::NodeSpecialization>,
         ),
         S,
     >,
@@ -631,17 +631,17 @@ fn render_logs<S: std::hash::BuildHasher>(
     log_reader: &LogReader,
     ui_state: &mut UiState,
     nodes: &HashMap<
-        NodeId,
+        TuiNodeId,
         (
             String,
             NodeStatus,
-            HashSet<proven_governance::NodeSpecialization>,
+            HashSet<proven_topology::NodeSpecialization>,
         ),
         S,
     >,
 ) {
     // Update nodes with logs for sidebar - use NodeManager data instead of scanning log files
-    let mut nodes_with_logs: Vec<NodeId> = nodes
+    let mut nodes_with_logs: Vec<TuiNodeId> = nodes
         .keys()
         .filter(|&&node_id| node_id != crate::messages::MAIN_THREAD_NODE_ID)
         .copied()
@@ -818,11 +818,11 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
     ui_state: &mut UiState,
     _log_reader: &LogReader,
     nodes: &HashMap<
-        NodeId,
+        TuiNodeId,
         (
             String,
             NodeStatus,
-            HashSet<proven_governance::NodeSpecialization>,
+            HashSet<proven_topology::NodeSpecialization>,
         ),
         S,
     >,
@@ -968,11 +968,11 @@ fn render_footer<S: std::hash::BuildHasher>(
     shutting_down: bool,
     ui_state: &UiState,
     nodes: &HashMap<
-        NodeId,
+        TuiNodeId,
         (
             String,
             NodeStatus,
-            HashSet<proven_governance::NodeSpecialization>,
+            HashSet<proven_topology::NodeSpecialization>,
         ),
         S,
     >,

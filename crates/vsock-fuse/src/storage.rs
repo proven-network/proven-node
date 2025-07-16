@@ -31,6 +31,24 @@ pub trait BlobStorage: Send + Sync {
     async fn get_stats(&self) -> Result<StorageStats>;
 }
 
+/// Streaming blob storage trait for efficient large blob operations
+#[async_trait]
+pub trait StreamingBlobStorage: BlobStorage {
+    /// Store a blob using streaming
+    async fn store_blob_stream(
+        &self,
+        blob_id: BlobId,
+        data_stream: impl futures::Stream<Item = Result<bytes::Bytes>> + Send + 'static,
+        tier_hint: TierHint,
+    ) -> Result<()>;
+
+    /// Get a blob using streaming
+    async fn get_blob_stream(
+        &self,
+        blob_id: BlobId,
+    ) -> Result<impl futures::Stream<Item = Result<bytes::Bytes>> + Send>;
+}
+
 /// Blob data with tier information
 #[derive(Debug, Clone)]
 pub struct BlobData {
@@ -267,6 +285,68 @@ pub mod messages {
 
         fn message_id(&self) -> &'static str {
             "blob.stream_read"
+        }
+    }
+
+    /// Initiate a streaming blob upload
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct StoreBlobStreamRequest {
+        pub blob_id: BlobId,
+        pub tier_hint: TierHint,
+        pub expected_size: Option<u64>,
+    }
+
+    /// Stream data chunks for blob upload
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct BlobDataChunk {
+        pub blob_id: BlobId,
+        pub offset: u64,
+        pub data: Vec<u8>,
+        pub is_final: bool,
+    }
+
+    /// Response for streaming blob upload
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct StoreBlobStreamResponse {
+        pub stored: bool,
+        pub bytes_received: u64,
+        pub tier: StorageTier,
+    }
+
+    /// Initiate a streaming blob download
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct GetBlobStreamRequest {
+        pub blob_id: BlobId,
+        pub offset: u64,
+        pub length: Option<u64>,
+    }
+
+    impl_message_conversions!(StoreBlobStreamRequest);
+    impl_message_conversions!(BlobDataChunk);
+    impl_message_conversions!(StoreBlobStreamResponse);
+    impl_message_conversions!(GetBlobStreamRequest);
+
+    impl RpcMessage for StoreBlobStreamRequest {
+        type Response = StoreBlobStreamResponse;
+
+        fn message_id(&self) -> &'static str {
+            "blob.stream_store"
+        }
+    }
+
+    impl RpcMessage for BlobDataChunk {
+        type Response = ();
+
+        fn message_id(&self) -> &'static str {
+            "blob.data_chunk"
+        }
+    }
+
+    impl RpcMessage for GetBlobStreamRequest {
+        type Response = StreamingReadChunk;
+
+        fn message_id(&self) -> &'static str {
+            "blob.stream_get"
         }
     }
 }

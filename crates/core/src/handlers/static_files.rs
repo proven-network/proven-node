@@ -7,11 +7,11 @@ use axum_extra::TypedHeader;
 use headers::Referer;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
+use proven_topology::TopologyAdaptor;
 use proven_util::Origin;
 
 use axum::extract::Path;
@@ -51,7 +51,7 @@ macro_rules! iframe_handler {
         ) -> impl IntoResponse
         where
             A: Attestor,
-            G: Governance,
+            G: TopologyAdaptor,
             AM: ApplicationManagement,
             RM: RuntimePoolManagement,
             IM: IdentityManagement,

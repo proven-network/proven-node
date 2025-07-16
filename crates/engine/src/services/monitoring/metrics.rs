@@ -242,7 +242,7 @@ impl StreamMetrics {
     }
 
     /// Record an error
-    pub fn record_error(&self, stream: &str, error_type: &str) {
+    pub fn record_error(&self, _stream: &str, _error_type: &str) {
         // Could add error-specific metrics here
     }
 }

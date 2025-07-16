@@ -8,16 +8,17 @@ use proven_attestation_nsm::NsmAttestor;
 use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
-use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
 use proven_nats_server::NatsServer;
+use proven_network::Node;
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;
 use proven_radix_node::RadixNode;
 use proven_store_s3::S3Store;
+use proven_topology_mock::MockTopologyAdaptor;
 use proven_vsock_proxy::Proxy;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -27,7 +28,7 @@ use tracing::info;
 
 pub type EnclaveNodeCore = Core<
     NsmAttestor,
-    MockGovernance,
+    MockTopologyAdaptor,
     LetsEncryptHttpServer<S3Store<Bytes, Infallible, Infallible>>,
 >;
 
@@ -41,8 +42,9 @@ pub struct Services {
     pub radix_aggregator: Arc<Mutex<RadixAggregator>>,
     pub radix_gateway: Arc<Mutex<RadixGateway>>,
     pub nats_server_fs: Arc<Mutex<ExternalFs>>,
-    pub nats_server:
-        Arc<Mutex<NatsServer<MockGovernance, NsmAttestor, S3Store<Bytes, Infallible, Infallible>>>>,
+    pub nats_server: Arc<
+        Mutex<NatsServer<MockTopologyAdaptor, NsmAttestor, S3Store<Bytes, Infallible, Infallible>>>,
+    >,
     pub core: Arc<Mutex<EnclaveNodeCore>>,
 }
 

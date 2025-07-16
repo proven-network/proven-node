@@ -8,6 +8,13 @@ use super::subject::subject_matches_pattern;
 use super::types::{DeliveryMode, Subscription};
 use proven_topology::NodeId;
 
+/// Type alias for subscription IDs
+type SubscriptionIds = Vec<String>;
+/// Type alias for pattern to subscription IDs mapping
+type PatternSubscriptions = HashMap<String, SubscriptionIds>;
+/// Type alias for queue group to pattern subscriptions mapping
+type QueueGroupSubscriptions = HashMap<String, PatternSubscriptions>;
+
 /// Routes messages to appropriate subscribers
 #[derive(Clone)]
 pub struct MessageRouter {
@@ -16,7 +23,7 @@ pub struct MessageRouter {
     /// Pattern to subscription IDs mapping
     pattern_subs: Arc<RwLock<HashMap<String, HashSet<String>>>>,
     /// Queue groups: group name -> pattern -> subscription IDs
-    queue_groups: Arc<RwLock<HashMap<String, HashMap<String, Vec<String>>>>>,
+    queue_groups: Arc<RwLock<QueueGroupSubscriptions>>,
 }
 
 impl MessageRouter {

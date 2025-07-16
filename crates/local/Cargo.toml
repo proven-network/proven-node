@@ -23,7 +23,6 @@ proven-core.workspace = true
 proven-engine.workspace = true
 proven-ethereum-reth.workspace = true
 proven-ethereum-lighthouse.workspace = true
-proven-governance.workspace = true
 proven-http-insecure.workspace = true
 proven-http-proxy.workspace = true
 proven-identity.workspace = true

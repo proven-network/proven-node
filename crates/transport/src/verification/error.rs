@@ -13,9 +13,9 @@ pub enum VerificationError {
     #[error("Attestation error: {0}")]
     Attestation(String),
 
-    /// Governance operation failed
-    #[error("Governance error: {0}")]
-    Governance(String),
+    /// Topology operation failed
+    #[error("Topology error: {0}")]
+    Topology(String),
 
     /// Signature verification failed
     #[error("Signature verification failed: {0}")]

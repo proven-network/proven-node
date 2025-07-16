@@ -73,13 +73,12 @@ async fn test_three_node_cluster() {
     // Verify all are healthy
     for (i, engine) in engines.iter().enumerate() {
         let health = engine.health().await.expect("Failed to get health");
-        println!("Node {} health: {health:?}", i);
+        println!("Node {i} health: {health:?}");
         // TODO: Fix service health checks - for now just check that engine is running
         assert_eq!(
             health.state,
             EngineState::Running,
-            "Engine {} state should be Running",
-            i
+            "Engine {i} state should be Running"
         );
         // TODO: Re-enable this assertion once service health checks are fixed
         // assert!(health.services_healthy, "Engine {} services should be healthy", i);

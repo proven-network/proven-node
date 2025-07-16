@@ -28,7 +28,6 @@ use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_engine::config::{ClusterJoinRetryConfig, StorageConfig, TransportConfig};
 use proven_engine::{ConsensusConfigBuilder, ProvenEngine, RaftConfig};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
-use proven_governance_mock::MockGovernance;
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
@@ -37,6 +36,7 @@ use proven_messaging::stream::Stream;
 use proven_messaging_nats::client::NatsClientOptions;
 use proven_messaging_nats::consumer::NatsConsumerOptions;
 use proven_messaging_nats::service::NatsServiceOptions;
+use proven_topology_mock::MockTopologyAdaptor;
 // use proven_nats_monitor::NatsMonitor;
 use proven_identity::IdentityManager;
 use proven_locks_nats::{NatsLockManager, NatsLockManagerConfig};
@@ -89,10 +89,10 @@ pub struct Bootstrap {
     attestor: NsmAttestor,
 
     // added during initialization
-    governance: Option<MockGovernance>,
+    governance: Option<MockTopologyAdaptor>,
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
-    network: Option<ProvenNetwork<MockGovernance, NsmAttestor>>,
+    network: Option<ProvenNetwork<MockTopologyAdaptor, NsmAttestor>>,
     node_config: Option<Peer<NsmAttestor>>,
 
     proxy: Option<Proxy>,
@@ -119,8 +119,9 @@ pub struct Bootstrap {
     nats_server_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
 
     nats_client: Option<NatsClient>,
-    nats_server:
-        Option<NatsServer<MockGovernance, NsmAttestor, S3Store<Bytes, Infallible, Infallible>>>,
+    nats_server: Option<
+        NatsServer<MockTopologyAdaptor, NsmAttestor, S3Store<Bytes, Infallible, Infallible>>,
+    >,
 
     core: Option<EnclaveNodeCore>,
 
@@ -623,7 +624,7 @@ impl Bootstrap {
         })?;
 
         // TODO: use helios in production
-        let governance = MockGovernance::new(
+        let governance = MockTopologyAdaptor::new(
             Vec::new(),
             Vec::new(),
             "http://localhost:3200".to_string(),

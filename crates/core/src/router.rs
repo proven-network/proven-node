@@ -22,11 +22,11 @@ use axum::routing::{any, get, post};
 use axum::{Json, Router};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
+use proven_topology::TopologyAdaptor;
 use serde_json::json;
 use tower_http::cors::CorsLayer;
 
@@ -113,7 +113,7 @@ impl RouterBuilder {
     ) -> Router
     where
         A: Attestor,
-        G: Governance,
+        G: TopologyAdaptor,
         AM: ApplicationManagement,
         RM: RuntimePoolManagement,
         IM: IdentityManagement,
@@ -232,7 +232,7 @@ pub fn create_bootstrapped_router_builder<A, G, AM, RM, IM, PM, SM>(
 ) -> BootstrappedRouterBuilder
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,

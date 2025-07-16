@@ -13,10 +13,10 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_messaging::service::{Service, ServiceError, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::stream::InitializedStream;
+use proven_topology::TopologyAdaptor;
 
 use crate::error::MessagingConsensusError;
 use crate::service_responder::ConsensusServiceResponder;
@@ -47,7 +47,7 @@ impl ServiceError for ConsensusServiceError {}
 #[allow(dead_code)]
 pub struct ConsensusService<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
@@ -75,7 +75,7 @@ where
 
 impl<G, A, X, T, D, S> Clone for ConsensusService<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ServiceHandler<T, D, S> + Clone,
     T: Clone
@@ -105,7 +105,7 @@ where
 #[async_trait]
 impl<G, A, X, T, D, S> Service<X, T, D, S> for ConsensusService<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
@@ -163,7 +163,7 @@ where
 #[async_trait]
 impl<G, A, X, T, D, S> Bootable for ConsensusService<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
@@ -235,7 +235,7 @@ where
 
 impl<G, A, X, T, D, S> ConsensusService<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
@@ -407,11 +407,11 @@ mod tests {
         Consensus, HierarchicalConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
         config::{ClusterJoinRetryConfig, ConsensusConfigBuilder},
     };
-    use proven_governance::{GovernanceNode, Version};
-    use proven_governance_mock::MockGovernance;
     use proven_messaging::service_handler::ServiceHandler;
     use proven_messaging::service_responder::ServiceResponder;
     use proven_messaging::stream::Stream;
+    use proven_topology::{Node, Version};
+    use proven_topology_mock::MockTopologyAdaptor;
     use rand::rngs::OsRng;
     use serde::{Deserialize, Serialize};
     use serial_test::serial;
@@ -420,7 +420,7 @@ mod tests {
     use tracing_test::traced_test;
 
     // Type alias to simplify complex consensus system type
-    type TestConsensusSystem = Arc<Consensus<MockGovernance, MockAttestor>>;
+    type TestConsensusSystem = Arc<Consensus<MockTopologyAdaptor, MockAttestor>>;
 
     #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
     struct TestMessage {
@@ -543,7 +543,7 @@ mod tests {
     async fn create_test_consensus(
         node_id: &str,
         port: u16,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+    ) -> Arc<Consensus<MockTopologyAdaptor, MockAttestor>> {
         // Find the signing key for this node ID
         let test_nodes_config = get_test_nodes_config();
         let signing_key = test_nodes_config
@@ -558,13 +558,13 @@ mod tests {
         let attestor = Arc::new(MockAttestor::new());
 
         // Create single-node governance (only knows about itself)
-        let governance_node = GovernanceNode {
-            availability_zone: "test-az".to_string(),
-            origin: format!("http://127.0.0.1:{port}"),
-            public_key: signing_key.verifying_key(),
-            region: "test-region".to_string(),
-            specializations: HashSet::new(),
-        };
+        let governance_node = Node::new(
+            signing_key.verifying_key(),
+            "test-region".to_string(),
+            "test-az".to_string(),
+            format!("http://127.0.0.1:{port}"),
+            HashSet::new(),
+        );
 
         // Create MockAttestor to get the actual PCR values
         let attestor_for_version = MockAttestor::new();
@@ -577,7 +577,7 @@ mod tests {
             ne_pcr2: actual_pcrs.pcr2,
         };
 
-        let governance = Arc::new(MockGovernance::new(
+        let governance = Arc::new(MockTopologyAdaptor::new(
             vec![governance_node],
             vec![test_version],
             "http://localhost:3200".to_string(),
@@ -605,7 +605,7 @@ mod tests {
         Arc::new(consensus)
     }
 
-    fn create_governance_with_ports(ports: &[u16]) -> Arc<MockGovernance> {
+    fn create_governance_with_ports(ports: &[u16]) -> Arc<MockTopologyAdaptor> {
         // Create MockAttestor first to get the actual PCR values
         let attestor = MockAttestor::new();
         let actual_pcrs = attestor.pcrs_sync();
@@ -623,17 +623,17 @@ mod tests {
         // Create topology nodes for the specified number of ports
         for (i, &port) in ports.iter().enumerate() {
             let (_node_id, signing_key) = &test_nodes_config[i];
-            let governance_node = GovernanceNode {
-                availability_zone: "test-az".to_string(),
-                origin: format!("http://127.0.0.1:{port}"),
-                public_key: signing_key.verifying_key(),
-                region: "test-region".to_string(),
-                specializations: HashSet::new(),
-            };
+            let governance_node = Node::new(
+                signing_key.verifying_key(),
+                "test-region".to_string(),
+                "test-az".to_string(),
+                format!("http://127.0.0.1:{port}"),
+                HashSet::new(),
+            );
             governance_nodes.push(governance_node);
         }
 
-        Arc::new(MockGovernance::new(
+        Arc::new(MockTopologyAdaptor::new(
             governance_nodes,
             vec![test_version],
             "http://localhost:3200".to_string(),
@@ -643,8 +643,8 @@ mod tests {
 
     async fn create_consensus_system_with_governance(
         port: u16,
-        governance: Arc<MockGovernance>,
-    ) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+        governance: Arc<MockTopologyAdaptor>,
+    ) -> Arc<Consensus<MockTopologyAdaptor, MockAttestor>> {
         // Generate a fresh signing key for each test
         let signing_key = SigningKey::generate(&mut OsRng);
 
@@ -685,7 +685,7 @@ mod tests {
     async fn create_test_options(
         node_id: &str,
         port: u16,
-    ) -> ConsensusStreamOptions<MockGovernance, MockAttestor> {
+    ) -> ConsensusStreamOptions<MockTopologyAdaptor, MockAttestor> {
         let consensus = create_test_consensus(node_id, port).await;
         ConsensusStreamOptions { consensus }
     }
@@ -697,8 +697,8 @@ mod tests {
     // Helper to create multi-node options without starting consensus systems (for unit testing)
     async fn create_multi_node_test_options(
         node_count: usize,
-    ) -> Vec<ConsensusStreamOptions<MockGovernance, MockAttestor>> {
-        use proven_governance::{GovernanceNode, Version};
+    ) -> Vec<ConsensusStreamOptions<MockTopologyAdaptor, MockAttestor>> {
+        use proven_topology::{Node, Version};
         use std::collections::HashSet;
 
         let mut options_vec = Vec::new();
@@ -714,13 +714,13 @@ mod tests {
 
         // Create topology nodes for all nodes
         for i in 0..node_count {
-            let node = GovernanceNode {
-                availability_zone: format!("test-az-{i}"),
-                origin: format!("127.0.0.1:{}", node_ports[i]),
-                public_key: signing_keys[i].verifying_key(),
-                region: "test-region".to_string(),
-                specializations: HashSet::new(),
-            };
+            let node = Node::new(
+                signing_keys[i].verifying_key(),
+                "test-region".to_string(),
+                format!("test-az-{i}"),
+                format!("127.0.0.1:{}", node_ports[i]),
+                HashSet::new(),
+            );
             all_nodes.push(node);
         }
 
@@ -736,7 +736,7 @@ mod tests {
         };
 
         // Create SHARED governance that all nodes will use
-        let shared_governance = Arc::new(MockGovernance::new(
+        let shared_governance = Arc::new(MockTopologyAdaptor::new(
             all_nodes.clone(),
             vec![test_version.clone()],
             "http://localhost:3200".to_string(),
@@ -783,7 +783,7 @@ mod tests {
         let options = create_test_options("1", next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -821,7 +821,7 @@ mod tests {
         let options = create_test_options("2", next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -867,7 +867,7 @@ mod tests {
         let options = create_test_options("3", next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -918,7 +918,7 @@ mod tests {
         let options = create_test_options("4", next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -978,7 +978,7 @@ mod tests {
         let options = create_test_options("6", next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -1034,7 +1034,7 @@ mod tests {
         // Create a test stream first
         let options = create_test_options("6", next_port()).await;
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -1044,7 +1044,7 @@ mod tests {
 
         // Test creating a service responder directly
         let responder = ConsensusServiceResponder::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -1081,7 +1081,7 @@ mod tests {
         let options = create_test_options("7", next_port()).await;
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -1127,7 +1127,7 @@ mod tests {
             };
 
             let stream = ConsensusStream::<
-                MockGovernance,
+                MockTopologyAdaptor,
                 MockAttestor,
                 TestMessage,
                 serde_json::Error,
@@ -1205,7 +1205,7 @@ mod tests {
         };
 
         let stream1 = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -1213,7 +1213,7 @@ mod tests {
         >::new("integrated_service_stream_1", options1);
 
         let stream2 = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -1299,7 +1299,7 @@ mod tests {
         // Create services on different nodes with different stream names to simulate fault tolerance
         for (i, options) in multi_options.into_iter().enumerate() {
             let stream = ConsensusStream::<
-                MockGovernance,
+                MockTopologyAdaptor,
                 MockAttestor,
                 TestMessage,
                 serde_json::Error,

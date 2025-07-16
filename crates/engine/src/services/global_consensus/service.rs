@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
 use proven_storage::LogStorage;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use super::config::{GlobalConsensusConfig, ServiceState};
@@ -23,7 +23,7 @@ use crate::{
 pub struct GlobalConsensusService<T, G, L>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
     L: LogStorage,
 {
     /// Configuration
@@ -47,7 +47,7 @@ where
 impl<T, G, L> GlobalConsensusService<T, G, L>
 where
     T: Transport + 'static,
-    G: Governance + 'static,
+    G: TopologyAdaptor + 'static,
     L: LogStorage + 'static,
 {
     /// Create new global consensus service
@@ -154,7 +154,7 @@ where
 
                             let mut raft_members = std::collections::BTreeMap::new();
                             for member in &members {
-                                if let Some(node) = all_nodes.iter().find(|n| NodeId::new(n.public_key) == *member) {
+                                if let Some(node) = all_nodes.iter().find(|n| n.node_id == *member) {
                                     raft_members.insert(member.clone(), node.clone());
                                 }
                             }

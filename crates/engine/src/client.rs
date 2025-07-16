@@ -5,9 +5,9 @@
 
 use std::sync::Arc;
 
-use proven_governance::Governance;
 use proven_storage::LogStorage;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use crate::{
@@ -30,7 +30,7 @@ use crate::{
 pub struct Client<T, G, L>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
     L: LogStorage,
 {
     /// Reference to the client service
@@ -42,7 +42,7 @@ where
 impl<T, G, L> Client<T, G, L>
 where
     T: Transport + 'static,
-    G: Governance + 'static,
+    G: TopologyAdaptor + 'static,
     L: LogStorage + 'static,
 {
     /// Create a new client
@@ -182,7 +182,7 @@ where
 impl<T, G, L> Clone for Client<T, G, L>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
     L: LogStorage,
 {
     fn clone(&self) -> Self {

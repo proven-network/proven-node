@@ -3,7 +3,7 @@
 pub mod records;
 
 use crate::messages::NodeOperation;
-use crate::node_id::NodeId;
+use crate::node_id::TuiNodeId;
 use records::{NodeHandle, NodeManagerMessage, NodeRecord};
 
 use std::collections::{HashMap, HashSet};
@@ -11,21 +11,21 @@ use std::os::unix::fs::symlink;
 use std::sync::{Arc, mpsc};
 
 use parking_lot::RwLock;
-use proven_governance_mock::MockGovernance;
 use proven_local::{NodeConfig, NodeStatus};
+use proven_topology_mock::MockTopologyAdaptor;
 use tracing::{error, info, warn};
 
 // Type aliases to reduce complexity
-type NodeMap = Arc<RwLock<HashMap<NodeId, NodeRecord>>>;
+type NodeMap = Arc<RwLock<HashMap<TuiNodeId, NodeRecord>>>;
 type CompletionReceiver = Arc<std::sync::Mutex<mpsc::Receiver<NodeManagerMessage>>>;
 type PersistentDirMap = Arc<RwLock<HashMap<String, HashSet<u32>>>>;
-type NodeDirAssignments = Arc<RwLock<HashMap<NodeId, Vec<(String, u32)>>>>;
+type NodeDirAssignments = Arc<RwLock<HashMap<TuiNodeId, Vec<(String, u32)>>>>;
 type NodeUiInfo = HashMap<
-    NodeId,
+    TuiNodeId,
     (
         String,
         NodeStatus,
-        HashSet<proven_governance::NodeSpecialization>,
+        HashSet<proven_topology::NodeSpecialization>,
     ),
 >;
 
@@ -33,7 +33,7 @@ type NodeUiInfo = HashMap<
 #[derive(Clone, Debug)]
 pub struct NodeManager {
     nodes: NodeMap,
-    governance: Arc<MockGovernance>,
+    governance: Arc<MockTopologyAdaptor>,
     session_id: String,
     completion_sender: mpsc::Sender<NodeManagerMessage>,
     completion_receiver: CompletionReceiver,
@@ -47,7 +47,7 @@ pub struct NodeManager {
 impl NodeManager {
     /// Create a new node manager
     #[must_use]
-    pub fn new(governance: Arc<MockGovernance>, session_id: String) -> Self {
+    pub fn new(governance: Arc<MockTopologyAdaptor>, session_id: String) -> Self {
         info!("Created new NodeManager with session_id: {}", session_id);
 
         let (completion_sender, completion_receiver) = mpsc::channel();
@@ -69,9 +69,9 @@ impl NodeManager {
     #[allow(clippy::cognitive_complexity)]
     pub fn start_node(
         &self,
-        id: NodeId,
+        id: TuiNodeId,
         name: &str,
-        specializations: HashSet<proven_governance::NodeSpecialization>,
+        specializations: HashSet<proven_topology::NodeSpecialization>,
     ) {
         info!(
             "Starting node {} ({}) with specializations: {:?}",
@@ -143,7 +143,7 @@ impl NodeManager {
 
     /// Stop a node
     #[allow(clippy::cognitive_complexity)]
-    pub fn stop_node(&self, id: NodeId) {
+    pub fn stop_node(&self, id: TuiNodeId) {
         let nodes_guard = self.nodes.read();
         if let Some(record) = nodes_guard.get(&id) {
             match record {
@@ -164,7 +164,7 @@ impl NodeManager {
 
     /// Restart a node
     #[allow(clippy::cognitive_complexity)]
-    pub fn restart_node(&self, id: NodeId) {
+    pub fn restart_node(&self, id: TuiNodeId) {
         let nodes_guard = self.nodes.read();
         if let Some(record) = nodes_guard.get(&id) {
             match record {
@@ -284,10 +284,10 @@ impl NodeManager {
     /// Create node config with persistent directory tracking
     fn create_node_config_with_tracking(
         &self,
-        id: NodeId,
+        id: TuiNodeId,
         name: &str,
-        specializations: &HashSet<proven_governance::NodeSpecialization>,
-    ) -> NodeConfig<MockGovernance> {
+        specializations: &HashSet<proven_topology::NodeSpecialization>,
+    ) -> NodeConfig<MockTopologyAdaptor> {
         // Create base config
         let node_config = records::create_node_config(id, name, &self.governance, &self.session_id);
 
@@ -310,9 +310,9 @@ impl NodeManager {
     #[allow(clippy::too_many_lines)]
     fn create_persistent_symlinks_with_tracking(
         &self,
-        node_id: NodeId,
-        specializations: &HashSet<proven_governance::NodeSpecialization>,
-        node_config: &NodeConfig<MockGovernance>,
+        node_id: TuiNodeId,
+        specializations: &HashSet<proven_topology::NodeSpecialization>,
+        node_config: &NodeConfig<MockTopologyAdaptor>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         use std::fs;
 
@@ -331,7 +331,7 @@ impl NodeManager {
 
         for specialization in specializations {
             match specialization {
-                proven_governance::NodeSpecialization::BitcoinMainnet => {
+                proven_topology::NodeSpecialization::BitcoinMainnet => {
                     if let Some(dir_num) = self.get_persistent_directory("bitcoin-mainnet") {
                         let persistent_dir = proven_dir.join(format!("bitcoin-mainnet-{dir_num}"));
                         Self::create_symlink_and_update_config(
@@ -345,7 +345,7 @@ impl NodeManager {
                         );
                     }
                 }
-                proven_governance::NodeSpecialization::BitcoinTestnet => {
+                proven_topology::NodeSpecialization::BitcoinTestnet => {
                     if let Some(dir_num) = self.get_persistent_directory("bitcoin-testnet") {
                         let persistent_dir = proven_dir.join(format!("bitcoin-testnet-{dir_num}"));
                         Self::create_symlink_and_update_config(
@@ -359,7 +359,7 @@ impl NodeManager {
                         );
                     }
                 }
-                proven_governance::NodeSpecialization::EthereumMainnet => {
+                proven_topology::NodeSpecialization::EthereumMainnet => {
                     if let Some(dir_num) = self.get_persistent_directory("ethereum-mainnet") {
                         let base_persistent_dir =
                             proven_dir.join(format!("ethereum-mainnet-{dir_num}"));
@@ -381,7 +381,7 @@ impl NodeManager {
                         );
                     }
                 }
-                proven_governance::NodeSpecialization::EthereumHolesky => {
+                proven_topology::NodeSpecialization::EthereumHolesky => {
                     if let Some(dir_num) = self.get_persistent_directory("ethereum-holesky") {
                         let base_persistent_dir =
                             proven_dir.join(format!("ethereum-holesky-{dir_num}"));
@@ -403,7 +403,7 @@ impl NodeManager {
                         );
                     }
                 }
-                proven_governance::NodeSpecialization::EthereumSepolia => {
+                proven_topology::NodeSpecialization::EthereumSepolia => {
                     if let Some(dir_num) = self.get_persistent_directory("ethereum-sepolia") {
                         let base_persistent_dir =
                             proven_dir.join(format!("ethereum-sepolia-{dir_num}"));
@@ -425,7 +425,7 @@ impl NodeManager {
                         );
                     }
                 }
-                proven_governance::NodeSpecialization::RadixMainnet => {
+                proven_topology::NodeSpecialization::RadixMainnet => {
                     if let Some(dir_num) = self.get_persistent_directory("radix-mainnet") {
                         let persistent_dir = proven_dir.join(format!("radix-mainnet-{dir_num}"));
                         Self::create_symlink_and_update_config(
@@ -439,7 +439,7 @@ impl NodeManager {
                         );
                     }
                 }
-                proven_governance::NodeSpecialization::RadixStokenet => {
+                proven_topology::NodeSpecialization::RadixStokenet => {
                     if let Some(dir_num) = self.get_persistent_directory("radix-stokenet") {
                         let persistent_dir = proven_dir.join(format!("radix-stokenet-{dir_num}"));
                         Self::create_symlink_and_update_config(
@@ -505,7 +505,7 @@ impl NodeManager {
     }
 
     /// Get the URL for a specific running node (matching governance origin exactly)
-    pub fn get_node_url(&self, node_id: NodeId) -> Option<String> {
+    pub fn get_node_url(&self, node_id: TuiNodeId) -> Option<String> {
         let nodes = self.nodes.read();
 
         if let Some(NodeRecord::Running(handle)) = nodes.get(&node_id) {

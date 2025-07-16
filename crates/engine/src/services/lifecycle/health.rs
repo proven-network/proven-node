@@ -40,7 +40,7 @@ impl HealthChecker {
     }
 
     /// Check all components
-    pub async fn check_all_components(
+    pub(super) async fn check_all_components(
         &self,
         components: &Arc<RwLock<ComponentRegistry>>,
     ) -> LifecycleResult<HealthReport> {

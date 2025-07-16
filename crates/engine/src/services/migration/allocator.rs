@@ -31,7 +31,7 @@ impl GroupAllocator {
     /// Allocate groups for a new node
     pub async fn allocate_groups_for_node(
         &self,
-        node_id: &NodeId,
+        _node_id: &NodeId,
     ) -> MigrationResult<Vec<ConsensusGroupId>> {
         // In a real implementation, this would:
         // 1. Analyze node's region and capacity
@@ -46,7 +46,7 @@ impl GroupAllocator {
     /// Remove node from its groups
     pub async fn remove_node_from_groups(
         &self,
-        node_id: &NodeId,
+        _node_id: &NodeId,
     ) -> MigrationResult<Vec<ConsensusGroupId>> {
         // Would remove node and return affected groups
         Ok(vec![])

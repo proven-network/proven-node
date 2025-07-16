@@ -1,4 +1,4 @@
-//! Helios light-client based implementation of the governance interface.
+//! Helios light-client based implementation of the topology adaptor interface.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
@@ -20,11 +20,11 @@ use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{SolCall, sol};
 use async_trait::async_trait;
 use helios_ethereum::{EthereumClient, EthereumClientBuilder, config::networks::Network};
-use proven_governance::{Governance, GovernanceNode, NodeSpecialization, Version};
+use proven_topology::{Node, NodeId, NodeSpecialization, TopologyAdaptor, Version};
 
-/// Configuration options for the Helios governance client.
+/// Configuration options for the Helios topology adaptor client.
 #[derive(Clone, Debug)]
-pub struct HeliosGovernanceOptions {
+pub struct HeliosTopologyAdaptorOptions {
     /// The URL of the Ethereum consensus layer RPC endpoint.
     pub consensus_rpc: String,
 
@@ -75,23 +75,23 @@ sol! {
     function getNodes() public view returns (NodeStruct[] memory);
 }
 
-/// A governance client that uses Helios to interact with the Ethereum network.
+/// A topology adaptor client that uses Helios to interact with the Ethereum network.
 #[derive(Clone)]
-pub struct HeliosGovernance {
+pub struct HeliosTopologyAdaptor {
     client: Arc<EthereumClient>,
     node_governance_address: Address,
     version_governance_address: Address,
 }
 
-impl HeliosGovernance {
-    /// Create a new Helios governance client.
+impl HeliosTopologyAdaptor {
+    /// Create a new Helios topology adaptor client.
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The Helios client fails to build or start
     /// - The provided contract addresses cannot be parsed
-    pub async fn new(options: HeliosGovernanceOptions) -> Result<Self, Error> {
+    pub async fn new(options: HeliosTopologyAdaptorOptions) -> Result<Self, Error> {
         let client = EthereumClientBuilder::new()
             .network(options.network)
             .data_dir(options.data_dir.clone())
@@ -159,7 +159,7 @@ impl HeliosGovernance {
 }
 
 #[async_trait]
-impl Governance for HeliosGovernance {
+impl TopologyAdaptor for HeliosTopologyAdaptor {
     type Error = Error;
 
     async fn get_active_versions(&self) -> Result<Vec<Version>, Self::Error> {
@@ -197,7 +197,7 @@ impl Governance for HeliosGovernance {
         todo!()
     }
 
-    async fn get_topology(&self) -> Result<Vec<GovernanceNode>, Self::Error> {
+    async fn get_topology(&self) -> Result<Vec<Node>, Self::Error> {
         // Prepare the call data
         let selector = getNodesCall::SELECTOR;
         let result = self
@@ -245,22 +245,22 @@ impl Governance for HeliosGovernance {
                 .unwrap();
             let public_key = VerifyingKey::from_bytes(&public_key_bytes).unwrap();
 
-            nodes.push(GovernanceNode {
-                availability_zone: node_struct.availabilityZone.clone(),
-                origin: node_struct.origin.clone(),
-                public_key,
-                region: node_struct.region.clone(),
+            nodes.push(Node::new(
+                node_struct.availabilityZone.clone(),
+                node_struct.origin.clone(),
+                NodeId::from(public_key),
+                node_struct.region.clone(),
                 specializations,
-            });
+            ));
         }
 
         Ok(nodes)
     }
 }
 
-impl std::fmt::Debug for HeliosGovernance {
+impl std::fmt::Debug for HeliosTopologyAdaptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "HeliosGovernance")?;
+        write!(f, "HeliosTopologyAdaptor")?;
         write!(
             f,
             "node_governance_address: {}",

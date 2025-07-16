@@ -67,7 +67,7 @@ impl NodeMigrationCoordinator {
     }
 
     /// Complete a migration
-    pub async fn complete_migration(&self, node_id: &NodeId) -> MigrationResult<()> {
+    pub async fn complete_migration(&self, _node_id: &NodeId) -> MigrationResult<()> {
         // Would finalize the migration
         Ok(())
     }
@@ -75,7 +75,7 @@ impl NodeMigrationCoordinator {
     /// Get migration status
     pub async fn get_status(
         &self,
-        node_id: &NodeId,
+        _node_id: &NodeId,
     ) -> MigrationResult<Option<NodeMigrationProgress>> {
         // Would return current status
         Ok(None)

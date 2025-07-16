@@ -79,7 +79,7 @@ impl SnapshotManager {
             .truncate(true)
             .open(&temp_path)
             .map_err(|e| VsockFuseError::Io {
-                message: format!("Failed to create snapshot file: {}", e),
+                message: format!("Failed to create snapshot file: {e}"),
                 source: Some(e),
             })?;
 
@@ -89,19 +89,19 @@ impl SnapshotManager {
         writer
             .write_all(b"VSFSNAP\0")
             .map_err(|e| VsockFuseError::Io {
-                message: format!("Failed to write snapshot header: {}", e),
+                message: format!("Failed to write snapshot header: {e}"),
                 source: Some(e),
             })?;
 
         // Serialize snapshot
         bincode::serialize_into(&mut writer, &snapshot).map_err(|e| {
             VsockFuseError::InvalidArgument {
-                message: format!("Failed to serialize snapshot: {}", e),
+                message: format!("Failed to serialize snapshot: {e}"),
             }
         })?;
 
         writer.flush().map_err(|e| VsockFuseError::Io {
-            message: format!("Failed to flush snapshot: {}", e),
+            message: format!("Failed to flush snapshot: {e}"),
             source: Some(e),
         })?;
 
@@ -109,7 +109,7 @@ impl SnapshotManager {
 
         // Atomic rename
         std::fs::rename(&temp_path, &snapshot_path).map_err(|e| VsockFuseError::Io {
-            message: format!("Failed to finalize snapshot: {}", e),
+            message: format!("Failed to finalize snapshot: {e}"),
             source: Some(e),
         })?;
 
@@ -119,7 +119,7 @@ impl SnapshotManager {
     /// Load a snapshot from file
     pub fn load_snapshot(&self, path: &Path) -> Result<MetadataSnapshot> {
         let file = File::open(path).map_err(|e| VsockFuseError::Io {
-            message: format!("Failed to open snapshot file: {}", e),
+            message: format!("Failed to open snapshot file: {e}"),
             source: Some(e),
         })?;
 
@@ -131,7 +131,7 @@ impl SnapshotManager {
         reader
             .read_exact(&mut header)
             .map_err(|e| VsockFuseError::Io {
-                message: format!("Failed to read snapshot header: {}", e),
+                message: format!("Failed to read snapshot header: {e}"),
                 source: Some(e),
             })?;
 
@@ -144,7 +144,7 @@ impl SnapshotManager {
         // Deserialize snapshot
         let snapshot: MetadataSnapshot =
             bincode::deserialize_from(reader).map_err(|e| VsockFuseError::InvalidArgument {
-                message: format!("Failed to deserialize snapshot: {}", e),
+                message: format!("Failed to deserialize snapshot: {e}"),
             })?;
 
         // Check version compatibility
@@ -165,27 +165,24 @@ impl SnapshotManager {
         let mut latest: Option<(PathBuf, std::time::SystemTime)> = None;
 
         let entries = std::fs::read_dir(&self.base_path).map_err(|e| VsockFuseError::Io {
-            message: format!("Failed to read snapshot directory: {}", e),
+            message: format!("Failed to read snapshot directory: {e}"),
             source: Some(e),
         })?;
 
         for entry in entries.filter_map(|e| e.ok()) {
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("bin") {
-                if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                    if name.starts_with("snapshot-") {
-                        if let Ok(metadata) = entry.metadata() {
-                            if let Ok(modified) = metadata.modified() {
-                                match &latest {
-                                    None => latest = Some((path, modified)),
-                                    Some((_, last_time)) if modified > *last_time => {
-                                        latest = Some((path, modified))
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
+            if path.extension().and_then(|s| s.to_str()) == Some("bin")
+                && let Some(name) = path.file_stem().and_then(|s| s.to_str())
+                && name.starts_with("snapshot-")
+                && let Ok(metadata) = entry.metadata()
+                && let Ok(modified) = metadata.modified()
+            {
+                match &latest {
+                    None => latest = Some((path, modified)),
+                    Some((_, last_time)) if modified > *last_time => {
+                        latest = Some((path, modified))
                     }
+                    _ => {}
                 }
             }
         }
@@ -198,22 +195,19 @@ impl SnapshotManager {
         let mut snapshots = Vec::new();
 
         let entries = std::fs::read_dir(&self.base_path).map_err(|e| VsockFuseError::Io {
-            message: format!("Failed to read snapshot directory: {}", e),
+            message: format!("Failed to read snapshot directory: {e}"),
             source: Some(e),
         })?;
 
         for entry in entries.filter_map(|e| e.ok()) {
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) == Some("bin") {
-                if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                    if name.starts_with("snapshot-") {
-                        if let Ok(metadata) = entry.metadata() {
-                            if let Ok(modified) = metadata.modified() {
-                                snapshots.push((path, modified));
-                            }
-                        }
-                    }
-                }
+            if path.extension().and_then(|s| s.to_str()) == Some("bin")
+                && let Some(name) = path.file_stem().and_then(|s| s.to_str())
+                && name.starts_with("snapshot-")
+                && let Ok(metadata) = entry.metadata()
+                && let Ok(modified) = metadata.modified()
+            {
+                snapshots.push((path, modified));
             }
         }
 
@@ -223,7 +217,7 @@ impl SnapshotManager {
         // Remove old snapshots
         for (path, _) in snapshots.into_iter().skip(keep_count) {
             std::fs::remove_file(&path).map_err(|e| VsockFuseError::Io {
-                message: format!("Failed to remove old snapshot: {}", e),
+                message: format!("Failed to remove old snapshot: {e}"),
                 source: Some(e),
             })?;
         }

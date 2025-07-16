@@ -4,9 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use crate::services::cluster::ClusterStateInfo;
@@ -54,7 +54,7 @@ impl Default for NetworkConfig {
 pub struct NetworkService<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Service configuration
     config: NetworkConfig,
@@ -75,7 +75,7 @@ where
 impl<T, G> NetworkService<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create a new network service
     pub fn new(

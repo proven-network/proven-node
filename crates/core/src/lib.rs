@@ -30,12 +30,12 @@ use async_trait::async_trait;
 use axum::Router;
 use proven_applications::ApplicationManagement;
 use proven_bootable::Bootable;
-use proven_governance::Governance;
 use proven_http::HttpServer;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
+use proven_topology::TopologyAdaptor;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -52,7 +52,7 @@ pub use rpc::{
 pub struct Core<A, G, H>
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     H: HttpServer,
 {
     application_test_router: Arc<RwLock<Option<Router>>>,
@@ -72,7 +72,7 @@ where
 impl<A, G, H> Core<A, G, H>
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     H: HttpServer,
 {
     /// Create new unified core in Bootstrapping mode
@@ -252,7 +252,7 @@ where
             .governance
             .get_alternates_auth_gateways()
             .await
-            .map_err(|e| Error::Network(e.to_string()))?;
+            .map_err(|e| Error::TopologyAdaptor(e.to_string()))?;
 
         let webauthn_router = RouterBuilder::create_webauthn_router(alternates_auth_gateways);
 
@@ -260,7 +260,7 @@ where
             .governance
             .get_primary_auth_gateway()
             .await
-            .map_err(|e| Error::Network(e.to_string()))?;
+            .map_err(|e| Error::TopologyAdaptor(e.to_string()))?;
 
         RouterInstaller::install_router(&self.http_server, primary_auth_gateway, webauthn_router)
             .await?;
@@ -274,7 +274,7 @@ where
 impl<A, G, H> Bootable for Core<A, G, H>
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     H: HttpServer,
 {
     fn bootable_name(&self) -> &'static str {

@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
 use proven_storage::LogStorage;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use super::config::GroupConsensusConfig;
@@ -21,7 +21,7 @@ use crate::{
 pub struct GroupConsensusService<T, G, L>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
     L: LogStorage,
 {
     /// Configuration
@@ -41,7 +41,7 @@ where
 impl<T, G, L> GroupConsensusService<T, G, L>
 where
     T: Transport + 'static,
-    G: Governance + 'static,
+    G: TopologyAdaptor + 'static,
     L: LogStorage + 'static,
 {
     /// Create new group consensus service

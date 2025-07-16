@@ -12,9 +12,9 @@ use openraft::{
 };
 use tokio::sync::RwLock;
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use super::messages::*;
@@ -26,7 +26,7 @@ use crate::services::network::NetworkStats;
 pub struct GroupNetworkFactory<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     network_manager: Arc<NetworkManager<T, G>>,
     group_id: ConsensusGroupId,
@@ -36,7 +36,7 @@ where
 impl<T, G> GroupNetworkFactory<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create a new group network factory
     pub fn new(
@@ -55,15 +55,11 @@ where
 impl<T, G> RaftNetworkFactory<GroupTypeConfig> for GroupNetworkFactory<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     type Network = GroupRaftNetworkAdapter<T, G>;
 
-    async fn new_client(
-        &mut self,
-        target: NodeId,
-        _node: &proven_governance::GovernanceNode,
-    ) -> Self::Network {
+    async fn new_client(&mut self, target: NodeId, _node: &proven_topology::Node) -> Self::Network {
         GroupRaftNetworkAdapter {
             network_manager: self.network_manager.clone(),
             group_id: self.group_id,
@@ -77,7 +73,7 @@ where
 pub struct GroupRaftNetworkAdapter<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Network manager for sending messages
     network_manager: Arc<NetworkManager<T, G>>,
@@ -92,7 +88,7 @@ where
 impl<T, G> RaftNetwork<GroupTypeConfig> for GroupRaftNetworkAdapter<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     async fn append_entries(
         &mut self,

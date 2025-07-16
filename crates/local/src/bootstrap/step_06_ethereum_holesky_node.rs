@@ -14,10 +14,10 @@ use proven_ethereum_lighthouse::{
     EthereumNetwork as LighthouseNetwork, LighthouseNode, LighthouseNodeOptions,
 };
 use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOptions};
-use proven_governance::{Governance, NodeSpecialization};
+use proven_topology::{NodeSpecialization, TopologyAdaptor};
 use tracing::info;
 
-pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
+pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let node = bootstrap.node.as_ref().unwrap_or_else(|| {
         panic!("node not set before ethereum nodes step");
     });

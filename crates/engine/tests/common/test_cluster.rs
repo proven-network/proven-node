@@ -10,11 +10,11 @@ use ed25519_dalek::SigningKey;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
 use proven_engine::{Engine, EngineBuilder, EngineConfig};
-use proven_governance::{Governance, GovernanceNode, Version};
-use proven_governance_mock::MockGovernance;
 use proven_network::NetworkManager;
 use proven_storage_memory::MemoryStorage;
+use proven_topology::{Node as TopologyNode, TopologyAdaptor, Version};
 use proven_topology::{NodeId, TopologyManager};
+use proven_topology_mock::MockTopologyAdaptor;
 use proven_transport::Config as TransportConfig;
 use proven_transport_tcp::{TcpConfig, TcpTransport};
 use proven_util::port_allocator::allocate_port;
@@ -42,7 +42,7 @@ pub struct NodeInfo {
 /// Test cluster manager
 pub struct TestCluster {
     /// Mock governance instance  
-    governance: RwLock<Arc<MockGovernance>>,
+    governance: RwLock<Arc<MockTopologyAdaptor>>,
     /// Mock attestor
     attestor: MockAttestor,
     /// Transport type
@@ -64,7 +64,7 @@ impl TestCluster {
             ne_pcr2: pcrs.pcr2,
         }];
 
-        let governance = MockGovernance::new(
+        let governance = MockTopologyAdaptor::new(
             vec![], // Start with no nodes
             versions.clone(),
             "https://auth.test.com".to_string(),
@@ -81,7 +81,7 @@ impl TestCluster {
     }
 
     /// Get the governance instance
-    pub async fn governance(&self) -> Arc<MockGovernance> {
+    pub async fn governance(&self) -> Arc<MockTopologyAdaptor> {
         self.governance.read().await.clone()
     }
 
@@ -91,7 +91,13 @@ impl TestCluster {
         &mut self,
         count: usize,
     ) -> (
-        Vec<Engine<TcpTransport<MockGovernance, MockAttestor>, MockGovernance, MemoryStorage>>,
+        Vec<
+            Engine<
+                TcpTransport<MockTopologyAdaptor, MockAttestor>,
+                MockTopologyAdaptor,
+                MemoryStorage,
+            >,
+        >,
         Vec<NodeInfo>,
     ) {
         let mut engines = Vec::new();
@@ -191,11 +197,11 @@ impl TestCluster {
     async fn create_tcp_node_without_starting(
         &mut self,
     ) -> (
-        Engine<TcpTransport<MockGovernance, MockAttestor>, MockGovernance, MemoryStorage>,
+        Engine<TcpTransport<MockTopologyAdaptor, MockAttestor>, MockTopologyAdaptor, MemoryStorage>,
         NodeInfo,
-        Arc<NetworkManager<TcpTransport<MockGovernance, MockAttestor>, MockGovernance>>,
-        Arc<TcpTransport<MockGovernance, MockAttestor>>,
-        Arc<TopologyManager<MockGovernance>>,
+        Arc<NetworkManager<TcpTransport<MockTopologyAdaptor, MockAttestor>, MockTopologyAdaptor>>,
+        Arc<TcpTransport<MockTopologyAdaptor, MockAttestor>>,
+        Arc<TopologyManager<MockTopologyAdaptor>>,
     ) {
         // Generate node identity
         let signing_key = SigningKey::generate(&mut OsRng);
@@ -284,7 +290,7 @@ impl TestCluster {
     async fn create_tcp_node(
         &mut self,
     ) -> (
-        Engine<TcpTransport<MockGovernance, MockAttestor>, MockGovernance, MemoryStorage>,
+        Engine<TcpTransport<MockTopologyAdaptor, MockAttestor>, MockTopologyAdaptor, MemoryStorage>,
         NodeInfo,
     ) {
         let (mut engine, node_info, network_manager, transport, topology_manager) =
@@ -321,13 +327,13 @@ impl TestCluster {
     /// Add node to governance
     async fn add_node_to_governance(&self, signing_key: &SigningKey, port: u16) {
         let gov = self.governance.write().await;
-        let node = GovernanceNode {
-            availability_zone: "test-az".to_string(),
-            origin: format!("http://127.0.0.1:{port}"),
-            public_key: signing_key.verifying_key(),
-            region: "test-region".to_string(),
-            specializations: HashSet::new(),
-        };
+        let node = TopologyNode::new(
+            "test-az".to_string(),
+            format!("http://127.0.0.1:{port}"),
+            NodeId::from(signing_key.verifying_key()),
+            "test-region".to_string(),
+            HashSet::new(),
+        );
         let _ = gov.add_node(node);
     }
 

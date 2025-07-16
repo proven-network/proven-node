@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::join_all;
-use proven_governance::Governance;
 use proven_network::NetworkManager;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 use tokio::time::timeout;
 use tracing::{debug, info, warn};
@@ -20,7 +20,7 @@ use tracing::{debug, info, warn};
 pub struct DiscoveryProtocol<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     network: Arc<NetworkManager<T, G>>,
     local_node_id: NodeId,
@@ -29,7 +29,7 @@ where
 impl<T, G> DiscoveryProtocol<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create new discovery protocol
     pub fn new(network: Arc<NetworkManager<T, G>>, local_node_id: NodeId) -> Self {

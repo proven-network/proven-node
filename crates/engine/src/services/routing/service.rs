@@ -179,7 +179,10 @@ impl RoutingService {
     }
 
     /// Route a global operation
-    pub async fn route_global_operation(&self, operation: Vec<u8>) -> RoutingResult<RouteDecision> {
+    pub async fn route_global_operation(
+        &self,
+        _operation: Vec<u8>,
+    ) -> RoutingResult<RouteDecision> {
         self.ensure_running().await?;
 
         // Global operations always go to global consensus

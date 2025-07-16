@@ -145,6 +145,8 @@ pub struct ConnectionPool {
     next_id: Arc<RwLock<u64>>,
     shutdown: Arc<RwLock<bool>>,
     pending_requests: Arc<DashMap<Uuid, ResponseSender>>,
+    streaming_requests:
+        Arc<DashMap<Uuid, tokio::sync::mpsc::Sender<crate::protocol::message::ResponseEnvelope>>>,
 }
 
 impl ConnectionPool {
@@ -155,6 +157,9 @@ impl ConnectionPool {
         #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
         config: PoolConfig,
         pending_requests: Arc<DashMap<Uuid, ResponseSender>>,
+        streaming_requests: Arc<
+            DashMap<Uuid, tokio::sync::mpsc::Sender<crate::protocol::message::ResponseEnvelope>>,
+        >,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_connections));
 
@@ -166,6 +171,7 @@ impl ConnectionPool {
             next_id: Arc::new(RwLock::new(0)),
             shutdown: Arc::new(RwLock::new(false)),
             pending_requests,
+            streaming_requests,
         }
     }
 
@@ -275,8 +281,16 @@ impl ConnectionPool {
         // Start stream handler
         let conn_clone = Arc::clone(&conn);
         let pending_requests = Arc::clone(&self.pending_requests);
+        let streaming_requests = Arc::clone(&self.streaming_requests);
         tokio::spawn(async move {
-            Self::handle_stream(conn_clone, stream, shutdown_rx, pending_requests).await;
+            Self::handle_stream(
+                conn_clone,
+                stream,
+                shutdown_rx,
+                pending_requests,
+                streaming_requests,
+            )
+            .await;
         });
 
         debug!("Created new connection {} to {:?}", id, self.addr);
@@ -296,6 +310,7 @@ impl ConnectionPool {
         >,
         mut shutdown_rx: oneshot::Receiver<()>,
         pending_requests: Arc<DashMap<Uuid, ResponseSender>>,
+        streaming_requests: Arc<DashMap<Uuid, tokio::sync::mpsc::Sender<ResponseEnvelope>>>,
     ) {
         debug!("Starting handle_stream for connection {}", conn.id);
         loop {
@@ -322,6 +337,26 @@ impl ConnectionPool {
                                         }
                                         Err(e) => {
                                             error!("Failed to decode response: {}", e);
+                                        }
+                                    }
+                                }
+                                FrameType::Stream => {
+                                    // Decode response envelope for stream frame
+                                    match bincode::deserialize::<ResponseEnvelope>(&frame.payload) {
+                                        Ok(response) => {
+                                            debug!("Connection {} decoded stream frame for request_id: {} ({} bytes)",
+                                                conn.id, response.request_id, response.payload.len());
+                                            // Find streaming request and forward the response
+                                            if let Some(streaming_tx) = streaming_requests.get(&response.request_id) {
+                                                debug!("Found streaming request for {}, forwarding frame", response.request_id);
+                                                let _ = streaming_tx.send(response).await;
+                                            } else {
+                                                warn!("Received stream frame for unknown request: {} (streaming requests: {})",
+                                                    response.request_id, streaming_requests.len());
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to decode stream frame: {}", e);
                                         }
                                     }
                                 }
@@ -433,6 +468,7 @@ impl Clone for ConnectionPool {
             next_id: Arc::clone(&self.next_id),
             shutdown: Arc::clone(&self.shutdown),
             pending_requests: Arc::clone(&self.pending_requests),
+            streaming_requests: Arc::clone(&self.streaming_requests),
         }
     }
 }

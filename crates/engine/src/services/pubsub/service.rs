@@ -16,8 +16,8 @@ use proven_topology::NodeId;
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::event::{Event, EventPublisher};
 use crate::services::lifecycle::ComponentState;
-use proven_governance::Governance;
 use proven_network::NetworkManager;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use super::interest::InterestTracker;
@@ -57,7 +57,7 @@ impl Default for PubSubConfig {
 pub struct PubSubService<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Configuration
     config: PubSubConfig,
@@ -98,7 +98,7 @@ where
 impl<T, G> PubSubService<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create a new PubSub service
     pub fn new(config: PubSubConfig, node_id: NodeId) -> Self {
@@ -615,7 +615,7 @@ where
 impl<T, G> PubSubService<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Start the service
     pub async fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -624,8 +624,8 @@ where
 
         // Start message processing loop
         if let Some(mut receiver) = self.message_channel.1.take() {
-            let message_router = self.message_router.clone();
-            let stats = self.stats.clone();
+            let _message_router = self.message_router.clone();
+            let _stats = self.stats.clone();
 
             tokio::spawn(async move {
                 while let Some(message) = receiver.recv().await {

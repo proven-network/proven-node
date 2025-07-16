@@ -22,9 +22,9 @@ use std::net::IpAddr;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
 use proven_core::Core;
-use proven_governance::Governance;
 use proven_http_insecure::InsecureHttpServer;
 use proven_topology::Node;
+use proven_topology::TopologyAdaptor;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
@@ -37,7 +37,7 @@ use url::Url;
 ///
 /// The bootstrap struct is used to initialize the node and start the services.
 /// It is also used to shutdown the node and clean up the services.
-pub struct Bootstrap<G: Governance> {
+pub struct Bootstrap<G: TopologyAdaptor> {
     config: NodeConfig<G>,
 
     attestor: MockAttestor,
@@ -69,7 +69,7 @@ pub struct Bootstrap<G: Governance> {
     task_tracker: TaskTracker,
 }
 
-impl<G: Governance> Bootstrap<G> {
+impl<G: TopologyAdaptor> Bootstrap<G> {
     /// Add a bootable service to the collection
     pub fn add_bootable(&mut self, bootable: Box<dyn Bootable>) {
         self.bootables.push(bootable);

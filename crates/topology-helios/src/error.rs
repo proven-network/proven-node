@@ -1,8 +1,8 @@
 use eyre::Report;
-use proven_governance::{GovernanceError, GovernanceErrorKind};
+use proven_topology::{TopologyAdaptorError, TopologyAdaptorErrorKind};
 use thiserror::Error;
 
-/// Errors that can occur when interacting with the Helios governance client.
+/// Errors that can occur when interacting with the Helios topology adaptor client.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Error decoding contract data
@@ -22,13 +22,13 @@ pub enum Error {
     NodeNotFound(String),
 }
 
-impl GovernanceError for Error {
-    fn kind(&self) -> GovernanceErrorKind {
+impl TopologyAdaptorError for Error {
+    fn kind(&self) -> TopologyAdaptorErrorKind {
         match self {
             Self::ContractDataDecode(_) | Self::Helios(_) | Self::InvalidAddress(_) => {
-                GovernanceErrorKind::External
+                TopologyAdaptorErrorKind::External
             }
-            Self::NodeNotFound(_) => GovernanceErrorKind::NodeNotFound,
+            Self::NodeNotFound(_) => TopologyAdaptorErrorKind::NodeNotFound,
         }
     }
 }

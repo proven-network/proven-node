@@ -12,11 +12,11 @@ use tokio::sync::RwLock;
 use tracing::{info, warn};
 
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_messaging::client::Client;
 use proven_messaging::consumer::Consumer;
 use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream, StreamOptions};
+use proven_topology::TopologyAdaptor;
 
 use crate::client::ConsensusClient;
 use crate::consumer::ConsensusConsumer;
@@ -29,7 +29,7 @@ use proven_engine::Consensus;
 #[derive(Debug)]
 pub struct ConsensusStreamOptions<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
     /// Shared consensus system.
@@ -38,14 +38,14 @@ where
 
 impl<G, A> StreamOptions for ConsensusStreamOptions<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
 }
 
 impl<G, A> Clone for ConsensusStreamOptions<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
     fn clone(&self) -> Self {
@@ -59,7 +59,7 @@ where
 #[derive(Debug)]
 pub struct InitializedConsensusStream<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -89,7 +89,7 @@ where
 
 impl<G, A, T, D, S> Clone for InitializedConsensusStream<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -115,7 +115,7 @@ where
 #[async_trait]
 impl<G, A, T, D, S> InitializedStream<T, D, S> for InitializedConsensusStream<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -452,7 +452,7 @@ where
 
 impl<G, A, T, D, S> InitializedConsensusStream<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -502,7 +502,7 @@ where
 #[derive(Debug)]
 pub struct ConsensusStream<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -521,7 +521,7 @@ where
 
 impl<G, A, T, D, S> Clone for ConsensusStream<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -544,7 +544,7 @@ where
 
 impl<G, A, T, D, S> ConsensusStream<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -566,7 +566,7 @@ where
 #[async_trait]
 impl<G, A, T, D, S> Stream<T, D, S> for ConsensusStream<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -632,7 +632,7 @@ mod tests {
         HierarchicalConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
         config::{ClusterJoinRetryConfig, ConsensusConfigBuilder},
     };
-    use proven_governance_mock::MockGovernance;
+    use proven_topology_mock::MockTopologyAdaptor;
     use rand::rngs::OsRng;
     use serial_test::serial;
     use tracing_test::traced_test;
@@ -643,14 +643,14 @@ mod tests {
 
     // Type aliases to simplify complex test types
     type TestConsensusStream =
-        ConsensusStream<MockGovernance, MockAttestor, TestMessage, TestError, TestError>;
+        ConsensusStream<MockTopologyAdaptor, MockAttestor, TestMessage, TestError, TestError>;
 
     type TestConsensusSubject =
-        ConsensusSubject<MockGovernance, MockAttestor, TestMessage, TestError, TestError>;
+        ConsensusSubject<MockTopologyAdaptor, MockAttestor, TestMessage, TestError, TestError>;
 
     // Helper to create a simple single-node governance for testing (like consensus_manager tests)
-    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockGovernance, MockAttestor>> {
-        use proven_governance::{GovernanceNode, Version};
+    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockTopologyAdaptor, MockAttestor>> {
+        use proven_topology::{Node, Version};
         use std::collections::HashSet;
 
         // Generate a fresh signing key for each test
@@ -660,13 +660,13 @@ mod tests {
         let attestor = Arc::new(MockAttestor::new());
 
         // Create single-node governance (only knows about itself)
-        let governance_node = GovernanceNode {
-            availability_zone: "test-az".to_string(),
-            origin: format!("http://127.0.0.1:{port}"),
-            public_key: signing_key.verifying_key(),
-            region: "test-region".to_string(),
-            specializations: HashSet::new(),
-        };
+        let governance_node = Node::new(
+            signing_key.verifying_key(),
+            "test-region".to_string(),
+            "test-az".to_string(),
+            format!("http://127.0.0.1:{port}"),
+            HashSet::new(),
+        );
 
         // Create MockAttestor to get the actual PCR values
         let attestor_for_version = MockAttestor::new();
@@ -679,7 +679,7 @@ mod tests {
             ne_pcr2: actual_pcrs.pcr2,
         };
 
-        let governance = Arc::new(MockGovernance::new(
+        let governance = Arc::new(MockTopologyAdaptor::new(
             vec![governance_node],
             vec![test_version],
             "http://localhost:3200".to_string(),
@@ -710,8 +710,8 @@ mod tests {
     async fn create_test_options(
         port: u16,
     ) -> (
-        ConsensusStreamOptions<MockGovernance, MockAttestor>,
-        Arc<Consensus<MockGovernance, MockAttestor>>,
+        ConsensusStreamOptions<MockTopologyAdaptor, MockAttestor>,
+        Arc<Consensus<MockTopologyAdaptor, MockAttestor>>,
     ) {
         let consensus = create_test_consensus(port).await;
 
@@ -728,7 +728,9 @@ mod tests {
     }
 
     // Helper to cleanup consensus system
-    async fn cleanup_consensus_system(consensus: &Arc<Consensus<MockGovernance, MockAttestor>>) {
+    async fn cleanup_consensus_system(
+        consensus: &Arc<Consensus<MockTopologyAdaptor, MockAttestor>>,
+    ) {
         // Give a bit of time for any ongoing operations to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
@@ -1121,8 +1123,8 @@ mod tests {
     async fn create_multi_node_options(
         node_count: usize,
         _base_port: u16,
-    ) -> Vec<ConsensusStreamOptions<MockGovernance, MockAttestor>> {
-        use proven_governance::{GovernanceNode, Version};
+    ) -> Vec<ConsensusStreamOptions<MockTopologyAdaptor, MockAttestor>> {
+        use proven_topology::{Node, Version};
         use std::collections::HashSet;
 
         let mut options_vec = Vec::new();
@@ -1138,13 +1140,13 @@ mod tests {
 
         // Create topology nodes for all nodes
         for i in 0..node_count {
-            let node = GovernanceNode {
-                availability_zone: format!("test-az-{i}"),
-                origin: format!("127.0.0.1:{}", node_ports[i]),
-                public_key: signing_keys[i].verifying_key(),
-                region: "test-region".to_string(),
-                specializations: HashSet::new(),
-            };
+            let node = Node::new(
+                signing_keys[i].verifying_key(),
+                "test-region".to_string(),
+                format!("test-az-{i}"),
+                format!("127.0.0.1:{}", node_ports[i]),
+                HashSet::new(),
+            );
             all_nodes.push(node);
         }
 
@@ -1160,7 +1162,7 @@ mod tests {
         };
 
         // Create SHARED governance that all nodes will use
-        let shared_governance = Arc::new(MockGovernance::new(
+        let shared_governance = Arc::new(MockTopologyAdaptor::new(
             all_nodes.clone(),
             vec![test_version.clone()],
             "http://localhost:3200".to_string(),

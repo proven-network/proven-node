@@ -3,7 +3,7 @@
 use crate::{
     logs_viewer::LogReader,
     logs_writer::LogWriter,
-    node_id::NodeId,
+    node_id::TuiNodeId,
     node_manager::NodeManager,
     rpc_client::RpcClient,
     ui::{UiState, render_ui},
@@ -19,9 +19,9 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use proven_attestation_mock::MockAttestor;
-use proven_governance::Version;
-use proven_governance_mock::MockGovernance;
 use proven_local::NodeStatus;
+use proven_topology::Version;
+use proven_topology_mock::MockTopologyAdaptor;
 use proven_util::Origin;
 use ratatui::{
     Terminal,
@@ -131,13 +131,13 @@ impl App {
     }
 
     /// Create a shared governance instance for the TUI
-    fn create_shared_governance() -> MockGovernance {
+    fn create_shared_governance() -> MockTopologyAdaptor {
         // Create a version from mock attestation (synchronous)
         let pcrs = MockAttestor::new().pcrs_sync();
         let version = Version::from_pcrs(pcrs);
 
         // Create an empty governance instance that nodes can be added to
-        MockGovernance::new(
+        MockTopologyAdaptor::new(
             Vec::new(),                          // No initial nodes
             vec![version],                       // Single version
             "http://localhost:3200".to_string(), // Default primary auth gateway
@@ -410,18 +410,18 @@ impl App {
 
     /// Launch a new node with selected specializations from the modal
     fn launch_node_with_specializations(&self) {
-        let id = NodeId::new();
+        let id = TuiNodeId::new();
         let name = id.display_name();
 
         // Map UI selections to governance specializations
         let spec_types = [
-            proven_governance::NodeSpecialization::BitcoinMainnet,
-            proven_governance::NodeSpecialization::BitcoinTestnet,
-            proven_governance::NodeSpecialization::EthereumMainnet,
-            proven_governance::NodeSpecialization::EthereumHolesky,
-            proven_governance::NodeSpecialization::EthereumSepolia,
-            proven_governance::NodeSpecialization::RadixMainnet,
-            proven_governance::NodeSpecialization::RadixStokenet,
+            proven_topology::NodeSpecialization::BitcoinMainnet,
+            proven_topology::NodeSpecialization::BitcoinTestnet,
+            proven_topology::NodeSpecialization::EthereumMainnet,
+            proven_topology::NodeSpecialization::EthereumHolesky,
+            proven_topology::NodeSpecialization::EthereumSepolia,
+            proven_topology::NodeSpecialization::RadixMainnet,
+            proven_topology::NodeSpecialization::RadixStokenet,
         ];
 
         let mut specializations = HashSet::new();
@@ -454,7 +454,7 @@ impl App {
 
     /// Start/stop a node based on its current status
     #[allow(clippy::cognitive_complexity)]
-    fn toggle_node(&self, node_id: NodeId) {
+    fn toggle_node(&self, node_id: TuiNodeId) {
         // Get current node status from NodeManager
         let nodes = self.node_manager.get_nodes_for_ui();
 
@@ -486,7 +486,7 @@ impl App {
     }
 
     /// Restart a node
-    fn restart_node(&self, node_id: NodeId) {
+    fn restart_node(&self, node_id: TuiNodeId) {
         self.node_manager.restart_node(node_id);
         info!("Restarting node: {}", node_id.full_pokemon_name());
     }

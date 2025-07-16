@@ -13,7 +13,7 @@ use bytes::Bytes;
 use dashmap::DashMap;
 use futures::StreamExt;
 use proven_bootable::Bootable;
-use proven_governance::Governance;
+use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::{Transport, TransportEnvelope};
 use tokio::sync::{RwLock, oneshot};
@@ -33,7 +33,7 @@ struct PendingRequest {
 pub struct NetworkManager<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Our local node ID
     local_node_id: NodeId,
@@ -54,7 +54,7 @@ where
 impl<T, G> NetworkManager<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     /// Create a new network manager
     pub fn new(
@@ -631,7 +631,7 @@ where
 impl<T, G> Bootable for NetworkManager<T, G>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
 {
     fn bootable_name(&self) -> &str {
         "NetworkManager"

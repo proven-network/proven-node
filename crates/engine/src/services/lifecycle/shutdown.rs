@@ -38,7 +38,7 @@ impl ShutdownCoordinator {
     }
 
     /// Shutdown all components
-    pub async fn shutdown_all(
+    pub(super) async fn shutdown_all(
         &self,
         components: &Arc<RwLock<ComponentRegistry>>,
         options: ShutdownOptions,
@@ -207,7 +207,7 @@ impl ShutdownCoordinator {
     }
 
     /// Perform actual component shutdown
-    async fn perform_shutdown(&self, name: &str) -> LifecycleResult<()> {
+    async fn perform_shutdown(&self, _name: &str) -> LifecycleResult<()> {
         // In a real implementation, this would stop the actual component
         tokio::time::sleep(Duration::from_millis(100)).await;
         Ok(())

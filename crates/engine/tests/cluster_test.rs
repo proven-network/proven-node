@@ -119,8 +119,7 @@ async fn test_dynamic_node_addition() {
         assert_eq!(
             health.state,
             EngineState::Running,
-            "Engine {} state should be Running",
-            i
+            "Engine {i} state should be Running"
         );
         // TODO: Re-enable this assertion once service health checks are fixed
         // assert!(health.services_healthy, "Engine {} services should be healthy", i);

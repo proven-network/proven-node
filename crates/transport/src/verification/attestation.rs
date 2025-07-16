@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor, Pcrs};
-use proven_governance::{Governance, Version};
+use proven_topology::{TopologyAdaptor, Version};
 use std::{fmt::Debug, sync::Arc};
 use tracing::warn;
 
@@ -11,7 +11,7 @@ use crate::verification::error::{VerificationError, VerificationResult};
 /// Handles attestation verification for peers
 pub struct AttestationVerifier<G, A>
 where
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
     A: Attestor + Send + Sync + 'static,
 {
     governance: Arc<G>,
@@ -20,7 +20,7 @@ where
 
 impl<G, A> AttestationVerifier<G, A>
 where
-    G: Governance + Send + Sync + 'static + Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + Debug,
     A: Attestor + Send + Sync + 'static + Debug,
 {
     /// Create a new attestation verifier
@@ -40,7 +40,7 @@ where
 
         // Get allowed versions from governance
         let allowed_versions = self.governance.get_active_versions().await.map_err(|e| {
-            VerificationError::Governance(format!("Failed to get allowed versions: {e}"))
+            VerificationError::Topology(format!("Failed to get allowed versions: {e}"))
         })?;
 
         // Check if PCRs match any known version
@@ -114,7 +114,7 @@ where
 
 impl<G, A> Debug for AttestationVerifier<G, A>
 where
-    G: Governance + Send + Sync + 'static + Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + Debug,
     A: Attestor + Send + Sync + 'static + Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -127,7 +127,7 @@ where
 
 impl<G, A> Clone for AttestationVerifier<G, A>
 where
-    G: Governance + Send + Sync + 'static + Debug + Clone,
+    G: TopologyAdaptor + Send + Sync + 'static + Debug + Clone,
     A: Attestor + Send + Sync + 'static + Debug + Clone,
 {
     fn clone(&self) -> Self {

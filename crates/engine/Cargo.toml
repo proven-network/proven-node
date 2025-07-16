@@ -48,7 +48,6 @@ rand.workspace = true
 # Proven dependencies
 proven-attestation.workspace = true
 proven-bootable.workspace = true
-proven-governance.workspace = true
 proven-network.workspace = true
 proven-topology.workspace = true
 proven-transport.workspace = true
@@ -69,7 +68,7 @@ flate2 = "1.0"
 default = []
 test-helpers = [
     "dep:proven-attestation-mock", 
-    "dep:proven-governance-mock", 
+    "dep:proven-topology-mock", 
     "dep:proven-util", 
     "dep:tempfile"
 ]
@@ -78,7 +77,7 @@ test-helpers = [
 workspace = true
 optional = true
 
-[dependencies.proven-governance-mock]
+[dependencies.proven-topology-mock]
 workspace = true
 optional = true
 
@@ -94,7 +93,7 @@ optional = true
 async-stream.workspace = true
 bincode.workspace = true
 proven-attestation-mock.workspace = true
-proven-governance-mock.workspace = true
+proven-topology-mock.workspace = true
 proven-transport-tcp.workspace = true
 proven-util.workspace = true
 tempfile.workspace = true

@@ -6,9 +6,9 @@ use std::time::Duration;
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use proven_attestation_mock::MockAttestor;
-use proven_governance::{GovernanceNode, Version};
-use proven_governance_mock::MockGovernance;
+use proven_topology::{Node, Version};
 use proven_topology::{NodeId, TopologyManager};
+use proven_topology_mock::MockTopologyAdaptor;
 use proven_transport::{Config as TransportConfig, Transport};
 use proven_transport_tcp::{TcpConfig, TcpTransport};
 // No longer need to import verification components for manual construction
@@ -38,22 +38,22 @@ async fn test_tcp_transport_basic() {
     // Create mock governance with both nodes
     let attestor = MockAttestor::new();
     let pcrs = attestor.pcrs_sync();
-    let governance = Arc::new(MockGovernance::new(
+    let governance = Arc::new(MockTopologyAdaptor::new(
         vec![
-            GovernanceNode {
-                availability_zone: "test-az".to_string(),
-                origin: format!("http://127.0.0.1:{node1_port}"),
-                public_key: node1_key.verifying_key(),
-                region: "test-region".to_string(),
-                specializations: Default::default(),
-            },
-            GovernanceNode {
-                availability_zone: "test-az".to_string(),
-                origin: format!("http://127.0.0.1:{node2_port}"),
-                public_key: node2_key.verifying_key(),
-                region: "test-region".to_string(),
-                specializations: Default::default(),
-            },
+            Node::new(
+                "test-az".to_string(),
+                format!("http://127.0.0.1:{node1_port}"),
+                NodeId::from(node1_key.verifying_key()),
+                "test-region".to_string(),
+                Default::default(),
+            ),
+            Node::new(
+                "test-az".to_string(),
+                format!("http://127.0.0.1:{node2_port}"),
+                NodeId::from(node2_key.verifying_key()),
+                "test-region".to_string(),
+                Default::default(),
+            ),
         ],
         vec![Version {
             ne_pcr0: pcrs.pcr0,

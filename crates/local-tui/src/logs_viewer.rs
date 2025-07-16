@@ -1,6 +1,6 @@
 //! Log viewing and filtering system for reading logs from disk
 
-use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, NodeId};
+use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, TuiNodeId};
 
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -322,7 +322,7 @@ pub enum LogRequest {
     /// Update filters and request refresh
     UpdateFilters {
         level: LogLevel,
-        node_filter: Option<NodeId>,
+        node_filter: Option<TuiNodeId>,
     },
     /// Update viewport size when UI resizes
     UpdateViewportSize { viewport_size: usize },
@@ -363,7 +363,7 @@ struct FilteredLogState {
     filtered_logs: Vec<LogEntry>,
     /// Current filters
     level_filter: LogLevel,
-    node_filter: Option<NodeId>,
+    node_filter: Option<TuiNodeId>,
     /// Current viewport position and size
     scroll_position: usize,
     viewport_size: usize,
@@ -424,7 +424,7 @@ impl FilteredLogState {
         &mut self,
         all_logs: &[LogEntry],
         level: LogLevel,
-        node_filter: Option<NodeId>,
+        node_filter: Option<TuiNodeId>,
     ) {
         // Check if filters are actually changing
         let filters_changed = self.level_filter != level || self.node_filter != node_filter;
@@ -578,7 +578,7 @@ impl LogWorker {
         }
     }
 
-    fn get_log_file_path(&self, node_filter: Option<NodeId>) -> PathBuf {
+    fn get_log_file_path(&self, node_filter: Option<TuiNodeId>) -> PathBuf {
         node_filter.map_or_else(
             || self.session_dir.join("all"),
             |node_id| {
@@ -807,7 +807,7 @@ pub struct LogReader {
     response_receiver: mpsc::Receiver<LogResponse>,
     /// Current filters (cached for UI queries)
     current_level_filter: Arc<RwLock<LogLevel>>,
-    current_node_filter: Arc<RwLock<Option<NodeId>>>,
+    current_node_filter: Arc<RwLock<Option<TuiNodeId>>>,
     /// Background thread handle
     _worker_thread: thread::JoinHandle<()>,
 }
@@ -847,7 +847,7 @@ impl LogReader {
     }
 
     /// Set the current node filter
-    pub fn set_node_filter(&self, node_id: Option<NodeId>) {
+    pub fn set_node_filter(&self, node_id: Option<TuiNodeId>) {
         *self.current_node_filter.write() = node_id;
         let _ = self.request_sender.send(LogRequest::UpdateFilters {
             level: *self.current_level_filter.read(),
@@ -925,7 +925,7 @@ mod tests {
 
     fn create_test_log_entry() -> LogEntry {
         LogEntry {
-            node_id: NodeId::new(),
+            node_id: TuiNodeId::new(),
             level: LogLevel::Info,
             message: "Test log message".to_string(),
             timestamp: Utc::now(),
@@ -935,7 +935,7 @@ mod tests {
 
     fn reset_node_id_state() {
         #[cfg(test)]
-        crate::node_id::NodeId::reset_global_state();
+        crate::node_id::TuiNodeId::reset_global_state();
     }
 
     #[test]

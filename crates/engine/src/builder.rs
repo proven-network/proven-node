@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
 use proven_storage::LogStorage;
+use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
 
@@ -25,7 +25,7 @@ use super::engine::Engine;
 pub struct EngineBuilder<T, G, L>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
     L: LogStorage,
 {
     /// Node ID
@@ -47,7 +47,7 @@ where
 impl<T, G, L> EngineBuilder<T, G, L>
 where
     T: Transport + 'static,
-    G: Governance + 'static,
+    G: TopologyAdaptor + 'static,
     L: LogStorage + 'static,
 {
     /// Create a new engine builder
@@ -343,7 +343,7 @@ use async_trait::async_trait;
 impl<T, G> ServiceLifecycle for ServiceWrapper<ClusterService<T, G>>
 where
     T: Transport + 'static,
-    G: Governance + 'static,
+    G: TopologyAdaptor + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await.map_err(|e| e.into())
@@ -510,7 +510,7 @@ impl ServiceLifecycle for ServiceWrapper<LifecycleService> {
 impl<T, G> ServiceLifecycle for ServiceWrapper<NetworkService<T, G>>
 where
     T: Transport + Send + Sync + 'static,
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         // Already started in builder
@@ -541,7 +541,7 @@ where
 impl<T, G> ServiceLifecycle for ServiceWrapper<PubSubService<T, G>>
 where
     T: Transport + Send + Sync + 'static,
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         // PubSubService needs to be mutable to start, so we'll handle this differently
@@ -582,7 +582,7 @@ impl<T, G, L> ServiceLifecycle
     for ServiceWrapper<crate::services::global_consensus::GlobalConsensusService<T, G, L>>
 where
     T: Transport + Send + Sync + 'static,
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
     L: LogStorage + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
@@ -617,7 +617,7 @@ impl<T, G, L> ServiceLifecycle
     for ServiceWrapper<crate::services::group_consensus::GroupConsensusService<T, G, L>>
 where
     T: Transport + Send + Sync + 'static,
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
     L: LogStorage + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
@@ -651,7 +651,7 @@ where
 impl<T, G, L> ServiceLifecycle for ServiceWrapper<crate::services::client::ClientService<T, G, L>>
 where
     T: Transport + Send + Sync + 'static,
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
     L: LogStorage + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {

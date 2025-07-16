@@ -40,7 +40,7 @@ impl StartupCoordinator {
     }
 
     /// Start all components
-    pub async fn start_all(
+    pub(super) async fn start_all(
         &self,
         components: &Arc<RwLock<ComponentRegistry>>,
         options: StartupOptions,
@@ -76,7 +76,7 @@ impl StartupCoordinator {
         &self,
         components: &Arc<RwLock<ComponentRegistry>>,
         name: &str,
-        options: &StartupOptions,
+        _options: &StartupOptions,
     ) -> LifecycleResult<()> {
         debug!("Starting component: {}", name);
 

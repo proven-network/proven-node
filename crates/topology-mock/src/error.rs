@@ -1,9 +1,9 @@
-//! Error types for the mock governance implementation.
+//! Error types for the mock topology adaptor implementation.
 
-use proven_governance::{GovernanceError, GovernanceErrorKind};
+use proven_topology::{TopologyAdaptorError, TopologyAdaptorErrorKind};
 use thiserror::Error;
 
-/// Error type for the mock governance implementation.
+/// Error type for the mock topology adaptor implementation.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Error when a node is not found in the topology.
@@ -19,11 +19,11 @@ pub enum Error {
     NodeManagement(String),
 }
 
-impl GovernanceError for Error {
-    fn kind(&self) -> GovernanceErrorKind {
+impl TopologyAdaptorError for Error {
+    fn kind(&self) -> TopologyAdaptorErrorKind {
         match self {
-            Self::NodeNotFound(_) => GovernanceErrorKind::NodeNotFound,
-            Self::TopologyFile(_) | Self::NodeManagement(_) => GovernanceErrorKind::Other,
+            Self::NodeNotFound(_) => TopologyAdaptorErrorKind::NodeNotFound,
+            Self::TopologyFile(_) | Self::NodeManagement(_) => TopologyAdaptorErrorKind::Other,
         }
     }
 }

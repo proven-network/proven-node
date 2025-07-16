@@ -28,11 +28,11 @@ use proven_engine::{
         NetworkConfig as ConsensusNetworkConfig, ServiceConfig, StorageConfig,
     },
 };
-use proven_governance::{Governance, Version};
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::NetworkManager;
 use proven_storage_memory::MemoryStorage;
 use proven_topology::{NodeId, TopologyManager};
+use proven_topology::{TopologyAdaptor, Version};
 use proven_transport::HttpIntegratedTransport;
 use proven_transport_ws::{WebsocketConfig, WebsocketTransport};
 use tower_http::cors::CorsLayer;
@@ -40,7 +40,7 @@ use url::Url;
 
 #[allow(clippy::cognitive_complexity)]
 #[allow(clippy::too_many_lines)]
-pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
+pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     // Just use single version based on mock attestation pcrs (deterministic hashes on cargo version)
     let pcrs = bootstrap
         .attestor

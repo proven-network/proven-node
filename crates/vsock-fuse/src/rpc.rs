@@ -3,6 +3,7 @@
 //! This module provides the communication layer between enclave and host.
 
 use async_trait::async_trait;
+use futures::stream::{Stream, StreamExt};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -10,7 +11,7 @@ use tokio::time::timeout;
 use crate::{
     BlobId, StorageTier, TierHint,
     error::{Result, VsockFuseError},
-    storage::{BlobData, BlobInfo, BlobStorage, StorageStats, messages},
+    storage::{BlobData, BlobInfo, BlobStorage, StorageStats, StreamingBlobStorage, messages},
 };
 
 /// RPC client configuration
@@ -233,31 +234,95 @@ impl BlobStorage for VsockRpcClient {
     }
 }
 
-/// Streaming support for large blobs
-impl VsockRpcClient {
-    /// Stream read a large blob in chunks
-    pub async fn stream_read_blob(
+#[async_trait]
+impl StreamingBlobStorage for VsockRpcClient {
+    async fn store_blob_stream(
         &self,
         blob_id: BlobId,
-        _offset: u64,
-        _total_size: u64,
-        chunk_size: u32,
-    ) -> Result<impl futures::Stream<Item = Result<Vec<u8>>>> {
-        let _request = messages::StreamingReadRequest {
+        data_stream: impl Stream<Item = Result<bytes::Bytes>> + Send + 'static,
+        tier_hint: TierHint,
+    ) -> Result<()> {
+        // Box the stream to make it Unpin
+        let data_stream = Box::pin(data_stream);
+        self.store_blob_stream_with_size(blob_id, data_stream, tier_hint, None)
+            .await
+    }
+
+    async fn get_blob_stream(
+        &self,
+        blob_id: BlobId,
+    ) -> Result<impl Stream<Item = Result<bytes::Bytes>> + Send> {
+        // Use the existing get_blob_stream_with_range method
+        self.get_blob_stream_with_range(blob_id, 0, None).await
+    }
+}
+
+/// Streaming support for large blobs
+impl VsockRpcClient {
+    /// Stream store a blob in chunks
+    pub async fn store_blob_stream_with_size(
+        &self,
+        blob_id: BlobId,
+        mut data_stream: std::pin::Pin<Box<dyn Stream<Item = Result<bytes::Bytes>> + Send>>,
+        tier_hint: TierHint,
+        expected_size: Option<u64>,
+    ) -> Result<()> {
+        // Initiate streaming upload
+        let _init_request = messages::StoreBlobStreamRequest {
             blob_id,
-            offset: _offset,
-            chunk_size,
+            tier_hint,
+            expected_size,
         };
 
-        // For now, return a simple implementation
-        // TODO: Implement actual streaming with proven-vsock-rpc
+        // For now, collect all chunks and send as a single blob
+        // TODO: Implement actual streaming when server supports it
+        let mut all_data = Vec::new();
+        while let Some(chunk_result) = data_stream.next().await {
+            let chunk = chunk_result?;
+            all_data.extend_from_slice(&chunk);
+        }
+
+        // Fall back to regular store_blob
+        self.store_blob(blob_id, all_data, tier_hint).await
+    }
+
+    /// Stream read a large blob in chunks
+    pub async fn get_blob_stream_with_range(
+        &self,
+        blob_id: BlobId,
+        offset: u64,
+        length: Option<u64>,
+    ) -> Result<impl Stream<Item = Result<bytes::Bytes>> + Send> {
+        let _request = messages::GetBlobStreamRequest {
+            blob_id,
+            offset,
+            length,
+        };
+
+        // For now, use regular get_blob and convert to stream
+        // TODO: Use vsock-rpc's request_stream when server supports it
         let response = self.get_blob(blob_id).await?;
         let data = response.data;
 
-        // Create a stream from the data
-        let chunks: Vec<Vec<u8>> = data
-            .chunks(chunk_size as usize)
-            .map(|chunk| chunk.to_vec())
+        // Apply offset and length
+        let start = offset as usize;
+        let end = if let Some(len) = length {
+            (start + len as usize).min(data.len())
+        } else {
+            data.len()
+        };
+
+        let chunk_data = if start < data.len() {
+            data[start..end].to_vec()
+        } else {
+            Vec::new()
+        };
+
+        // Create chunks of 64KB
+        let chunk_size = 64 * 1024;
+        let chunks: Vec<bytes::Bytes> = chunk_data
+            .chunks(chunk_size)
+            .map(bytes::Bytes::copy_from_slice)
             .collect();
 
         Ok(futures::stream::iter(chunks.into_iter().map(Ok)))

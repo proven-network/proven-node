@@ -6,8 +6,8 @@
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use serde_json;
 use std::sync::Arc;
 use std::time::Duration;
@@ -47,7 +47,7 @@ impl Default for ConnectionConfig {
 /// Manager for transport connections using ConnectionVerifier directly
 pub struct ConnectionManager<G, A>
 where
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
     A: Attestor + Send + Sync + 'static,
 {
     /// Connection verifier for handling verification protocol
@@ -60,7 +60,7 @@ where
 
 impl<G, A> ConnectionManager<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug + Clone,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug + Clone,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
     /// Create a new transport connection manager
@@ -377,7 +377,7 @@ where
 
 impl<G, A> std::fmt::Debug for ConnectionManager<G, A>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -392,10 +392,10 @@ mod tests {
     use super::*;
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
-    use proven_governance_mock::MockGovernance;
+    use proven_topology_mock::MockTopologyAdaptor;
 
-    fn create_test_manager() -> ConnectionManager<MockGovernance, MockAttestor> {
-        let governance = Arc::new(MockGovernance::new(
+    fn create_test_manager() -> ConnectionManager<MockTopologyAdaptor, MockAttestor> {
+        let governance = Arc::new(MockTopologyAdaptor::new(
             vec![],        // governance nodes
             vec![],        // authorized versions
             String::new(), // primary auth gateway

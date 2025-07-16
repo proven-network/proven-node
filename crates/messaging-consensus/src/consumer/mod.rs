@@ -13,10 +13,10 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_messaging::consumer::{Consumer, ConsumerError, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
 use proven_messaging::stream::InitializedStream;
+use proven_topology::TopologyAdaptor;
 
 use crate::error::MessagingConsensusError;
 use crate::stream::InitializedConsensusStream;
@@ -45,7 +45,7 @@ impl ConsumerError for ConsensusConsumerError {}
 #[allow(dead_code)]
 pub struct ConsensusConsumer<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
@@ -73,7 +73,7 @@ where
 
 impl<G, A, X, T, D, S> Clone for ConsensusConsumer<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S> + Clone,
     T: Clone
@@ -103,7 +103,7 @@ where
 #[async_trait]
 impl<G, A, X, T, D, S> Consumer<X, T, D, S> for ConsensusConsumer<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
@@ -145,7 +145,7 @@ where
 
 impl<G, A, X, T, D, S> ConsensusConsumer<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
@@ -278,7 +278,7 @@ where
 #[async_trait]
 impl<G, A, X, T, D, S> Bootable for ConsensusConsumer<G, A, X, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
@@ -290,7 +290,7 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static,
 {
     fn bootable_name(&self) -> &str {
@@ -346,9 +346,9 @@ mod tests {
     use proven_engine::HierarchicalConsensusConfig;
     use proven_engine::config::{ClusterJoinRetryConfig, ConsensusConfigBuilder};
     use proven_engine::{Consensus, RaftConfig, StorageConfig, TransportConfig};
-    use proven_governance::GovernanceNode;
-    use proven_governance_mock::MockGovernance;
     use proven_messaging::stream::{InitializedStream, Stream};
+    use proven_topology::Node;
+    use proven_topology_mock::MockTopologyAdaptor;
 
     use crate::stream::{ConsensusStream, ConsensusStreamOptions};
 
@@ -430,22 +430,27 @@ mod tests {
     }
 
     // Helper to create a simple single-node governance for testing (like consensus_manager tests)
-    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockGovernance, MockAttestor>> {
+    async fn create_test_consensus(port: u16) -> Arc<Consensus<MockTopologyAdaptor, MockAttestor>> {
         // Use a simple test signing key
         let signing_key = ed25519_dalek::SigningKey::from_bytes(&[1u8; 32]);
         let verifying_key = signing_key.verifying_key();
 
         // Create governance with the node
-        let governance_node = GovernanceNode {
-            availability_zone: "test-az".to_string(),
-            origin: format!("http://127.0.0.1:{port}"),
-            public_key: verifying_key,
-            region: "test-region".to_string(),
-            specializations: HashSet::new(),
-        };
+        let node = Node::new(
+            verifying_key,
+            "test-region".to_string(),
+            "test-az".to_string(),
+            format!("http://127.0.0.1:{port}"),
+            HashSet::new(),
+        );
 
-        let nodes = vec![governance_node.clone()];
-        let governance = Arc::new(MockGovernance::new(nodes, vec![], String::new(), vec![]));
+        let nodes = vec![node.clone()];
+        let governance = Arc::new(MockTopologyAdaptor::new(
+            nodes,
+            vec![],
+            String::new(),
+            vec![],
+        ));
 
         // Create attestor
         let attestor = Arc::new(MockAttestor::new());
@@ -473,13 +478,15 @@ mod tests {
     // Helper to create test options with single-node governance (like consensus_manager tests)
     async fn create_test_options(
         port: u16,
-    ) -> ConsensusStreamOptions<MockGovernance, MockAttestor> {
+    ) -> ConsensusStreamOptions<MockTopologyAdaptor, MockAttestor> {
         let consensus = create_test_consensus(port).await;
         ConsensusStreamOptions { consensus }
     }
 
     // Helper to cleanup consensus system following the pattern from consensus_manager tests
-    async fn cleanup_consensus_system(consensus: &Arc<Consensus<MockGovernance, MockAttestor>>) {
+    async fn cleanup_consensus_system(
+        consensus: &Arc<Consensus<MockTopologyAdaptor, MockAttestor>>,
+    ) {
         // Give a bit of time for any ongoing operations to complete
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
@@ -503,7 +510,7 @@ mod tests {
         let consensus_ref = options.consensus.clone();
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -543,7 +550,7 @@ mod tests {
         let consensus_ref = options.consensus.clone();
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -591,7 +598,7 @@ mod tests {
         let consensus_ref = options.consensus.clone();
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -658,7 +665,7 @@ mod tests {
         let consensus_ref = options.consensus.clone();
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -697,7 +704,7 @@ mod tests {
         let consensus_ref = options.consensus.clone();
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,
@@ -774,7 +781,7 @@ mod tests {
         let consensus_ref = options.consensus.clone();
 
         let stream = ConsensusStream::<
-            MockGovernance,
+            MockTopologyAdaptor,
             MockAttestor,
             TestMessage,
             serde_json::Error,

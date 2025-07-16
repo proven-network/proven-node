@@ -118,11 +118,6 @@ impl ConsensusTimestamp {
         }
     }
 
-    /// Convert to system time
-    pub fn to_system_time(&self) -> SystemTime {
-        SystemTime::UNIX_EPOCH + Duration::new(self.secs, self.nanos)
-    }
-
     /// Get duration since epoch
     pub fn duration_since_epoch(&self) -> Duration {
         Duration::new(self.secs, self.nanos)

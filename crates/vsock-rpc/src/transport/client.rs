@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
+use tokio_stream::StreamExt;
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -103,10 +104,12 @@ impl ClientBuilder {
         })?;
 
         let pending_requests = Arc::new(DashMap::new());
+        let streaming_requests = Arc::new(DashMap::new());
         let pool = ConnectionPool::new(
             addr,
             self.config.pool_config.clone(),
             Arc::clone(&pending_requests),
+            Arc::clone(&streaming_requests),
         );
         pool.start();
 
@@ -114,6 +117,7 @@ impl ClientBuilder {
             pool,
             config: self.config,
             pending_requests,
+            streaming_requests,
         })
     }
 }
@@ -129,6 +133,8 @@ pub struct RpcClient {
     pool: ConnectionPool,
     config: ClientConfig,
     pending_requests: Arc<DashMap<Uuid, ResponseSender>>,
+    streaming_requests:
+        Arc<DashMap<Uuid, mpsc::Sender<crate::protocol::message::ResponseEnvelope>>>,
 }
 
 impl RpcClient {
@@ -273,6 +279,8 @@ impl RpcClient {
     where
         M: RpcMessage + TryInto<Bytes>,
         M::Error: std::error::Error + Send + Sync + 'static,
+        M::Response: TryFrom<Bytes>,
+        <M::Response as TryFrom<Bytes>>::Error: std::error::Error + Send + Sync + 'static,
     {
         let request_id = Uuid::new_v4();
         let message_id = message.message_id();
@@ -282,13 +290,63 @@ impl RpcClient {
             request_id, message_id
         );
 
+        // Convert message to bytes
+        let payload: Bytes = message.try_into().map_err(|e: M::Error| {
+            Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
+        })?;
+
+        // Create envelope
+        let envelope = MessageEnvelope {
+            id: request_id,
+            message_id: message_id.to_string(),
+            payload: payload.to_vec(),
+            checksum: Some(crc32fast::hash(&payload)),
+        };
+
+        // Serialize envelope
+        let envelope_bytes = bincode::serialize(&envelope)
+            .map(Bytes::from)
+            .map_err(|e| {
+                Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
+            })?;
+
+        // Create frame
+        let frame = Frame::new(FrameType::Request, envelope_bytes);
+
         // Create channel for streaming responses
-        let (_tx, rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(32);
 
-        // TODO: Implement actual streaming logic
-        // For now, return empty stream
+        // Register as a streaming request
+        self.streaming_requests.insert(request_id, tx);
+        debug!(
+            "Registered streaming request {} (total: {})",
+            request_id,
+            self.streaming_requests.len()
+        );
 
-        Ok(tokio_stream::wrappers::ReceiverStream::new(rx))
+        // Get connection and send
+        let conn = self.pool.get().await?;
+        debug!(
+            "Got connection {} for streaming request {}",
+            conn.id(),
+            request_id
+        );
+
+        // Send the request
+        conn.send_frame(frame).await?;
+
+        // Return stream of responses
+        Ok(
+            tokio_stream::wrappers::ReceiverStream::new(rx).map(move |envelope| {
+                // Deserialize response
+                let bytes = Bytes::from(envelope.payload);
+                M::Response::try_from(bytes).map_err(|e| {
+                    Error::Codec(crate::error::CodecError::DeserializationFailed(
+                        e.to_string(),
+                    ))
+                })
+            }),
+        )
     }
 
     /// Start a bidirectional stream.

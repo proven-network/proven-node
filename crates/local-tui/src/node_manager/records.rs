@@ -2,14 +2,14 @@
 
 use crate::ip_allocator::allocate_port;
 use crate::messages::{NodeOperation, TuiNodeConfig};
-use crate::node_id::NodeId;
+use crate::node_id::TuiNodeId;
 
 use anyhow::Result;
 use ed25519_dalek::SigningKey;
 use parking_lot::RwLock;
-use proven_governance::GovernanceNode;
-use proven_governance_mock::MockGovernance;
-use proven_local::{Node, NodeStatus};
+use proven_local::{LocalNode, NodeStatus};
+use proven_topology::{Node, NodeId};
+use proven_topology_mock::MockTopologyAdaptor;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
@@ -23,10 +23,10 @@ use url::Url;
 #[derive(Debug)]
 pub enum NodeManagerMessage {
     NodeFinished {
-        id: NodeId,
+        id: TuiNodeId,
         name: String,
         final_status: NodeStatus,
-        specializations: HashSet<proven_governance::NodeSpecialization>,
+        specializations: HashSet<proven_topology::NodeSpecialization>,
     },
 }
 
@@ -36,10 +36,10 @@ pub enum NodeManagerMessage {
 pub enum NodeRecord {
     Running(NodeHandle),
     Stopped {
-        _id: NodeId,
+        _id: TuiNodeId,
         name: String,
         final_status: NodeStatus,
-        specializations: HashSet<proven_governance::NodeSpecialization>,
+        specializations: HashSet<proven_topology::NodeSpecialization>,
         _stopped_at: std::time::Instant,
     },
 }
@@ -48,7 +48,7 @@ pub enum NodeRecord {
 #[derive(Debug)]
 pub struct NodeHandle {
     /// Node identifier
-    pub _id: NodeId,
+    pub _id: TuiNodeId,
 
     /// Display name (publicly accessible for TUI display)
     pub name: String,
@@ -57,7 +57,7 @@ pub struct NodeHandle {
     pub config: TuiNodeConfig,
 
     /// Specializations for this node
-    pub specializations: HashSet<proven_governance::NodeSpecialization>,
+    pub specializations: HashSet<proven_topology::NodeSpecialization>,
 
     /// Command sender for this specific node
     pub command_sender: mpsc::Sender<NodeOperation>,
@@ -70,11 +70,11 @@ impl NodeHandle {
     /// Create a new node handle with dedicated command processing
     #[must_use]
     pub fn new(
-        id: NodeId,
+        id: TuiNodeId,
         name: String,
         config: TuiNodeConfig,
-        specializations: HashSet<proven_governance::NodeSpecialization>,
-        governance: Arc<MockGovernance>,
+        specializations: HashSet<proven_topology::NodeSpecialization>,
+        governance: Arc<MockTopologyAdaptor>,
         completion_sender: mpsc::Sender<NodeManagerMessage>,
     ) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
@@ -142,14 +142,14 @@ impl NodeHandle {
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::cognitive_complexity)]
     fn command_processor(
-        id: NodeId,
+        id: TuiNodeId,
         name: &str,
         config: &TuiNodeConfig,
         command_receiver: &mpsc::Receiver<NodeOperation>,
-        governance: &Arc<MockGovernance>,
+        governance: &Arc<MockTopologyAdaptor>,
         status: &Arc<RwLock<NodeStatus>>,
         completion_sender: &mpsc::Sender<NodeManagerMessage>,
-        specializations: HashSet<proven_governance::NodeSpecialization>,
+        specializations: HashSet<proven_topology::NodeSpecialization>,
     ) {
         // Create runtime for this command processor
         let runtime = match tokio::runtime::Builder::new_multi_thread()
@@ -166,7 +166,7 @@ impl NodeHandle {
         };
 
         // Create node instance using the Node's built-in state management
-        let mut node = Node::new(config.clone());
+        let mut node = LocalNode::new(config.clone());
 
         info!("Started command processor for node {} ({})", name, id);
 
@@ -205,7 +205,7 @@ impl NodeHandle {
                     specializations,
                 } => {
                     if let Some(new_config) = new_config {
-                        node = Node::new(*new_config);
+                        node = LocalNode::new(*new_config);
                     }
 
                     Self::handle_start_operation(
@@ -269,7 +269,7 @@ impl NodeHandle {
     /// Sync `NodeHandle` status with Node status
     fn sync_node_status(
         runtime: &tokio::runtime::Runtime,
-        node: &Node<MockGovernance>,
+        node: &LocalNode<MockTopologyAdaptor>,
         status: &Arc<RwLock<NodeStatus>>,
     ) {
         let current_node_status = runtime.block_on(async { node.status().await });
@@ -287,12 +287,12 @@ impl NodeHandle {
     #[allow(clippy::cognitive_complexity)]
     fn handle_start_operation(
         runtime: &tokio::runtime::Runtime,
-        node: &mut Node<MockGovernance>,
-        id: NodeId,
+        node: &mut LocalNode<MockTopologyAdaptor>,
+        id: TuiNodeId,
         name: &str,
-        governance: &Arc<MockGovernance>,
+        governance: &Arc<MockTopologyAdaptor>,
         status: &Arc<RwLock<NodeStatus>>,
-        specializations: Option<HashSet<proven_governance::NodeSpecialization>>,
+        specializations: Option<HashSet<proven_topology::NodeSpecialization>>,
     ) {
         // Update status to Starting immediately
         {
@@ -331,13 +331,13 @@ impl NodeHandle {
 
         let node_specializations = specializations.unwrap_or_default();
 
-        let topology_node = GovernanceNode {
-            availability_zone: "local".to_string(),
+        let topology_node = Node::new(
+            "local".to_string(),
             origin,
-            public_key,
-            region: "local".to_string(),
-            specializations: node_specializations,
-        };
+            NodeId::from(public_key),
+            "local".to_string(),
+            node_specializations,
+        );
 
         // Add to governance
         if let Err(e) = governance.add_node(topology_node) {
@@ -371,10 +371,10 @@ impl NodeHandle {
     /// Handle stop operation using the Node's built-in stop method
     fn handle_stop_operation(
         runtime: &tokio::runtime::Runtime,
-        node: &mut Node<MockGovernance>,
-        id: NodeId,
+        node: &mut LocalNode<MockTopologyAdaptor>,
+        id: TuiNodeId,
         name: &str,
-        governance: &Arc<MockGovernance>,
+        governance: &Arc<MockTopologyAdaptor>,
         status: &Arc<RwLock<NodeStatus>>,
     ) {
         // Update status to Stopping immediately
@@ -438,11 +438,11 @@ impl NodeHandle {
 
 /// Create a default node configuration
 pub fn create_node_config(
-    _id: NodeId,
+    _id: TuiNodeId,
     name: &str,
-    governance: &Arc<MockGovernance>,
+    governance: &Arc<MockTopologyAdaptor>,
     session_id: &str,
-) -> proven_local::NodeConfig<proven_governance_mock::MockGovernance> {
+) -> proven_local::NodeConfig<proven_topology_mock::MockTopologyAdaptor> {
     let main_port = allocate_port().unwrap_or_else(|e| {
         error!("Failed to allocate port for node {}: {}", name, e);
         3000 // Fallback port
@@ -458,10 +458,10 @@ pub fn create_node_config(
 pub fn build_node_config(
     name: &str,
     main_port: u16,
-    governance: &Arc<MockGovernance>,
+    governance: &Arc<MockTopologyAdaptor>,
     private_key: SigningKey,
     session_id: &str,
-) -> proven_local::NodeConfig<proven_governance_mock::MockGovernance> {
+) -> proven_local::NodeConfig<proven_topology_mock::MockTopologyAdaptor> {
     TuiNodeConfig {
         allow_single_node: false,
         bitcoin_mainnet_fallback_rpc_endpoint: Url::parse("https://bitcoin-rpc.publicnode.com")

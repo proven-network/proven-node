@@ -1,5 +1,5 @@
 [package]
-name = "proven-governance-helios"
+name = "proven-topology-helios"
 version.workspace = true
 edition = "2024"
 
@@ -14,7 +14,7 @@ helios-consensus-core.workspace = true
 helios-core.workspace = true
 helios-ethereum.workspace = true
 hex.workspace = true
-proven-governance.workspace = true
+proven-topology.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true

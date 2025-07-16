@@ -13,11 +13,11 @@ use axum::routing::{any, delete, get, patch, post, put};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_code_package::{CodePackage, ModuleSpecifier};
-use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::{ModuleLoader, ModuleOptions, RuntimePoolManagement};
 use proven_sessions::SessionManagement;
+use proven_topology::TopologyAdaptor;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
@@ -88,7 +88,7 @@ impl ApplicationRouter {
     ) -> Result<Router, Error>
     where
         A: Attestor,
-        G: Governance,
+        G: TopologyAdaptor,
         AM: ApplicationManagement,
         RM: RuntimePoolManagement,
         IM: IdentityManagement,

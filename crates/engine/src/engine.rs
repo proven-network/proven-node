@@ -9,10 +9,10 @@ use std::sync::Arc;
 use tokio::time::Duration;
 use tracing::{error, info, warn};
 
-use proven_governance::Governance;
 use proven_network::NetworkManager;
 use proven_storage::LogStorage;
 use proven_topology::NodeId;
+use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
@@ -41,7 +41,7 @@ use super::coordinator::ServiceCoordinator;
 pub struct Engine<T, G, L>
 where
     T: Transport,
-    G: Governance,
+    G: TopologyAdaptor,
     L: LogStorage,
 {
     /// Node ID
@@ -97,7 +97,7 @@ pub enum EngineState {
 impl<T, G, L> Engine<T, G, L>
 where
     T: Transport + 'static,
-    G: Governance + 'static,
+    G: TopologyAdaptor + 'static,
     L: LogStorage + 'static,
 {
     /// Create a new engine (use EngineBuilder instead)
@@ -231,15 +231,6 @@ where
         Ok(())
     }
 
-    /// Create a new stream
-    pub async fn create_stream(&self, name: String, config: StreamConfig) -> ConsensusResult<()> {
-        self.ensure_running().await?;
-
-        // Would route through global consensus
-
-        Ok(())
-    }
-
     /// Ensure engine is running
     async fn ensure_running(&self) -> ConsensusResult<()> {
         let state = self.state.read().await;
@@ -295,7 +286,7 @@ pub struct EngineHealth {
 pub struct EngineHandleWrapper<T, G, L>
 where
     T: Transport + 'static,
-    G: Governance + 'static,
+    G: TopologyAdaptor + 'static,
     L: LogStorage + 'static,
 {
     engine: Arc<tokio::sync::Mutex<Engine<T, G, L>>>,
@@ -304,39 +295,11 @@ where
 impl<T, G, L> EngineHandleWrapper<T, G, L>
 where
     T: Transport + 'static,
-    G: Governance + 'static,
+    G: TopologyAdaptor + 'static,
     L: LogStorage + 'static,
 {
     /// Create a new engine handle wrapper
     pub fn new(engine: Arc<tokio::sync::Mutex<Engine<T, G, L>>>) -> Self {
         Self { engine }
-    }
-}
-
-#[async_trait::async_trait]
-impl<T, G, L> crate::services::network::EngineHandle for EngineHandleWrapper<T, G, L>
-where
-    T: Transport + 'static,
-    G: Governance + 'static,
-    L: LogStorage + 'static,
-{
-    fn handle_cluster_join(
-        &self,
-        request: crate::services::cluster::ConsensusGroupJoinRequest,
-    ) -> ConsensusResult<crate::services::cluster::ConsensusGroupJoinResponse> {
-        // TODO: Implement cluster join handling
-        Err(ConsensusError::with_context(
-            ErrorKind::InvalidState,
-            "Cluster join not implemented",
-        ))
-    }
-
-    fn get_cluster_state(
-        &self,
-    ) -> Arc<tokio::sync::RwLock<crate::services::cluster::ClusterStateInfo>> {
-        // TODO: Return actual cluster state
-        Arc::new(tokio::sync::RwLock::new(
-            crate::services::cluster::ClusterStateInfo::new(),
-        ))
     }
 }

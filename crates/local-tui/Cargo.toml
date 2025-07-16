@@ -24,8 +24,8 @@ rand.workspace = true
 hex.workspace = true
 proven-attestation.workspace = true
 proven-attestation-mock.workspace = true
-proven-governance.workspace = true
-proven-governance-mock.workspace = true
+proven-topology.workspace = true
+proven-topology-mock.workspace = true
 
 # Logging
 parking_lot.workspace = true

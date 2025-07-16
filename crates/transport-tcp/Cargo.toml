@@ -11,7 +11,6 @@ ed25519-dalek.workspace = true
 futures.workspace = true
 hex.workspace = true
 proven-attestation.workspace = true
-proven-governance.workspace = true
 proven-topology.workspace = true
 proven-transport.workspace = true
 proven-verification.workspace = true
@@ -23,7 +22,7 @@ uuid.workspace = true
 [dev-dependencies]
 proven-attestation-mock.workspace = true
 proven-bootable.workspace = true
-proven-governance-mock.workspace = true
+proven-topology-mock.workspace = true
 proven-util.workspace = true
 tokio-test.workspace = true
 tracing-subscriber.workspace = true

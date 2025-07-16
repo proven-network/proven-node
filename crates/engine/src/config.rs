@@ -13,17 +13,17 @@ use crate::services::{
 /// Engine configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineConfig {
-    /// Node name
-    pub node_name: String,
-
-    /// Service configurations
-    pub services: ServiceConfig,
-
     /// Consensus configuration
     pub consensus: ConsensusConfig,
 
     /// Network configuration
     pub network: NetworkConfig,
+
+    /// Node name
+    pub node_name: String,
+
+    /// Service configurations
+    pub services: ServiceConfig,
 
     /// Storage configuration
     pub storage: StorageConfig,
@@ -70,8 +70,10 @@ pub struct ConsensusConfig {
 /// Global consensus configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConsensusConfig {
-    /// Election timeout range
+    /// Election timeout minimum
     pub election_timeout_min: Duration,
+
+    /// Election timeout maximum
     pub election_timeout_max: Duration,
 
     /// Heartbeat interval
@@ -87,8 +89,10 @@ pub struct GlobalConsensusConfig {
 /// Group consensus configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroupConsensusConfig {
-    /// Election timeout range
+    /// Election timeout minimum
     pub election_timeout_min: Duration,
+
+    /// Election timeout maximum
     pub election_timeout_max: Duration,
 
     /// Heartbeat interval

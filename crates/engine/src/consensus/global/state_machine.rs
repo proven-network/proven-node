@@ -124,7 +124,7 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
                                             None
                                         }
                                     }
-                                    GlobalResponse::StreamDeleted { name } => {
+                                    GlobalResponse::StreamDeleted { name: _ } => {
                                         // Need to get group_id from somewhere - maybe include in response
                                         None // TODO: Include group_id in response
                                     }

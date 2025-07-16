@@ -24,7 +24,6 @@ use bytes::Bytes;
 use nix::sys::signal::Signal;
 use pem::{Pem, encode};
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
 use proven_messaging::subject::{PublishableSubject, Subject};
 use proven_messaging::subscription_handler::SubscriptionHandler;
@@ -32,6 +31,7 @@ use proven_messaging::subscription_responder::SubscriptionResponder;
 use proven_messaging_nats::subject::{NatsSubject, NatsSubjectOptions};
 use proven_messaging_nats::subscription::NatsSubscription;
 use proven_network::{Peer, ProvenNetwork};
+use proven_topology::TopologyAdaptor;
 use regex::Regex;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -91,7 +91,7 @@ static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// Options for configuring a `NatsServer`.
 pub struct NatsServerOptions<G, A, S>
 where
-    G: Governance,
+    G: TopologyAdaptor,
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
@@ -366,7 +366,7 @@ impl TryInto<Bytes> for PeerRemovalResponse {
 #[derive(Clone)]
 struct PeerRemovalHandler<G, A, S>
 where
-    G: Governance,
+    G: TopologyAdaptor,
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
@@ -377,7 +377,7 @@ where
 
 impl<G, A, S> std::fmt::Debug for PeerRemovalHandler<G, A, S>
 where
-    G: Governance,
+    G: TopologyAdaptor,
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
@@ -393,7 +393,7 @@ where
 impl<G, A, S> SubscriptionHandler<PeerRemovalNotification, serde_json::Error, serde_json::Error>
     for PeerRemovalHandler<G, A, S>
 where
-    G: Governance,
+    G: TopologyAdaptor,
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
@@ -481,7 +481,7 @@ where
 #[derive(Clone)]
 pub struct NatsServer<G, A, S>
 where
-    G: Governance,
+    G: TopologyAdaptor,
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
@@ -533,7 +533,7 @@ where
 
 impl<G, A, S> NatsServer<G, A, S>
 where
-    G: Governance,
+    G: TopologyAdaptor,
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {
@@ -947,7 +947,7 @@ where
 #[async_trait]
 impl<G, A, S> Bootable for NatsServer<G, A, S>
 where
-    G: Governance,
+    G: TopologyAdaptor,
     A: Attestor,
     S: Store<Bytes, Infallible, Infallible>,
 {

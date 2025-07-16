@@ -11,7 +11,6 @@ use crate::error::Error;
 
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
-use proven_governance::{Governance, NodeSpecialization};
 use proven_http_proxy::{
     HttpProxyClient, HttpProxyClientOptions, HttpProxyService, HttpProxyServiceOptions,
 };
@@ -19,11 +18,12 @@ use proven_messaging::stream::Stream;
 use proven_messaging_memory::client::MemoryClientOptions;
 use proven_messaging_memory::service::MemoryServiceOptions;
 use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
+use proven_topology::{NodeSpecialization, TopologyAdaptor};
 use tracing::info;
 use url::Url;
 
 #[allow(clippy::cognitive_complexity)]
-pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
+pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let node = bootstrap.node.as_ref().unwrap_or_else(|| {
         panic!("node not set before bitcoin mainnet node step");
     });

@@ -6,12 +6,12 @@
 use axum::Router;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_http::HttpServer;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
+use proven_topology::TopologyAdaptor;
 
 /// Core mode state
 #[derive(Debug, Clone)]
@@ -26,7 +26,7 @@ pub enum CoreMode {
 pub struct CoreOptions<A, G, H>
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     H: HttpServer,
 {
     /// The attestor
@@ -71,7 +71,7 @@ where
 pub struct FullContext<A, G, AM, RM, IM, PM, SM>
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
@@ -101,7 +101,7 @@ where
 pub struct BootstrappedState<A, G, AM, RM, IM, PM, SM>
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
@@ -121,7 +121,7 @@ where
 impl<A, G, AM, RM, IM, PM, SM> BootstrappedState<A, G, AM, RM, IM, PM, SM>
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,

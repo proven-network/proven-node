@@ -28,11 +28,14 @@ use crate::{
 
 use super::types::*;
 
+/// Type alias for optional service references
+type OptionalServiceRef<T> = Arc<RwLock<Option<Arc<T>>>>;
+
 /// Client service for handling client requests
 pub struct ClientService<T, G, L>
 where
     T: proven_transport::Transport,
-    G: proven_governance::Governance,
+    G: proven_topology::TopologyAdaptor,
     L: proven_storage::LogStorage,
 {
     /// Service name
@@ -48,13 +51,13 @@ where
     request_tx: mpsc::Sender<ClientRequest>,
 
     /// Global consensus service (set after construction)
-    global_consensus: Arc<RwLock<Option<Arc<GlobalConsensusService<T, G, L>>>>>,
+    global_consensus: OptionalServiceRef<GlobalConsensusService<T, G, L>>,
 
     /// Group consensus service (set after construction)
-    group_consensus: Arc<RwLock<Option<Arc<GroupConsensusService<T, G, L>>>>>,
+    group_consensus: OptionalServiceRef<GroupConsensusService<T, G, L>>,
 
     /// Routing service (set after construction)
-    routing_service: Arc<RwLock<Option<Arc<RoutingService>>>>,
+    routing_service: OptionalServiceRef<RoutingService>,
 
     /// Whether the service is running
     is_running: Arc<RwLock<bool>>,
@@ -69,7 +72,7 @@ where
 impl<T, G, L> ClientService<T, G, L>
 where
     T: proven_transport::Transport + 'static,
-    G: proven_governance::Governance + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
     L: proven_storage::LogStorage + 'static,
 {
     /// Create a new client service
@@ -395,7 +398,7 @@ where
 
                     ClientRequest::Stream {
                         stream_name,
-                        request,
+                        request: _,
                         response_tx,
                     } => {
                         debug!("Processing stream request for: {}", stream_name);
@@ -454,8 +457,7 @@ where
                                                 let _ = response_tx.send(Err(ConsensusError::with_context(
                                                     crate::error::ErrorKind::Service,
                                                     format!(
-                                                        "Node not part of group {:?}, would forward to node {:?} (not yet implemented)",
-                                                        group_id, target
+                                                        "Node not part of group {group_id:?}, would forward to node {target:?} (not yet implemented)"
                                                     ),
                                                 )));
                                             } else {
@@ -463,8 +465,7 @@ where
                                                     ConsensusError::with_context(
                                                         crate::error::ErrorKind::InvalidState,
                                                         format!(
-                                                            "Group {:?} has no members",
-                                                            group_id
+                                                            "Group {group_id:?} has no members"
                                                         ),
                                                     ),
                                                 ));
@@ -475,8 +476,7 @@ where
                                             response_tx.send(Err(ConsensusError::with_context(
                                                 crate::error::ErrorKind::NotFound,
                                                 format!(
-                                                    "Group {:?} not found in routing table",
-                                                    group_id
+                                                    "Group {group_id:?} not found in routing table"
                                                 ),
                                             )));
                                     }
@@ -484,19 +484,19 @@ where
                                 Ok(crate::services::routing::RouteDecision::Reject(reason)) => {
                                     let _ = response_tx.send(Err(ConsensusError::with_context(
                                         crate::error::ErrorKind::Validation,
-                                        format!("Operation rejected: {}", reason),
+                                        format!("Operation rejected: {reason}"),
                                     )));
                                 }
                                 Ok(decision) => {
                                     let _ = response_tx.send(Err(ConsensusError::with_context(
                                         crate::error::ErrorKind::Internal,
-                                        format!("Unexpected routing decision: {:?}", decision),
+                                        format!("Unexpected routing decision: {decision:?}"),
                                     )));
                                 }
                                 Err(e) => {
                                     let _ = response_tx.send(Err(ConsensusError::with_context(
                                         crate::error::ErrorKind::Service,
-                                        format!("Routing failed: {}", e),
+                                        format!("Routing failed: {e}"),
                                     )));
                                 }
                             }
@@ -543,7 +543,7 @@ where
 impl<T, G, L> ServiceLifecycle for ClientService<T, G, L>
 where
     T: proven_transport::Transport + 'static,
-    G: proven_governance::Governance + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
     L: proven_storage::LogStorage + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {

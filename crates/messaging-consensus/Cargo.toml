@@ -11,8 +11,8 @@ proven-attestation.workspace = true
 proven-attestation-mock.workspace = true
 proven-bootable.workspace = true
 proven-engine.workspace = true
-proven-governance.workspace = true
-proven-governance-mock.workspace = true
+proven-topology.workspace = true
+proven-topology-mock.workspace = true
 proven-messaging.workspace = true
 parking_lot.workspace = true
 

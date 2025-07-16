@@ -24,9 +24,6 @@ members = [
     "crates/ethereum-lighthouse",
     "crates/ethereum-reth",
     "crates/external-fs",
-    "crates/governance",
-    "crates/governance-helios",
-    "crates/governance-mock",
     "crates/headers",
     "crates/host",
     "crates/http",
@@ -77,6 +74,8 @@ members = [
     "crates/store-nats",
     "crates/store-s3",
     "crates/topology",
+    "crates/topology-helios",
+    "crates/topology-mock",
     "crates/transport",
     "crates/transport-tcp",
     "crates/transport-ws",
@@ -104,9 +103,6 @@ default-members = [
     "crates/ethereum-lighthouse",
     "crates/ethereum-reth",
     "crates/external-fs",
-    "crates/governance",
-    "crates/governance-helios",
-    "crates/governance-mock",
     "crates/headers",
     "crates/host",
     "crates/http",
@@ -157,6 +153,8 @@ default-members = [
     "crates/store-nats",
     "crates/store-s3",
     "crates/topology",
+    "crates/topology-helios",
+    "crates/topology-mock",
     "crates/transport",
     "crates/transport-tcp",
     "crates/transport-ws",
@@ -455,9 +453,6 @@ proven-engine = { path = "crates/engine" }
 proven-ethereum-lighthouse = { path = "crates/ethereum-lighthouse" }
 proven-ethereum-reth = { path = "crates/ethereum-reth" }
 proven-external-fs = { path = "crates/external-fs" }
-proven-governance = { path = "crates/governance" }
-proven-governance-helios = { path = "crates/governance-helios" }
-proven-governance-mock = { path = "crates/governance-mock" }
 proven-headers = { path = "crates/headers" }
 proven-host = { path = "crates/host" }
 proven-http = { path = "crates/http" }
@@ -508,6 +503,8 @@ proven-store-memory = { path = "crates/store-memory" }
 proven-store-nats = { path = "crates/store-nats" }
 proven-store-s3 = { path = "crates/store-s3" }
 proven-topology = { path = "crates/topology" }
+proven-topology-helios = { path = "crates/topology-helios" }
+proven-topology-mock = { path = "crates/topology-mock" }
 proven-transport = { path = "crates/transport" }
 proven-transport-tcp = { path = "crates/transport-tcp" }
 proven-transport-ws = { path = "crates/transport-ws" }

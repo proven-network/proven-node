@@ -16,6 +16,7 @@ use crate::{
 };
 
 /// In-memory metadata storage that persists locally in the enclave
+#[derive(Default)]
 pub struct LocalMetadataStore {
     /// File metadata indexed by FileId
     files: Arc<RwLock<HashMap<FileId, FileMetadata>>>,
@@ -126,18 +127,18 @@ impl LocalMetadataStore {
                         let mut dirs = self.directories.write();
 
                         // Remove from old parent
-                        if let Some(entries) = dirs.get_mut(&old_parent) {
-                            if let Some(pos) = entries.iter().position(|e| e.name == old_name) {
-                                let entry = entries.remove(pos);
+                        if let Some(entries) = dirs.get_mut(&old_parent)
+                            && let Some(pos) = entries.iter().position(|e| e.name == old_name)
+                        {
+                            let entry = entries.remove(pos);
 
-                                // Add to new parent
-                                if let Some(new_entries) = dirs.get_mut(&new_parent) {
-                                    new_entries.push(DirectoryEntry {
-                                        name: new_name,
-                                        file_id: entry.file_id,
-                                        file_type: entry.file_type,
-                                    });
-                                }
+                            // Add to new parent
+                            if let Some(new_entries) = dirs.get_mut(&new_parent) {
+                                new_entries.push(DirectoryEntry {
+                                    name: new_name,
+                                    file_id: entry.file_id,
+                                    file_type: entry.file_type,
+                                });
                             }
                         }
                     }
@@ -202,18 +203,18 @@ impl LocalMetadataStore {
                         let mut dirs = self.directories.write();
 
                         // Remove from old parent
-                        if let Some(entries) = dirs.get_mut(&old_parent) {
-                            if let Some(pos) = entries.iter().position(|e| e.name == old_name) {
-                                let entry = entries.remove(pos);
+                        if let Some(entries) = dirs.get_mut(&old_parent)
+                            && let Some(pos) = entries.iter().position(|e| e.name == old_name)
+                        {
+                            let entry = entries.remove(pos);
 
-                                // Add to new parent
-                                if let Some(new_entries) = dirs.get_mut(&new_parent) {
-                                    new_entries.push(DirectoryEntry {
-                                        name: new_name,
-                                        file_id: entry.file_id,
-                                        file_type: entry.file_type,
-                                    });
-                                }
+                            // Add to new parent
+                            if let Some(new_entries) = dirs.get_mut(&new_parent) {
+                                new_entries.push(DirectoryEntry {
+                                    name: new_name,
+                                    file_id: entry.file_id,
+                                    file_type: entry.file_type,
+                                });
                             }
                         }
                     }
@@ -230,6 +231,12 @@ impl LocalMetadataStore {
     /// Initialize with root directory
     pub fn init_root(&self) {
         let root_id = FileId::from_bytes([0; 32]);
+
+        // Check if root already exists (from journal recovery)
+        if self.files.read().contains_key(&root_id) {
+            return;
+        }
+
         let root_metadata = FileMetadata {
             file_id: root_id,
             parent_id: None,
@@ -246,6 +253,20 @@ impl LocalMetadataStore {
             gid: 0,
         };
 
+        // Write to journal first if available
+        if let Some(journal) = &self.journal {
+            if let Err(e) = journal.write_entry(JournalEntry::CreateDirectory {
+                dir_id: DirectoryId(root_id),
+            }) {
+                tracing::error!("Failed to write root directory creation to journal: {}", e);
+            }
+            if let Err(e) = journal.write_entry(JournalEntry::FileMetadata {
+                metadata: root_metadata.clone(),
+            }) {
+                tracing::error!("Failed to write root metadata to journal: {}", e);
+            }
+        }
+
         self.files.write().insert(root_id, root_metadata);
         self.directories
             .write()
@@ -260,12 +281,12 @@ impl LocalMetadataStore {
     /// Store file metadata
     pub fn put_file_metadata(&self, metadata: FileMetadata) {
         // Write to journal first
-        if let Some(journal) = &self.journal {
-            if let Err(e) = journal.write_entry(JournalEntry::FileMetadata {
+        if let Some(journal) = &self.journal
+            && let Err(e) = journal.write_entry(JournalEntry::FileMetadata {
                 metadata: metadata.clone(),
-            }) {
-                tracing::error!("Failed to write metadata to journal: {}", e);
-            }
+            })
+        {
+            tracing::error!("Failed to write metadata to journal: {}", e);
         }
 
         // Update blob index for all blocks
@@ -281,10 +302,10 @@ impl LocalMetadataStore {
     /// Delete file metadata
     pub fn delete_file_metadata(&self, file_id: &FileId) -> bool {
         // Write to journal first
-        if let Some(journal) = &self.journal {
-            if let Err(e) = journal.write_entry(JournalEntry::DeleteFile { file_id: *file_id }) {
-                tracing::error!("Failed to write delete to journal: {}", e);
-            }
+        if let Some(journal) = &self.journal
+            && let Err(e) = journal.write_entry(JournalEntry::DeleteFile { file_id: *file_id })
+        {
+            tracing::error!("Failed to write delete to journal: {}", e);
         }
 
         // Remove from blob index
@@ -306,10 +327,10 @@ impl LocalMetadataStore {
     /// Store directory entries
     pub fn put_directory(&self, dir_id: DirectoryId, entries: Vec<DirectoryEntry>) {
         // Write to journal first
-        if let Some(journal) = &self.journal {
-            if let Err(e) = journal.write_entry(JournalEntry::CreateDirectory { dir_id }) {
-                tracing::error!("Failed to write directory creation to journal: {}", e);
-            }
+        if let Some(journal) = &self.journal
+            && let Err(e) = journal.write_entry(JournalEntry::CreateDirectory { dir_id })
+        {
+            tracing::error!("Failed to write directory creation to journal: {}", e);
         }
 
         self.directories.write().insert(dir_id, entries);
@@ -334,15 +355,15 @@ impl LocalMetadataStore {
         }
 
         // Write to journal first
-        if let Some(journal) = &self.journal {
-            if let Err(e) = journal.write_entry(JournalEntry::AddDirectoryEntry {
+        if let Some(journal) = &self.journal
+            && let Err(e) = journal.write_entry(JournalEntry::AddDirectoryEntry {
                 dir_id: *dir_id,
                 name: name.clone(),
                 file_id,
                 file_type,
-            }) {
-                tracing::error!("Failed to write directory entry to journal: {}", e);
-            }
+            })
+        {
+            tracing::error!("Failed to write directory entry to journal: {}", e);
         }
 
         entries.push(DirectoryEntry {
@@ -365,13 +386,13 @@ impl LocalMetadataStore {
             && let Some(pos) = entries.iter().position(|e| e.name == name)
         {
             // Write to journal first
-            if let Some(journal) = &self.journal {
-                if let Err(e) = journal.write_entry(JournalEntry::RemoveDirectoryEntry {
+            if let Some(journal) = &self.journal
+                && let Err(e) = journal.write_entry(JournalEntry::RemoveDirectoryEntry {
                     dir_id: *dir_id,
                     name: name.to_vec(),
-                }) {
-                    tracing::error!("Failed to write directory removal to journal: {}", e);
-                }
+                })
+            {
+                tracing::error!("Failed to write directory removal to journal: {}", e);
             }
 
             return Some(entries.remove(pos));
@@ -456,6 +477,11 @@ impl LocalMetadataStore {
             journal.compact(checkpoint_seq)?;
         }
         Ok(())
+    }
+
+    /// Get current journal sequence number
+    pub fn current_journal_sequence(&self) -> Option<u64> {
+        self.journal.as_ref().map(|j| j.current_sequence())
     }
 
     /// Export current state as a snapshot

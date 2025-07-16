@@ -11,15 +11,15 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_attestation::Attestor;
 use proven_engine::Consensus;
-use proven_governance::Governance;
 use proven_messaging::subject::Subject;
+use proven_topology::TopologyAdaptor;
 use tracing::debug;
 
 /// A consensus subject.
 #[derive(Debug)]
 pub struct ConsensusSubject<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -42,7 +42,7 @@ where
 
 impl<G, A, T, D, S> Clone for ConsensusSubject<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -65,7 +65,7 @@ where
 
 impl<G, A, T, D, S> ConsensusSubject<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -104,7 +104,7 @@ where
 #[async_trait]
 impl<G, A, T, D, S> Subject<T, D, S> for ConsensusSubject<G, A, T, D, S>
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
@@ -174,7 +174,7 @@ where
 
 impl<G, A, T, D, S> From<ConsensusSubject<G, A, T, D, S>> for String
 where
-    G: Governance + Send + Sync + 'static + std::fmt::Debug,
+    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug

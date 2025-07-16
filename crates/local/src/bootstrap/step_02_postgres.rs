@@ -9,14 +9,14 @@ use super::Bootstrap;
 use crate::error::Error;
 
 use proven_bootable::Bootable;
-use proven_governance::{Governance, NodeSpecialization};
 use proven_postgres::{Postgres, PostgresOptions};
+use proven_topology::{NodeSpecialization, TopologyAdaptor};
 use tracing::info;
 
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";
 
-pub async fn execute<G: Governance>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
+pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let node = bootstrap.node.as_ref().unwrap_or_else(|| {
         panic!("node not set before postgres step");
     });

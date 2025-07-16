@@ -1,5 +1,5 @@
 [package]
-name = "proven-governance-mock"
+name = "proven-topology-mock"
 version.workspace = true
 edition = "2024"
 
@@ -8,7 +8,6 @@ async-trait.workspace = true
 bytes.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
-proven-governance.workspace = true
 proven-topology.workspace = true
 serde.workspace = true
 serde_json.workspace = true

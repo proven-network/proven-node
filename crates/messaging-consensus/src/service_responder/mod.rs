@@ -14,9 +14,9 @@ use futures::stream::Stream;
 use tracing::{debug, warn};
 
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
 use proven_messaging::stream::InitializedStream;
+use proven_topology::TopologyAdaptor;
 
 /// Maximum batch size for streaming responses.
 const MAX_BATCH_SIZE: usize = 1024 * 1024; // 1MB
@@ -25,7 +25,7 @@ const MAX_BATCH_SIZE: usize = 1024 * 1024; // 1MB
 #[derive(Clone, Debug)]
 pub struct ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
 where
-    G: proven_governance::Governance + Send + Sync + 'static,
+    G: proven_topology::TopologyAdaptor + Send + Sync + 'static,
     A: proven_attestation::Attestor + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -62,7 +62,7 @@ where
 
 impl<G, A, T, D, S, R, RD, RS> ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
 where
-    G: proven_governance::Governance + Send + Sync + 'static,
+    G: proven_topology::TopologyAdaptor + Send + Sync + 'static,
     A: proven_attestation::Attestor + Send + Sync + 'static,
     T: Clone
         + Debug
@@ -195,7 +195,7 @@ where
 impl<G, A, T, D, S, R, RD, RS> ServiceResponder<T, D, S, R, RD, RS>
     for ConsensusServiceResponder<G, A, T, D, S, R, RD, RS>
 where
-    G: Governance + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
     A: Attestor + Send + Sync + 'static,
     T: Clone
         + Debug

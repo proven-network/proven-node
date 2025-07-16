@@ -5,11 +5,11 @@ use bytes::Bytes;
 use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
-use proven_governance::Version;
-use proven_governance_mock::MockGovernance;
 use proven_nats_server::{NatsServer, NatsServerOptions};
 use proven_network::{ProvenNetwork, ProvenNetworkOptions};
 use proven_store_memory::MemoryStore;
+use proven_topology::Version;
+use proven_topology_mock::MockTopologyAdaptor;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Just use single version based on mock attestation pcrs (deterministic hashes on cargo version)
     let pcrs = attestor.pcrs().await.unwrap();
     let version = Version::from_pcrs(pcrs);
-    let governance = MockGovernance::for_single_node(
+    let governance = MockTopologyAdaptor::for_single_node(
         format!("http://localhost:{}", 3300),
         &private_key,
         version,
@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Create server options
     let options: NatsServerOptions<
-        MockGovernance,
+        MockTopologyAdaptor,
         MockAttestor,
         MemoryStore<Bytes, Infallible, Infallible>,
     > = NatsServerOptions {

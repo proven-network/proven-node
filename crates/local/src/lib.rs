@@ -14,7 +14,7 @@ mod net;
 pub use bootstrap::Bootstrap;
 use ed25519_dalek::SigningKey;
 pub use error::Error;
-use proven_governance::Governance;
+use proven_topology::TopologyAdaptor;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -55,7 +55,7 @@ impl std::fmt::Display for NodeStatus {
 
 /// Configuration for a node instance
 #[derive(Clone, Debug)]
-pub struct NodeConfig<G: Governance> {
+pub struct NodeConfig<G: TopologyAdaptor> {
     /// Whether to allow a single node to be started
     pub allow_single_node: bool,
 
@@ -244,14 +244,14 @@ pub struct NodeConfig<G: Governance> {
 }
 
 /// A managed node instance that can be started, stopped, and queried
-pub struct Node<G: Governance> {
+pub struct LocalNode<G: TopologyAdaptor> {
     config: NodeConfig<G>,
     status: Arc<RwLock<NodeStatus>>,
     shutdown_token: Option<CancellationToken>,
     task_handle: Option<tokio::task::JoinHandle<Result<(), Error>>>,
 }
 
-impl<G: Governance> Node<G> {
+impl<G: TopologyAdaptor> LocalNode<G> {
     /// Create a new node with the given configuration
     pub fn new(config: NodeConfig<G>) -> Self {
         Self {
@@ -384,7 +384,7 @@ impl<G: Governance> Node<G> {
 
 /// Internal function to run a node
 #[allow(clippy::cognitive_complexity)]
-async fn run_node_internal<G: Governance>(
+async fn run_node_internal<G: TopologyAdaptor>(
     config: NodeConfig<G>,
     shutdown_token: CancellationToken,
     status: Arc<RwLock<NodeStatus>>,
@@ -437,7 +437,7 @@ async fn run_node_internal<G: Governance>(
 /// # Errors
 ///
 /// This function returns an error if the bootstrap process fails.
-pub async fn run_node<G: Governance>(
+pub async fn run_node<G: TopologyAdaptor>(
     config: NodeConfig<G>,
     shutdown_token: CancellationToken,
 ) -> Result<(), Error> {

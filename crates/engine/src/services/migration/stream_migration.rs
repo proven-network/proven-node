@@ -70,7 +70,7 @@ impl StreamMigrationCoordinator {
     }
 
     /// Cancel a migration
-    pub async fn cancel_migration(&self, stream_name: &str) -> MigrationResult<()> {
+    pub async fn cancel_migration(&self, _stream_name: &str) -> MigrationResult<()> {
         // Would cancel the migration and rollback
         Ok(())
     }
@@ -78,7 +78,7 @@ impl StreamMigrationCoordinator {
     /// Get migration status
     pub async fn get_status(
         &self,
-        stream_name: &str,
+        _stream_name: &str,
     ) -> MigrationResult<Option<StreamMigrationProgress>> {
         // Would return current status
         Ok(None)

@@ -10491,7 +10491,6 @@ dependencies = [
  "proven-bootable",
  "proven-code-package",
  "proven-engine",
- "proven-governance",
  "proven-headers",
  "proven-http",
  "proven-identity",
@@ -10500,6 +10499,7 @@ dependencies = [
  "proven-sessions",
  "proven-sql",
  "proven-store",
+ "proven-topology",
  "proven-transport",
  "proven-util",
  "rand 0.8.5",
@@ -10556,12 +10556,11 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
- "proven-governance",
- "proven-governance-mock",
  "proven-network",
  "proven-storage",
  "proven-storage-memory",
  "proven-topology",
+ "proven-topology-mock",
  "proven-transport",
  "proven-transport-tcp",
  "proven-util",
@@ -10633,55 +10632,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
-]
-
-[[package]]
-name = "proven-governance"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "ed25519-dalek",
- "proven-attestation",
- "serde",
-]
-
-[[package]]
-name = "proven-governance-helios"
-version = "0.1.0"
-dependencies = [
- "alloy",
- "alloy-sol-types",
- "async-trait",
- "dotenv",
- "ed25519-dalek",
- "eyre",
- "helios-common",
- "helios-consensus-core",
- "helios-core",
- "helios-ethereum",
- "hex",
- "proven-governance",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
- "tracing-subscriber 0.3.19",
-]
-
-[[package]]
-name = "proven-governance-mock"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "ed25519-dalek",
- "hex",
- "proven-governance",
- "proven-topology",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tokio",
 ]
 
 [[package]]
@@ -10921,7 +10871,6 @@ dependencies = [
  "proven-engine",
  "proven-ethereum-lighthouse",
  "proven-ethereum-reth",
- "proven-governance",
  "proven-http-insecure",
  "proven-http-proxy",
  "proven-identity",
@@ -10972,9 +10921,9 @@ dependencies = [
  "hex",
  "proven-attestation",
  "proven-attestation-mock",
- "proven-governance",
- "proven-governance-mock",
  "proven-local",
+ "proven-topology",
+ "proven-topology-mock",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
@@ -11005,9 +10954,9 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-mock",
  "proven-core",
- "proven-governance",
- "proven-governance-mock",
  "proven-local",
+ "proven-topology",
+ "proven-topology-mock",
  "proven-util",
  "rand 0.8.5",
  "ratatui",
@@ -11130,9 +11079,8 @@ dependencies = [
  "hex",
  "proven-attestation-mock",
  "proven-bootable",
- "proven-governance",
- "proven-governance-mock",
  "proven-topology",
+ "proven-topology-mock",
  "proven-transport",
  "proven-transport-tcp",
  "proven-util",
@@ -11600,16 +11548,54 @@ name = "proven-topology"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "bytes",
  "ed25519-dalek",
  "hex",
+ "proven-attestation",
  "proven-bootable",
- "proven-governance",
- "proven-governance-mock",
+ "proven-topology-mock",
  "serde",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "proven-topology-helios"
+version = "0.1.0"
+dependencies = [
+ "alloy",
+ "alloy-sol-types",
+ "async-trait",
+ "dotenv",
+ "ed25519-dalek",
+ "eyre",
+ "helios-common",
+ "helios-consensus-core",
+ "helios-core",
+ "helios-ethereum",
+ "hex",
+ "proven-topology",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.19",
+]
+
+[[package]]
+name = "proven-topology-mock"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "ed25519-dalek",
+ "hex",
+ "proven-topology",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]
@@ -11626,9 +11612,8 @@ dependencies = [
  "futures",
  "proven-attestation",
  "proven-attestation-mock",
- "proven-governance",
- "proven-governance-mock",
  "proven-topology",
+ "proven-topology-mock",
  "proven-verification",
  "rand 0.8.5",
  "serde",
@@ -11653,9 +11638,8 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
- "proven-governance",
- "proven-governance-mock",
  "proven-topology",
+ "proven-topology-mock",
  "proven-transport",
  "proven-util",
  "proven-verification",
@@ -11679,9 +11663,8 @@ dependencies = [
  "futures",
  "proven-attestation",
  "proven-attestation-mock",
- "proven-governance",
- "proven-governance-mock",
  "proven-topology",
+ "proven-topology-mock",
  "proven-transport",
  "proven-verification",
  "tokio",
@@ -11715,7 +11698,6 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "proven-attestation",
- "proven-governance",
  "proven-topology",
  "rand 0.8.5",
  "serde",

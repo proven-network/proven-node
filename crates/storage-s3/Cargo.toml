@@ -34,9 +34,9 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 
-[[bin]]
-name = "wal-server"
-path = "src/bin/wal-server.rs"
+# [[bin]]
+# name = "wal-server"
+# path = "src/bin/wal-server.rs"
 
 [dev-dependencies]
 tempfile = { workspace = true }

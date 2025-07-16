@@ -9,8 +9,8 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use fuser::{
-    FileAttr, FileType as FuseFileType, Filesystem, ReplyAttr, ReplyData, ReplyDirectory,
-    ReplyEmpty, ReplyEntry, ReplyOpen, ReplyWrite, Request, TimeOrNow,
+    FileAttr, FileType as FuseFileType, Filesystem, ReplyAttr, ReplyCreate, ReplyData,
+    ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, Request, TimeOrNow,
 };
 use parking_lot::RwLock;
 use tokio::sync::{mpsc, oneshot};
@@ -18,7 +18,7 @@ use tokio::sync::{mpsc, oneshot};
 use crate::{
     DirectoryId, FileId, FileMetadata, FileType as VsockFileType,
     config::Config,
-    database::{DatabaseCachePolicy, DatabaseDetector, FileLock, LockManager, LockType},
+    database::{DatabaseCachePolicy, DatabaseDetector, LockManager},
     encryption::EncryptionLayer,
     fuse_async::FuseOperation,
     metadata::LocalEncryptedMetadataStore,
@@ -1054,109 +1054,6 @@ impl Filesystem for VsockFuseFs {
         match rx.blocking_recv() {
             Ok(Ok(_)) => reply.ok(),
             _ => reply.error(libc::EIO),
-        }
-    }
-}
-
-use fuser::{ReplyCreate, ReplyLock, ReplyStatfs};
-
-impl VsockFuseFs {
-    fn getlk(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        fh: u64,
-        _lock_owner: u64,
-        start: u64,
-        end: u64,
-        typ: i32,
-        pid: u32,
-        reply: ReplyLock,
-    ) {
-        // Get file handle
-        let file_id = match self.file_handles.read().get(&fh) {
-            Some(handle) => handle.file_id,
-            None => {
-                reply.error(libc::EBADF);
-                return;
-            }
-        };
-
-        // Convert lock type
-        let lock_type = match typ {
-            x if x == libc::F_RDLCK as i32 => LockType::Read,
-            x if x == libc::F_WRLCK as i32 => LockType::Write,
-            _ => LockType::Unlock,
-        };
-
-        let lock = FileLock {
-            lock_type,
-            pid,
-            start,
-            len: if end == u64::MAX { 0 } else { end - start },
-        };
-
-        // Test if lock can be acquired
-        if let Some(blocking_lock) = self.lock_manager.test_lock(&file_id, &lock) {
-            // Return the blocking lock
-            let lock_type = match blocking_lock.lock_type {
-                LockType::Read => libc::F_RDLCK,
-                LockType::Write => libc::F_WRLCK,
-                LockType::Unlock => libc::F_UNLCK,
-            } as i32;
-
-            reply.locked(
-                blocking_lock.start,
-                blocking_lock.start + blocking_lock.len,
-                lock_type,
-                blocking_lock.pid,
-            );
-        } else {
-            // Lock can be acquired - return F_UNLCK
-            reply.locked(start, end, libc::F_UNLCK as i32, 0);
-        }
-    }
-
-    fn setlk(
-        &mut self,
-        _req: &Request<'_>,
-        _ino: u64,
-        fh: u64,
-        _lock_owner: u64,
-        start: u64,
-        end: u64,
-        typ: i32,
-        pid: u32,
-        _sleep: bool,
-        reply: ReplyEmpty,
-    ) {
-        // Get file handle
-        let file_id = match self.file_handles.read().get(&fh) {
-            Some(handle) => handle.file_id,
-            None => {
-                reply.error(libc::EBADF);
-                return;
-            }
-        };
-
-        // Convert lock type
-        let lock_type = match typ {
-            x if x == libc::F_RDLCK as i32 => LockType::Read,
-            x if x == libc::F_WRLCK as i32 => LockType::Write,
-            _ => LockType::Unlock,
-        };
-
-        let lock = FileLock {
-            lock_type,
-            pid,
-            start,
-            len: if end == u64::MAX { 0 } else { end - start },
-        };
-
-        // Try to set the lock
-        match self.lock_manager.set_lock(&file_id, lock) {
-            Ok(_) => reply.ok(),
-            Err(_) => reply.error(libc::EAGAIN),
         }
     }
 }

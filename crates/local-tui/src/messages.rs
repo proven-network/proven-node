@@ -1,17 +1,17 @@
 //! Message types for communication between TUI and async components
 
 use chrono::{DateTime, Utc};
-use proven_governance_mock::MockGovernance;
 use proven_local::NodeConfig;
+use proven_topology_mock::MockTopologyAdaptor;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 
 /// Type alias for the `NodeConfig` we use in the TUI
-pub type TuiNodeConfig = NodeConfig<MockGovernance>;
+pub type TuiNodeConfig = NodeConfig<MockTopologyAdaptor>;
 
 // Re-export NodeId and related constants/functions from the node_id module
-pub use crate::node_id::{MAIN_THREAD_NODE_ID, NodeId};
+pub use crate::node_id::{MAIN_THREAD_NODE_ID, TuiNodeId};
 
 /// Per-node operations processed by individual node threads
 #[derive(Debug, Clone)]
@@ -21,7 +21,7 @@ pub enum NodeOperation {
         /// Node configuration (optional - will use existing config if None)
         config: Option<Box<TuiNodeConfig>>,
         /// Specializations for this node (used for governance registration and symlinks)
-        specializations: Option<HashSet<proven_governance::NodeSpecialization>>,
+        specializations: Option<HashSet<proven_topology::NodeSpecialization>>,
     },
     /// Stop the node
     Stop,
@@ -66,7 +66,7 @@ impl fmt::Display for LogLevel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     /// The node that generated this log
-    pub node_id: NodeId,
+    pub node_id: TuiNodeId,
     /// Log level
     pub level: LogLevel,
     /// Log message

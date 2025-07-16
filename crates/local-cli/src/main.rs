@@ -12,9 +12,9 @@ use clap::Parser;
 use ed25519_dalek::SigningKey;
 use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
-use proven_governance::Version;
-use proven_governance_mock::MockGovernance;
 use proven_local::{NodeConfig, run_node};
+use proven_topology::Version;
+use proven_topology_mock::MockTopologyAdaptor;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 use url::Url;
@@ -28,7 +28,7 @@ pub enum Error {
 
     /// Governance mock error
     #[error("governance error: {0}")]
-    Governance(#[from] proven_governance_mock::Error),
+    Governance(#[from] proven_topology_mock::Error),
 
     /// Local library error
     #[error(transparent)]
@@ -464,7 +464,7 @@ struct Args {
 }
 
 /// Create a `NodeConfig` from Args, handling async operations
-async fn create_node_config(args: Args) -> Result<NodeConfig<MockGovernance>, Error> {
+async fn create_node_config(args: Args) -> Result<NodeConfig<MockTopologyAdaptor>, Error> {
     // Parse the private key and calculate public key
     let private_key_bytes = hex::decode(args.node_key.trim())
         .map_err(|e| Error::PrivateKey(format!("Failed to decode private key as hex: {e}")))?;
@@ -482,7 +482,7 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockGovernance>, Er
             network_config_path.display()
         );
 
-        MockGovernance::from_network_config_file(network_config_path)
+        MockTopologyAdaptor::from_network_config_file(network_config_path)
             .map_err(|e| Error::NetworkConfig(format!("Failed to load network config: {e}")))?
     } else {
         info!("using replication factor 1 as no network config file provided");
@@ -494,7 +494,7 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockGovernance>, Er
             .map_err(|e| Error::Attestation(format!("Failed to get PCRs: {e}")))?;
         let version = Version::from_pcrs(pcrs);
 
-        MockGovernance::for_single_node(
+        MockTopologyAdaptor::for_single_node(
             format!("http://localhost:{}", args.port),
             &private_key,
             version,

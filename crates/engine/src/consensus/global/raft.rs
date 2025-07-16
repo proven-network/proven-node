@@ -46,7 +46,7 @@ pub trait RaftMessageHandler: Send + Sync {
     /// Initialize cluster with members
     async fn initialize_cluster(
         &self,
-        members: std::collections::BTreeMap<NodeId, proven_governance::GovernanceNode>,
+        members: std::collections::BTreeMap<NodeId, proven_topology::Node>,
     ) -> ConsensusResult<()>;
 }
 
@@ -64,7 +64,7 @@ openraft::declare_raft_types!(
         D = GlobalRequest,
         R = GlobalResponse,
         NodeId = NodeId,
-        Node = proven_governance::GovernanceNode,
+        Node = proven_topology::Node,
         Entry = Entry<GlobalTypeConfig>,
         SnapshotData = GlobalSnapshot,
         AsyncRuntime = openraft::TokioRuntime,
@@ -125,7 +125,7 @@ impl<L: LogStorage> RaftMessageHandler for GlobalConsensusLayer<L> {
 
     async fn initialize_cluster(
         &self,
-        members: std::collections::BTreeMap<NodeId, proven_governance::GovernanceNode>,
+        members: std::collections::BTreeMap<NodeId, proven_topology::Node>,
     ) -> ConsensusResult<()> {
         self.raft.initialize(members).await.map_err(|e| {
             ConsensusError::with_context(

@@ -1,6 +1,6 @@
 //! Disk-based log writing system with session management
 
-use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, NodeId};
+use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, TuiNodeId};
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
@@ -309,13 +309,13 @@ pub enum LogCategory {
     /// Debug/main thread logs only
     Debug,
     /// Logs from a specific node
-    Node(NodeId),
+    Node(TuiNodeId),
 }
 
 /// Extract node ID from the current thread name
 /// Thread names follow the pattern "node-{execution_order}-{pokemon_id}" (e.g., "node-1-42", "node-2-7")
 /// Returns None for non-node threads (main thread, etc.)
-fn extract_node_id_from_thread_name() -> Option<NodeId> {
+fn extract_node_id_from_thread_name() -> Option<TuiNodeId> {
     let thread = std::thread::current();
     let thread_name = thread.name()?;
 
@@ -326,7 +326,7 @@ fn extract_node_id_from_thread_name() -> Option<NodeId> {
     let execution_order: u8 = parts.next()?.parse().ok()?;
     let pokemon_id: u8 = parts.next()?.parse().ok()?;
 
-    Some(NodeId::with_values(execution_order, pokemon_id))
+    Some(TuiNodeId::with_values(execution_order, pokemon_id))
 }
 
 /// A visitor for extracting message fields from tracing events
@@ -368,7 +368,7 @@ pub struct LogWriter {
     /// Current log level filter
     current_level_filter: Arc<RwLock<LogLevel>>,
     /// Current node filter
-    current_node_filter: Arc<RwLock<Option<NodeId>>>,
+    current_node_filter: Arc<RwLock<Option<TuiNodeId>>>,
     /// Current session directory for log reading
     session_dir: Arc<RwLock<PathBuf>>,
 }
@@ -511,7 +511,7 @@ mod tests {
 
     fn create_test_log_entry() -> LogEntry {
         LogEntry {
-            node_id: NodeId::new(),
+            node_id: TuiNodeId::new(),
             level: LogLevel::Info,
             message: "Test log message".to_string(),
             timestamp: Utc::now(),
@@ -521,7 +521,7 @@ mod tests {
 
     fn reset_node_id_state() {
         #[cfg(test)]
-        crate::node_id::NodeId::reset_global_state();
+        crate::node_id::TuiNodeId::reset_global_state();
     }
 
     #[test]

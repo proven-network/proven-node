@@ -12,14 +12,21 @@ use crate::services::event::{EventBus, EventEnvelope, EventFilter};
 use crate::stream::StreamName;
 use crate::stream::storage::{StreamStorageImpl, StreamStorageWriter};
 
+/// Type alias for stream storage map
+type StreamStorageMap<L> = HashMap<StreamName, Arc<StreamStorageImpl<L>>>;
+/// Type alias for shared stream storage map
+type SharedStreamStorageMap<L> = Arc<RwLock<StreamStorageMap<L>>>;
+/// Type alias for optional event bus reference
+type OptionalEventBus = Arc<RwLock<Option<Arc<EventBus>>>>;
+
 /// Stream storage service
 pub struct StreamStorageService<L: LogStorage> {
     /// Stream storage instances by stream name
-    streams: Arc<RwLock<HashMap<StreamName, Arc<StreamStorageImpl<L>>>>>,
+    streams: SharedStreamStorageMap<L>,
     /// Storage backend for persistent streams
     storage: Arc<L>,
     /// Event bus reference
-    event_bus: Arc<RwLock<Option<Arc<EventBus>>>>,
+    event_bus: OptionalEventBus,
 }
 
 impl<L: LogStorage> StreamStorageService<L> {
@@ -71,7 +78,7 @@ impl<L: LogStorage> StreamStorageService<L> {
     /// Handle a stream event
     async fn handle_event(
         envelope: EventEnvelope,
-        streams: &Arc<RwLock<HashMap<StreamName, Arc<StreamStorageImpl<L>>>>>,
+        streams: &SharedStreamStorageMap<L>,
         storage: &Arc<L>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match &envelope.event {

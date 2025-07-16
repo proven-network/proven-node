@@ -7,11 +7,11 @@ use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
+use proven_topology::TopologyAdaptor;
 use serde::Deserialize;
 use tracing::error;
 use uuid::Uuid;
@@ -37,7 +37,7 @@ pub(crate) async fn http_rpc_handler<A, G, AM, RM, IM, PM, SM>(
 ) -> impl IntoResponse
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
@@ -103,7 +103,7 @@ pub(crate) async fn management_http_rpc_handler<A, G, AM, RM, IM, PM, SM>(
 ) -> impl IntoResponse
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,

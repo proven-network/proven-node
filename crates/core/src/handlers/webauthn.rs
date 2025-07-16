@@ -10,11 +10,11 @@ use axum_extra::TypedHeader;
 use headers::Origin;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
+use proven_topology::TopologyAdaptor;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
@@ -56,7 +56,7 @@ pub(crate) async fn webauthn_registration_start_handler<A, G, AM, RM, IM, PM, SM
 ) -> impl IntoResponse
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
@@ -226,7 +226,7 @@ pub(crate) async fn webauthn_registration_finish_handler<A, G, AM, RM, IM, PM, S
 ) -> impl IntoResponse
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
@@ -316,7 +316,7 @@ pub(crate) async fn webauthn_authentication_start_handler<A, G, AM, RM, IM, PM, 
 ) -> impl IntoResponse
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
@@ -476,7 +476,7 @@ pub(crate) async fn webauthn_authentication_finish_handler<A, G, AM, RM, IM, PM,
 ) -> impl IntoResponse
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,

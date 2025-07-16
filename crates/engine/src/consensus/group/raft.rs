@@ -31,7 +31,7 @@ openraft::declare_raft_types!(
         D = GroupRequest,
         R = GroupResponse,
         NodeId = NodeId,
-        Node = proven_governance::GovernanceNode,
+        Node = proven_topology::Node,
         Entry = Entry<GroupTypeConfig>,
         SnapshotData = GroupSnapshot,
         AsyncRuntime = openraft::TokioRuntime,

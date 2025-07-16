@@ -10,13 +10,13 @@ use ed25519_dalek::VerifyingKey;
 use headers::Origin;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
-use proven_governance::Governance;
 use proven_identity::IdentityManagement;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::{
     CreateAnonymousSessionOptions, CreateManagementSessionOptions, SessionManagement,
 };
+use proven_topology::TopologyAdaptor;
 use tracing::info;
 use uuid::Uuid;
 
@@ -36,7 +36,7 @@ pub(crate) async fn create_session_handler<A, G, AM, RM, IM, PM, SM>(
 ) -> impl IntoResponse
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
@@ -101,7 +101,7 @@ pub(crate) async fn create_management_session_handler<A, G, AM, RM, IM, PM, SM>(
 ) -> impl IntoResponse
 where
     A: Attestor,
-    G: Governance,
+    G: TopologyAdaptor,
     AM: ApplicationManagement,
     RM: RuntimePoolManagement,
     IM: IdentityManagement,
