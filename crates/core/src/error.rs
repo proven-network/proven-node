@@ -27,9 +27,9 @@ pub enum Error {
     #[error("consensus error: {0}")]
     Consensus(String),
 
-    /// Topology adaptor error.
-    #[error("topology adaptor error: {0}")]
-    TopologyAdaptor(String),
+    /// Topology error.
+    #[error("topology error: {0}")]
+    Topology(String),
 
     /// HTTP error.
     #[error(transparent)]

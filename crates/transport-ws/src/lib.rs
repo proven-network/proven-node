@@ -100,7 +100,11 @@ where
 
     /// Handle WebSocket upgrade request from axum
     pub async fn handle_websocket_upgrade(ws: WebSocketUpgrade, transport: Arc<Self>) -> Response {
-        ws.on_upgrade(move |socket| Self::handle_axum_websocket_connection(socket, transport))
+        debug!("WebSocket upgrade request received for /consensus/ws");
+        ws.on_upgrade(move |socket| {
+            debug!("WebSocket upgrade completed, handling connection");
+            Self::handle_axum_websocket_connection(socket, transport)
+        })
     }
 
     /// Handle WebSocket connection from axum
@@ -456,6 +460,8 @@ where
     A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
     fn create_router_integration(&self) -> Result<Router, TransportError> {
+        debug!("Creating router integration for WebSocket transport");
+
         // We need to clone the transport to move it into the closure
         let config = self.config.clone();
         let connection_manager = self.connection_manager.clone();
@@ -463,24 +469,34 @@ where
         let incoming_tx = self.incoming_tx.clone();
         let topology_manager = self.topology_manager.clone();
 
-        let router = Router::new().route(
-            "/ws",
-            get(move |ws: WebSocketUpgrade| {
-                let transport = Arc::new(WebsocketTransport {
-                    config: config.clone(),
-                    connection_manager: connection_manager.clone(),
-                    outgoing_senders: outgoing_senders.clone(),
-                    incoming_tx: incoming_tx.clone(),
-                    topology_manager: topology_manager.clone(),
-                });
-                Self::handle_websocket_upgrade(ws, transport)
-            }),
+        let router = Router::new()
+            .route(
+                "/consensus/ws",
+                get(move |ws: WebSocketUpgrade| {
+                    debug!("WebSocket route handler called for /consensus/ws");
+                    let transport = Arc::new(WebsocketTransport {
+                        config: config.clone(),
+                        connection_manager: connection_manager.clone(),
+                        outgoing_senders: outgoing_senders.clone(),
+                        incoming_tx: incoming_tx.clone(),
+                        topology_manager: topology_manager.clone(),
+                    });
+                    Self::handle_websocket_upgrade(ws, transport)
+                }),
+            )
+            .route(
+                "/consensus/health",
+                get(|| async { "Engine router is working!" }),
+            );
+
+        debug!(
+            "Router integration created successfully with /consensus/ws and /consensus/health routes"
         );
         Ok(router)
     }
 
     fn endpoint(&self) -> &'static str {
-        "/ws"
+        "/consensus/ws"
     }
 }
 
@@ -580,6 +596,6 @@ mod tests {
         assert!(router.is_ok());
 
         // Test endpoint
-        assert_eq!(transport.endpoint(), "/ws");
+        assert_eq!(transport.endpoint(), "/consensus/ws");
     }
 }

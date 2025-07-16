@@ -40,6 +40,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info, warn};
+use url::Url;
 
 pub use rpc::{
     AddAllowedOriginCommand, AddAllowedOriginResponse, AnonymizeCommand, AnonymizeResponse,
@@ -212,7 +213,7 @@ where
         let router = RouterBuilder::finalize_router(router);
 
         // Set the complete router atomically
-        let fqdn = self.origin.clone();
+        let fqdn = extract_hostname_from_origin(&self.origin)?;
 
         RouterInstaller::install_router(&self.http_server, fqdn, router).await?;
 
@@ -252,7 +253,7 @@ where
             .governance
             .get_alternates_auth_gateways()
             .await
-            .map_err(|e| Error::TopologyAdaptor(e.to_string()))?;
+            .map_err(|e| Error::Topology(e.to_string()))?;
 
         let webauthn_router = RouterBuilder::create_webauthn_router(alternates_auth_gateways);
 
@@ -260,7 +261,7 @@ where
             .governance
             .get_primary_auth_gateway()
             .await
-            .map_err(|e| Error::TopologyAdaptor(e.to_string()))?;
+            .map_err(|e| Error::Topology(e.to_string()))?;
 
         RouterInstaller::install_router(&self.http_server, primary_auth_gateway, webauthn_router)
             .await?;
@@ -340,4 +341,18 @@ where
     async fn wait(&self) {
         self.task_tracker.wait().await;
     }
+}
+
+/// Extract the hostname from an origin URL
+///
+/// Parses the origin URL and returns just the hostname part (without port or scheme)
+fn extract_hostname_from_origin(origin: &str) -> Result<String, Error> {
+    let url = Url::parse(origin)
+        .map_err(|e| Error::Topology(format!("Invalid origin URL '{origin}': {e}")))?;
+
+    let hostname = url
+        .host_str()
+        .ok_or_else(|| Error::Topology(format!("No hostname in origin URL '{origin}'")))?;
+
+    Ok(hostname.to_string())
 }
