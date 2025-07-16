@@ -15,6 +15,7 @@ async-trait.workspace = true
 # Serialization
 serde = { workspace = true, features = ["derive"] }
 bytes.workspace = true
+bincode.workspace = true
 
 # Networking
 cidr.workspace = true

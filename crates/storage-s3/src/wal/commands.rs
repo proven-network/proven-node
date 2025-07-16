@@ -1,46 +1,8 @@
 //! WAL command definitions for S3 storage
 
+use bytes::Bytes;
 use proven_vsock_rpc::RpcMessage;
 use serde::{Deserialize, Serialize};
-
-/// WAL command envelope
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WalCommand {
-    /// Append log entries to WAL
-    AppendLogs(AppendLogsRequest),
-    /// Confirm batch was uploaded to S3
-    ConfirmBatch(ConfirmBatchRequest),
-    /// Sync WAL to disk
-    Sync(SyncRequest),
-    /// Get pending batches for recovery
-    GetPendingBatches(GetPendingBatchesRequest),
-}
-
-/// WAL response envelope
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum WalResponse {
-    /// Response to append logs
-    AppendLogs(AppendLogsResponse),
-    /// Response to confirm batch
-    ConfirmBatch(ConfirmBatchResponse),
-    /// Response to sync
-    Sync(SyncResponse),
-    /// Response with pending batches
-    GetPendingBatches(GetPendingBatchesResponse),
-}
-
-impl RpcMessage for WalCommand {
-    type Response = WalResponse;
-
-    fn message_id(&self) -> &'static str {
-        match self {
-            Self::AppendLogs(_) => "wal.append_logs",
-            Self::ConfirmBatch(_) => "wal.confirm_batch",
-            Self::Sync(_) => "wal.sync",
-            Self::GetPendingBatches(_) => "wal.get_pending_batches",
-        }
-    }
-}
 
 /// Request to append log entries
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +19,48 @@ pub struct AppendLogsResponse {
     pub error: Option<String>,
 }
 
+impl RpcMessage for AppendLogsRequest {
+    type Response = AppendLogsResponse;
+
+    fn message_id(&self) -> &'static str {
+        "wal.append_logs"
+    }
+}
+
+impl TryInto<Bytes> for AppendLogsRequest {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for AppendLogsRequest {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
+}
+
+impl TryInto<Bytes> for AppendLogsResponse {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for AppendLogsResponse {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
+}
+
 /// Request to confirm batch upload
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfirmBatchRequest {
@@ -70,6 +74,48 @@ pub struct ConfirmBatchResponse {
     pub error: Option<String>,
 }
 
+impl RpcMessage for ConfirmBatchRequest {
+    type Response = ConfirmBatchResponse;
+
+    fn message_id(&self) -> &'static str {
+        "wal.confirm_batch"
+    }
+}
+
+impl TryInto<Bytes> for ConfirmBatchRequest {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for ConfirmBatchRequest {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
+}
+
+impl TryInto<Bytes> for ConfirmBatchResponse {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for ConfirmBatchResponse {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
+}
+
 /// Request to sync WAL
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SyncRequest {
@@ -81,6 +127,48 @@ pub struct SyncRequest {
 pub struct SyncResponse {
     pub success: bool,
     pub error: Option<String>,
+}
+
+impl RpcMessage for SyncRequest {
+    type Response = SyncResponse;
+
+    fn message_id(&self) -> &'static str {
+        "wal.sync"
+    }
+}
+
+impl TryInto<Bytes> for SyncRequest {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for SyncRequest {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
+}
+
+impl TryInto<Bytes> for SyncResponse {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for SyncResponse {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
 }
 
 /// Request to get pending batches
@@ -103,4 +191,46 @@ pub struct PendingBatch {
 pub struct GetPendingBatchesResponse {
     pub batches: Vec<PendingBatch>,
     pub error: Option<String>,
+}
+
+impl RpcMessage for GetPendingBatchesRequest {
+    type Response = GetPendingBatchesResponse;
+
+    fn message_id(&self) -> &'static str {
+        "wal.get_pending_batches"
+    }
+}
+
+impl TryInto<Bytes> for GetPendingBatchesRequest {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for GetPendingBatchesRequest {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
+}
+
+impl TryInto<Bytes> for GetPendingBatchesResponse {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for GetPendingBatchesResponse {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
 }

@@ -88,6 +88,3 @@ jspm_packages/
 # Kernel build artifacts
 /kernel/build
 /kernel/output
-
-# VSock Fuse
-/crates/vsock-fuse

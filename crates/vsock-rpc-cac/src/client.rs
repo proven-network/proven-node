@@ -1,10 +1,7 @@
 //! Client implementation for CAC commands.
 
-use crate::commands::{
-    CacCommand, CacResponse, InitializeRequest, InitializeResponse, ShutdownRequest,
-    ShutdownResponse,
-};
-use crate::error::{Error, Result};
+use crate::commands::{InitializeRequest, InitializeResponse, ShutdownRequest, ShutdownResponse};
+use crate::error::Result;
 use proven_vsock_rpc::RpcClient;
 use tracing::{debug, instrument};
 
@@ -41,16 +38,8 @@ impl CacClient {
     pub async fn initialize(&self, request: InitializeRequest) -> Result<InitializeResponse> {
         debug!("Sending initialize request");
 
-        let command = CacCommand::Initialize(Box::new(request));
-        let response = self.inner.request(command).await?;
-
-        match response {
-            CacResponse::Initialize(resp) => Ok(resp),
-            CacResponse::Shutdown(_) => Err(Error::InvalidResponseType {
-                expected: "Initialize".to_string(),
-                actual: format!("{response:?}"),
-            }),
-        }
+        // Now we can send the request directly without wrapping in an enum
+        Ok(self.inner.request(request).await?)
     }
 
     /// Shutdown the enclave.
@@ -73,15 +62,7 @@ impl CacClient {
     ) -> Result<ShutdownResponse> {
         debug!("Sending shutdown request");
 
-        let command = CacCommand::Shutdown(request);
-        let response = self.inner.request(command).await?;
-
-        match response {
-            CacResponse::Shutdown(resp) => Ok(resp),
-            CacResponse::Initialize(_) => Err(Error::InvalidResponseType {
-                expected: "Shutdown".to_string(),
-                actual: format!("{response:?}"),
-            }),
-        }
+        // Now we can send the request directly without wrapping in an enum
+        Ok(self.inner.request(request).await?)
     }
 }

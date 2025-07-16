@@ -3,8 +3,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_vsock_rpc::{
-    HandlerResponse, MessagePattern, RpcHandler, RpcMessage, RpcServer, ServerConfig,
-    protocol::codec,
+    HandlerResponse, MessagePattern, RpcHandler, RpcServer, ServerConfig, error::HandlerError,
 };
 use serde_json;
 use std::{
@@ -68,66 +67,158 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
     #[instrument(skip(self, message))]
     async fn handle_message(
         &self,
+        message_id: &str,
         message: Bytes,
         _pattern: MessagePattern,
     ) -> proven_vsock_rpc::Result<HandlerResponse> {
-        // Decode the command
-        let command: WalCommand = codec::decode(&message)?;
+        debug!("Received WAL command: {}", message_id);
 
-        debug!("Received WAL command: {:?}", command.message_id());
+        // Route based on message_id
+        match message_id {
+            "wal.append_logs" => {
+                // Decode AppendLogsRequest
+                let request = AppendLogsRequest::try_from(message).map_err(|e| {
+                    proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                        "Failed to decode AppendLogsRequest: {e}"
+                    )))
+                })?;
 
-        // Handle the command
-        let response = match command {
-            WalCommand::AppendLogs(request) => match self.inner.handle_append_logs(request).await {
-                Ok(resp) => WalResponse::AppendLogs(resp),
-                Err(e) => {
-                    error!("Append logs failed: {}", e);
-                    WalResponse::AppendLogs(AppendLogsResponse {
-                        success: false,
-                        error: Some(e.to_string()),
-                    })
-                }
-            },
-            WalCommand::ConfirmBatch(request) => {
-                match self.inner.handle_confirm_batch(request).await {
-                    Ok(resp) => WalResponse::ConfirmBatch(resp),
+                // Handle the request
+                match self.inner.handle_append_logs(request).await {
+                    Ok(resp) => {
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
+                    }
                     Err(e) => {
-                        error!("Confirm batch failed: {}", e);
-                        WalResponse::ConfirmBatch(ConfirmBatchResponse {
+                        error!("Append logs failed: {}", e);
+                        let resp = AppendLogsResponse {
                             success: false,
                             error: Some(e.to_string()),
-                        })
+                        };
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
                     }
                 }
             }
-            WalCommand::Sync(request) => match self.inner.handle_sync(request).await {
-                Ok(resp) => WalResponse::Sync(resp),
-                Err(e) => {
-                    error!("Sync failed: {}", e);
-                    WalResponse::Sync(SyncResponse {
-                        success: false,
-                        error: Some(e.to_string()),
-                    })
+            "wal.confirm_batch" => {
+                // Decode ConfirmBatchRequest
+                let request = ConfirmBatchRequest::try_from(message).map_err(|e| {
+                    proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                        "Failed to decode ConfirmBatchRequest: {e}"
+                    )))
+                })?;
+
+                // Handle the request
+                match self.inner.handle_confirm_batch(request).await {
+                    Ok(resp) => {
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
+                    }
+                    Err(e) => {
+                        error!("Confirm batch failed: {}", e);
+                        let resp = ConfirmBatchResponse {
+                            success: false,
+                            error: Some(e.to_string()),
+                        };
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
+                    }
                 }
-            },
-            WalCommand::GetPendingBatches(request) => {
+            }
+            "wal.sync" => {
+                // Decode SyncRequest
+                let request = SyncRequest::try_from(message).map_err(|e| {
+                    proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                        "Failed to decode SyncRequest: {e}"
+                    )))
+                })?;
+
+                // Handle the request
+                match self.inner.handle_sync(request).await {
+                    Ok(resp) => {
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
+                    }
+                    Err(e) => {
+                        error!("Sync failed: {}", e);
+                        let resp = SyncResponse {
+                            success: false,
+                            error: Some(e.to_string()),
+                        };
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
+                    }
+                }
+            }
+            "wal.get_pending_batches" => {
+                // Decode GetPendingBatchesRequest
+                let request = GetPendingBatchesRequest::try_from(message).map_err(|e| {
+                    proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                        "Failed to decode GetPendingBatchesRequest: {e}"
+                    )))
+                })?;
+
+                // Handle the request
                 match self.inner.handle_get_pending_batches(request).await {
-                    Ok(resp) => WalResponse::GetPendingBatches(resp),
+                    Ok(resp) => {
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
+                    }
                     Err(e) => {
                         error!("Get pending batches failed: {}", e);
-                        WalResponse::GetPendingBatches(GetPendingBatchesResponse {
+                        let resp = GetPendingBatchesResponse {
                             batches: Vec::new(),
                             error: Some(e.to_string()),
-                        })
+                        };
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
                     }
                 }
             }
-        };
-
-        // Encode the response
-        let response_bytes = codec::encode(&response)?;
-
-        Ok(HandlerResponse::Single(response_bytes))
+            _ => Err(proven_vsock_rpc::Error::Handler(HandlerError::NotFound(
+                format!("Unknown message_id: {message_id}"),
+            ))),
+        }
     }
 
     async fn on_connect(
@@ -187,127 +278,90 @@ impl<H: WalCommandHandler> WalServer<H> {
     }
 }
 
-/// File-based WAL implementation
-pub struct FileBasedWalHandler {
-    /// Base directory for WAL files
-    base_dir: PathBuf,
-    /// Pending batches: batch_id -> (namespace, entries, created_at)
+/// Default WAL command handler implementation
+pub struct DefaultWalHandler {
+    /// WAL directory
+    wal_dir: PathBuf,
+    /// Active WAL files by namespace
+    active_files: Arc<RwLock<HashMap<String, Arc<Mutex<File>>>>>,
+    /// Pending batches
     pending_batches: Arc<RwLock<HashMap<String, PendingBatch>>>,
-    /// WAL file handle
-    wal_file: Arc<Mutex<File>>,
 }
 
-impl FileBasedWalHandler {
-    /// Create a new file-based WAL handler
-    pub async fn new(base_dir: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
-        let base_dir = base_dir.as_ref().to_path_buf();
-
-        // Create directory if it doesn't exist
-        fs::create_dir_all(&base_dir).await?;
-
-        // Open WAL file
-        let wal_path = base_dir.join("wal.log");
-        let wal_file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&wal_path)
-            .await?;
-
-        // Load existing batches from WAL
-        let pending_batches = Self::load_pending_batches(&base_dir).await?;
+impl DefaultWalHandler {
+    /// Create a new default WAL handler
+    pub async fn new(wal_dir: impl AsRef<Path>) -> Result<Self, Box<dyn std::error::Error>> {
+        let wal_dir = wal_dir.as_ref().to_path_buf();
+        fs::create_dir_all(&wal_dir).await?;
 
         Ok(Self {
-            base_dir,
-            pending_batches: Arc::new(RwLock::new(pending_batches)),
-            wal_file: Arc::new(Mutex::new(wal_file)),
+            wal_dir,
+            active_files: Arc::new(RwLock::new(HashMap::new())),
+            pending_batches: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
-    /// Load pending batches from disk
-    async fn load_pending_batches(
-        base_dir: &Path,
-    ) -> Result<HashMap<String, PendingBatch>, Box<dyn std::error::Error>> {
-        let mut batches = HashMap::new();
-        let batches_dir = base_dir.join("batches");
+    /// Get or create WAL file for namespace
+    async fn get_wal_file(
+        &self,
+        namespace: &str,
+    ) -> Result<Arc<Mutex<File>>, Box<dyn std::error::Error>> {
+        let mut files = self.active_files.write().await;
 
-        if !batches_dir.exists() {
-            return Ok(batches);
+        if let Some(file) = files.get(namespace) {
+            return Ok(Arc::clone(file));
         }
 
-        let mut entries = fs::read_dir(&batches_dir).await?;
-        while let Some(entry) = entries.next_entry().await? {
-            if let Some(file_name) = entry.file_name().to_str()
-                && file_name.ends_with(".batch")
-            {
-                let batch_id = file_name.trim_end_matches(".batch");
-                let content = fs::read(entry.path()).await?;
+        let file_path = self.wal_dir.join(format!("{namespace}.wal"));
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&file_path)
+            .await?;
 
-                if let Ok(batch) = serde_json::from_slice::<PendingBatch>(&content) {
-                    batches.insert(batch_id.to_string(), batch);
-                }
-            }
-        }
+        let file = Arc::new(Mutex::new(file));
+        files.insert(namespace.to_string(), Arc::clone(&file));
 
-        info!("Loaded {} pending batches from disk", batches.len());
-        Ok(batches)
-    }
-
-    /// Write batch to disk
-    async fn write_batch(&self, batch: &PendingBatch) -> Result<(), Box<dyn std::error::Error>> {
-        let batches_dir = self.base_dir.join("batches");
-        fs::create_dir_all(&batches_dir).await?;
-
-        let batch_path = batches_dir.join(format!("{}.batch", batch.batch_id));
-        let content = serde_json::to_vec(&batch)?;
-        fs::write(&batch_path, content).await?;
-
-        Ok(())
-    }
-
-    /// Delete batch from disk
-    async fn delete_batch(&self, batch_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let batch_path = self
-            .base_dir
-            .join("batches")
-            .join(format!("{batch_id}.batch"));
-        if batch_path.exists() {
-            fs::remove_file(&batch_path).await?;
-        }
-        Ok(())
+        Ok(file)
     }
 }
 
 #[async_trait]
-impl WalCommandHandler for FileBasedWalHandler {
+impl WalCommandHandler for DefaultWalHandler {
     async fn handle_append_logs(
         &self,
         request: AppendLogsRequest,
     ) -> Result<AppendLogsResponse, Box<dyn std::error::Error>> {
+        // Get WAL file for namespace
+        let file = self.get_wal_file(&request.namespace).await?;
+
+        // Serialize entries
+        let entry_data = serde_json::to_vec(&request.entries)?;
+
+        // Write to WAL
+        {
+            let mut file = file.lock().await;
+            file.write_all(&(entry_data.len() as u32).to_le_bytes())
+                .await?;
+            file.write_all(&entry_data).await?;
+            file.sync_all().await?;
+        }
+
+        // Store pending batch
         let batch = PendingBatch {
             batch_id: request.batch_id.clone(),
-            namespace: request.namespace,
+            namespace: request.namespace.clone(),
             entries: request.entries,
             created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)?
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
                 .as_secs(),
         };
 
-        // Write to disk
-        self.write_batch(&batch).await?;
-
-        // Add to in-memory map
         self.pending_batches
             .write()
             .await
-            .insert(batch.batch_id.clone(), batch);
-
-        // Log to WAL file
-        let log_entry = format!("APPEND {} {}\n", request.batch_id, chrono::Utc::now());
-        self.wal_file
-            .lock()
-            .await
-            .write_all(log_entry.as_bytes())
-            .await?;
+            .insert(request.batch_id, batch);
 
         Ok(AppendLogsResponse {
             success: true,
@@ -319,44 +373,28 @@ impl WalCommandHandler for FileBasedWalHandler {
         &self,
         request: ConfirmBatchRequest,
     ) -> Result<ConfirmBatchResponse, Box<dyn std::error::Error>> {
-        // Remove from in-memory map
+        // Remove from pending batches
         let removed = self.pending_batches.write().await.remove(&request.batch_id);
 
-        if removed.is_some() {
-            // Delete from disk
-            self.delete_batch(&request.batch_id).await?;
-
-            // Log to WAL file
-            let log_entry = format!("CONFIRM {} {}\n", request.batch_id, chrono::Utc::now());
-            self.wal_file
-                .lock()
-                .await
-                .write_all(log_entry.as_bytes())
-                .await?;
-
-            Ok(ConfirmBatchResponse {
-                success: true,
-                error: None,
-            })
-        } else {
-            Ok(ConfirmBatchResponse {
-                success: false,
-                error: Some(format!("Batch {} not found", request.batch_id)),
-            })
-        }
+        Ok(ConfirmBatchResponse {
+            success: removed.is_some(),
+            error: if removed.is_none() {
+                Some(format!("Batch {} not found", request.batch_id))
+            } else {
+                None
+            },
+        })
     }
 
     async fn handle_sync(
         &self,
-        request: SyncRequest,
+        _request: SyncRequest,
     ) -> Result<SyncResponse, Box<dyn std::error::Error>> {
-        // Sync WAL file to disk
-        let file = self.wal_file.lock().await;
-        file.sync_all().await?;
-
-        if request.force {
-            // Also sync data directory
-            let _ = std::fs::File::open(&self.base_dir)?.sync_all();
+        // Sync all open files
+        let files = self.active_files.read().await;
+        for (_, file) in files.iter() {
+            let file = file.lock().await;
+            file.sync_all().await?;
         }
 
         Ok(SyncResponse {
@@ -369,20 +407,20 @@ impl WalCommandHandler for FileBasedWalHandler {
         &self,
         request: GetPendingBatchesRequest,
     ) -> Result<GetPendingBatchesResponse, Box<dyn std::error::Error>> {
-        let batches = self.pending_batches.read().await;
+        let pending = self.pending_batches.read().await;
 
-        let filtered_batches: Vec<PendingBatch> = if let Some(filter) = request.namespace_filter {
-            batches
+        let batches: Vec<PendingBatch> = if let Some(filter) = request.namespace_filter {
+            pending
                 .values()
                 .filter(|b| b.namespace == filter)
                 .cloned()
                 .collect()
         } else {
-            batches.values().cloned().collect()
+            pending.values().cloned().collect()
         };
 
         Ok(GetPendingBatchesResponse {
-            batches: filtered_batches,
+            batches,
             error: None,
         })
     }

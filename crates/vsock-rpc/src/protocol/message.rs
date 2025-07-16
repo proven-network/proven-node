@@ -1,6 +1,7 @@
 //! Core message traits and types.
 
-use serde::{Serialize, de::DeserializeOwned};
+use bytes::Bytes;
+use serde::Serialize;
 use std::fmt::Debug;
 
 /// Unique identifier for a message type.
@@ -11,9 +12,9 @@ pub type MessageId = &'static str;
 /// This trait must be implemented for all message types that will be
 /// sent through the RPC system. It provides type safety by associating
 /// each request type with its corresponding response type.
-pub trait RpcMessage: Serialize + DeserializeOwned + Send + Sync + 'static {
+pub trait RpcMessage: Send + Sync + 'static {
     /// The response type for this message.
-    type Response: Serialize + DeserializeOwned + Send + Sync + 'static;
+    type Response: Send + Sync + 'static;
 
     /// Returns a unique identifier for this message type.
     ///
@@ -51,11 +52,49 @@ pub struct Pong {
     pub server_timestamp: u64,
 }
 
+impl TryFrom<Bytes> for Ping {
+    type Error = crate::error::CodecError;
+
+    fn try_from(bytes: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&bytes)
+            .map_err(|e| crate::error::CodecError::DeserializationFailed(e.to_string()))
+    }
+}
+
+impl TryInto<Bytes> for Ping {
+    type Error = crate::error::CodecError;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        bincode::serialize(&self)
+            .map(Bytes::from)
+            .map_err(|e| crate::error::CodecError::SerializationFailed(e.to_string()))
+    }
+}
+
 impl RpcMessage for Ping {
     type Response = Pong;
 
     fn message_id(&self) -> MessageId {
         "ping"
+    }
+}
+
+impl TryFrom<Bytes> for Pong {
+    type Error = crate::error::CodecError;
+
+    fn try_from(bytes: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&bytes)
+            .map_err(|e| crate::error::CodecError::DeserializationFailed(e.to_string()))
+    }
+}
+
+impl TryInto<Bytes> for Pong {
+    type Error = crate::error::CodecError;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        bincode::serialize(&self)
+            .map(Bytes::from)
+            .map_err(|e| crate::error::CodecError::SerializationFailed(e.to_string()))
     }
 }
 

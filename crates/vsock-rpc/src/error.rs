@@ -155,18 +155,12 @@ pub enum HandlerError {
 
 impl From<bincode::Error> for CodecError {
     fn from(err: bincode::Error) -> Self {
-        Self::SerializationFailed(err.to_string())
-    }
-}
-
-impl From<ciborium::de::Error<io::Error>> for CodecError {
-    fn from(err: ciborium::de::Error<io::Error>) -> Self {
-        Self::DeserializationFailed(err.to_string())
-    }
-}
-
-impl From<ciborium::ser::Error<io::Error>> for CodecError {
-    fn from(err: ciborium::ser::Error<io::Error>) -> Self {
-        Self::SerializationFailed(err.to_string())
+        // Check if it's a serialization or deserialization error based on the error message
+        let err_string = err.to_string();
+        if err_string.contains("deserialize") || err_string.contains("decode") {
+            Self::DeserializationFailed(err_string)
+        } else {
+            Self::SerializationFailed(err_string)
+        }
     }
 }

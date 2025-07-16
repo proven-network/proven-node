@@ -1,6 +1,7 @@
 //! Tests for CAC command handling.
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use cidr::Ipv4Cidr;
 use proven_vsock_rpc::{MessagePattern, RpcHandler};
 use proven_vsock_rpc_cac::{
@@ -71,14 +72,14 @@ fn create_test_initialize_request() -> InitializeRequest {
 async fn test_successful_initialize() {
     let handler = CacHandler::new(MockHandler { should_fail: false });
 
-    // Serialize request
+    // Serialize request directly (no more wrapping in enum)
     let request = create_test_initialize_request();
-    let command = proven_vsock_rpc_cac::commands::CacCommand::Initialize(Box::new(request));
-    let message = proven_vsock_rpc::protocol::codec::encode(&command).unwrap();
+    let message: Bytes = request.try_into().unwrap();
 
-    // Handle message
+    // Handle message with the appropriate message_id
     let response = handler
         .handle_message(
+            "cac.initialize",
             message,
             MessagePattern::OneWay {
                 reliability: proven_vsock_rpc::protocol::patterns::ReliabilityLevel::BestEffort,
@@ -91,16 +92,9 @@ async fn test_successful_initialize() {
     // Verify response
     match response {
         proven_vsock_rpc::HandlerResponse::Single(bytes) => {
-            let resp: proven_vsock_rpc_cac::commands::CacResponse =
-                proven_vsock_rpc::protocol::codec::decode(&bytes).unwrap();
-
-            match resp {
-                proven_vsock_rpc_cac::commands::CacResponse::Initialize(init_resp) => {
-                    assert!(init_resp.success);
-                    assert!(init_resp.error.is_none());
-                }
-                _ => panic!("Unexpected response type"),
-            }
+            let init_resp = InitializeResponse::try_from(bytes).unwrap();
+            assert!(init_resp.success);
+            assert!(init_resp.error.is_none());
         }
         _ => panic!("Expected single response"),
     }
@@ -114,14 +108,14 @@ async fn test_successful_initialize() {
 async fn test_failed_initialize() {
     let handler = CacHandler::new(MockHandler { should_fail: true });
 
-    // Serialize request
+    // Serialize request directly
     let request = create_test_initialize_request();
-    let command = proven_vsock_rpc_cac::commands::CacCommand::Initialize(Box::new(request));
-    let message = proven_vsock_rpc::protocol::codec::encode(&command).unwrap();
+    let message: Bytes = request.try_into().unwrap();
 
     // Handle message
     let response = handler
         .handle_message(
+            "cac.initialize",
             message,
             MessagePattern::OneWay {
                 reliability: proven_vsock_rpc::protocol::patterns::ReliabilityLevel::BestEffort,
@@ -134,22 +128,15 @@ async fn test_failed_initialize() {
     // Verify response
     match response {
         proven_vsock_rpc::HandlerResponse::Single(bytes) => {
-            let resp: proven_vsock_rpc_cac::commands::CacResponse =
-                proven_vsock_rpc::protocol::codec::decode(&bytes).unwrap();
-
-            match resp {
-                proven_vsock_rpc_cac::commands::CacResponse::Initialize(init_resp) => {
-                    assert!(!init_resp.success);
-                    assert!(init_resp.error.is_some());
-                    assert!(
-                        init_resp
-                            .error
-                            .unwrap()
-                            .contains("Mock initialization failure")
-                    );
-                }
-                _ => panic!("Unexpected response type"),
-            }
+            let init_resp = InitializeResponse::try_from(bytes).unwrap();
+            assert!(!init_resp.success);
+            assert!(init_resp.error.is_some());
+            assert!(
+                init_resp
+                    .error
+                    .unwrap()
+                    .contains("Mock initialization failure")
+            );
         }
         _ => panic!("Expected single response"),
     }
@@ -162,16 +149,16 @@ async fn test_failed_initialize() {
 async fn test_shutdown() {
     let handler = CacHandler::new(MockHandler { should_fail: false });
 
-    // Serialize request
+    // Serialize request directly
     let request = ShutdownRequest {
         grace_period_secs: Some(30),
     };
-    let command = proven_vsock_rpc_cac::commands::CacCommand::Shutdown(request);
-    let message = proven_vsock_rpc::protocol::codec::encode(&command).unwrap();
+    let message: Bytes = request.try_into().unwrap();
 
     // Handle message
     let response = handler
         .handle_message(
+            "cac.shutdown",
             message,
             MessagePattern::OneWay {
                 reliability: proven_vsock_rpc::protocol::patterns::ReliabilityLevel::BestEffort,
@@ -184,20 +171,45 @@ async fn test_shutdown() {
     // Verify response
     match response {
         proven_vsock_rpc::HandlerResponse::Single(bytes) => {
-            let resp: proven_vsock_rpc_cac::commands::CacResponse =
-                proven_vsock_rpc::protocol::codec::decode(&bytes).unwrap();
-
-            match resp {
-                proven_vsock_rpc_cac::commands::CacResponse::Shutdown(shutdown_resp) => {
-                    assert!(shutdown_resp.success);
-                    assert_eq!(shutdown_resp.message, Some("Shutting down".to_string()));
-                }
-                _ => panic!("Unexpected response type"),
-            }
+            let shutdown_resp = ShutdownResponse::try_from(bytes).unwrap();
+            assert!(shutdown_resp.success);
+            assert_eq!(shutdown_resp.message, Some("Shutting down".to_string()));
         }
         _ => panic!("Expected single response"),
     }
 
     // Verify state
     assert!(handler.is_shutting_down().await);
+}
+
+#[tokio::test]
+async fn test_unknown_message_id() {
+    let handler = CacHandler::new(MockHandler { should_fail: false });
+
+    // Create a message with unknown message_id
+    let request = create_test_initialize_request();
+    let message: Bytes = request.try_into().unwrap();
+
+    // Handle message with wrong message_id
+    let response = handler
+        .handle_message(
+            "unknown.message",
+            message,
+            MessagePattern::OneWay {
+                reliability: proven_vsock_rpc::protocol::patterns::ReliabilityLevel::BestEffort,
+                wait_for_ack: false,
+            },
+        )
+        .await;
+
+    // Should return an error
+    assert!(response.is_err());
+    match response {
+        Err(proven_vsock_rpc::Error::Handler(proven_vsock_rpc::error::HandlerError::NotFound(
+            msg,
+        ))) => {
+            assert!(msg.contains("Unknown message_id"));
+        }
+        _ => panic!("Expected NotFound error"),
+    }
 }

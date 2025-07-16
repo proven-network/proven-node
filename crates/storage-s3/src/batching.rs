@@ -37,7 +37,7 @@ pub struct BatchRequest {
 /// Manages batching of log entries for efficient S3 uploads
 pub struct BatchManager {
     /// Batching configuration
-    config: BatchConfig,
+    _config: BatchConfig,
     /// Request sender
     tx: mpsc::Sender<BatchRequest>,
     /// Background task handle
@@ -52,7 +52,7 @@ impl BatchManager {
         let handle = tokio::spawn(batch_worker(config.clone(), rx, upload_tx));
 
         Self {
-            config,
+            _config: config,
             tx,
             _handle: handle,
         }
@@ -194,7 +194,7 @@ async fn flush_batch(batch: LogBatch, upload_tx: &mpsc::Sender<LogBatch>) {
 /// Manages parallel uploads of batches to S3
 pub struct UploadManager {
     /// Number of parallel upload workers
-    workers: usize,
+    _workers: usize,
     /// Handles to worker tasks
     _handles: Vec<tokio::task::JoinHandle<()>>,
 }
@@ -221,7 +221,7 @@ impl UploadManager {
         }
 
         Self {
-            workers,
+            _workers: workers,
             _handles: handles,
         }
     }

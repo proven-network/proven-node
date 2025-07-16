@@ -1,7 +1,7 @@
 //! Connection pooling and management.
 
 use crate::error::{ConnectionError, Error, Result};
-use crate::protocol::{Frame, FrameCodec, FrameType, ResponseEnvelope, codec};
+use crate::protocol::{Frame, FrameCodec, FrameType, ResponseEnvelope};
 use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
@@ -68,6 +68,8 @@ pub struct PooledConnection {
     last_used: Arc<RwLock<Instant>>,
     in_flight: Arc<RwLock<usize>>,
     health: Arc<RwLock<ConnectionHealth>>,
+    #[allow(dead_code)]
+    shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 impl PooledConnection {
@@ -259,7 +261,7 @@ impl ConnectionPool {
             id
         };
 
-        let (_shutdown_tx, shutdown_rx) = oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
 
         let conn = Arc::new(PooledConnection {
             id,
@@ -267,6 +269,7 @@ impl ConnectionPool {
             last_used: Arc::new(RwLock::new(Instant::now())),
             in_flight: Arc::new(RwLock::new(0)),
             health: Arc::new(RwLock::new(ConnectionHealth::Healthy)),
+            shutdown_tx: Some(shutdown_tx),
         });
 
         // Start stream handler
@@ -284,7 +287,7 @@ impl ConnectionPool {
     /// Handle incoming frames from a connection.
     #[allow(clippy::cognitive_complexity)]
     async fn handle_stream(
-        _conn: Arc<PooledConnection>,
+        conn: Arc<PooledConnection>,
         #[cfg(target_os = "linux")] mut stream: SplitStream<
             Framed<tokio_vsock::VsockStream, FrameCodec>,
         >,
@@ -294,21 +297,27 @@ impl ConnectionPool {
         mut shutdown_rx: oneshot::Receiver<()>,
         pending_requests: Arc<DashMap<Uuid, ResponseSender>>,
     ) {
+        debug!("Starting handle_stream for connection {}", conn.id);
         loop {
             tokio::select! {
                 frame = stream.next() => {
                     match frame {
                         Some(Ok(frame)) => {
+                            debug!("Connection {} received frame type: {:?}", conn.id, frame.frame_type);
                             match frame.frame_type {
                                 FrameType::Response => {
-                                    // Decode response envelope
-                                    match codec::decode::<ResponseEnvelope>(&frame.payload) {
+                                    // Decode response envelope using bincode directly
+                                    match bincode::deserialize::<ResponseEnvelope>(&frame.payload) {
                                         Ok(response) => {
+                                            debug!("Connection {} decoded response for request_id: {} ({} bytes)",
+                                                conn.id, response.request_id, response.payload.len());
                                             // Find and notify waiting request
                                             if let Some((_, sender)) = pending_requests.remove(&response.request_id) {
+                                                debug!("Found pending request for {}, sending response", response.request_id);
                                                 let _ = sender.send(Ok(response));
                                             } else {
-                                                warn!("Received response for unknown request: {}", response.request_id);
+                                                warn!("Received response for unknown request: {} (pending requests: {})",
+                                                    response.request_id, pending_requests.len());
                                             }
                                         }
                                         Err(e) => {

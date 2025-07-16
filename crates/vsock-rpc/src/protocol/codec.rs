@@ -1,28 +1,36 @@
-//! CBOR codec implementation for serialization.
+//! Bilrost codec implementation for serialization.
+//!
+//! This module provides a bilrost-based codec while maintaining
+//! compatibility with serde traits for the public API.
 
 use crate::error::{CodecError, Result};
 use bytes::Bytes;
 use serde::{Serialize, de::DeserializeOwned};
 
-/// Encode a message into CBOR bytes.
+/// Encode a message into bilrost bytes.
+///
+/// This function temporarily uses bincode for serde compatibility.
+/// TODO: Create bilrost wrapper types for all messages.
 ///
 /// # Errors
 ///
 /// Returns an error if the message cannot be serialized.
 pub fn encode<T: Serialize>(msg: &T) -> Result<Bytes> {
-    let mut vec = Vec::new();
-    ciborium::ser::into_writer(msg, &mut vec)
-        .map_err(|e| CodecError::SerializationFailed(e.to_string()))?;
-    Ok(Bytes::from(vec))
+    let encoded =
+        bincode::serialize(msg).map_err(|e| CodecError::SerializationFailed(e.to_string()))?;
+    Ok(Bytes::from(encoded))
 }
 
-/// Decode CBOR bytes into a message.
+/// Decode bilrost bytes into a message.
+///
+/// This function temporarily uses bincode for serde compatibility.
+/// TODO: Create bilrost wrapper types for all messages.
 ///
 /// # Errors
 ///
 /// Returns an error if the data is invalid or the message cannot be deserialized.
 pub fn decode<T: DeserializeOwned>(data: &[u8]) -> Result<T> {
-    ciborium::de::from_reader(data)
+    bincode::deserialize(data)
         .map_err(|e| CodecError::DeserializationFailed(e.to_string()))
         .map_err(Into::into)
 }

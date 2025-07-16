@@ -18,7 +18,6 @@ use proven_vsock_proxy::Proxy;
 use proven_vsock_rpc_cac::{CacClient, InitializeRequest};
 use proven_vsock_tracing::host::VsockTracingConsumer;
 use tokio::signal::unix::{SignalKind, signal};
-use tokio_vsock::VsockAddr;
 use tracing::{error, info};
 
 static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../../templates/allocator.yaml");
@@ -114,13 +113,13 @@ pub async fn start(args: StartArgs) -> Result<()> {
     tokio::select! {
         _ = sigterm.recv() => {
             info!("received SIGTERM, initiating shutdown");
-            shutdown_enclave(&args).await?;
+            shutdown_enclave(#[cfg(target_os = "linux")] &args).await?;
             let _ = http_server.shutdown().await;
             proxy.shutdown().await;
         }
         _ = tokio::signal::ctrl_c() => {
             info!("received SIGINT, initiating shutdown");
-            shutdown_enclave(&args).await?;
+            shutdown_enclave(#[cfg(target_os = "linux")] &args).await?;
             let _ = http_server.shutdown().await;
             proxy.shutdown().await;
         }
@@ -162,7 +161,12 @@ fn allocate_enclave_resources(enclave_cpus: u8, enclave_memory: u32) -> Result<(
 async fn initialize_enclave(args: &StartArgs) -> Result<()> {
     let host_dns_resolv = std::fs::read_to_string("/etc/resolv.conf").unwrap();
 
-    let client = CacClient::new(VsockAddr::new(args.enclave_cid, 1024))?;
+    let client = CacClient::new(
+        #[cfg(target_os = "linux")]
+        VsockAddr::new(args.enclave_cid, 1024),
+        #[cfg(not(target_os = "linux"))]
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 1024)),
+    )?;
     let res = client
         .initialize(InitializeRequest {
             certificates_bucket: args.certificates_bucket.clone(),
@@ -194,8 +198,13 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
     Ok(())
 }
 
-async fn shutdown_enclave(args: &StartArgs) -> Result<()> {
-    let client = CacClient::new(VsockAddr::new(args.enclave_cid, 1024))?;
+async fn shutdown_enclave(#[cfg(target_os = "linux")] rgs: &StartArgs) -> Result<()> {
+    let client = CacClient::new(
+        #[cfg(target_os = "linux")]
+        tokio_vsock::VsockAddr::new(args.enclave_cid, 1024),
+        #[cfg(not(target_os = "linux"))]
+        SocketAddr::from((Ipv4Addr::LOCALHOST, 1024)),
+    )?;
     let res = client.shutdown().await;
 
     info!("shutdown response: {:?}", res);

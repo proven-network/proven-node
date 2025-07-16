@@ -4,7 +4,6 @@ use crate::nitro::NitroCli;
 
 use proven_vsock_rpc_cac::CacClient;
 use tokio::time::{Duration, sleep};
-use tokio_vsock::VsockAddr;
 use tracing::info;
 
 #[allow(clippy::cognitive_complexity)]
@@ -15,7 +14,12 @@ pub async fn stop(args: StopArgs) -> Result<()> {
     }
 
     info!("attempting graceful shutdown");
-    if let Ok(client) = CacClient::new(VsockAddr::new(args.enclave_cid, 1024)) {
+    if let Ok(client) = CacClient::new(
+        #[cfg(target_os = "linux")]
+        tokio_vsock::VsockAddr::new(args.enclave_cid, 1024),
+        #[cfg(not(target_os = "linux"))]
+        std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 1024)),
+    ) {
         let _ = client.shutdown().await;
     }
 

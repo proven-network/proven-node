@@ -194,7 +194,7 @@ where
         ));
 
         // Create ClientService
-        let client_service = Arc::new(ClientService::new());
+        let client_service = Arc::new(ClientService::new(self.node_id.clone()));
 
         // Create service wrappers that implement ServiceLifecycle
         let network_service = Arc::new(network_service);

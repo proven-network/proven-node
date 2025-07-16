@@ -1,0 +1,71 @@
+# VSOCK-FUSE Test Configuration
+
+[filesystem]
+max_file_size = 1073741824  # 1GB
+max_total_storage = 10737418240  # 10GB
+block_size = 4096  # 4KB
+database_direct_io = true
+database_patterns = ["*.db", "*.sqlite", "*.sqlite3"]
+
+[encryption]
+algorithm = "AES-256-GCM"
+encrypt_metadata = true
+encrypt_filenames = true
+
+[encryption.kdf]
+algorithm = "Argon2id"
+memory_cost = 4096  # 4MB (faster for tests)
+time_cost = 1
+parallelism = 1
+
+[storage.hot_tier]
+base_path = "/tmp/vsock-fuse-test/hot"
+max_size = 1073741824  # 1GB
+target_free_space_percent = 20
+emergency_threshold_percent = 5
+
+[storage.cold_tier]
+bucket = "vsock-fuse-test"
+prefix = "test-data/"
+storage_class = "STANDARD"
+compression_enabled = false  # Disabled for faster tests
+compression_algorithm = "zstd"
+compression_level = 1
+chunk_size = 1048576  # 1MB
+
+[storage.tiering.time_based]
+cold_after = "1m"  # Fast tiering for tests
+hot_if_accessed_within = "10s"
+
+[storage.tiering.size_based]
+large_file_threshold = 1048576  # 1MB
+large_file_cold_after = "30s"
+
+[storage.tiering]
+batch_size = 5
+max_concurrent_migrations = 2
+bandwidth_limit_mbps = 10
+
+[rpc]
+host_cid = 3
+port = 19999  # Different port for tests
+connection_timeout = "5s"
+request_timeout = "30s"
+max_request_size = 1048576  # 1MB
+max_response_size = 1048576  # 1MB
+
+[cache]
+metadata_cache_size = 10485760  # 10MB
+data_cache_size = 52428800  # 50MB
+attr_timeout = "100ms"
+entry_timeout = "500ms"
+read_ahead_enabled = false  # Disabled for predictable tests
+read_ahead_blocks = 4
+
+[security]
+require_attestation = false
+attestation_max_age = "1m"
+sandbox_enabled = true
+sandbox_root = "/tmp/vsock-fuse-test/sandbox"
+audit_logging = false  # Reduced logging for tests
+rate_limit_rps = 100

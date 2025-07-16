@@ -1,0 +1,95 @@
+[package]
+name = "proven-vsock-fuse"
+version.workspace = true
+edition = "2024"
+
+[dependencies]
+# FUSE filesystem support
+fuser = "0.15"
+libc.workspace = true
+
+# Async runtime
+tokio.workspace = true
+
+# Internal dependencies
+proven-vsock-rpc.workspace = true
+
+# Encryption and security
+aes-gcm.workspace = true
+argon2.workspace = true
+sha2.workspace = true
+sha3.workspace = true
+rand.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+bincode.workspace = true
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Data structures
+bytes = { workspace = true }
+dashmap.workspace = true
+lru.workspace = true
+parking_lot.workspace = true
+
+# Logging and tracing
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Configuration
+toml = { workspace = true }
+
+# Time handling
+chrono = { workspace = true }
+humantime-serde = "1"
+
+# Path handling
+pathdiff = "0.2"
+
+# Utilities
+uuid.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+pin-project = "1"
+
+# Metrics
+prometheus = { workspace = true }
+
+# AWS SDK for S3
+aws-config = { version = "1.5", optional = true }
+aws-sdk-s3 = { version = "1.58", optional = true }
+
+# Compression
+zstd = { version = "0.13", optional = true }
+
+# Testing support
+mockall = { version = "0.12", optional = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+tempfile = "3"
+test-case = "3"
+proptest = "1"
+proven-util.workspace = true
+tokio-test = "0.4"
+
+[features]
+default = ["enclave", "host"]
+enclave = []
+host = ["aws-config", "aws-sdk-s3", "zstd"]
+testing = ["mockall"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tokio-vsock = { workspace = true }
+
+# [[bench]]
+# name = "encryption"
+# harness = false
+
+# [[bench]]
+# name = "file_operations"
+# harness = false

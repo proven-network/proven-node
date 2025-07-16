@@ -8,14 +8,14 @@
 //!
 //! - **Multiple Patterns**: Request/response, streaming, and fire-and-forget
 //! - **Connection Pooling**: Reuse connections for better performance
-//! - **CBOR Serialization**: Efficient binary format using ciborium
+//! - **Bincode Serialization**: Efficient binary format using bincode
 //! - **Automatic Retry**: Configurable retry policies with exponential backoff
 //! - **Type Safety**: Strongly typed messages with compile-time guarantees
 //!
 //! # Example
 //!
 //! ```no_run
-//! use proven_vsock_rpc::{RpcClient, RpcMessage};
+//! use proven_vsock_rpc::{Bytes, RpcClient, RpcMessage};
 //! use serde::{Deserialize, Serialize};
 //!
 //! #[derive(Serialize, Deserialize)]
@@ -28,6 +28,26 @@
 //!
 //!     fn message_id(&self) -> &'static str {
 //!         "echo"
+//!     }
+//! }
+//!
+//! impl TryFrom<Echo> for Bytes {
+//!     type Error = proven_vsock_rpc::error::CodecError;
+//!
+//!     fn try_from(value: Echo) -> Result<Self, Self::Error> {
+//!         bincode::serialize(&value).map(Bytes::from).map_err(|e| {
+//!             proven_vsock_rpc::error::CodecError::SerializationFailed(e.to_string())
+//!         })
+//!     }
+//! }
+//!
+//! impl TryFrom<Bytes> for Echo {
+//!     type Error = proven_vsock_rpc::error::CodecError;
+//!
+//!     fn try_from(value: Bytes) -> Result<Self, Self::Error> {
+//!         bincode::deserialize(&value).map_err(|e| {
+//!             proven_vsock_rpc::error::CodecError::DeserializationFailed(e.to_string())
+//!         })
 //!     }
 //! }
 //!

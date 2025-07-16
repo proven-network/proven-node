@@ -1,0 +1,71 @@
+# VSOCK-FUSE Development Configuration
+
+[filesystem]
+max_file_size = 10737418240  # 10GB
+max_total_storage = 1099511627776  # 1TB
+block_size = 4096  # 4KB
+database_direct_io = true
+database_patterns = ["*.db", "*.sqlite", "*.sqlite3"]
+
+[encryption]
+algorithm = "AES-256-GCM"
+encrypt_metadata = true
+encrypt_filenames = true
+
+[encryption.kdf]
+algorithm = "Argon2id"
+memory_cost = 65536  # 64MB
+time_cost = 3
+parallelism = 4
+
+[storage.hot_tier]
+base_path = "/tmp/vsock-fuse/hot"
+max_size = 107374182400  # 100GB
+target_free_space_percent = 20
+emergency_threshold_percent = 5
+
+[storage.cold_tier]
+bucket = "vsock-fuse-dev"
+prefix = "enclave-data/"
+storage_class = "STANDARD"  # Use STANDARD for dev
+compression_enabled = true
+compression_algorithm = "zstd"
+compression_level = 3
+chunk_size = 33554432  # 32MB
+
+[storage.tiering.time_based]
+cold_after = "7d"
+hot_if_accessed_within = "1h"
+
+[storage.tiering.size_based]
+large_file_threshold = 104857600  # 100MB
+large_file_cold_after = "3d"
+
+[storage.tiering]
+batch_size = 10
+max_concurrent_migrations = 4
+bandwidth_limit_mbps = 100
+
+[rpc]
+host_cid = 3
+port = 9999
+connection_timeout = "30s"
+request_timeout = "2m"
+max_request_size = 10485760  # 10MB
+max_response_size = 10485760  # 10MB
+
+[cache]
+metadata_cache_size = 104857600  # 100MB
+data_cache_size = 524288000  # 500MB
+attr_timeout = "1s"
+entry_timeout = "5s"
+read_ahead_enabled = true
+read_ahead_blocks = 16
+
+[security]
+require_attestation = false  # Disabled for development
+attestation_max_age = "5m"
+sandbox_enabled = false
+sandbox_root = "/tmp/vsock-fuse/sandbox"
+audit_logging = true
+rate_limit_rps = 1000

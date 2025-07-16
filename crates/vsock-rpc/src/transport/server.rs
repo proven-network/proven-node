@@ -2,7 +2,7 @@
 
 use crate::error::{Error, HandlerError, Result};
 use crate::protocol::message::{ErrorInfo, MessageEnvelope, ResponseEnvelope};
-use crate::protocol::{Frame, FrameCodec, FrameType, MessagePattern, codec, patterns::RetryPolicy};
+use crate::protocol::{Frame, FrameCodec, FrameType, MessagePattern, patterns::RetryPolicy};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
@@ -53,6 +53,7 @@ pub trait RpcHandler: Send + Sync + 'static {
     /// Handle an incoming message.
     async fn handle_message(
         &self,
+        message_id: &str,
         message: Bytes,
         pattern: MessagePattern,
     ) -> Result<HandlerResponse>;
@@ -223,6 +224,10 @@ impl<H: RpcHandler> RpcServer<H> {
                                 error!("Failed to send heartbeat response: {}", e);
                                 break;
                             }
+                            if let Err(e) = framed.flush().await {
+                                error!("Failed to flush heartbeat response: {}", e);
+                                break;
+                            }
                         }
                         FrameType::Close => {
                             debug!("Client requested close");
@@ -263,8 +268,12 @@ impl<H: RpcHandler> RpcServer<H> {
         #[cfg(target_os = "linux")] sink: &mut Framed<tokio_vsock::VsockStream, FrameCodec>,
         #[cfg(not(target_os = "linux"))] sink: &mut Framed<tokio::net::TcpStream, FrameCodec>,
     ) -> Result<()> {
-        // Deserialize envelope
-        let envelope: MessageEnvelope = codec::decode(&frame.payload)?;
+        // Deserialize envelope using bincode directly
+        let envelope: MessageEnvelope = bincode::deserialize(&frame.payload).map_err(|e| {
+            Error::Codec(crate::error::CodecError::DeserializationFailed(
+                e.to_string(),
+            ))
+        })?;
 
         // Verify checksum if present
         if let Some(expected) = envelope.checksum {
@@ -287,11 +296,13 @@ impl<H: RpcHandler> RpcServer<H> {
         };
 
         match handler
-            .handle_message(envelope.payload.into(), pattern)
+            .handle_message(&envelope.message_id, envelope.payload.into(), pattern)
             .await
         {
             Ok(HandlerResponse::Single(response)) => {
                 // Send single response
+                debug!("Handler returned response with {} bytes", response.len());
+
                 let response_envelope = ResponseEnvelope {
                     request_id: envelope.id,
                     message_id: format!("{}.response", envelope.message_id),
@@ -299,10 +310,19 @@ impl<H: RpcHandler> RpcServer<H> {
                     error: None,
                 };
 
-                let response_bytes = codec::encode(&response_envelope)?;
+                let response_bytes = bincode::serialize(&response_envelope)
+                    .map(Bytes::from)
+                    .map_err(|e| {
+                        Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
+                    })?;
+                debug!(
+                    "Encoded response envelope to {} bytes",
+                    response_bytes.len()
+                );
                 let response_frame = Frame::new(FrameType::Response, response_bytes);
 
                 sink.send(response_frame).await.map_err(Error::Io)?;
+                sink.flush().await.map_err(Error::Io)?;
             }
             Ok(HandlerResponse::Stream(mut stream)) => {
                 // Send stream of responses
@@ -316,11 +336,21 @@ impl<H: RpcHandler> RpcServer<H> {
                                 error: None,
                             };
 
-                            let response_bytes = codec::encode(&response_envelope)?;
+                            let response_bytes = bincode::serialize(&response_envelope)
+                                .map(Bytes::from)
+                                .map_err(|e| {
+                                    Error::Codec(crate::error::CodecError::SerializationFailed(
+                                        e.to_string(),
+                                    ))
+                                })?;
                             let response_frame = Frame::new(FrameType::Stream, response_bytes);
 
                             if let Err(e) = sink.send(response_frame).await {
                                 error!("Failed to send stream response: {}", e);
+                                break;
+                            }
+                            if let Err(e) = sink.flush().await {
+                                error!("Failed to flush stream response: {}", e);
                                 break;
                             }
                         }
@@ -369,10 +399,15 @@ impl<H: RpcHandler> RpcServer<H> {
             }),
         };
 
-        let response_bytes = codec::encode(&response_envelope)?;
+        let response_bytes = bincode::serialize(&response_envelope)
+            .map(Bytes::from)
+            .map_err(|e| {
+                Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
+            })?;
         let response_frame = Frame::new(FrameType::Error, response_bytes);
 
         sink.send(response_frame).await.map_err(Error::Io)?;
+        sink.flush().await.map_err(Error::Io)?;
 
         Ok(())
     }
@@ -400,6 +435,7 @@ mod tests {
     impl RpcHandler for TestHandler {
         async fn handle_message(
             &self,
+            _message_id: &str,
             _message: Bytes,
             _pattern: MessagePattern,
         ) -> Result<HandlerResponse> {

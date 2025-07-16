@@ -77,123 +77,98 @@ impl WalClient {
             batch_id: batch_id.clone(),
         };
 
-        let command = WalCommand::AppendLogs(request);
+        // Send request directly without wrapping in enum
         let response = self
             .client
-            .request(command)
+            .request(request)
             .await
             .map_err(|e| StorageError::Backend(format!("WAL request failed: {e}")))?;
 
-        match response {
-            WalResponse::AppendLogs(resp) => {
-                if resp.success {
-                    debug!("WAL append successful for batch {}", batch_id);
-                    Ok(())
-                } else {
-                    // Restore pending size on error
-                    *self.pending_size.write().await -= entry_size;
-                    Err(StorageError::Backend(
-                        resp.error
-                            .unwrap_or_else(|| "WAL append failed".to_string()),
-                    ))
-                }
-            }
-            _ => {
-                *self.pending_size.write().await -= entry_size;
-                Err(StorageError::Backend(
-                    "Unexpected WAL response type".to_string(),
-                ))
-            }
+        if response.success {
+            debug!("WAL append successful for batch {}", batch_id);
+            Ok(())
+        } else {
+            // Restore pending size on error
+            *self.pending_size.write().await -= entry_size;
+            Err(StorageError::Backend(
+                response
+                    .error
+                    .unwrap_or_else(|| "WAL append failed".to_string()),
+            ))
         }
     }
 
     /// Confirm a batch was successfully uploaded to S3
     pub async fn confirm_batch(&self, batch_id: String) -> StorageResult<()> {
         let request = ConfirmBatchRequest { batch_id };
-        let command = WalCommand::ConfirmBatch(request);
 
+        // Send request directly
         let response = self
             .client
-            .request(command)
+            .request(request)
             .await
             .map_err(|e| StorageError::Backend(format!("WAL request failed: {e}")))?;
 
-        match response {
-            WalResponse::ConfirmBatch(resp) => {
-                if resp.success {
-                    Ok(())
-                } else {
-                    Err(StorageError::Backend(
-                        resp.error
-                            .unwrap_or_else(|| "WAL confirm failed".to_string()),
-                    ))
-                }
-            }
-            _ => Err(StorageError::Backend(
-                "Unexpected WAL response type".to_string(),
-            )),
+        if response.success {
+            Ok(())
+        } else {
+            Err(StorageError::Backend(
+                response
+                    .error
+                    .unwrap_or_else(|| "WAL confirm failed".to_string()),
+            ))
         }
     }
 
     /// Sync WAL to disk
     pub async fn sync(&self) -> StorageResult<()> {
-        let command = WalCommand::Sync(SyncRequest::default());
+        let request = SyncRequest::default();
 
+        // Send request directly
         let response = self
             .client
-            .request(command)
+            .request(request)
             .await
             .map_err(|e| StorageError::Backend(format!("WAL request failed: {e}")))?;
 
-        match response {
-            WalResponse::Sync(resp) => {
-                if resp.success {
-                    Ok(())
-                } else {
-                    Err(StorageError::Backend(
-                        resp.error.unwrap_or_else(|| "WAL sync failed".to_string()),
-                    ))
-                }
-            }
-            _ => Err(StorageError::Backend(
-                "Unexpected WAL response type".to_string(),
-            )),
+        if response.success {
+            Ok(())
+        } else {
+            Err(StorageError::Backend(
+                response
+                    .error
+                    .unwrap_or_else(|| "WAL sync failed".to_string()),
+            ))
         }
     }
 
     /// Get pending batches for recovery
     pub async fn get_pending_batches(&self) -> StorageResult<Vec<PendingBatch>> {
-        let command = WalCommand::GetPendingBatches(GetPendingBatchesRequest::default());
+        let request = GetPendingBatchesRequest::default();
 
+        // Send request directly
         let response = self
             .client
-            .request(command)
+            .request(request)
             .await
             .map_err(|e| StorageError::Backend(format!("WAL request failed: {e}")))?;
 
-        match response {
-            WalResponse::GetPendingBatches(resp) => {
-                if let Some(error) = resp.error {
-                    Err(StorageError::Backend(format!(
-                        "WAL recovery failed: {error}"
-                    )))
-                } else {
-                    // Update pending size based on recovered batches
-                    let total_size: usize = resp
-                        .batches
-                        .iter()
-                        .flat_map(|b| &b.entries)
-                        .map(|(_, data)| data.len() + 8)
-                        .sum();
+        if let Some(error) = response.error {
+            Err(StorageError::Backend(format!(
+                "WAL recovery failed: {error}"
+            )))
+        } else {
+            // Update pending size based on recovered batches
+            let total_size: usize = response
+                .batches
+                .iter()
+                .flat_map(|b| &b.entries)
+                .map(|(_, data)| data.len() + 8)
+                .sum();
 
-                    *self.pending_size.write().await = total_size;
+            *self.pending_size.write().await = total_size;
 
-                    Ok(resp.batches)
-                }
-            }
-            _ => Err(StorageError::Backend(
-                "Unexpected WAL response type".to_string(),
-            )),
+            Ok(response.batches)
         }
     }
 

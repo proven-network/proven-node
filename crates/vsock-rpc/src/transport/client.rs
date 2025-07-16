@@ -2,8 +2,9 @@
 
 use crate::error::{Error, Result};
 use crate::protocol::message::MessageEnvelope;
-use crate::protocol::{Frame, FrameType, RequestOptions, RpcMessage, codec};
+use crate::protocol::{Frame, FrameType, RequestOptions, RpcMessage};
 use crate::transport::connection::{ConnectionPool, PoolConfig, ResponseSender};
+use bytes::Bytes;
 use dashmap::DashMap;
 use futures::stream::Stream;
 use std::sync::Arc;
@@ -143,7 +144,13 @@ impl RpcClient {
     ///
     /// Returns an error if the request fails or the response is invalid.
     #[instrument(skip(self, message))]
-    pub async fn request<M: RpcMessage>(&self, message: M) -> Result<M::Response> {
+    pub async fn request<M>(&self, message: M) -> Result<M::Response>
+    where
+        M: RpcMessage + TryInto<Bytes>,
+        M::Error: std::error::Error + Send + Sync + 'static,
+        M::Response: TryFrom<Bytes>,
+        <M::Response as TryFrom<Bytes>>::Error: std::error::Error + Send + Sync + 'static,
+    {
         self.request_with_options(message, RequestOptions::default())
             .await
     }
@@ -154,11 +161,17 @@ impl RpcClient {
     ///
     /// Returns an error if the request fails or the response is invalid.
     #[instrument(skip(self, message))]
-    pub async fn request_with_options<M: RpcMessage>(
+    pub async fn request_with_options<M>(
         &self,
         message: M,
         options: RequestOptions,
-    ) -> Result<M::Response> {
+    ) -> Result<M::Response>
+    where
+        M: RpcMessage + TryInto<Bytes>,
+        M::Error: std::error::Error + Send + Sync + 'static,
+        M::Response: TryFrom<Bytes>,
+        <M::Response as TryFrom<Bytes>>::Error: std::error::Error + Send + Sync + 'static,
+    {
         let request_id = Uuid::new_v4();
         let message_id = message.message_id();
 
@@ -167,8 +180,10 @@ impl RpcClient {
             request_id, message_id
         );
 
-        // Serialize message
-        let payload = codec::encode(&message)?;
+        // Convert message to bytes
+        let payload: Bytes = message.try_into().map_err(|e: M::Error| {
+            Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
+        })?;
 
         // Create envelope
         let envelope = MessageEnvelope {
@@ -178,8 +193,12 @@ impl RpcClient {
             checksum: Some(crc32fast::hash(&payload)),
         };
 
-        // Serialize envelope
-        let envelope_bytes = codec::encode(&envelope)?;
+        // Serialize envelope using bincode directly
+        let envelope_bytes = bincode::serialize(&envelope)
+            .map(Bytes::from)
+            .map_err(|e| {
+                Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
+            })?;
 
         // Create frame
         let frame = Frame::new(FrameType::Request, envelope_bytes);
@@ -189,9 +208,15 @@ impl RpcClient {
 
         // Register pending request
         self.pending_requests.insert(request_id, response_tx);
+        debug!(
+            "Registered pending request {} (total: {})",
+            request_id,
+            self.pending_requests.len()
+        );
 
         // Get connection and send
         let conn = self.pool.get().await?;
+        debug!("Got connection {} for request {}", conn.id(), request_id);
 
         // Send with timeout
         let send_timeout = options.timeout.min(self.config.default_timeout);
@@ -217,7 +242,20 @@ impl RpcClient {
         }
 
         // Deserialize response
-        let response_data: M::Response = codec::decode(&response.payload)?;
+        debug!(
+            "Response for request {}: payload length: {}",
+            response.request_id,
+            response.payload.len()
+        );
+
+        // Use TryFrom trait to deserialize response
+        let response_data = M::Response::try_from(Bytes::from(response.payload)).map_err(
+            |e: <M::Response as TryFrom<Bytes>>::Error| {
+                Error::Codec(crate::error::CodecError::DeserializationFailed(
+                    e.to_string(),
+                ))
+            },
+        )?;
 
         Ok(response_data)
     }
@@ -228,10 +266,14 @@ impl RpcClient {
     ///
     /// Returns an error if the request fails or the response is invalid.
     #[instrument(skip(self, message))]
-    pub async fn request_stream<M: RpcMessage>(
+    pub async fn request_stream<M>(
         &self,
         message: M,
-    ) -> Result<impl Stream<Item = Result<M::Response>>> {
+    ) -> Result<impl Stream<Item = Result<M::Response>>>
+    where
+        M: RpcMessage + TryInto<Bytes>,
+        M::Error: std::error::Error + Send + Sync + 'static,
+    {
         let request_id = Uuid::new_v4();
         let message_id = message.message_id();
 
@@ -255,9 +297,10 @@ impl RpcClient {
     ///
     /// Returns an error if the request fails or the response is invalid.
     #[instrument(skip(self))]
-    pub async fn bidi_stream<M: RpcMessage>(
-        &self,
-    ) -> Result<(mpsc::Sender<M>, mpsc::Receiver<M::Response>)> {
+    pub async fn bidi_stream<M>(&self) -> Result<(mpsc::Sender<M>, mpsc::Receiver<M::Response>)>
+    where
+        M: RpcMessage,
+    {
         let stream_id = Uuid::new_v4();
 
         debug!("Starting bidirectional stream {}", stream_id);
@@ -280,13 +323,19 @@ impl RpcClient {
     ///
     /// Returns an error if the request fails or the response is invalid.
     #[instrument(skip(self, message))]
-    pub async fn send_one_way<M: RpcMessage>(&self, message: M) -> Result<()> {
+    pub async fn send_one_way<M>(&self, message: M) -> Result<()>
+    where
+        M: RpcMessage + TryInto<Bytes>,
+        M::Error: std::error::Error + Send + Sync + 'static,
+    {
         let message_id = message.message_id();
 
         debug!("Sending one-way message with message_id: {}", message_id);
 
-        // Serialize message
-        let payload = codec::encode(&message)?;
+        // Convert message to bytes
+        let payload: Bytes = message.try_into().map_err(|e: M::Error| {
+            Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
+        })?;
 
         // Create envelope without expecting response
         let envelope = MessageEnvelope {
@@ -296,8 +345,12 @@ impl RpcClient {
             checksum: Some(crc32fast::hash(&payload)),
         };
 
-        // Serialize envelope
-        let envelope_bytes = codec::encode(&envelope)?;
+        // Serialize envelope using bincode directly
+        let envelope_bytes = bincode::serialize(&envelope)
+            .map(Bytes::from)
+            .map_err(|e| {
+                Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
+            })?;
 
         // Create frame
         let frame = Frame::new(FrameType::Request, envelope_bytes);

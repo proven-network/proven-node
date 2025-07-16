@@ -89,7 +89,7 @@ where
             .get_stream_info(&stream)
             .await?
             .ok_or_else(|| {
-                crate::error::ConsensusError::not_found(format!("Stream '{}' not found", stream))
+                crate::error::ConsensusError::not_found(format!("Stream '{stream}' not found"))
             })?;
 
         // Create message data
