@@ -212,12 +212,22 @@ where
                 .verify_signed_message(&cose_message, verified_peer.as_ref().unwrap())
                 .await
             {
-                Ok((payload, _metadata)) => {
+                Ok((payload, metadata)) => {
                     // Deserialize as TransportEnvelope and forward
-                    if let Ok(envelope) = serde_json::from_slice::<TransportEnvelope>(&payload)
-                        && incoming_tx.send(envelope).is_err()
+                    if let Ok(mut envelope) = serde_json::from_slice::<TransportEnvelope>(&payload)
                     {
-                        break; // Channel closed
+                        // Use message type from COSE metadata if available
+                        if let Some(msg_type) = metadata.message_type {
+                            envelope.message_type = msg_type;
+                        }
+                        // Use correlation ID from COSE metadata if available
+                        if metadata.correlation_id.is_some() {
+                            envelope.correlation_id = metadata.correlation_id;
+                        }
+
+                        if incoming_tx.send(envelope).is_err() {
+                            break; // Channel closed
+                        }
                     }
                 }
                 Err(_) => continue, // Skip invalid signatures
