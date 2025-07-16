@@ -1,6 +1,6 @@
 //! Simplified integration tests for the consensus engine using TestCluster
 
-use proven_consensus::EngineState;
+use proven_engine::EngineState;
 use std::time::Duration;
 
 mod common;
@@ -10,7 +10,7 @@ use common::{TestCluster, TransportType};
 async fn test_engine_start_stop() {
     // Initialize tracing for debugging
     let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_consensus=debug,proven_network=debug")
+        .with_env_filter("proven_engine=debug,proven_network=debug")
         .with_test_writer()
         .try_init();
 

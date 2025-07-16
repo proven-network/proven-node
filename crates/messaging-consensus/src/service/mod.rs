@@ -403,7 +403,7 @@ mod tests {
     use bytes::Bytes;
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::{
+    use proven_engine::{
         Consensus, HierarchicalConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
         config::{ClusterJoinRetryConfig, ConsensusConfigBuilder},
     };

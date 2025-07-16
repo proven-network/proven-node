@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_attestation::Attestor;
-use proven_consensus::Consensus;
+use proven_engine::Consensus;
 use proven_governance::Governance;
 use proven_messaging::subject::Subject;
 use tracing::debug;

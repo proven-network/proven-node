@@ -23,7 +23,7 @@ use crate::consumer::ConsensusConsumer;
 use crate::error::MessagingConsensusError;
 use crate::service::ConsensusService;
 use crate::subject::ConsensusSubject;
-use proven_consensus::Consensus;
+use proven_engine::Consensus;
 
 /// Options for the consensus stream.
 #[derive(Debug)]
@@ -359,7 +359,7 @@ where
     async fn publish(&self, message: T) -> Result<u64, Self::Error> {
         // Convert message to bytes
         let bytes = message.clone().try_into().map_err(|e| {
-            MessagingConsensusError::from(proven_consensus::Error::Serialization(format!(
+            MessagingConsensusError::from(proven_engine::Error::Serialization(format!(
                 "Failed to serialize message: {e:?}"
             )))
         })?;
@@ -390,7 +390,7 @@ where
         let mut bytes_messages = Vec::new();
         for message in &messages {
             let bytes = message.clone().try_into().map_err(|e| {
-                MessagingConsensusError::from(proven_consensus::Error::Serialization(format!(
+                MessagingConsensusError::from(proven_engine::Error::Serialization(format!(
                     "Failed to serialize batch message: {e:?}"
                 )))
             })?;
@@ -423,7 +423,7 @@ where
     async fn rollup(&self, message: T, expected_seq: u64) -> Result<u64, Self::Error> {
         // Convert message to bytes
         let bytes = message.clone().try_into().map_err(|e| {
-            MessagingConsensusError::from(proven_consensus::Error::Serialization(format!(
+            MessagingConsensusError::from(proven_engine::Error::Serialization(format!(
                 "Failed to serialize rollup message: {e:?}"
             )))
         })?;
@@ -628,7 +628,7 @@ mod tests {
     use bytes::Bytes;
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::{
+    use proven_engine::{
         HierarchicalConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
         config::{ClusterJoinRetryConfig, ConsensusConfigBuilder},
     };

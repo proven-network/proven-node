@@ -7,7 +7,7 @@ use std::time::Duration;
 use ed25519_dalek::SigningKey;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
-use proven_consensus::{Engine, EngineBuilder, EngineConfig};
+use proven_engine::{Engine, EngineBuilder, EngineConfig};
 use proven_governance::{Governance, GovernanceNode, Version};
 use proven_governance_mock::MockGovernance;
 use proven_network::NetworkManager;

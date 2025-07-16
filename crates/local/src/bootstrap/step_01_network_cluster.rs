@@ -20,14 +20,14 @@ use axum::routing::any;
 use http::StatusCode;
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
-use proven_consensus::{
+use proven_core::{Core, CoreOptions};
+use proven_engine::{
     EngineBuilder, EngineConfig,
     config::{
         ConsensusConfig, GlobalConsensusConfig, GroupConsensusConfig,
         NetworkConfig as ConsensusNetworkConfig, ServiceConfig, StorageConfig,
     },
 };
-use proven_core::{Core, CoreOptions};
 use proven_governance::{Governance, Version};
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::NetworkManager;

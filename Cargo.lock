@@ -10124,7 +10124,68 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-consensus"
+name = "proven-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum 0.8.4",
+ "axum-extra",
+ "axum_typed_multipart",
+ "base64 0.22.1",
+ "bytes",
+ "ciborium",
+ "coset",
+ "ed25519-dalek",
+ "futures",
+ "headers",
+ "hex",
+ "http-body-util",
+ "proven-applications",
+ "proven-attestation",
+ "proven-bootable",
+ "proven-code-package",
+ "proven-engine",
+ "proven-governance",
+ "proven-headers",
+ "proven-http",
+ "proven-identity",
+ "proven-passkeys",
+ "proven-runtime",
+ "proven-sessions",
+ "proven-sql",
+ "proven-store",
+ "proven-transport",
+ "proven-util",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
+ "tower-http",
+ "tracing",
+ "url",
+ "uuid",
+ "webauthn-rs",
+]
+
+[[package]]
+name = "proven-dnscrypt-proxy"
+version = "0.1.0"
+dependencies = [
+ "aws-config",
+ "aws-sdk-route53resolver",
+ "dns-stamp-parser",
+ "nix 0.27.1",
+ "regex",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "proven-engine"
 version = "0.1.0"
 dependencies = [
  "async-stream",
@@ -10177,67 +10238,6 @@ dependencies = [
  "tracing-test",
  "url",
  "uuid",
-]
-
-[[package]]
-name = "proven-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum 0.8.4",
- "axum-extra",
- "axum_typed_multipart",
- "base64 0.22.1",
- "bytes",
- "ciborium",
- "coset",
- "ed25519-dalek",
- "futures",
- "headers",
- "hex",
- "http-body-util",
- "proven-applications",
- "proven-attestation",
- "proven-bootable",
- "proven-code-package",
- "proven-consensus",
- "proven-governance",
- "proven-headers",
- "proven-http",
- "proven-identity",
- "proven-passkeys",
- "proven-runtime",
- "proven-sessions",
- "proven-sql",
- "proven-store",
- "proven-transport",
- "proven-util",
- "rand 0.8.5",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "tower-http",
- "tracing",
- "url",
- "uuid",
- "webauthn-rs",
-]
-
-[[package]]
-name = "proven-dnscrypt-proxy"
-version = "0.1.0"
-dependencies = [
- "aws-config",
- "aws-sdk-route53resolver",
- "dns-stamp-parser",
- "nix 0.27.1",
- "regex",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "tracing",
 ]
 
 [[package]]
@@ -10571,8 +10571,8 @@ dependencies = [
  "proven-attestation-mock",
  "proven-bitcoin-core",
  "proven-bootable",
- "proven-consensus",
  "proven-core",
+ "proven-engine",
  "proven-ethereum-lighthouse",
  "proven-ethereum-reth",
  "proven-governance",

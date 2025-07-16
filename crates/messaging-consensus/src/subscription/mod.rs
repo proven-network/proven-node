@@ -15,7 +15,7 @@ use tokio::time::Duration;
 use tracing::{debug, info, warn};
 
 use proven_attestation::Attestor;
-use proven_consensus::{Consensus, SubscriptionInvoker};
+use proven_engine::{Consensus, SubscriptionInvoker};
 use proven_governance::Governance;
 
 use proven_messaging::subscription::{Subscription, SubscriptionOptions};
@@ -386,8 +386,8 @@ mod tests {
     use tokio::sync::mpsc;
 
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::config::{ClusterJoinRetryConfig, ConsensusConfigBuilder};
-    use proven_consensus::{
+    use proven_engine::config::{ClusterJoinRetryConfig, ConsensusConfigBuilder};
+    use proven_engine::{
         Consensus, HierarchicalConsensusConfig, RaftConfig, StorageConfig, TransportConfig,
     };
     use proven_governance_mock::MockGovernance;

@@ -9,7 +9,7 @@ use common::{TestCluster, TransportType};
 async fn test_three_node_cluster_tcp() {
     // Initialize tracing for debugging
     let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_consensus=debug,proven_network=info,proven_transport_tcp=info")
+        .with_env_filter("proven_engine=debug,proven_network=info,proven_transport_tcp=info")
         .try_init();
 
     // Create a test cluster with TCP transport
@@ -41,7 +41,7 @@ async fn test_three_node_cluster_tcp() {
 
         // Just check that the engine is running, not service health
         // Service health might be false due to the circular dependency issue with message handlers
-        if health.state != proven_consensus::EngineState::Running {
+        if health.state != proven_engine::EngineState::Running {
             println!("  Engine not in Running state!");
             all_running = false;
         }

@@ -17,10 +17,10 @@ members = [
     "crates/bitcoin-core",
     "crates/cert-store",
     "crates/code-package",
-    "crates/consensus",
     "crates/core",
     "crates/dnscrypt-proxy",
     # "crates/enclave",
+    "crates/engine",
     "crates/ethereum-lighthouse",
     "crates/ethereum-reth",
     "crates/external-fs",
@@ -96,10 +96,10 @@ default-members = [
     "crates/bootable",
     "crates/cert-store",
     "crates/code-package",
-    "crates/consensus",
     "crates/core",
     "crates/dnscrypt-proxy",
     # "crates/enclave",
+    "crates/engine",
     "crates/ethereum-lighthouse",
     "crates/ethereum-reth",
     "crates/external-fs",
@@ -444,10 +444,10 @@ proven-bitcoin-core = { path = "crates/bitcoin-core" }
 proven-bootable = { path = "crates/bootable" }
 proven-cert-store = { path = "crates/cert-store" }
 proven-code-package = { path = "crates/code-package" }
-proven-consensus = { path = "crates/consensus" }
 proven-core = { path = "crates/core" }
 proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }
 # proven-enclave = { path = "crates/enclave" }
+proven-engine = { path = "crates/engine" }
 proven-ethereum-lighthouse = { path = "crates/ethereum-lighthouse" }
 proven-ethereum-reth = { path = "crates/ethereum-reth" }
 proven-external-fs = { path = "crates/external-fs" }

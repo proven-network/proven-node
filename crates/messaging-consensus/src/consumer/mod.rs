@@ -343,9 +343,9 @@ mod tests {
     use std::sync::Arc;
 
     use proven_attestation_mock::MockAttestor;
-    use proven_consensus::HierarchicalConsensusConfig;
-    use proven_consensus::config::{ClusterJoinRetryConfig, ConsensusConfigBuilder};
-    use proven_consensus::{Consensus, RaftConfig, StorageConfig, TransportConfig};
+    use proven_engine::HierarchicalConsensusConfig;
+    use proven_engine::config::{ClusterJoinRetryConfig, ConsensusConfigBuilder};
+    use proven_engine::{Consensus, RaftConfig, StorageConfig, TransportConfig};
     use proven_governance::GovernanceNode;
     use proven_governance_mock::MockGovernance;
     use proven_messaging::stream::{InitializedStream, Stream};
@@ -755,7 +755,7 @@ mod tests {
     #[tokio::test]
     async fn test_consumer_error_handling() {
         // Test consumer error types
-        let consensus_error = proven_consensus::Error::Raft("test error".to_string());
+        let consensus_error = proven_engine::Error::Raft("test error".to_string());
         let messaging_consensus_error = MessagingConsensusError::from(consensus_error);
         let consumer_error = ConsensusConsumerError::Consensus(messaging_consensus_error);
 
