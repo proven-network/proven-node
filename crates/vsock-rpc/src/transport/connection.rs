@@ -11,7 +11,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, oneshot};
 use tokio::time::{interval, timeout};
 use tokio_util::codec::Framed;
-use tokio_vsock::{VsockAddr, VsockStream};
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
@@ -62,7 +61,10 @@ pub enum ConnectionHealth {
 /// A pooled connection wrapper.
 pub struct PooledConnection {
     id: u64,
-    sink: Arc<tokio::sync::Mutex<SplitSink<Framed<VsockStream, FrameCodec>, Frame>>>,
+    #[cfg(target_os = "linux")]
+    sink: Arc<tokio::sync::Mutex<SplitSink<Framed<tokio_vsock::VsockStream, FrameCodec>, Frame>>>,
+    #[cfg(not(target_os = "linux"))]
+    sink: Arc<tokio::sync::Mutex<SplitSink<Framed<tokio::net::TcpStream, FrameCodec>, Frame>>>,
     last_used: Arc<RwLock<Instant>>,
     in_flight: Arc<RwLock<usize>>,
     health: Arc<RwLock<ConnectionHealth>>,
@@ -131,7 +133,10 @@ impl PooledConnection {
 
 /// Connection pool for managing multiple connections.
 pub struct ConnectionPool {
-    addr: VsockAddr,
+    #[cfg(target_os = "linux")]
+    addr: tokio_vsock::VsockAddr,
+    #[cfg(not(target_os = "linux"))]
+    addr: std::net::SocketAddr,
     config: PoolConfig,
     connections: Arc<RwLock<Vec<Arc<PooledConnection>>>>,
     semaphore: Arc<Semaphore>,
@@ -144,7 +149,8 @@ impl ConnectionPool {
     /// Create a new connection pool.
     #[must_use]
     pub fn new(
-        addr: VsockAddr,
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
         config: PoolConfig,
         pending_requests: Arc<DashMap<Uuid, ResponseSender>>,
     ) -> Self {
@@ -219,13 +225,29 @@ impl ConnectionPool {
 
     /// Create a new connection.
     async fn create_connection(&self) -> Result<Arc<PooledConnection>> {
-        let stream = timeout(self.config.connect_timeout, VsockStream::connect(self.addr))
-            .await
-            .map_err(|_| Error::Timeout(self.config.connect_timeout))?
-            .map_err(|e| ConnectionError::ConnectFailed {
-                addr: self.addr,
-                source: e,
-            })?;
+        #[cfg(target_os = "linux")]
+        let stream = timeout(
+            self.config.connect_timeout,
+            tokio_vsock::VsockStream::connect(self.addr.clone()),
+        )
+        .await
+        .map_err(|_| Error::Timeout(self.config.connect_timeout))?
+        .map_err(|e| ConnectionError::ConnectFailed {
+            addr: self.addr.to_string(),
+            source: e,
+        })?;
+
+        #[cfg(not(target_os = "linux"))]
+        let stream = timeout(
+            self.config.connect_timeout,
+            tokio::net::TcpStream::connect(self.addr),
+        )
+        .await
+        .map_err(|_| Error::Timeout(self.config.connect_timeout))?
+        .map_err(|e| ConnectionError::ConnectFailed {
+            addr: self.addr,
+            source: e,
+        })?;
 
         let framed = Framed::new(stream, FrameCodec::new());
         let (sink, stream) = framed.split();
@@ -263,7 +285,12 @@ impl ConnectionPool {
     #[allow(clippy::cognitive_complexity)]
     async fn handle_stream(
         _conn: Arc<PooledConnection>,
-        mut stream: SplitStream<Framed<VsockStream, FrameCodec>>,
+        #[cfg(target_os = "linux")] mut stream: SplitStream<
+            Framed<tokio_vsock::VsockStream, FrameCodec>,
+        >,
+        #[cfg(not(target_os = "linux"))] mut stream: SplitStream<
+            Framed<tokio::net::TcpStream, FrameCodec>,
+        >,
         mut shutdown_rx: oneshot::Receiver<()>,
         pending_requests: Arc<DashMap<Uuid, ResponseSender>>,
     ) {

@@ -50,7 +50,11 @@ pub enum ConnectionError {
     #[error("Failed to connect to {addr}: {source}")]
     ConnectFailed {
         /// The address we tried to connect to.
+        #[cfg(target_os = "linux")]
         addr: tokio_vsock::VsockAddr,
+        /// The address we tried to connect to.
+        #[cfg(not(target_os = "linux"))]
+        addr: std::net::SocketAddr,
         /// The underlying error.
         #[source]
         source: io::Error,

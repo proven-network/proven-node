@@ -10,7 +10,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
-use tokio_vsock::VsockAddr;
 use tracing::{debug, instrument};
 use uuid::Uuid;
 
@@ -40,7 +39,10 @@ impl Default for ClientConfig {
 
 /// Builder for creating RPC clients.
 pub struct ClientBuilder {
-    addr: Option<VsockAddr>,
+    #[cfg(target_os = "linux")]
+    addr: Option<tokio_vsock::VsockAddr>,
+    #[cfg(not(target_os = "linux"))]
+    addr: Option<std::net::SocketAddr>,
     config: ClientConfig,
 }
 
@@ -54,9 +56,13 @@ impl ClientBuilder {
         }
     }
 
-    /// Set the VSOCK address to connect to.
+    /// Set the VSOCK address to connect to. (Linux only)
     #[must_use]
-    pub const fn vsock_addr(mut self, addr: VsockAddr) -> Self {
+    pub const fn vsock_addr(
+        mut self,
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+    ) -> Self {
         self.addr = Some(addr);
         self
     }
@@ -329,7 +335,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_client_builder() {
-        let addr = VsockAddr::new(2, 5000);
+        #[cfg(target_os = "linux")]
+        let addr = tokio_vsock::VsockAddr::new(2, 5000);
+        #[cfg(not(target_os = "linux"))]
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 5000));
 
         let result = RpcClient::builder()
             .vsock_addr(addr)

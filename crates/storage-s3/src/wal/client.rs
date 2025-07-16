@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use proven_storage::{StorageError, StorageNamespace, StorageResult};
-use proven_vsock_rpc::{RpcClient, VsockAddr};
+use proven_vsock_rpc::RpcClient;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 use tracing::{debug, info};
@@ -25,7 +25,10 @@ impl WalClient {
     pub async fn new(config: WalConfig) -> StorageResult<Self> {
         info!("Connecting to WAL service on port {}", config.vsock_port);
 
-        let vsock_addr = VsockAddr::new(2, config.vsock_port); // Host CID = 2
+        #[cfg(target_os = "linux")]
+        let vsock_addr = tokio_vsock::VsockAddr::new(2, config.vsock_port); // Host CID = 2
+        #[cfg(not(target_os = "linux"))]
+        let vsock_addr = std::net::SocketAddr::from(([127, 0, 0, 1], config.vsock_port as u16));
 
         let client = RpcClient::builder()
             .vsock_addr(vsock_addr)

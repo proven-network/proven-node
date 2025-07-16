@@ -8,7 +8,7 @@ use crate::error::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_vsock_rpc::{
-    HandlerResponse, MessagePattern, RpcHandler, RpcMessage, RpcServer, ServerConfig, VsockAddr,
+    HandlerResponse, MessagePattern, RpcHandler, RpcMessage, RpcServer, ServerConfig,
     protocol::codec,
 };
 use std::sync::Arc;
@@ -120,12 +120,20 @@ impl<H: CacCommandHandler> RpcHandler for CacHandler<H> {
         Ok(HandlerResponse::Single(response_bytes))
     }
 
-    async fn on_connect(&self, addr: VsockAddr) -> proven_vsock_rpc::Result<()> {
+    async fn on_connect(
+        &self,
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+    ) -> proven_vsock_rpc::Result<()> {
         info!("CAC client connected from {:?}", addr);
         Ok(())
     }
 
-    async fn on_disconnect(&self, addr: VsockAddr) {
+    async fn on_disconnect(
+        &self,
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+    ) {
         info!("CAC client disconnected from {:?}", addr);
     }
 }
@@ -138,7 +146,11 @@ pub struct CacServer<H: CacCommandHandler> {
 impl<H: CacCommandHandler> CacServer<H> {
     /// Create a new CAC server.
     #[must_use]
-    pub fn new(addr: VsockAddr, handler: H) -> Self {
+    pub fn new(
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+        handler: H,
+    ) -> Self {
         let cac_handler = CacHandler::new(handler);
         let config = ServerConfig::default();
         let inner = RpcServer::new(addr, cac_handler, config);
@@ -148,7 +160,12 @@ impl<H: CacCommandHandler> CacServer<H> {
 
     /// Create a new CAC server with custom configuration.
     #[must_use]
-    pub fn with_config(addr: VsockAddr, handler: H, config: ServerConfig) -> Self {
+    pub fn with_config(
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+        handler: H,
+        config: ServerConfig,
+    ) -> Self {
         let cac_handler = CacHandler::new(handler);
         let inner = RpcServer::new(addr, cac_handler, config);
 

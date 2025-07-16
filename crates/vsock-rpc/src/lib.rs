@@ -15,8 +15,8 @@
 //! # Example
 //!
 //! ```no_run
+//! use proven_vsock_rpc::{RpcClient, RpcMessage};
 //! use serde::{Deserialize, Serialize};
-//! use vsock_rpc_core::{RpcClient, RpcMessage};
 //!
 //! #[derive(Serialize, Deserialize)]
 //! struct Echo {
@@ -33,9 +33,13 @@
 //!
 //! async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //!     let client = RpcClient::builder()
-//!         .vsock_addr((2, 5000).into())
-//!         .build()
-//!         .await?;
+//!         .vsock_addr(
+//!             #[cfg(target_os = "linux")]
+//!             tokio_vsock::VsockAddr::new(2, 5000),
+//!             #[cfg(not(target_os = "linux"))]
+//!             std::net::SocketAddr::from(([127, 0, 0, 1], 5000)),
+//!         )
+//!         .build()?;
 //!
 //!     let response = client
 //!         .request(Echo {
@@ -72,4 +76,7 @@ pub use transport::{
 
 // Re-export dependencies that are part of our public API
 pub use bytes::Bytes;
+
+// Platform-specific re-exports
+#[cfg(target_os = "linux")]
 pub use tokio_vsock::VsockAddr;

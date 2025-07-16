@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 # Core RPC framework
 proven-vsock-rpc.workspace = true
+tokio-vsock.workspace = true
 
 # Async runtime
 tokio = { workspace = true, features = ["full"] }

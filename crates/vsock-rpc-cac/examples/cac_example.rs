@@ -2,7 +2,6 @@
 
 use async_trait::async_trait;
 use cidr::Ipv4Cidr;
-use proven_vsock_rpc::VsockAddr;
 use proven_vsock_rpc_cac::{
     CacServer, InitializeRequest, InitializeResponse, Result, ShutdownResponse,
     commands::ShutdownRequest, server::CacCommandHandler,
@@ -61,7 +60,10 @@ async fn main() -> Result<()> {
 
     // Server setup
     println!("Server Configuration:");
-    let server_addr = VsockAddr::new(2, 5001); // CID 2, Port 5001
+    #[cfg(target_os = "linux")]
+    let server_addr = tokio_vsock::VsockAddr::new(2, 5001); // CID 2, Port 5001
+    #[cfg(not(target_os = "linux"))]
+    let server_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 5001));
     println!("  Address: {server_addr:?}");
 
     let handler = ExampleHandler;

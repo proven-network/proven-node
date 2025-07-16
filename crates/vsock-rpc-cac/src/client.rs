@@ -5,7 +5,7 @@ use crate::commands::{
     ShutdownResponse,
 };
 use crate::error::{Error, Result};
-use proven_vsock_rpc::{RpcClient, VsockAddr};
+use proven_vsock_rpc::RpcClient;
 use tracing::{debug, instrument};
 
 /// Client for sending CAC commands to the enclave.
@@ -18,7 +18,10 @@ impl CacClient {
     ///
     /// # Errors
     /// Returns an error if the RPC client cannot be created.
-    pub fn new(addr: VsockAddr) -> Result<Self> {
+    pub fn new(
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+    ) -> Result<Self> {
         let inner = RpcClient::builder().vsock_addr(addr).build()?;
 
         Ok(Self { inner })

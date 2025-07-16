@@ -11,7 +11,6 @@ use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tokio_util::codec::Framed;
-use tokio_vsock::{VsockAddr, VsockListener, VsockStream};
 use tracing::{debug, error, info, instrument, warn};
 
 /// Configuration for the RPC server.
@@ -59,19 +58,30 @@ pub trait RpcHandler: Send + Sync + 'static {
     ) -> Result<HandlerResponse>;
 
     /// Called when a new connection is established.
-    async fn on_connect(&self, _addr: VsockAddr) -> Result<()> {
+    async fn on_connect(
+        &self,
+        #[cfg(target_os = "linux")] _addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] _addr: std::net::SocketAddr,
+    ) -> Result<()> {
         Ok(())
     }
 
     /// Called when a connection is closed.
-    async fn on_disconnect(&self, _addr: VsockAddr) {
+    async fn on_disconnect(
+        &self,
+        #[cfg(target_os = "linux")] _addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] _addr: std::net::SocketAddr,
+    ) {
         // Default: do nothing
     }
 }
 
 /// RPC server that listens for incoming connections.
 pub struct RpcServer<H: RpcHandler> {
-    addr: VsockAddr,
+    #[cfg(target_os = "linux")]
+    addr: tokio_vsock::VsockAddr,
+    #[cfg(not(target_os = "linux"))]
+    addr: std::net::SocketAddr,
     handler: Arc<H>,
     config: ServerConfig,
     shutdown_tx: Option<oneshot::Sender<()>>,
@@ -79,7 +89,12 @@ pub struct RpcServer<H: RpcHandler> {
 
 impl<H: RpcHandler> RpcServer<H> {
     /// Create a new RPC server.
-    pub fn new(addr: VsockAddr, handler: H, config: ServerConfig) -> Self {
+    pub fn new(
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+        handler: H,
+        config: ServerConfig,
+    ) -> Self {
         Self {
             addr,
             handler: Arc::new(handler),
@@ -95,12 +110,23 @@ impl<H: RpcHandler> RpcServer<H> {
     /// Returns an error if the server fails to bind or accept connections.
     #[instrument(skip(self))]
     pub async fn serve(mut self) -> Result<()> {
-        let listener = VsockListener::bind(self.addr).map_err(|e| {
+        #[cfg(target_os = "linux")]
+        let listener = tokio_vsock::VsockListener::bind(self.addr).map_err(|e| {
             std::io::Error::new(
                 std::io::ErrorKind::AddrInUse,
                 format!("Failed to bind to {:?}: {}", self.addr, e),
             )
         })?;
+
+        #[cfg(not(target_os = "linux"))]
+        let listener = tokio::net::TcpListener::bind(self.addr)
+            .await
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::AddrInUse,
+                    format!("Failed to bind to {:?}: {}", self.addr, e),
+                )
+            })?;
 
         info!("RPC server listening on {:?}", self.addr);
 
@@ -156,8 +182,10 @@ impl<H: RpcHandler> RpcServer<H> {
     /// Handle a single connection.
     #[instrument(skip(stream, handler))]
     async fn handle_connection(
-        stream: VsockStream,
-        addr: VsockAddr,
+        #[cfg(target_os = "linux")] stream: tokio_vsock::VsockStream,
+        #[cfg(not(target_os = "linux"))] stream: tokio::net::TcpStream,
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
         handler: Arc<H>,
         config: ServerConfig,
     ) -> Result<()> {
@@ -232,7 +260,8 @@ impl<H: RpcHandler> RpcServer<H> {
         frame: Frame,
         handler: Arc<H>,
         _config: ServerConfig,
-        sink: &mut Framed<VsockStream, FrameCodec>,
+        #[cfg(target_os = "linux")] sink: &mut Framed<tokio_vsock::VsockStream, FrameCodec>,
+        #[cfg(not(target_os = "linux"))] sink: &mut Framed<tokio::net::TcpStream, FrameCodec>,
     ) -> Result<()> {
         // Deserialize envelope
         let envelope: MessageEnvelope = codec::decode(&frame.payload)?;
@@ -323,7 +352,8 @@ impl<H: RpcHandler> RpcServer<H> {
 
     /// Send an error response.
     async fn send_error_response(
-        sink: &mut Framed<VsockStream, FrameCodec>,
+        #[cfg(target_os = "linux")] sink: &mut Framed<tokio_vsock::VsockStream, FrameCodec>,
+        #[cfg(not(target_os = "linux"))] sink: &mut Framed<tokio::net::TcpStream, FrameCodec>,
         request_id: uuid::Uuid,
         code: &str,
         message: &str,
@@ -379,7 +409,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_server_creation() {
-        let addr = VsockAddr::new(2, 5001);
+        #[cfg(target_os = "linux")]
+        let addr = tokio_vsock::VsockAddr::new(2, 5001);
+        #[cfg(not(target_os = "linux"))]
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 5001));
+
         let handler = TestHandler;
         let config = ServerConfig::default();
 

@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_vsock_rpc::{
     HandlerResponse, MessagePattern, Result, RpcHandler, RpcMessage, RpcServer, ServerConfig,
-    VsockAddr,
 };
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +73,10 @@ async fn main() -> Result<()> {
 
     // Server example
     println!("Server would listen on CID 2, port 5000:");
-    let server_addr = VsockAddr::new(2, 5000);
+    #[cfg(target_os = "linux")]
+    let server_addr = tokio_vsock::VsockAddr::new(2, 5000);
+    #[cfg(not(target_os = "linux"))]
+    let server_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 5000));
     let handler = EchoHandler;
     let config = ServerConfig::default();
     let _server = RpcServer::new(server_addr, handler, config);

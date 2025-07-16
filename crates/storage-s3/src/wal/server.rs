@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_vsock_rpc::{
-    HandlerResponse, MessagePattern, RpcHandler, RpcMessage, RpcServer, ServerConfig, VsockAddr,
+    HandlerResponse, MessagePattern, RpcHandler, RpcMessage, RpcServer, ServerConfig,
     protocol::codec,
 };
 use serde_json;
@@ -130,12 +130,20 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
         Ok(HandlerResponse::Single(response_bytes))
     }
 
-    async fn on_connect(&self, addr: VsockAddr) -> proven_vsock_rpc::Result<()> {
+    async fn on_connect(
+        &self,
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+    ) -> proven_vsock_rpc::Result<()> {
         info!("WAL client connected from {:?}", addr);
         Ok(())
     }
 
-    async fn on_disconnect(&self, addr: VsockAddr) {
+    async fn on_disconnect(
+        &self,
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+    ) {
         info!("WAL client disconnected from {:?}", addr);
     }
 }
@@ -147,7 +155,11 @@ pub struct WalServer<H: WalCommandHandler> {
 
 impl<H: WalCommandHandler> WalServer<H> {
     /// Create a new WAL server
-    pub fn new(addr: VsockAddr, handler: H) -> Self {
+    pub fn new(
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+        handler: H,
+    ) -> Self {
         let wal_handler = WalHandler::new(handler);
         let config = ServerConfig::default();
         let inner = RpcServer::new(addr, wal_handler, config);
@@ -156,7 +168,12 @@ impl<H: WalCommandHandler> WalServer<H> {
     }
 
     /// Create a new WAL server with custom configuration
-    pub fn with_config(addr: VsockAddr, handler: H, config: ServerConfig) -> Self {
+    pub fn with_config(
+        #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
+        #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
+        handler: H,
+        config: ServerConfig,
+    ) -> Self {
         let wal_handler = WalHandler::new(handler);
         let inner = RpcServer::new(addr, wal_handler, config);
 
