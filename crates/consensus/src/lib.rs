@@ -16,6 +16,9 @@
 /// Builder for the engine
 pub mod builder;
 
+/// Client API
+pub mod client;
+
 /// Configuration types
 pub mod config;
 
@@ -40,4 +43,7 @@ pub(crate) mod services;
 /// Stream subsystem
 pub(crate) mod stream;
 
-pub use {builder::EngineBuilder, config::EngineConfig, engine::Engine, engine::EngineState};
+pub use {
+    builder::EngineBuilder, client::Client, config::EngineConfig, engine::Engine,
+    engine::EngineState,
+};

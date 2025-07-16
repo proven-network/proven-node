@@ -1,3 +1,4 @@
+pub mod client;
 pub mod cluster;
 pub mod event;
 pub mod global_consensus;

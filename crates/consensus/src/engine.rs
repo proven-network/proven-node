@@ -22,6 +22,7 @@ use crate::foundation::{
 use crate::services::global_consensus::GlobalConsensusService;
 use crate::services::group_consensus::GroupConsensusService;
 use crate::services::{
+    client::ClientService,
     cluster::{ClusterFormationEvent, ClusterService, FormationMode},
     event::EventService,
     lifecycle::LifecycleService,
@@ -61,6 +62,7 @@ where
     migration_service: Arc<MigrationService>,
     lifecycle_service: Arc<LifecycleService>,
     pubsub_service: Arc<PubSubService<T, G>>,
+    client_service: Arc<ClientService<T, G, L>>,
 
     /// Consensus services
     global_consensus_service: Option<Arc<GlobalConsensusService<T, G, L>>>,
@@ -112,6 +114,7 @@ where
         migration_service: Arc<MigrationService>,
         lifecycle_service: Arc<LifecycleService>,
         pubsub_service: Arc<PubSubService<T, G>>,
+        client_service: Arc<ClientService<T, G, L>>,
         network_manager: Arc<NetworkManager<T, G>>,
         storage: L,
     ) -> Self {
@@ -127,6 +130,7 @@ where
             migration_service,
             lifecycle_service,
             pubsub_service,
+            client_service,
             global_consensus_service: None,
             group_consensus_service: None,
             network_manager,
@@ -268,6 +272,11 @@ where
     /// Get event service
     pub fn event_service(&self) -> Arc<EventService> {
         self.event_service.clone()
+    }
+
+    /// Get a client for interacting with the consensus engine
+    pub fn client(&self) -> crate::client::Client<T, G, L> {
+        crate::client::Client::new(self.client_service.clone(), self.node_id.clone())
     }
 }
 

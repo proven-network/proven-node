@@ -11,9 +11,9 @@ use proven_transport::Transport;
 use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
 use crate::foundation::traits::ServiceLifecycle;
 use crate::services::{
-    cluster::ClusterService, event::EventService, lifecycle::LifecycleService,
-    migration::MigrationService, monitoring::MonitoringService, network::NetworkService,
-    pubsub::PubSubService, routing::RoutingService,
+    client::ClientService, cluster::ClusterService, event::EventService,
+    lifecycle::LifecycleService, migration::MigrationService, monitoring::MonitoringService,
+    network::NetworkService, pubsub::PubSubService, routing::RoutingService,
 };
 use tracing::{error, info};
 
@@ -193,6 +193,9 @@ where
             self.node_id.clone(),
         ));
 
+        // Create ClientService
+        let client_service = Arc::new(ClientService::new());
+
         // Create service wrappers that implement ServiceLifecycle
         let network_service = Arc::new(network_service);
         let network_wrapper = Arc::new(ServiceWrapper::new("network", network_service.clone()));
@@ -208,6 +211,7 @@ where
         let lifecycle_wrapper =
             Arc::new(ServiceWrapper::new("lifecycle", lifecycle_service.clone()));
         let pubsub_wrapper = Arc::new(ServiceWrapper::new("pubsub", pubsub_service.clone()));
+        let client_wrapper = Arc::new(ServiceWrapper::new("client", client_service.clone()));
 
         // Create consensus service wrappers
         let global_consensus_wrapper = Arc::new(ServiceWrapper::new(
@@ -250,6 +254,14 @@ where
         coordinator
             .register("group_consensus".to_string(), group_consensus_wrapper)
             .await;
+        coordinator
+            .register("client".to_string(), client_wrapper)
+            .await;
+
+        // Wire up ClientService dependencies
+        client_service.set_global_consensus(global_consensus_service.clone());
+        client_service.set_group_consensus(group_consensus_service.clone());
+        client_service.set_routing_service(routing_service.clone());
 
         // Set start order
         coordinator
@@ -262,6 +274,7 @@ where
                 "cluster".to_string(),
                 "routing".to_string(),
                 "pubsub".to_string(),
+                "client".to_string(),
                 "migration".to_string(),
                 "lifecycle".to_string(),
             ])
@@ -280,6 +293,7 @@ where
             migration_service,
             lifecycle_service,
             pubsub_service,
+            client_service,
             network_manager,
             storage,
         );
@@ -623,5 +637,30 @@ where
             message: None,
             subsystems: Vec::new(),
         })
+    }
+}
+
+// Implement for ClientService
+#[async_trait]
+impl<T, G, L> ServiceLifecycle for ServiceWrapper<crate::services::client::ClientService<T, G, L>>
+where
+    T: Transport + Send + Sync + 'static,
+    G: Governance + Send + Sync + 'static,
+    L: LogStorage + Send + Sync + 'static,
+{
+    async fn start(&self) -> ConsensusResult<()> {
+        self.service.start().await
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        self.service.stop().await
+    }
+
+    async fn is_running(&self) -> bool {
+        self.service.is_running().await
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        self.service.health_check().await
     }
 }
