@@ -136,7 +136,7 @@ impl FuseAsyncHandler {
 
             // Spawn a new task for each operation to enable concurrent processing
             let handler = self.clone();
-            let task = tokio::spawn(async move {
+            let _task = tokio::spawn(async move {
                 info!("Starting to process operation in spawned task");
                 match op {
                     FuseOperation::Lookup {

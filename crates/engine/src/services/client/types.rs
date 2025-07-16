@@ -31,6 +31,13 @@ pub enum ClientRequest {
         response_tx: oneshot::Sender<ConsensusResult<GroupResponse>>,
     },
 
+    /// Submit a stream operation (routing will determine target group)
+    Stream {
+        stream_name: String,
+        request: GroupRequest,
+        response_tx: oneshot::Sender<ConsensusResult<GroupResponse>>,
+    },
+
     /// Query stream information
     GetStreamInfo {
         stream_name: String,

@@ -6,15 +6,16 @@
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::{
     BlobId, DirectoryId, FileId, FileMetadata,
     error::{Result, VsockFuseError},
+    metadata::{JournalEntry, MetadataJournal, SnapshotManager},
 };
 
 /// In-memory metadata storage that persists locally in the enclave
-#[derive(Default)]
 pub struct LocalMetadataStore {
     /// File metadata indexed by FileId
     files: Arc<RwLock<HashMap<FileId, FileMetadata>>>,
@@ -22,6 +23,8 @@ pub struct LocalMetadataStore {
     directories: Arc<RwLock<HashMap<DirectoryId, Vec<DirectoryEntry>>>>,
     /// Blob to FileId mapping for reverse lookups
     blob_index: Arc<RwLock<HashMap<BlobId, FileId>>>,
+    /// Journal for durability (optional)
+    journal: Option<Arc<MetadataJournal>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,13 +35,196 @@ pub struct DirectoryEntry {
 }
 
 impl LocalMetadataStore {
-    /// Create a new local metadata store
+    /// Create a new local metadata store without journaling
     pub fn new() -> Self {
         Self {
             files: Arc::new(RwLock::new(HashMap::new())),
             directories: Arc::new(RwLock::new(HashMap::new())),
             blob_index: Arc::new(RwLock::new(HashMap::new())),
+            journal: None,
         }
+    }
+
+    /// Create a new local metadata store with journaling
+    pub fn with_journal(journal_path: &Path) -> Result<Self> {
+        let journal = MetadataJournal::new(journal_path, 100 * 1024 * 1024)?; // 100MB max
+        let journal = Arc::new(journal);
+
+        let mut store = Self {
+            files: Arc::new(RwLock::new(HashMap::new())),
+            directories: Arc::new(RwLock::new(HashMap::new())),
+            blob_index: Arc::new(RwLock::new(HashMap::new())),
+            journal: Some(journal.clone()),
+        };
+
+        // Try to recover from snapshot first, then apply journal
+        let temp_store = Self::new(); // Create temp store for snapshot manager
+        let snapshot_manager = SnapshotManager::new(journal_path, Arc::new(temp_store));
+
+        if let Ok(Some(snapshot_path)) = snapshot_manager.find_latest_snapshot() {
+            if let Ok(snapshot) = snapshot_manager.load_snapshot(&snapshot_path) {
+                tracing::info!("Recovering from snapshot at {:?}", snapshot_path);
+                let snapshot_seq = snapshot.sequence;
+                store.import_snapshot(snapshot)?;
+                // Apply journal entries after the snapshot
+                store.recover_from_journal_after_sequence(snapshot_seq)?;
+            } else {
+                // Full journal recovery if snapshot load fails
+                store.recover_from_journal()?;
+            }
+        } else {
+            // No snapshot, full journal recovery
+            store.recover_from_journal()?;
+        }
+
+        Ok(store)
+    }
+
+    /// Recover metadata from journal
+    fn recover_from_journal(&mut self) -> Result<()> {
+        if let Some(journal) = &self.journal {
+            let entries = journal.read_entries()?;
+
+            for (_seq, entry) in entries {
+                match entry {
+                    JournalEntry::FileMetadata { metadata } => {
+                        self.files.write().insert(metadata.file_id, metadata);
+                    }
+                    JournalEntry::AddDirectoryEntry {
+                        dir_id,
+                        name,
+                        file_id,
+                        file_type,
+                    } => {
+                        let mut dirs = self.directories.write();
+                        let entries = dirs.entry(dir_id).or_default();
+                        entries.push(DirectoryEntry {
+                            name,
+                            file_id,
+                            file_type,
+                        });
+                    }
+                    JournalEntry::RemoveDirectoryEntry { dir_id, name } => {
+                        let mut dirs = self.directories.write();
+                        if let Some(entries) = dirs.get_mut(&dir_id) {
+                            entries.retain(|e| e.name != name);
+                        }
+                    }
+                    JournalEntry::CreateDirectory { dir_id } => {
+                        self.directories.write().insert(dir_id, vec![]);
+                    }
+                    JournalEntry::DeleteFile { file_id } => {
+                        self.files.write().remove(&file_id);
+                    }
+                    JournalEntry::RenameEntry {
+                        old_parent,
+                        old_name,
+                        new_parent,
+                        new_name,
+                        file_id: _,
+                    } => {
+                        let mut dirs = self.directories.write();
+
+                        // Remove from old parent
+                        if let Some(entries) = dirs.get_mut(&old_parent) {
+                            if let Some(pos) = entries.iter().position(|e| e.name == old_name) {
+                                let entry = entries.remove(pos);
+
+                                // Add to new parent
+                                if let Some(new_entries) = dirs.get_mut(&new_parent) {
+                                    new_entries.push(DirectoryEntry {
+                                        name: new_name,
+                                        file_id: entry.file_id,
+                                        file_type: entry.file_type,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    JournalEntry::Checkpoint { .. } => {
+                        // Checkpoint marks a consistent state
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Recover metadata from journal entries after a specific sequence number
+    fn recover_from_journal_after_sequence(&mut self, after_sequence: u64) -> Result<()> {
+        if let Some(journal) = &self.journal {
+            let entries = journal.read_entries()?;
+
+            for (seq, entry) in entries {
+                // Skip entries already in the snapshot
+                if seq <= after_sequence {
+                    continue;
+                }
+
+                match entry {
+                    JournalEntry::FileMetadata { metadata } => {
+                        self.files.write().insert(metadata.file_id, metadata);
+                    }
+                    JournalEntry::AddDirectoryEntry {
+                        dir_id,
+                        name,
+                        file_id,
+                        file_type,
+                    } => {
+                        let mut dirs = self.directories.write();
+                        let entries = dirs.entry(dir_id).or_default();
+                        entries.push(DirectoryEntry {
+                            name,
+                            file_id,
+                            file_type,
+                        });
+                    }
+                    JournalEntry::RemoveDirectoryEntry { dir_id, name } => {
+                        let mut dirs = self.directories.write();
+                        if let Some(entries) = dirs.get_mut(&dir_id) {
+                            entries.retain(|e| e.name != name);
+                        }
+                    }
+                    JournalEntry::CreateDirectory { dir_id } => {
+                        self.directories.write().entry(dir_id).or_default();
+                    }
+                    JournalEntry::DeleteFile { file_id } => {
+                        self.files.write().remove(&file_id);
+                    }
+                    JournalEntry::RenameEntry {
+                        old_parent,
+                        old_name,
+                        new_parent,
+                        new_name,
+                        file_id: _,
+                    } => {
+                        let mut dirs = self.directories.write();
+
+                        // Remove from old parent
+                        if let Some(entries) = dirs.get_mut(&old_parent) {
+                            if let Some(pos) = entries.iter().position(|e| e.name == old_name) {
+                                let entry = entries.remove(pos);
+
+                                // Add to new parent
+                                if let Some(new_entries) = dirs.get_mut(&new_parent) {
+                                    new_entries.push(DirectoryEntry {
+                                        name: new_name,
+                                        file_id: entry.file_id,
+                                        file_type: entry.file_type,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    JournalEntry::Checkpoint { .. } => {
+                        // Checkpoint marks a consistent state
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     /// Initialize with root directory
@@ -73,6 +259,15 @@ impl LocalMetadataStore {
 
     /// Store file metadata
     pub fn put_file_metadata(&self, metadata: FileMetadata) {
+        // Write to journal first
+        if let Some(journal) = &self.journal {
+            if let Err(e) = journal.write_entry(JournalEntry::FileMetadata {
+                metadata: metadata.clone(),
+            }) {
+                tracing::error!("Failed to write metadata to journal: {}", e);
+            }
+        }
+
         // Update blob index for all blocks
         let mut blob_index = self.blob_index.write();
         for block in &metadata.blocks {
@@ -85,6 +280,13 @@ impl LocalMetadataStore {
 
     /// Delete file metadata
     pub fn delete_file_metadata(&self, file_id: &FileId) -> bool {
+        // Write to journal first
+        if let Some(journal) = &self.journal {
+            if let Err(e) = journal.write_entry(JournalEntry::DeleteFile { file_id: *file_id }) {
+                tracing::error!("Failed to write delete to journal: {}", e);
+            }
+        }
+
         // Remove from blob index
         if let Some(metadata) = self.files.read().get(file_id) {
             let mut blob_index = self.blob_index.write();
@@ -103,6 +305,13 @@ impl LocalMetadataStore {
 
     /// Store directory entries
     pub fn put_directory(&self, dir_id: DirectoryId, entries: Vec<DirectoryEntry>) {
+        // Write to journal first
+        if let Some(journal) = &self.journal {
+            if let Err(e) = journal.write_entry(JournalEntry::CreateDirectory { dir_id }) {
+                tracing::error!("Failed to write directory creation to journal: {}", e);
+            }
+        }
+
         self.directories.write().insert(dir_id, entries);
     }
 
@@ -124,6 +333,18 @@ impl LocalMetadataStore {
             });
         }
 
+        // Write to journal first
+        if let Some(journal) = &self.journal {
+            if let Err(e) = journal.write_entry(JournalEntry::AddDirectoryEntry {
+                dir_id: *dir_id,
+                name: name.clone(),
+                file_id,
+                file_type,
+            }) {
+                tracing::error!("Failed to write directory entry to journal: {}", e);
+            }
+        }
+
         entries.push(DirectoryEntry {
             name,
             file_id,
@@ -143,6 +364,16 @@ impl LocalMetadataStore {
         if let Some(entries) = dirs.get_mut(dir_id)
             && let Some(pos) = entries.iter().position(|e| e.name == name)
         {
+            // Write to journal first
+            if let Some(journal) = &self.journal {
+                if let Err(e) = journal.write_entry(JournalEntry::RemoveDirectoryEntry {
+                    dir_id: *dir_id,
+                    name: name.to_vec(),
+                }) {
+                    tracing::error!("Failed to write directory removal to journal: {}", e);
+                }
+            }
+
             return Some(entries.remove(pos));
         }
         None
@@ -209,6 +440,57 @@ impl LocalMetadataStore {
             total_size,
             total_blocks,
         }
+    }
+
+    /// Sync journal to disk
+    pub fn sync_journal(&self) -> Result<()> {
+        if let Some(journal) = &self.journal {
+            journal.sync()?;
+        }
+        Ok(())
+    }
+
+    /// Compact journal by removing obsolete entries
+    pub fn compact_journal(&self, checkpoint_seq: u64) -> Result<()> {
+        if let Some(journal) = &self.journal {
+            journal.compact(checkpoint_seq)?;
+        }
+        Ok(())
+    }
+
+    /// Export current state as a snapshot
+    pub fn export_snapshot(
+        &self,
+        sequence: u64,
+        timestamp: std::time::SystemTime,
+    ) -> Result<super::MetadataSnapshot> {
+        let files = self.files.read().clone();
+        let directories = self.directories.read().clone();
+        let blob_index = self.blob_index.read().clone();
+
+        Ok(super::MetadataSnapshot {
+            version: super::snapshot::SNAPSHOT_VERSION,
+            timestamp,
+            sequence,
+            files,
+            directories,
+            blob_index,
+        })
+    }
+
+    /// Import state from a snapshot
+    pub fn import_snapshot(&self, snapshot: super::MetadataSnapshot) -> Result<()> {
+        // Clear existing data
+        self.files.write().clear();
+        self.directories.write().clear();
+        self.blob_index.write().clear();
+
+        // Import snapshot data
+        *self.files.write() = snapshot.files;
+        *self.directories.write() = snapshot.directories;
+        *self.blob_index.write() = snapshot.blob_index;
+
+        Ok(())
     }
 }
 

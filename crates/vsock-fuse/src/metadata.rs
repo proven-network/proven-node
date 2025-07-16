@@ -2,11 +2,15 @@
 //!
 //! This module handles all file and directory metadata in encrypted form.
 
+mod journal;
 mod local_encrypted;
 mod local_store;
+mod snapshot;
 
+pub use journal::{JournalEntry, MetadataJournal};
 pub use local_encrypted::LocalEncryptedMetadataStore;
 pub use local_store::{LocalMetadataStats, LocalMetadataStore};
+pub use snapshot::{MetadataSnapshot, SnapshotManager};
 
 use lru::LruCache;
 use parking_lot::RwLock;

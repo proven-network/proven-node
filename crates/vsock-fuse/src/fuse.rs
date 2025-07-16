@@ -91,17 +91,17 @@ struct FileHandle {
     /// File ID
     file_id: FileId,
     /// Open flags
-    flags: i32,
+    _flags: i32,
     /// Current position in file
-    position: u64,
+    _position: u64,
     /// Write buffer for batching
-    write_buffer: Vec<u8>,
+    _write_buffer: Vec<u8>,
     /// Whether file was opened for writing
     write_mode: bool,
     /// Database cache policy for this file
     db_policy: DatabaseCachePolicy,
     /// Whether this is a direct I/O file
-    direct_io: bool,
+    _direct_io: bool,
 }
 
 impl VsockFuseFs {
@@ -473,12 +473,12 @@ impl Filesystem for VsockFuseFs {
                 let handle_id = self.next_file_handle();
                 let handle = FileHandle {
                     file_id,
-                    flags,
-                    position: 0,
-                    write_buffer: Vec::new(),
+                    _flags: flags,
+                    _position: 0,
+                    _write_buffer: Vec::new(),
                     write_mode: (flags & libc::O_WRONLY != 0) || (flags & libc::O_RDWR != 0),
                     db_policy: db_policy.clone(),
-                    direct_io,
+                    _direct_io: direct_io,
                 };
 
                 self.file_handles.write().insert(handle_id, handle);
@@ -684,7 +684,7 @@ impl Filesystem for VsockFuseFs {
         reply.ok();
     }
 
-    fn opendir(&mut self, _req: &Request, ino: u64, flags: i32, reply: ReplyOpen) {
+    fn opendir(&mut self, _req: &Request, _ino: u64, flags: i32, reply: ReplyOpen) {
         // For directories, we just need to return a file handle
         // No special handling needed for now
         let fh = self.next_file_handle();
@@ -855,12 +855,12 @@ impl Filesystem for VsockFuseFs {
                 let handle_id = self.next_file_handle();
                 let handle = FileHandle {
                     file_id,
-                    flags,
-                    position: 0,
-                    write_buffer: Vec::new(),
+                    _flags: flags,
+                    _position: 0,
+                    _write_buffer: Vec::new(),
                     write_mode: true,
                     db_policy,
-                    direct_io,
+                    _direct_io: direct_io,
                 };
 
                 self.file_handles.write().insert(handle_id, handle);

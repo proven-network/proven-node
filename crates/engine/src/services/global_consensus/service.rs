@@ -149,7 +149,7 @@ where
                                 .await
                                 .map_err(|e| ConsensusError::with_context(
                                     ErrorKind::Configuration,
-                                    format!("Failed to get topology: {}", e)
+                                    format!("Failed to get topology: {e}")
                                 ))?;
 
                             let mut raft_members = std::collections::BTreeMap::new();
@@ -224,7 +224,7 @@ where
         use openraft::Config;
 
         let raft_config = Config {
-            cluster_name: format!("global-{}", node_id),
+            cluster_name: format!("global-{node_id}"),
             election_timeout_min: config.election_timeout_min.as_millis() as u64,
             election_timeout_max: config.election_timeout_max.as_millis() as u64,
             heartbeat_interval: config.heartbeat_interval.as_millis() as u64,

@@ -19,7 +19,7 @@ pub struct LocalEncryptedMetadataStore {
     /// Local metadata storage
     local_store: Arc<LocalMetadataStore>,
     /// Encryption layer for names
-    crypto: Arc<EncryptionLayer>,
+    _crypto: Arc<EncryptionLayer>,
     /// Optional remote storage for durability
     remote_storage: Option<Arc<dyn super::MetadataStorage>>,
 }
@@ -35,9 +35,25 @@ impl LocalEncryptedMetadataStore {
 
         Self {
             local_store,
-            crypto,
+            _crypto: crypto,
             remote_storage,
         }
+    }
+
+    /// Create a new local encrypted metadata store with journaling
+    pub fn with_journal(
+        crypto: Arc<EncryptionLayer>,
+        remote_storage: Option<Arc<dyn super::MetadataStorage>>,
+        journal_path: &std::path::Path,
+    ) -> Result<Self> {
+        let local_store = Arc::new(LocalMetadataStore::with_journal(journal_path)?);
+        local_store.init_root();
+
+        Ok(Self {
+            local_store,
+            _crypto: crypto,
+            remote_storage,
+        })
     }
 
     /// Get file metadata
@@ -51,7 +67,7 @@ impl LocalEncryptedMetadataStore {
         self.local_store.put_file_metadata(metadata.clone());
 
         // Optionally sync to remote for durability
-        if let Some(remote) = &self.remote_storage {
+        if let Some(_remote) = &self.remote_storage {
             // We could encrypt and store to remote here for backup
             // For now, we'll skip this to avoid the round trip
             debug!(
@@ -78,7 +94,7 @@ impl LocalEncryptedMetadataStore {
         parent_id: &DirectoryId,
         name: &[u8],
     ) -> Result<Option<DirectoryEntry>> {
-        let name_str = std::str::from_utf8(name).map_err(|_| VsockFuseError::InvalidArgument {
+        let _name_str = std::str::from_utf8(name).map_err(|_| VsockFuseError::InvalidArgument {
             message: "Invalid UTF-8 in filename".to_string(),
         })?;
 
@@ -250,7 +266,7 @@ impl LocalEncryptedMetadataStore {
 
     /// Sync all metadata to remote storage (for durability)
     pub async fn sync_to_remote(&self) -> Result<()> {
-        if let Some(remote) = &self.remote_storage {
+        if let Some(_remote) = &self.remote_storage {
             info!("Syncing metadata to remote storage");
             // TODO: Implement remote sync
             // This would encrypt and batch upload all metadata
@@ -260,11 +276,16 @@ impl LocalEncryptedMetadataStore {
 
     /// Load metadata from remote storage (for recovery)
     pub async fn load_from_remote(&self) -> Result<()> {
-        if let Some(remote) = &self.remote_storage {
+        if let Some(_remote) = &self.remote_storage {
             info!("Loading metadata from remote storage");
             // TODO: Implement remote load
             // This would download and decrypt all metadata
         }
         Ok(())
+    }
+
+    /// Get the underlying local store (for snapshot operations)
+    pub fn get_local_store(&self) -> Option<Arc<LocalMetadataStore>> {
+        Some(self.local_store.clone())
     }
 }

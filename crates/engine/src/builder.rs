@@ -259,9 +259,15 @@ where
             .await;
 
         // Wire up ClientService dependencies
-        client_service.set_global_consensus(global_consensus_service.clone());
-        client_service.set_group_consensus(group_consensus_service.clone());
-        client_service.set_routing_service(routing_service.clone());
+        client_service
+            .set_global_consensus(global_consensus_service.clone())
+            .await;
+        client_service
+            .set_group_consensus(group_consensus_service.clone())
+            .await;
+        client_service
+            .set_routing_service(routing_service.clone())
+            .await;
 
         // Set start order
         coordinator

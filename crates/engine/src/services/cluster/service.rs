@@ -373,23 +373,23 @@ where
                             ClusterState::Forming { mode, .. } => {
                                 // If we're forming a multi-node cluster, tell the joiner to retry
                                 if let FormationMode::MultiNode { .. } = mode {
-                                    return Ok(messages::JoinResponse {
+                                    Ok(messages::JoinResponse {
                                         error_message: Some("Cluster formation in progress, please retry".to_string()),
                                         cluster_size: None,
                                         current_term: None,
                                         responder_id: node_id,
                                         success: false,
                                         current_leader: None,
-                                    });
+                                    })
                                 } else {
-                                    return Ok(messages::JoinResponse {
+                                    Ok(messages::JoinResponse {
                                         error_message: Some("Not accepting joins".to_string()),
                                         cluster_size: None,
                                         current_term: None,
                                         responder_id: node_id,
                                         success: false,
                                         current_leader: None,
-                                    });
+                                    })
                                 }
                             }
                             ClusterState::Active { role, cluster_size, .. } => {
@@ -515,16 +515,17 @@ where
             }
 
             // Check if we should retry
-            if let Some(ref error_msg) = response.error_message {
-                if error_msg.contains("formation in progress") && retry_count < max_retries {
-                    retry_count += 1;
-                    info!(
-                        "Cluster formation in progress, retrying join ({}/{})",
-                        retry_count, max_retries
-                    );
-                    tokio::time::sleep(retry_delay).await;
-                    continue;
-                }
+            if let Some(ref error_msg) = response.error_message
+                && error_msg.contains("formation in progress")
+                && retry_count < max_retries
+            {
+                retry_count += 1;
+                info!(
+                    "Cluster formation in progress, retrying join ({}/{})",
+                    retry_count, max_retries
+                );
+                tokio::time::sleep(retry_delay).await;
+                continue;
             }
 
             return Err(ClusterError::JoinRejected(

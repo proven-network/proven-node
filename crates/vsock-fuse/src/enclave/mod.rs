@@ -11,7 +11,7 @@ use crate::{
     config::Config,
     encryption::{EncryptionLayer, MasterKey},
     error::Result,
-    metadata::{EncryptedMetadataStore, LocalEncryptedMetadataStore, MetadataStorage},
+    metadata::{LocalEncryptedMetadataStore, MetadataStorage, SnapshotManager},
     storage::BlobStorage,
 };
 
@@ -79,11 +79,28 @@ impl EnclaveService {
         // Create metadata storage adapter for remote sync (optional)
         let metadata_storage = Arc::new(MetadataStorageAdapter::new(storage_client.clone()));
 
-        // Initialize local metadata store (no round trips to host for metadata)
-        let metadata = Arc::new(LocalEncryptedMetadataStore::new(
-            encryption.clone(),
-            Some(metadata_storage), // For future durability sync
-        ));
+        // Create journal directory if it doesn't exist
+        let journal_dir = std::path::Path::new("/var/lib/vsock-fuse/journal");
+        std::fs::create_dir_all(journal_dir).ok();
+
+        // Initialize local metadata store with journaling
+        let metadata = if journal_dir.exists() && journal_dir.is_dir() {
+            // Use journaling for durability
+            Arc::new(LocalEncryptedMetadataStore::with_journal(
+                encryption.clone(),
+                Some(metadata_storage), // For future durability sync
+                journal_dir,
+            )?)
+        } else {
+            // Fall back to in-memory only if journal dir not available
+            tracing::warn!(
+                "Journal directory not available, metadata will not persist across restarts"
+            );
+            Arc::new(LocalEncryptedMetadataStore::new(
+                encryption.clone(),
+                Some(metadata_storage),
+            ))
+        };
 
         Ok(Self {
             config: Arc::new(config),
@@ -161,6 +178,43 @@ impl EnclaveService {
     /// Get a handle to the encryption layer
     pub fn encryption(&self) -> Arc<EncryptionLayer> {
         self.encryption.clone()
+    }
+
+    /// Start periodic snapshot creation
+    pub fn start_snapshot_task(&self, journal_dir: &Path, interval: std::time::Duration) {
+        let metadata = self.metadata.clone();
+        let journal_path = journal_dir.to_path_buf();
+
+        tokio::spawn(async move {
+            let mut interval_timer = tokio::time::interval(interval);
+            let mut sequence: u64 = 0;
+
+            loop {
+                interval_timer.tick().await;
+
+                // Get current sequence from journal or use counter
+                sequence += 1;
+
+                // Create snapshot manager
+                if let Some(local_store) = metadata.get_local_store() {
+                    let snapshot_manager = SnapshotManager::new(&journal_path, local_store);
+
+                    match snapshot_manager.create_snapshot(sequence) {
+                        Ok(path) => {
+                            tracing::info!("Created snapshot at {:?}", path);
+
+                            // Clean up old snapshots, keep last 3
+                            if let Err(e) = snapshot_manager.cleanup_old_snapshots(3) {
+                                tracing::warn!("Failed to cleanup old snapshots: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to create snapshot: {}", e);
+                        }
+                    }
+                }
+            }
+        });
     }
 }
 

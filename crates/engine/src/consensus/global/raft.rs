@@ -95,7 +95,7 @@ impl<L: LogStorage> RaftMessageHandler for GlobalConsensusLayer<L> {
         req: VoteRequest<GlobalTypeConfig>,
     ) -> ConsensusResult<VoteResponse<GlobalTypeConfig>> {
         self.raft.vote(req).await.map_err(|e| {
-            ConsensusError::with_context(ErrorKind::Consensus, format!("Vote failed: {}", e))
+            ConsensusError::with_context(ErrorKind::Consensus, format!("Vote failed: {e}"))
         })
     }
 
@@ -106,7 +106,7 @@ impl<L: LogStorage> RaftMessageHandler for GlobalConsensusLayer<L> {
         self.raft.append_entries(req).await.map_err(|e| {
             ConsensusError::with_context(
                 ErrorKind::Consensus,
-                format!("Append entries failed: {}", e),
+                format!("Append entries failed: {e}"),
             )
         })
     }
@@ -118,7 +118,7 @@ impl<L: LogStorage> RaftMessageHandler for GlobalConsensusLayer<L> {
         self.raft.install_snapshot(req).await.map_err(|e| {
             ConsensusError::with_context(
                 ErrorKind::Consensus,
-                format!("Install snapshot failed: {}", e),
+                format!("Install snapshot failed: {e}"),
             )
         })
     }
@@ -130,7 +130,7 @@ impl<L: LogStorage> RaftMessageHandler for GlobalConsensusLayer<L> {
         self.raft.initialize(members).await.map_err(|e| {
             ConsensusError::with_context(
                 ErrorKind::Consensus,
-                format!("Failed to initialize Raft: {}", e),
+                format!("Failed to initialize Raft: {e}"),
             )
         })
     }

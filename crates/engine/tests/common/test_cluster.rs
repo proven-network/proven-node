@@ -1,5 +1,7 @@
 //! Test cluster utilities for integration testing
 
+#![allow(dead_code)]
+
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -166,7 +168,7 @@ impl TestCluster {
         // Wait for all engines to start
         let results = futures::future::join_all(start_futures).await;
         for (i, result) in results.into_iter().enumerate() {
-            result.unwrap_or_else(|e| panic!("Failed to start engine {}: {:?}", i, e));
+            result.unwrap_or_else(|e| panic!("Failed to start engine {i}: {e:?}"));
         }
         info!("All {} engines started successfully", engine_count);
 

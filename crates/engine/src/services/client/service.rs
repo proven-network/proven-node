@@ -6,6 +6,7 @@
 
 use std::sync::Arc;
 
+use proven_topology::NodeId;
 use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{debug, info};
 
@@ -36,6 +37,9 @@ where
 {
     /// Service name
     name: String,
+
+    /// Node ID
+    node_id: NodeId,
 
     /// Request receiver
     request_rx: Arc<RwLock<Option<mpsc::Receiver<ClientRequest>>>>,
@@ -69,11 +73,12 @@ where
     L: proven_storage::LogStorage + 'static,
 {
     /// Create a new client service
-    pub fn new() -> Self {
+    pub fn new(node_id: NodeId) -> Self {
         let (request_tx, request_rx) = mpsc::channel(1000);
 
         Self {
             name: "ClientService".to_string(),
+            node_id,
             request_rx: Arc::new(RwLock::new(Some(request_rx))),
             request_tx,
             global_consensus: Arc::new(RwLock::new(None)),
@@ -86,18 +91,18 @@ where
     }
 
     /// Set the global consensus service reference
-    pub fn set_global_consensus(&self, service: Arc<GlobalConsensusService<T, G, L>>) {
-        *self.global_consensus.blocking_write() = Some(service);
+    pub async fn set_global_consensus(&self, service: Arc<GlobalConsensusService<T, G, L>>) {
+        *self.global_consensus.write().await = Some(service);
     }
 
     /// Set the group consensus service reference
-    pub fn set_group_consensus(&self, service: Arc<GroupConsensusService<T, G, L>>) {
-        *self.group_consensus.blocking_write() = Some(service);
+    pub async fn set_group_consensus(&self, service: Arc<GroupConsensusService<T, G, L>>) {
+        *self.group_consensus.write().await = Some(service);
     }
 
     /// Set the routing service reference
-    pub fn set_routing_service(&self, service: Arc<RoutingService>) {
-        *self.routing_service.blocking_write() = Some(service);
+    pub async fn set_routing_service(&self, service: Arc<RoutingService>) {
+        *self.routing_service.write().await = Some(service);
     }
 
     /// Get a sender for submitting client requests
@@ -216,6 +221,36 @@ where
         })?
     }
 
+    /// Submit a stream operation (routing will determine target group)
+    pub async fn submit_stream_request(
+        &self,
+        stream_name: &str,
+        request: GroupRequest,
+    ) -> ConsensusResult<GroupResponse> {
+        let (response_tx, response_rx) = oneshot::channel();
+
+        self.request_tx
+            .send(ClientRequest::Stream {
+                stream_name: stream_name.to_string(),
+                request,
+                response_tx,
+            })
+            .await
+            .map_err(|_| {
+                ConsensusError::with_context(
+                    crate::error::ErrorKind::Service,
+                    "Client service not accepting requests",
+                )
+            })?;
+
+        response_rx.await.map_err(|_| {
+            ConsensusError::with_context(
+                crate::error::ErrorKind::Internal,
+                "Response channel closed",
+            )
+        })?
+    }
+
     /// Process incoming client requests
     async fn process_requests(&self) {
         let mut request_rx = self
@@ -227,6 +262,7 @@ where
         let global_consensus = self.global_consensus.clone();
         let group_consensus = self.group_consensus.clone();
         let routing_service = self.routing_service.clone();
+        let node_id = self.node_id.clone();
 
         tokio::spawn(async move {
             while let Some(request) = request_rx.recv().await {
@@ -356,11 +392,150 @@ where
                             )));
                         }
                     }
+
+                    ClientRequest::Stream {
+                        stream_name,
+                        request,
+                        response_tx,
+                    } => {
+                        debug!("Processing stream request for: {}", stream_name);
+
+                        // Get routing service to determine target group
+                        let routing = routing_service.read().await;
+                        if let Some(routing_service) = routing.as_ref() {
+                            // Route the stream operation
+                            match routing_service
+                                .route_stream_operation(&stream_name, vec![])
+                                .await
+                            {
+                                Ok(crate::services::routing::RouteDecision::RouteToGroup(
+                                    group_id,
+                                )) => {
+                                    debug!(
+                                        "Routing stream {} operation to group {:?}",
+                                        stream_name, group_id
+                                    );
+
+                                    // Check if we're part of this group
+                                    if let Ok(Some(group_info)) = routing_service
+                                        .get_routing_info()
+                                        .await
+                                        .map(|info| info.group_routes.get(&group_id).cloned())
+                                    {
+                                        if group_info.members.contains(&node_id) {
+                                            // We're part of the group, submit locally
+                                            let group = group_consensus.read().await;
+                                            if let Some(_service) = group.as_ref() {
+                                                // TODO: Submit to group consensus
+                                                let _ = response_tx.send(Err(
+                                                    ConsensusError::with_context(
+                                                        crate::error::ErrorKind::Internal,
+                                                        "Group consensus submission not yet implemented",
+                                                    ),
+                                                ));
+                                            } else {
+                                                let _ = response_tx.send(Err(
+                                                    ConsensusError::with_context(
+                                                        crate::error::ErrorKind::Service,
+                                                        "Group consensus service not available",
+                                                    ),
+                                                ));
+                                            }
+                                        } else {
+                                            // Not part of the group, need to forward
+                                            // Select a target node (prefer leader if available)
+                                            let target_node = group_info
+                                                .leader
+                                                .clone()
+                                                .or_else(|| group_info.members.first().cloned());
+
+                                            if let Some(target) = target_node {
+                                                // TODO: Use transport layer to forward request
+                                                let _ = response_tx.send(Err(ConsensusError::with_context(
+                                                    crate::error::ErrorKind::Service,
+                                                    format!(
+                                                        "Node not part of group {:?}, would forward to node {:?} (not yet implemented)",
+                                                        group_id, target
+                                                    ),
+                                                )));
+                                            } else {
+                                                let _ = response_tx.send(Err(
+                                                    ConsensusError::with_context(
+                                                        crate::error::ErrorKind::InvalidState,
+                                                        format!(
+                                                            "Group {:?} has no members",
+                                                            group_id
+                                                        ),
+                                                    ),
+                                                ));
+                                            }
+                                        }
+                                    } else {
+                                        let _ =
+                                            response_tx.send(Err(ConsensusError::with_context(
+                                                crate::error::ErrorKind::NotFound,
+                                                format!(
+                                                    "Group {:?} not found in routing table",
+                                                    group_id
+                                                ),
+                                            )));
+                                    }
+                                }
+                                Ok(crate::services::routing::RouteDecision::Reject(reason)) => {
+                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                        crate::error::ErrorKind::Validation,
+                                        format!("Operation rejected: {}", reason),
+                                    )));
+                                }
+                                Ok(decision) => {
+                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                        crate::error::ErrorKind::Internal,
+                                        format!("Unexpected routing decision: {:?}", decision),
+                                    )));
+                                }
+                                Err(e) => {
+                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                        crate::error::ErrorKind::Service,
+                                        format!("Routing failed: {}", e),
+                                    )));
+                                }
+                            }
+                        } else {
+                            let _ = response_tx.send(Err(ConsensusError::with_context(
+                                crate::error::ErrorKind::Service,
+                                "Routing service not available",
+                            )));
+                        }
+                    }
                 }
             }
 
             info!("Client request processor stopped");
         });
+    }
+
+    /// Forward a request to a node in the target group
+    async fn forward_to_group(
+        &self,
+        group_id: ConsensusGroupId,
+        members: &[NodeId],
+        _request: GroupRequest,
+    ) -> ConsensusResult<GroupResponse> {
+        // TODO: Implement actual forwarding logic
+        // This would typically:
+        // 1. Select a node from the group (preferably the leader)
+        // 2. Use the transport layer to send the request
+        // 3. Wait for and return the response
+
+        // For now, return an error indicating forwarding is not implemented
+        Err(ConsensusError::with_context(
+            crate::error::ErrorKind::Internal,
+            format!(
+                "Request forwarding to group {:?} not yet implemented. Target nodes: {:?}",
+                group_id,
+                members.iter().take(3).collect::<Vec<_>>()
+            ),
+        ))
     }
 }
 
