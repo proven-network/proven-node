@@ -6,7 +6,7 @@ use proven_topology::{Node, NodeId};
 use serde::{Deserialize, Serialize};
 
 /// Cluster service namespace
-pub const CLUSTER_NAMESPACE: &str = "consensus.cluster";
+pub const CLUSTER_NAMESPACE: &str = "cluster";
 
 /// Request to discover existing clusters
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,13 +144,13 @@ pub struct ConsensusGroupJoinResponse {
 
 impl MessageType for ConsensusGroupJoinRequest {
     fn message_type(&self) -> &'static str {
-        "consensus.group.join_request"
+        "cluster.join_request"
     }
 }
 
 impl MessageType for ConsensusGroupJoinResponse {
     fn message_type(&self) -> &'static str {
-        "consensus.group.join_response"
+        "cluster.join_response"
     }
 }
 

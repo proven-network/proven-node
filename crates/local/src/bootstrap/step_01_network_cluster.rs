@@ -68,6 +68,10 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     let governance = Arc::new(bootstrap.config.governance.clone());
 
     let topology_manager = Arc::new(TopologyManager::new(governance.clone(), node_id.clone()));
+    topology_manager
+        .start()
+        .await
+        .map_err(|e| Error::Topology(e.to_string()))?;
 
     let websocket_config = WebsocketConfig::default();
 

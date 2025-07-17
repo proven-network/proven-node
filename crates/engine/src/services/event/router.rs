@@ -155,7 +155,10 @@ impl EventRouter {
             return handler.handle(envelope).await;
         }
 
-        warn!("No handler found for event {}", envelope.metadata.id);
+        warn!(
+            "No handler found for event {:?}",
+            envelope.metadata.event_type
+        );
         Ok(EventResult::Ignored)
     }
 
