@@ -225,8 +225,7 @@ async fn test_dynamic_node_addition() {
 
     assert!(
         leaders.len() <= 1,
-        "All nodes should agree on the same leader, but found: {:?}",
-        leaders
+        "All nodes should agree on the same leader, but found: {leaders:?}"
     );
 
     println!("\nCluster verification successful!");
@@ -235,7 +234,7 @@ async fn test_dynamic_node_addition() {
         cluster_ids.iter().next().unwrap()
     );
     if let Some(leader) = leaders.iter().next() {
-        println!("Cluster leader: {}", leader);
+        println!("Cluster leader: {leader}");
     }
 
     // Stop all engines

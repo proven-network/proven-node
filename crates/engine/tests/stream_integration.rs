@@ -48,17 +48,6 @@ async fn test_stream_operations() {
     // Get client from first node (will be the leader)
     let client = engines[0].client();
 
-    // Step 1: Create a consensus group
-    let group_id = proven_engine::foundation::types::ConsensusGroupId::new(1);
-    let group_members = node_infos.iter().map(|info| info.node_id.clone()).collect();
-
-    println!("Creating consensus group with ID {group_id:?}");
-    let response = client
-        .create_group(group_id, group_members)
-        .await
-        .expect("Failed to create group");
-    println!("Group creation response: {response:?}");
-
     // Give time for group formation
     tokio::time::sleep(Duration::from_secs(2)).await;
 
@@ -73,7 +62,7 @@ async fn test_stream_operations() {
 
     println!("Creating stream '{stream_name}'");
     let response = client
-        .create_stream(stream_name.clone(), stream_config, group_id)
+        .create_stream(stream_name.clone(), stream_config)
         .await
         .expect("Failed to create stream");
     println!("Stream creation response: {response:?}");
@@ -131,7 +120,6 @@ async fn test_stream_operations() {
 
     println!("Stream info: {stream_info:?}");
     assert_eq!(stream_info.name, stream_name);
-    assert_eq!(stream_info.group_id, group_id);
     assert_eq!(stream_info.last_sequence, num_messages as u64);
 
     // Step 5: Read messages back
@@ -206,19 +194,12 @@ async fn test_ephemeral_stream() {
 
     // Create a single node for simplicity
     let mut cluster = TestCluster::new(TransportType::Tcp);
-    let (engines, node_infos) = cluster.add_nodes(1).await;
+    let (engines, _node_infos) = cluster.add_nodes(1).await;
 
     // Give node time to initialize
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     let client = engines[0].client();
-    let group_id = proven_engine::foundation::types::ConsensusGroupId::new(1);
-
-    // Create group with single node
-    client
-        .create_group(group_id, vec![node_infos[0].node_id.clone()])
-        .await
-        .expect("Failed to create group");
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
@@ -232,7 +213,7 @@ async fn test_ephemeral_stream() {
     };
 
     client
-        .create_stream(stream_name.clone(), stream_config, group_id)
+        .create_stream(stream_name.clone(), stream_config)
         .await
         .expect("Failed to create ephemeral stream");
 

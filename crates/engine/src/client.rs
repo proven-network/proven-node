@@ -55,13 +55,18 @@ where
 
     // Stream Operations
 
-    /// Create a new stream
+    /// Create a new stream with automatic group assignment
+    ///
+    /// This method automatically selects an appropriate group for the stream
+    /// based on the current node's group membership and load balancing.
     pub async fn create_stream(
         &self,
         name: String,
         config: StreamConfig,
-        group_id: ConsensusGroupId,
     ) -> ConsensusResult<GlobalResponse> {
+        // Get a suitable group for this node
+        let group_id = self.client_service.get_suitable_group().await?;
+
         let request = GlobalRequest::CreateStream {
             name: name.into(),
             config,

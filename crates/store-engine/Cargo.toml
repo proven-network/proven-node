@@ -1,0 +1,29 @@
+[package]
+name = "proven-store-engine"
+version.workspace = true
+edition = "2021"
+
+[dependencies]
+async-trait.workspace = true
+bytes.workspace = true
+deno_error.workspace = true
+paste.workspace = true
+proven-engine.workspace = true
+proven-store.workspace = true
+proven-storage.workspace = true
+proven-topology.workspace = true
+proven-transport.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+proven-network.workspace = true
+proven-storage.workspace = true
+proven-storage-memory.workspace = true
+proven-topology-mock.workspace = true
+proven-transport-memory = { path = "../transport-memory" }
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

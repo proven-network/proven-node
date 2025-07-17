@@ -159,6 +159,9 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         .await
         .map_err(|e| Error::Bootable(Box::new(e)))?;
 
+    // Save the engine client for use in later steps
+    bootstrap.engine_client = Some(engine.client());
+
     let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));
     let http_server = InsecureHttpServer::new(
         http_sock_addr,

@@ -46,9 +46,6 @@ async fn test_stream_with_default_group() {
     // Get client
     let client = engine.client();
 
-    // The default group (ID 1) should have been created automatically
-    let group_id = proven_engine::foundation::types::ConsensusGroupId::new(1);
-
     // Try to create a stream in the default group
     let stream_name = "test-stream".to_string();
     let stream_config = StreamConfig {
@@ -60,7 +57,7 @@ async fn test_stream_with_default_group() {
 
     println!("Creating stream '{stream_name}' in default group");
     let create_result = client
-        .create_stream(stream_name.clone(), stream_config, group_id)
+        .create_stream(stream_name.clone(), stream_config)
         .await;
 
     match create_result {

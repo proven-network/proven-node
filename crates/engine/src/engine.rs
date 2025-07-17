@@ -278,7 +278,7 @@ where
         self.cluster_service.get_cluster_info().await.map_err(|e| {
             ConsensusError::with_context(
                 ErrorKind::Internal,
-                format!("Failed to get cluster state: {}", e),
+                format!("Failed to get cluster state: {e}"),
             )
         })
     }

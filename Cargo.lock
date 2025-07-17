@@ -10700,6 +10700,7 @@ dependencies = [
  "proven-storage",
  "proven-storage-memory",
  "proven-store",
+ "proven-store-engine",
  "proven-store-fs",
  "proven-store-memory",
  "proven-store-nats",
@@ -11294,6 +11295,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-store-engine"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "deno_error",
+ "paste",
+ "proven-engine",
+ "proven-network",
+ "proven-storage",
+ "proven-storage-memory",
+ "proven-store",
+ "proven-topology",
+ "proven-topology-mock",
+ "proven-transport",
+ "proven-transport-memory",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.19",
+]
+
+[[package]]
 name = "proven-store-fs"
 version = "0.1.0"
 dependencies = [
@@ -11431,6 +11457,21 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-test",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "proven-transport-memory"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "futures",
+ "proven-topology",
+ "proven-transport",
+ "thiserror 2.0.12",
+ "tokio",
  "tracing",
  "uuid",
 ]

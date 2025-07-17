@@ -69,6 +69,7 @@ members = [
     "crates/storage-s3",
     "crates/store",
     "crates/store-asm",
+    "crates/store-engine",
     "crates/store-fs",
     "crates/store-memory",
     "crates/store-nats",
@@ -148,6 +149,7 @@ default-members = [
     "crates/storage-s3",
     "crates/store",
     "crates/store-asm",
+    "crates/store-engine",
     "crates/store-fs",
     "crates/store-memory",
     "crates/store-nats",
@@ -498,6 +500,7 @@ proven-storage-rocksdb = { path = "crates/storage-rocksdb" }
 proven-storage-s3 = { path = "crates/storage-s3" }
 proven-store = { path = "crates/store" }
 proven-store-asm = { path = "crates/store-asm" }
+proven-store-engine = { path = "crates/store-engine" }
 proven-store-fs = { path = "crates/store-fs" }
 proven-store-memory = { path = "crates/store-memory" }
 proven-store-nats = { path = "crates/store-nats" }

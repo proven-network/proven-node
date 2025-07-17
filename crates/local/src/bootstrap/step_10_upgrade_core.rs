@@ -32,8 +32,8 @@ use proven_runtime::{
 };
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
+use proven_store_engine::{EngineStore, EngineStore1, EngineStore2, EngineStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
-use proven_store_memory::{MemoryStore, MemoryStore1, MemoryStore2, MemoryStore3};
 use proven_topology::TopologyAdaptor;
 use tracing::info;
 
@@ -42,6 +42,13 @@ static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 #[allow(clippy::too_many_lines)]
 pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let lock_manager = MemoryLockManager::default();
+
+    // Get the engine client from bootstrap
+    let engine_client = bootstrap
+        .engine_client
+        .as_ref()
+        .expect("Engine client not available")
+        .clone();
 
     let identity_manager = IdentityManager::new(
         // Command stream for processing identity commands
@@ -60,12 +67,12 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     .await?;
 
     let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
-        passkeys_store: MemoryStore::new(),
+        passkeys_store: EngineStore::new(engine_client.clone()),
     });
 
     let sessions_manager = SessionManager::new(SessionManagerOptions {
         attestor: bootstrap.attestor.clone(),
-        sessions_store: MemoryStore1::new(),
+        sessions_store: EngineStore1::new(engine_client.clone()),
     });
 
     let application_manager = ApplicationManager::new(
@@ -87,7 +94,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     let applications = application_manager.list_all_applications().await.unwrap();
     info!("current application count: {}", applications.len());
 
-    let application_store = MemoryStore2::new();
+    let application_store = EngineStore2::new(engine_client.clone());
 
     let application_sql_store = StreamedSqlStore2::new(
         MemoryStream2::new("APPLICATION_SQL", MemoryStreamOptions),
@@ -96,7 +103,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         FsStore2::new("/tmp/proven/application_snapshots"),
     );
 
-    let personal_store = MemoryStore3::new();
+    let personal_store = EngineStore3::new(engine_client.clone());
 
     let personal_sql_store = StreamedSqlStore3::new(
         MemoryStream3::new("PERSONAL_SQL", MemoryStreamOptions),
@@ -105,7 +112,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         FsStore3::new("/tmp/proven/personal_snapshots"),
     );
 
-    let nft_store = MemoryStore3::new();
+    let nft_store = EngineStore3::new(engine_client);
 
     let nft_sql_store = StreamedSqlStore3::new(
         MemoryStream3::new("NFT_SQL", MemoryStreamOptions),

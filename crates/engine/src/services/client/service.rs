@@ -22,8 +22,10 @@ use crate::{
         types::ConsensusGroupId,
     },
     services::{
-        event::Event, global_consensus::GlobalConsensusService,
-        group_consensus::GroupConsensusService, routing::RoutingService,
+        event::Event,
+        global_consensus::GlobalConsensusService,
+        group_consensus::GroupConsensusService,
+        routing::{GroupRoute, RoutingService},
     },
 };
 
@@ -271,6 +273,66 @@ where
                 "Response channel closed",
             )
         })?
+    }
+
+    /// Get a suitable group for stream creation
+    ///
+    /// This method finds an appropriate group that this node is a member of.
+    /// It prioritizes:
+    /// 1. Groups where this node is a member
+    /// 2. The default group (ID 1) if it exists and node is a member
+    /// 3. The least loaded group the node belongs to
+    pub async fn get_suitable_group(&self) -> ConsensusResult<ConsensusGroupId> {
+        // Get routing service to check group membership
+        let routing_service = self.routing_service.read().await;
+        let routing_service = routing_service.as_ref().ok_or_else(|| {
+            ConsensusError::with_context(
+                crate::error::ErrorKind::Service,
+                "Routing service not available",
+            )
+        })?;
+
+        // Get all routing info
+        let routing_info = routing_service.get_routing_info().await.map_err(|e| {
+            ConsensusError::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        // Find groups where this node is a member
+        let mut node_groups: Vec<(&ConsensusGroupId, &GroupRoute)> = routing_info
+            .group_routes
+            .iter()
+            .filter(|(_, group)| group.members.contains(&self.node_id))
+            .collect();
+
+        if node_groups.is_empty() {
+            return Err(ConsensusError::with_context(
+                crate::error::ErrorKind::InvalidState,
+                "Node is not a member of any consensus group",
+            ));
+        }
+
+        // Sort by preference:
+        // 1. Default group (ID 1) comes first
+        // 2. Then by stream count (least loaded)
+        node_groups.sort_by(|(id_a, group_a), (id_b, group_b)| {
+            // Check if either is the default group
+            let default_id = ConsensusGroupId::new(1);
+            if **id_a == default_id && **id_b != default_id {
+                return std::cmp::Ordering::Less;
+            }
+            if **id_b == default_id && **id_a != default_id {
+                return std::cmp::Ordering::Greater;
+            }
+
+            // Otherwise sort by stream count (ascending)
+            group_a.stream_count.cmp(&group_b.stream_count)
+        });
+
+        // Return the best group
+        Ok(*node_groups[0].0)
     }
 
     /// Read messages directly from a stream (bypasses consensus)

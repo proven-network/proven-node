@@ -60,6 +60,15 @@ pub struct Bootstrap<G: TopologyAdaptor> {
     // Special case - gets upgraded at end of bootstrap
     bootstrapping_core: Option<Core<MockAttestor, G, InsecureHttpServer>>,
 
+    // Engine client for use in store creation
+    engine_client: Option<
+        proven_engine::Client<
+            proven_transport_ws::WebsocketTransport<G, MockAttestor>,
+            G,
+            proven_storage_memory::MemoryStorage,
+        >,
+    >,
+
     // Collection of all bootable services
     bootables: Vec<Box<dyn Bootable>>,
 
@@ -132,6 +141,7 @@ impl<G: TopologyAdaptor> Bootstrap<G> {
             radix_stokenet_rpc_endpoint: config.radix_stokenet_fallback_rpc_endpoint.clone(),
 
             bootstrapping_core: None,
+            engine_client: None,
 
             bootables: Vec::new(),
 

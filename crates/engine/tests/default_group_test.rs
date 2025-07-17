@@ -2,7 +2,6 @@
 
 mod common;
 use common::{TestCluster, TransportType};
-use proven_engine::foundation::ConsensusGroupId;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -30,10 +29,6 @@ async fn test_default_group_creation() {
     let health = engine.health().await.expect("Failed to get health");
     tracing::info!("Engine health: {:?}", health);
 
-    // Now check if default group was created
-    // We expect group with ID 1 to be created
-    let default_group_id = ConsensusGroupId::new(1);
-
     // Get the client to interact with the engine
     let client = engine.client();
 
@@ -45,7 +40,7 @@ async fn test_default_group_creation() {
     // This should work if the default group was created
     let create_result = timeout(
         Duration::from_secs(5),
-        client.create_stream("test-stream".to_string(), stream_config, default_group_id),
+        client.create_stream("test-stream".to_string(), stream_config),
     )
     .await;
 

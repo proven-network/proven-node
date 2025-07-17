@@ -42,6 +42,7 @@ proven-sql-streamed.workspace = true
 proven-storage.workspace = true
 proven-storage-memory.workspace = true
 proven-store.workspace = true
+proven-store-engine.workspace = true
 proven-store-fs.workspace = true
 proven-store-memory.workspace = true
 proven-store-nats.workspace = true
