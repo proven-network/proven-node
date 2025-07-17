@@ -47,3 +47,6 @@ pub use {
     builder::EngineBuilder, client::Client, config::EngineConfig, engine::Engine,
     engine::EngineState,
 };
+
+// Re-export cluster types for the public API
+pub use services::cluster::{ClusterInfo, ClusterState};

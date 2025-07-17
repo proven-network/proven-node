@@ -23,7 +23,7 @@ use crate::services::global_consensus::GlobalConsensusService;
 use crate::services::group_consensus::GroupConsensusService;
 use crate::services::{
     client::ClientService,
-    cluster::{ClusterFormationEvent, ClusterService, FormationMode},
+    cluster::{ClusterFormationEvent, ClusterInfo, ClusterService, FormationMode},
     event::EventService,
     lifecycle::LifecycleService,
     migration::MigrationService,
@@ -271,6 +271,16 @@ where
     /// Get a client for interacting with the consensus engine
     pub fn client(&self) -> crate::client::Client<T, G, L> {
         crate::client::Client::new(self.client_service.clone(), self.node_id.clone())
+    }
+
+    /// Get current cluster state information
+    pub async fn cluster_state(&self) -> ConsensusResult<ClusterInfo> {
+        self.cluster_service.get_cluster_info().await.map_err(|e| {
+            ConsensusError::with_context(
+                ErrorKind::Internal,
+                format!("Failed to get cluster state: {}", e),
+            )
+        })
     }
 }
 
