@@ -47,6 +47,6 @@ pub use router::{OperationRouter, RouteDecision};
 pub use service::{RoutingConfig, RoutingService};
 pub use table::{RouteEntry, RoutingTable};
 pub use types::{
-    GroupRoute, LoadInfo, RoutingDecision, RoutingError, RoutingHealth, RoutingInfo,
+    GroupHealth, GroupRoute, LoadInfo, RoutingDecision, RoutingError, RoutingHealth, RoutingInfo,
     RoutingMetrics, RoutingResult, RoutingStrategy, StreamRoute,
 };

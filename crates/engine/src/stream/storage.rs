@@ -49,11 +49,14 @@ pub trait StreamStorage: StreamStorageReader + StreamStorageWriter + Send + Sync
 pub enum StreamStorageBackend<L: LogStorage> {
     /// Ephemeral storage in memory
     Ephemeral {
+        /// BTreeMap of sequence numbers to messages
         data: Arc<RwLock<BTreeMap<u64, StoredMessage>>>,
     },
     /// Persistent storage using LogStorage
     Persistent {
+        /// LogStorage instance
         storage: Arc<L>,
+        /// Storage namespace
         namespace: StorageNamespace,
     },
 }

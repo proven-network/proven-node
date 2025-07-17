@@ -8,6 +8,8 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::foundation::ConsensusGroupId;
+use crate::services::event::{Event, EventEnvelope, EventFilter, EventService, EventType};
+use proven_topology::NodeId;
 
 use super::balancer::LoadBalancer;
 use super::router::{OperationRouter, RouteDecision};
@@ -39,6 +41,9 @@ pub struct RoutingService {
 
     /// Service state
     state: Arc<RwLock<ServiceState>>,
+
+    /// Event service reference
+    event_service: Arc<RwLock<Option<Arc<EventService>>>>,
 }
 
 /// Service state
@@ -77,11 +82,17 @@ impl RoutingService {
             background_tasks: Arc::new(RwLock::new(Vec::new())),
             shutdown_signal: Arc::new(tokio::sync::Notify::new()),
             state: Arc::new(RwLock::new(ServiceState::NotStarted)),
+            event_service: Arc::new(RwLock::new(None)),
         }
     }
 
-    /// Start the routing service
-    pub async fn start(&self) -> RoutingResult<()> {
+    /// Set the event service for this service
+    pub async fn set_event_service(&self, event_service: Arc<EventService>) {
+        *self.event_service.write().await = Some(event_service);
+    }
+
+    /// Start the routing service internally
+    async fn start_internal(&self) -> RoutingResult<()> {
         let mut state = self.state.write().await;
         if *state != ServiceState::NotStarted {
             return Err(RoutingError::Internal(
@@ -92,7 +103,21 @@ impl RoutingService {
         *state = ServiceState::Running;
         drop(state);
 
-        info!("Starting routing service");
+        info!("Starting routing service internal");
+
+        // Initialize with default group info
+        let default_group_id = ConsensusGroupId::new(1);
+        let default_group_route = GroupRoute {
+            group_id: default_group_id,
+            members: vec![], // Will be populated when group is actually created
+            leader: None,
+            health: GroupHealth::Healthy,
+            last_updated: SystemTime::now(),
+            stream_count: 0,
+        };
+        self.routing_table
+            .update_group_route(default_group_id, default_group_route)
+            .await?;
 
         let mut tasks = self.background_tasks.write().await;
 
@@ -104,11 +129,16 @@ impl RoutingService {
         // Start metrics aggregation
         tasks.push(self.spawn_metrics_aggregator());
 
+        // Start event processing
+        if self.event_service.read().await.is_some() {
+            tasks.push(self.spawn_event_processor());
+        }
+
         Ok(())
     }
 
-    /// Stop the routing service
-    pub async fn stop(&self) -> RoutingResult<()> {
+    /// Stop the routing service internally
+    async fn stop_internal(&self) -> RoutingResult<()> {
         let mut state = self.state.write().await;
         if *state != ServiceState::Running {
             return Ok(());
@@ -207,6 +237,7 @@ impl RoutingService {
             assigned_at: SystemTime::now(),
             strategy: self.config.default_strategy,
             is_active: true,
+            config: None, // Config will be set when StreamCreated event is received
         };
 
         self.routing_table
@@ -318,6 +349,7 @@ impl RoutingService {
     async fn ensure_running(&self) -> RoutingResult<()> {
         let state = self.state.read().await;
         if *state != ServiceState::Running {
+            error!("Routing service state is {:?}, expected Running", *state);
             return Err(RoutingError::NotStarted);
         }
         Ok(())
@@ -388,12 +420,245 @@ impl RoutingService {
             }
         })
     }
+
+    /// Spawn event processor task
+    fn spawn_event_processor(&self) -> JoinHandle<()> {
+        let event_service = self.event_service.clone();
+        let routing_table = self.routing_table.clone();
+        let shutdown = self.shutdown_signal.clone();
+
+        tokio::spawn(async move {
+            let event_service = match event_service.read().await.as_ref() {
+                Some(service) => service.clone(),
+                None => {
+                    error!("Event service not set for routing service");
+                    return;
+                }
+            };
+
+            // Subscribe to relevant events
+            let filter = EventFilter::ByType(vec![EventType::Stream, EventType::Consensus]);
+            let mut subscriber = match event_service
+                .subscribe("routing-service".to_string(), filter)
+                .await
+            {
+                Ok(sub) => sub,
+                Err(e) => {
+                    error!("Failed to subscribe to events: {}", e);
+                    return;
+                }
+            };
+
+            info!("RoutingService: Event processing started");
+
+            loop {
+                tokio::select! {
+                    Some(envelope) = subscriber.recv() => {
+                        if let Err(e) = Self::handle_event(envelope, &routing_table).await {
+                            error!("Error handling event: {}", e);
+                        }
+                    }
+                    _ = shutdown.notified() => {
+                        info!("RoutingService: Event processor shutting down");
+                        break;
+                    }
+                    else => {
+                        info!("RoutingService: Event channel closed");
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
+    /// Handle events
+    async fn handle_event(
+        envelope: EventEnvelope,
+        routing_table: &Arc<RoutingTable>,
+    ) -> RoutingResult<()> {
+        match &envelope.event {
+            Event::StreamCreated {
+                name,
+                group_id,
+                config,
+            } => {
+                info!(
+                    "RoutingService: Handling StreamCreated event for {} in group {:?}",
+                    name, group_id
+                );
+
+                let route = StreamRoute {
+                    stream_name: name.to_string(),
+                    group_id: *group_id,
+                    assigned_at: SystemTime::now(),
+                    strategy: RoutingStrategy::Sticky,
+                    is_active: true,
+                    config: Some(config.clone()),
+                };
+
+                routing_table
+                    .update_stream_route(name.to_string(), route)
+                    .await?;
+            }
+            Event::GroupConsensusInitialized {
+                group_id, members, ..
+            } => {
+                info!(
+                    "RoutingService: Handling GroupConsensusInitialized for group {:?}",
+                    group_id
+                );
+
+                let group_route = GroupRoute {
+                    group_id: *group_id,
+                    members: members.clone(),
+                    leader: members.first().cloned(),
+                    health: GroupHealth::Healthy,
+                    last_updated: SystemTime::now(),
+                    stream_count: 0,
+                };
+
+                routing_table
+                    .update_group_route(*group_id, group_route)
+                    .await?;
+            }
+            Event::MembershipChanged {
+                new_members,
+                removed_members,
+            } => {
+                info!(
+                    "RoutingService: Handling MembershipChanged - {} new, {} removed",
+                    new_members.len(),
+                    removed_members.len()
+                );
+
+                // Update all group routes that contain any of the affected members
+                // In a real implementation, this event should include the group_id
+                // For now, we'll need to check all groups
+                let group_routes = routing_table.get_all_group_routes().await?;
+
+                for (group_id, mut route) in group_routes {
+                    let mut updated = false;
+
+                    // Remove members that left
+                    for removed in removed_members {
+                        if let Some(pos) = route.members.iter().position(|m| m == removed) {
+                            route.members.remove(pos);
+                            updated = true;
+                        }
+                    }
+
+                    // Add new members
+                    for new_member in new_members {
+                        if !route.members.contains(new_member) {
+                            route.members.push(new_member.clone());
+                            updated = true;
+                        }
+                    }
+
+                    if updated {
+                        // Update leader if necessary
+                        if let Some(ref leader) = route.leader
+                            && removed_members.contains(leader)
+                        {
+                            route.leader = route.members.first().cloned();
+                        }
+
+                        route.last_updated = SystemTime::now();
+                        routing_table.update_group_route(group_id, route).await?;
+                    }
+                }
+            }
+            Event::GroupLeaderChanged {
+                group_id,
+                new_leader,
+                ..
+            } => {
+                info!(
+                    "RoutingService: Handling GroupLeaderChanged for group {:?}, new leader {:?}",
+                    group_id, new_leader
+                );
+
+                // Update leader for the specific group
+                if let Ok(Some(mut route)) = routing_table.get_group_route(*group_id).await {
+                    route.leader = Some(new_leader.clone());
+                    route.last_updated = SystemTime::now();
+                    routing_table.update_group_route(*group_id, route).await?;
+                }
+            }
+            _ => {
+                // Ignore other events
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Drop for RoutingService {
     fn drop(&mut self) {
         // Ensure shutdown on drop
         self.shutdown_signal.notify_waiters();
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::foundation::traits::ServiceLifecycle for RoutingService {
+    async fn start(&self) -> crate::error::ConsensusResult<()> {
+        info!("ServiceLifecycle::start called for RoutingService");
+        let result = self.start_internal().await.map_err(|e| {
+            crate::error::ConsensusError::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to start routing service: {e}"),
+            )
+        });
+        if result.is_ok() {
+            info!("RoutingService started successfully via ServiceLifecycle");
+        }
+        result
+    }
+
+    async fn stop(&self) -> crate::error::ConsensusResult<()> {
+        self.stop_internal().await.map_err(|e| {
+            crate::error::ConsensusError::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to stop routing service: {e}"),
+            )
+        })
+    }
+
+    async fn is_running(&self) -> bool {
+        let state = self.state.read().await;
+        *state == ServiceState::Running
+    }
+
+    async fn health_check(
+        &self,
+    ) -> crate::error::ConsensusResult<crate::foundation::traits::ServiceHealth> {
+        let _is_running = self.is_running().await;
+        let health = self.get_health().await.map_err(|e| {
+            crate::error::ConsensusError::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to get routing health: {e}"),
+            )
+        })?;
+
+        use crate::foundation::traits::{HealthStatus, ServiceHealth};
+
+        let status = match health.status {
+            super::types::HealthStatus::Healthy => HealthStatus::Healthy,
+            super::types::HealthStatus::Degraded => HealthStatus::Degraded,
+            super::types::HealthStatus::Unhealthy => HealthStatus::Unhealthy,
+        };
+
+        Ok(ServiceHealth {
+            name: "RoutingService".to_string(),
+            status,
+            message: if health.issues.is_empty() {
+                None
+            } else {
+                Some(health.issues.join("; "))
+            },
+            subsystems: vec![],
+        })
     }
 }
 

@@ -2,7 +2,10 @@
 
 use crate::error::{Error, HandlerError, Result};
 use crate::protocol::message::{ErrorInfo, MessageEnvelope, ResponseEnvelope};
-use crate::protocol::{Frame, FrameCodec, FrameType, MessagePattern, patterns::RetryPolicy};
+use crate::protocol::{
+    Frame, FrameCodec, FrameType, MessagePattern,
+    patterns::{AggregationPolicy, RetryPolicy},
+};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
@@ -204,7 +207,10 @@ impl<H: RpcHandler> RpcServer<H> {
             match timeout(config.request_timeout, framed.next()).await {
                 Ok(Some(Ok(frame))) => {
                     match frame.frame_type {
-                        FrameType::Request => {
+                        FrameType::Request
+                        | FrameType::RequestStream
+                        | FrameType::StreamRequest
+                        | FrameType::BidiStream => {
                             // Handle request inline
                             if let Err(e) = Self::handle_request(
                                 frame,
@@ -261,6 +267,7 @@ impl<H: RpcHandler> RpcServer<H> {
 
     /// Handle a single request.
     #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
     async fn handle_request(
         frame: Frame,
         handler: Arc<H>,
@@ -289,10 +296,35 @@ impl<H: RpcHandler> RpcServer<H> {
             }
         }
 
-        // Handle the message
-        let pattern = MessagePattern::RequestResponse {
-            timeout: Duration::from_secs(30),
-            retry_policy: RetryPolicy::default(),
+        // Determine pattern from frame type
+        let pattern = match frame.frame_type {
+            FrameType::Request => MessagePattern::RequestResponse {
+                timeout: Duration::from_secs(30),
+                retry_policy: RetryPolicy::default(),
+            },
+            FrameType::RequestStream => MessagePattern::RequestStream {
+                buffer_size: 32,
+                initial_timeout: Duration::from_secs(30),
+                idle_timeout: Duration::from_secs(10),
+            },
+            FrameType::StreamRequest => MessagePattern::StreamRequest {
+                buffer_size: 32,
+                aggregation: AggregationPolicy::All,
+                timeout: Duration::from_secs(30),
+            },
+            FrameType::BidiStream => MessagePattern::BidiStream {
+                buffer_size: 32,
+                idle_timeout: Duration::from_secs(10),
+            },
+            _ => {
+                return Self::send_error_response(
+                    sink,
+                    envelope.id,
+                    "INVALID_FRAME_TYPE",
+                    &format!("Invalid frame type for request: {:?}", frame.frame_type),
+                )
+                .await;
+            }
         };
 
         match handler
@@ -356,10 +388,65 @@ impl<H: RpcHandler> RpcServer<H> {
                         }
                         Err(e) => {
                             error!("Stream error: {}", e);
+                            // Send error response
+                            let (code, message) = match &e {
+                                Error::Handler(crate::error::HandlerError::NotFound(_)) => {
+                                    ("NOT_FOUND", e.to_string())
+                                }
+                                Error::Handler(crate::error::HandlerError::Internal(_)) => {
+                                    ("INTERNAL_ERROR", e.to_string())
+                                }
+                                _ => ("STREAM_ERROR", e.to_string()),
+                            };
+
+                            let error_envelope = ResponseEnvelope {
+                                request_id: envelope.id,
+                                message_id: format!("{}.error", envelope.message_id),
+                                payload: vec![],
+                                error: Some(crate::protocol::message::ErrorInfo {
+                                    code: code.to_string(),
+                                    message: message.to_string(),
+                                    details: None,
+                                }),
+                            };
+
+                            let error_bytes = bincode::serialize(&error_envelope)
+                                .map(Bytes::from)
+                                .map_err(|e| {
+                                    Error::Codec(crate::error::CodecError::SerializationFailed(
+                                        e.to_string(),
+                                    ))
+                                })?;
+                            let error_frame = Frame::new(FrameType::Error, error_bytes);
+
+                            let _ = sink.send(error_frame).await;
+                            let _ = sink.flush().await;
                             break;
                         }
                     }
                 }
+
+                // Send stream end marker
+                debug!("Sending stream end marker for request {}", envelope.id);
+                let end_envelope = ResponseEnvelope {
+                    request_id: envelope.id,
+                    message_id: format!("{}.stream.end", envelope.message_id),
+                    payload: vec![],
+                    error: None,
+                };
+
+                let end_bytes =
+                    bincode::serialize(&end_envelope)
+                        .map(Bytes::from)
+                        .map_err(|e| {
+                            Error::Codec(crate::error::CodecError::SerializationFailed(
+                                e.to_string(),
+                            ))
+                        })?;
+                let end_frame = Frame::new(FrameType::StreamEnd, end_bytes);
+
+                sink.send(end_frame).await.map_err(Error::Io)?;
+                sink.flush().await.map_err(Error::Io)?;
             }
             Ok(HandlerResponse::None) => {
                 // No response expected

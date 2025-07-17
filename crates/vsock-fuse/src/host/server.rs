@@ -19,7 +19,7 @@ use crate::{
         messages::{
             DeleteBlobRequest, DeleteBlobResponse, GetBlobRequest, GetBlobResponse,
             GetStorageStatsRequest, GetStorageStatsResponse, ListBlobsRequest, ListBlobsResponse,
-            StoreBlobRequest, StoreBlobResponse,
+            StoreBlobBatchRequest, StoreBlobBatchResponse, StoreBlobRequest, StoreBlobResponse,
         },
     },
 };
@@ -133,6 +133,26 @@ impl RpcHandler for StorageHandler {
                     )))
                 })?;
                 debug!("Encoded stats response to {} bytes", response_bytes.len());
+                Ok(HandlerResponse::Single(response_bytes))
+            }
+            "blob.store_batch" => {
+                let request = StoreBlobBatchRequest::try_from(message).map_err(|e| {
+                    proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                        "Failed to decode StoreBlobBatchRequest: {e}"
+                    )))
+                })?;
+                debug!(
+                    "Received StoreBlobBatchRequest for {} blobs",
+                    request.blobs.len()
+                );
+                let response = self.handle_store_blob_batch(request).await.map_err(|e| {
+                    proven_vsock_rpc::Error::Handler(HandlerError::Internal(e.to_string()))
+                })?;
+                let response_bytes: Bytes = response.try_into().map_err(
+                    |e: <StoreBlobBatchResponse as TryInto<Bytes>>::Error| {
+                        proven_vsock_rpc::Error::Handler(HandlerError::Internal(e.to_string()))
+                    },
+                )?;
                 Ok(HandlerResponse::Single(response_bytes))
             }
             _ => {
@@ -266,5 +286,35 @@ impl StorageHandler {
     ) -> Result<GetStorageStatsResponse> {
         let stats = self.storage.get_stats().await?;
         Ok(GetStorageStatsResponse { stats })
+    }
+
+    /// Handle batch store request
+    async fn handle_store_blob_batch(
+        &self,
+        request: StoreBlobBatchRequest,
+    ) -> Result<StoreBlobBatchResponse> {
+        let mut results = Vec::new();
+
+        // Process blobs in parallel
+        let futures: Vec<_> = request
+            .blobs
+            .into_iter()
+            .map(|(blob_id, data, tier_hint)| {
+                let storage = self.storage.clone();
+                async move {
+                    storage
+                        .store_blob(blob_id, data, tier_hint)
+                        .await
+                        .map(|_| Ok(()))
+                        .unwrap_or_else(|e| Err(e.to_string()))
+                }
+            })
+            .collect();
+
+        // Wait for all operations to complete
+        let batch_results = futures::future::join_all(futures).await;
+        results.extend(batch_results);
+
+        Ok(StoreBlobBatchResponse { results })
     }
 }

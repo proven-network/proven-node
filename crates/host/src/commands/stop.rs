@@ -2,7 +2,7 @@ use crate::StopArgs;
 use crate::error::{Error, Result};
 use crate::nitro::NitroCli;
 
-use proven_vsock_rpc_cac::CacClient;
+use proven_vsock_cac::CacClient;
 use tokio::time::{Duration, sleep};
 use tracing::info;
 

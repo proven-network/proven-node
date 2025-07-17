@@ -1,5 +1,5 @@
 [package]
-name = "proven-topology-helios"
+name = "proven-topology-governance"
 version.workspace = true
 edition = "2024"
 

@@ -12,6 +12,6 @@ pub mod storage;
 pub mod types;
 
 pub use config::{PersistenceType, StreamConfig};
-pub use service::StreamStorageService;
+pub use service::{StreamService, StreamServiceConfig};
 pub use storage::{StreamStorage, StreamStorageImpl, StreamStorageReader, StreamStorageWriter};
-pub use types::{MessageData, StreamMetadata, StreamName, StreamState, StreamStats};
+pub use types::{MessageData, StoredMessage, StreamMetadata, StreamName, StreamState, StreamStats};

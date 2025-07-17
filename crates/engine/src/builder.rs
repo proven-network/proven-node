@@ -196,6 +196,11 @@ where
         // Create ClientService
         let client_service = Arc::new(ClientService::new(self.node_id.clone()));
 
+        // Create StreamService
+        use crate::stream::{StreamService, StreamServiceConfig};
+        let stream_config = StreamServiceConfig::default();
+        let stream_service = Arc::new(StreamService::new(stream_config, Arc::new(storage.clone())));
+
         // Create service wrappers that implement ServiceLifecycle
         let network_service = Arc::new(network_service);
         let network_wrapper = Arc::new(ServiceWrapper::new("network", network_service.clone()));
@@ -212,6 +217,7 @@ where
             Arc::new(ServiceWrapper::new("lifecycle", lifecycle_service.clone()));
         let pubsub_wrapper = Arc::new(ServiceWrapper::new("pubsub", pubsub_service.clone()));
         let client_wrapper = Arc::new(ServiceWrapper::new("client", client_service.clone()));
+        let stream_wrapper = Arc::new(ServiceWrapper::new("stream", stream_service.clone()));
 
         // Create consensus service wrappers
         let global_consensus_wrapper = Arc::new(ServiceWrapper::new(
@@ -257,6 +263,9 @@ where
         coordinator
             .register("client".to_string(), client_wrapper)
             .await;
+        coordinator
+            .register("stream".to_string(), stream_wrapper)
+            .await;
 
         // Wire up ClientService dependencies
         client_service
@@ -268,6 +277,27 @@ where
         client_service
             .set_routing_service(routing_service.clone())
             .await;
+        client_service
+            .set_stream_service(stream_service.clone())
+            .await;
+        client_service
+            .set_event_service(event_service.clone())
+            .await;
+
+        // Wire up StreamService dependencies
+        stream_service
+            .set_event_service(event_service.clone())
+            .await;
+
+        // Wire up GroupConsensusService dependencies
+        group_consensus_service
+            .set_event_service(event_service.clone())
+            .await;
+
+        // Wire up RoutingService dependencies
+        routing_service
+            .set_event_service(event_service.clone())
+            .await;
 
         // Set start order
         coordinator
@@ -275,11 +305,12 @@ where
                 "network".to_string(),
                 "event".to_string(),
                 "monitoring".to_string(),
-                "global_consensus".to_string(),
-                "group_consensus".to_string(),
+                "group_consensus".to_string(), // Start group_consensus before global_consensus
+                "global_consensus".to_string(), // So it's ready to receive events
                 "cluster".to_string(),
                 "routing".to_string(),
                 "pubsub".to_string(),
+                "stream".to_string(),
                 "client".to_string(),
                 "migration".to_string(),
                 "lifecycle".to_string(),
@@ -300,6 +331,7 @@ where
             lifecycle_service,
             pubsub_service,
             client_service,
+            stream_service,
             network_manager,
             storage,
         );
@@ -434,24 +466,19 @@ impl ServiceLifecycle for ServiceWrapper<MonitoringService> {
 #[async_trait]
 impl ServiceLifecycle for ServiceWrapper<RoutingService> {
     async fn start(&self) -> ConsensusResult<()> {
-        Ok(())
+        self.service.start().await
     }
 
     async fn stop(&self) -> ConsensusResult<()> {
-        Ok(())
+        self.service.stop().await
     }
 
     async fn is_running(&self) -> bool {
-        true
+        self.service.is_running().await
     }
 
     async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: HealthStatus::Healthy,
-            message: None,
-            subsystems: Vec::new(),
-        })
+        self.service.health_check().await
     }
 }
 
@@ -652,6 +679,29 @@ impl<T, G, L> ServiceLifecycle for ServiceWrapper<crate::services::client::Clien
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
+    L: LogStorage + Send + Sync + 'static,
+{
+    async fn start(&self) -> ConsensusResult<()> {
+        self.service.start().await
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        self.service.stop().await
+    }
+
+    async fn is_running(&self) -> bool {
+        self.service.is_running().await
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        self.service.health_check().await
+    }
+}
+
+// Implement for StreamService
+#[async_trait]
+impl<L> ServiceLifecycle for ServiceWrapper<crate::stream::StreamService<L>>
+where
     L: LogStorage + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {

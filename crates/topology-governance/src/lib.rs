@@ -24,7 +24,7 @@ use proven_topology::{Node, NodeId, NodeSpecialization, TopologyAdaptor, Version
 
 /// Configuration options for the Helios topology adaptor client.
 #[derive(Clone, Debug)]
-pub struct HeliosTopologyAdaptorOptions {
+pub struct GovernanceTopologyAdaptorOptions {
     /// The URL of the Ethereum consensus layer RPC endpoint.
     pub consensus_rpc: String,
 
@@ -77,13 +77,13 @@ sol! {
 
 /// A topology adaptor client that uses Helios to interact with the Ethereum network.
 #[derive(Clone)]
-pub struct HeliosTopologyAdaptor {
+pub struct GovernanceTopologyAdaptor {
     client: Arc<EthereumClient>,
     node_governance_address: Address,
     version_governance_address: Address,
 }
 
-impl HeliosTopologyAdaptor {
+impl GovernanceTopologyAdaptor {
     /// Create a new Helios topology adaptor client.
     ///
     /// # Errors
@@ -91,7 +91,7 @@ impl HeliosTopologyAdaptor {
     /// Returns an error if:
     /// - The Helios client fails to build or start
     /// - The provided contract addresses cannot be parsed
-    pub async fn new(options: HeliosTopologyAdaptorOptions) -> Result<Self, Error> {
+    pub async fn new(options: GovernanceTopologyAdaptorOptions) -> Result<Self, Error> {
         let client = EthereumClientBuilder::new()
             .network(options.network)
             .data_dir(options.data_dir.clone())
@@ -159,7 +159,7 @@ impl HeliosTopologyAdaptor {
 }
 
 #[async_trait]
-impl TopologyAdaptor for HeliosTopologyAdaptor {
+impl TopologyAdaptor for GovernanceTopologyAdaptor {
     type Error = Error;
 
     async fn get_active_versions(&self) -> Result<Vec<Version>, Self::Error> {
@@ -258,7 +258,7 @@ impl TopologyAdaptor for HeliosTopologyAdaptor {
     }
 }
 
-impl std::fmt::Debug for HeliosTopologyAdaptor {
+impl std::fmt::Debug for GovernanceTopologyAdaptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "HeliosTopologyAdaptor")?;
         write!(

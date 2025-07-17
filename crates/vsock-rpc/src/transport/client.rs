@@ -310,8 +310,8 @@ impl RpcClient {
                 Error::Codec(crate::error::CodecError::SerializationFailed(e.to_string()))
             })?;
 
-        // Create frame
-        let frame = Frame::new(FrameType::Request, envelope_bytes);
+        // Create frame - use RequestStream to signal streaming intent
+        let frame = Frame::new(FrameType::RequestStream, envelope_bytes);
 
         // Create channel for streaming responses
         let (tx, rx) = mpsc::channel(32);
@@ -338,6 +338,13 @@ impl RpcClient {
         // Return stream of responses
         Ok(
             tokio_stream::wrappers::ReceiverStream::new(rx).map(move |envelope| {
+                // Check if the envelope contains an error
+                if let Some(error_info) = envelope.error {
+                    return Err(Error::Handler(crate::error::HandlerError::Internal(
+                        format!("{}: {}", error_info.code, error_info.message),
+                    )));
+                }
+
                 // Deserialize response
                 let bytes = Bytes::from(envelope.payload);
                 M::Response::try_from(bytes).map_err(|e| {

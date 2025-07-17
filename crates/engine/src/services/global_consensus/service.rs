@@ -173,6 +173,14 @@ where
                                     members: members.clone(),
                                 }, "global_consensus".to_string()).await;
                             }
+
+                            // Request creation of default group via event
+                            tracing::info!("GlobalConsensusService: Requesting default group creation");
+                            if let Some(ref publisher) = event_publisher {
+                                let _ = publisher.publish(Event::RequestDefaultGroupCreation {
+                                    members: members.clone(),
+                                }, "global_consensus".to_string()).await;
+                            }
                         }
                         ClusterFormationEvent::JoinedAsFollower { cluster_id, .. } => {
                             tracing::info!("GlobalConsensusService: Joining consensus as follower in cluster {}", cluster_id);

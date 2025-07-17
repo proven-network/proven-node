@@ -50,7 +50,7 @@ pub enum Error {
     VsockProxy(#[from] proven_vsock_proxy::Error),
 
     #[error(transparent)]
-    VsockRpcCac(#[from] proven_vsock_rpc_cac::Error),
+    VsockRpcCac(#[from] proven_vsock_cac::Error),
 
     #[error(transparent)]
     VsockTracing(#[from] proven_vsock_tracing::host::Error),

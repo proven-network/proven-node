@@ -74,17 +74,17 @@ members = [
     "crates/store-nats",
     "crates/store-s3",
     "crates/topology",
-    "crates/topology-helios",
+    "crates/topology-governance",
     "crates/topology-mock",
     "crates/transport",
     "crates/transport-tcp",
     "crates/transport-ws",
     "crates/util",
     "crates/verification",
+    "crates/vsock-cac",
     "crates/vsock-fuse",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
-    "crates/vsock-rpc-cac",
     "crates/vsock-tracing",
 ]
 default-members = [
@@ -153,17 +153,17 @@ default-members = [
     "crates/store-nats",
     "crates/store-s3",
     "crates/topology",
-    "crates/topology-helios",
+    "crates/topology-governance",
     "crates/topology-mock",
     "crates/transport",
     "crates/transport-tcp",
     "crates/transport-ws",
     "crates/util",
     "crates/verification",
+    "crates/vsock-cac",
     "crates/vsock-fuse",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
-    "crates/vsock-rpc-cac",
     "crates/vsock-tracing",
 ]
 
@@ -195,7 +195,7 @@ async-nats = { version = "0.42.0", default-features = false, features = ["aws-lc
 async-once-cell = "0.5.4"
 async-stream = "0.3.6"
 async-trait = "0.1.87"
-aws-config = { version = "1.8.2", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio"] }
+aws-config = { version = "1.8.2", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio", "rustls"] }
 aws-lc-rs = { version = "1.13.2" }
 aws-lc-sys = { version = "0.30.0" }
 aws-sdk-ec2 = { version = "1.147.0", default-features = false }
@@ -503,17 +503,17 @@ proven-store-memory = { path = "crates/store-memory" }
 proven-store-nats = { path = "crates/store-nats" }
 proven-store-s3 = { path = "crates/store-s3" }
 proven-topology = { path = "crates/topology" }
-proven-topology-helios = { path = "crates/topology-helios" }
+proven-topology-governance = { path = "crates/topology-governance" }
 proven-topology-mock = { path = "crates/topology-mock" }
 proven-transport = { path = "crates/transport" }
 proven-transport-tcp = { path = "crates/transport-tcp" }
 proven-transport-ws = { path = "crates/transport-ws" }
 proven-util = { path = "crates/util" }
 proven-verification = { path = "crates/verification" }
+proven-vsock-cac = { path = "crates/vsock-cac" }
 proven-vsock-fuse = { path = "crates/vsock-fuse" }
 proven-vsock-proxy = { path = "crates/vsock-proxy" }
 proven-vsock-rpc = { path = "crates/vsock-rpc" }
-proven-vsock-rpc-cac = { path = "crates/vsock-rpc-cac" }
 proven-vsock-tracing = { path = "crates/vsock-tracing" }
 public-suffix = "0.1.3"
 quinn = { version = "0.11.8", default-features = false }

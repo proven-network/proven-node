@@ -16,7 +16,6 @@ proven-vsock-rpc.workspace = true
 
 # Encryption and security
 aes-gcm.workspace = true
-argon2.workspace = true
 sha2.workspace = true
 sha3.workspace = true
 rand.workspace = true
@@ -60,8 +59,8 @@ pin-project = "1"
 prometheus = { workspace = true }
 
 # AWS SDK for S3
-aws-config = { version = "1.5", optional = true }
-aws-sdk-s3 = { version = "1.58", optional = true }
+aws-config = { workspace = true, optional = true }
+aws-sdk-s3 = { workspace = true, optional = true }
 
 # Compression
 zstd = { version = "0.13", optional = true }
@@ -78,7 +77,7 @@ proven-util.workspace = true
 tokio-test = "0.4"
 
 [features]
-default = ["enclave", "host"]
+default = ["enclave", "host", "testing"] # TODO: remove testing once found a better way
 enclave = []
 host = ["aws-config", "aws-sdk-s3", "zstd"]
 testing = ["mockall"]
@@ -86,10 +85,10 @@ testing = ["mockall"]
 [target.'cfg(target_os = "linux")'.dependencies]
 tokio-vsock = { workspace = true }
 
-# [[bench]]
-# name = "encryption"
-# harness = false
+[[bench]]
+name = "throughput"
+harness = false
 
-# [[bench]]
-# name = "file_operations"
-# harness = false
+[[bench]]
+name = "encryption"
+harness = false

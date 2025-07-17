@@ -1,5 +1,5 @@
 [package]
-name = "proven-vsock-rpc-cac"
+name = "proven-vsock-cac"
 version.workspace = true
 edition = "2024"
 

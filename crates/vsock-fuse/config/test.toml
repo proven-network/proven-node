@@ -13,10 +13,10 @@ encrypt_metadata = true
 encrypt_filenames = true
 
 [encryption.kdf]
-algorithm = "Argon2id"
-memory_cost = 4096  # 4MB (faster for tests)
-time_cost = 1
-parallelism = 1
+algorithm = "SHA256"  # Fast key derivation
+memory_cost = 0  # Not used with SHA256
+time_cost = 0  # Not used with SHA256
+parallelism = 0  # Not used with SHA256
 
 [storage.hot_tier]
 base_path = "/tmp/vsock-fuse-test/hot"

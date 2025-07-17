@@ -213,6 +213,7 @@ mod tests {
             assigned_at: SystemTime::now(),
             strategy: RoutingStrategy::LeastLoaded,
             is_active: true,
+            config: None,
         };
 
         // Create

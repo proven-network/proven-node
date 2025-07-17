@@ -278,11 +278,15 @@ impl EventService {
         let bus = self.bus.clone();
         let router = self.router.clone();
         let store = self.store.clone();
-        let _receiver = self.event_channel.1.try_recv();
         let shutdown = self.shutdown_signal.clone();
+
+        // Take the receiver from the channel pair without creating a new channel
         let mut event_receiver = {
             let (tx, rx) = mpsc::channel(self.config.bus_capacity);
-            std::mem::replace(&mut self.event_channel, (tx, rx)).1
+            let (old_tx, old_rx) = std::mem::replace(&mut self.event_channel, (tx, rx));
+            // Put the old sender back so EventPublisher instances keep working
+            self.event_channel.0 = old_tx;
+            old_rx
         };
 
         tokio::spawn(async move {

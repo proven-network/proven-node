@@ -300,6 +300,7 @@ impl ConnectionPool {
 
     /// Handle incoming frames from a connection.
     #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
     async fn handle_stream(
         conn: Arc<PooledConnection>,
         #[cfg(target_os = "linux")] mut stream: SplitStream<
@@ -357,6 +358,46 @@ impl ConnectionPool {
                                         }
                                         Err(e) => {
                                             error!("Failed to decode stream frame: {}", e);
+                                        }
+                                    }
+                                }
+                                FrameType::StreamEnd => {
+                                    // Decode response envelope for stream end frame
+                                    match bincode::deserialize::<ResponseEnvelope>(&frame.payload) {
+                                        Ok(response) => {
+                                            debug!("Connection {} received stream end for request_id: {}", conn.id, response.request_id);
+                                            // Remove the streaming request as the stream is complete
+                                            if let Some((_, _)) = streaming_requests.remove(&response.request_id) {
+                                                debug!("Removed completed streaming request {}", response.request_id);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to decode stream end frame: {}", e);
+                                        }
+                                    }
+                                }
+                                FrameType::Error => {
+                                    // Decode error response
+                                    match bincode::deserialize::<ResponseEnvelope>(&frame.payload) {
+                                        Ok(response) => {
+                                            let request_id = response.request_id;
+                                            debug!("Connection {} received error for request_id: {}", conn.id, request_id);
+                                            // Check if it's for a streaming request
+                                            if let Some(streaming_tx) = streaming_requests.get(&request_id) {
+                                                debug!("Found streaming request for {}, forwarding error", request_id);
+                                                // Send the error envelope (client will convert to error)
+                                                let _ = streaming_tx.send(response).await;
+                                                // Remove the streaming request
+                                                streaming_requests.remove(&request_id);
+                                            } else if let Some((_, sender)) = pending_requests.remove(&request_id) {
+                                                debug!("Found pending request for {}, sending error response", request_id);
+                                                let _ = sender.send(Ok(response));
+                                            } else {
+                                                warn!("Received error for unknown request: {}", request_id);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            error!("Failed to decode error frame: {}", e);
                                         }
                                     }
                                 }

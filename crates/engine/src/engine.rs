@@ -32,7 +32,7 @@ use crate::services::{
     pubsub::PubSubService,
     routing::RoutingService,
 };
-use crate::stream::StreamConfig;
+use crate::stream::StreamService;
 
 use super::config::EngineConfig;
 use super::coordinator::ServiceCoordinator;
@@ -63,6 +63,7 @@ where
     lifecycle_service: Arc<LifecycleService>,
     pubsub_service: Arc<PubSubService<T, G>>,
     client_service: Arc<ClientService<T, G, L>>,
+    stream_service: Arc<StreamService<L>>,
 
     /// Consensus services
     global_consensus_service: Option<Arc<GlobalConsensusService<T, G, L>>>,
@@ -115,6 +116,7 @@ where
         lifecycle_service: Arc<LifecycleService>,
         pubsub_service: Arc<PubSubService<T, G>>,
         client_service: Arc<ClientService<T, G, L>>,
+        stream_service: Arc<StreamService<L>>,
         network_manager: Arc<NetworkManager<T, G>>,
         storage: L,
     ) -> Self {
@@ -131,6 +133,7 @@ where
             lifecycle_service,
             pubsub_service,
             client_service,
+            stream_service,
             global_consensus_service: None,
             group_consensus_service: None,
             network_manager,

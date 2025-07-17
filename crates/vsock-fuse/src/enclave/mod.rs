@@ -148,7 +148,10 @@ impl EnclaveService {
         let options = vec![
             fuser::MountOption::FSName("vsock-fuse".to_string()),
             fuser::MountOption::AutoUnmount,
-            fuser::MountOption::AllowOther,
+            // Note: AllowOther requires user_allow_other in /etc/fuse.conf on Linux
+            // On macOS, it may require special permissions
+            // Commenting out for now to avoid permission issues
+            // fuser::MountOption::AllowOther,
         ];
 
         // Clone mountpoint for the handle and thread
@@ -157,13 +160,20 @@ impl EnclaveService {
 
         // Spawn mount in a separate thread since it's blocking
         std::thread::spawn(move || {
-            if let Err(e) = fuser::mount2(fs, &mountpoint_thread, &options) {
-                tracing::error!("FUSE mount error: {}", e);
+            tracing::info!("Starting FUSE mount2 call to {:?}", mountpoint_thread);
+            match fuser::mount2(fs, &mountpoint_thread, &options) {
+                Ok(()) => {
+                    tracing::info!("FUSE mount2 returned successfully");
+                }
+                Err(e) => {
+                    tracing::error!("FUSE mount error: {}", e);
+                }
             }
         });
 
         // Give mount a moment to initialize
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        tracing::info!("Waiting for mount to initialize...");
+        std::thread::sleep(std::time::Duration::from_millis(500));
 
         Ok(FuseHandle {
             mountpoint: mountpoint_clone,

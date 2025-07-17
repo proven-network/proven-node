@@ -272,6 +272,12 @@ pub enum Event {
         members: Vec<NodeId>,
     },
 
+    /// Request to create default consensus group
+    RequestDefaultGroupCreation {
+        /// Members for the default group
+        members: Vec<NodeId>,
+    },
+
     /// Global consensus leader changed
     GlobalLeaderChanged {
         /// Previous leader (if any)
@@ -536,6 +542,7 @@ impl Event {
             | Event::CoordinatorElected { .. } => EventType::Discovery,
 
             Event::GlobalConsensusInitialized { .. }
+            | Event::RequestDefaultGroupCreation { .. }
             | Event::GlobalLeaderChanged { .. }
             | Event::GroupConsensusInitialized { .. }
             | Event::GroupLeaderChanged { .. }
@@ -570,6 +577,7 @@ impl Event {
             | Event::DiscoveryStarted { .. }
             | Event::DiscoveryCompleted { .. }
             | Event::GlobalConsensusInitialized { .. }
+            | Event::RequestDefaultGroupCreation { .. }
             | Event::GroupConsensusInitialized { .. } => EventPriority::Normal,
 
             _ => EventPriority::Low,

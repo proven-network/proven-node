@@ -3,12 +3,12 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use cidr::Ipv4Cidr;
-use proven_vsock_rpc::{MessagePattern, RpcHandler};
-use proven_vsock_rpc_cac::{
+use proven_vsock_cac::{
     InitializeRequest, InitializeResponse, Result, ShutdownResponse,
     commands::ShutdownRequest,
     server::{CacCommandHandler, CacHandler},
 };
+use proven_vsock_rpc::{MessagePattern, RpcHandler};
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 

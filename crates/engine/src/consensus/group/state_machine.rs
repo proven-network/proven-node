@@ -72,6 +72,11 @@ impl GroupStateMachine {
     pub fn state(&self) -> &Arc<GroupState> {
         &self.state
     }
+
+    /// Get the event publisher if set
+    pub async fn event_publisher(&self) -> Option<EventPublisher> {
+        self.event_publisher.read().await.clone()
+    }
 }
 
 impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {

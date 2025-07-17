@@ -177,6 +177,18 @@ where
     pub fn node_id(&self) -> &NodeId {
         &self.node_id
     }
+
+    /// Read messages from a stream
+    pub async fn read_stream(
+        &self,
+        stream_name: String,
+        start_sequence: u64,
+        count: u64,
+    ) -> ConsensusResult<Vec<crate::stream::StoredMessage>> {
+        self.client_service
+            .read_stream(&stream_name, start_sequence, count)
+            .await
+    }
 }
 
 impl<T, G, L> Clone for Client<T, G, L>

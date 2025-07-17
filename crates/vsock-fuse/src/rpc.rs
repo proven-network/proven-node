@@ -232,6 +232,34 @@ impl BlobStorage for VsockRpcClient {
 
         Ok(response.stats)
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl VsockRpcClient {
+    /// Store multiple blobs in a single RPC call
+    pub async fn store_blob_batch(
+        &self,
+        blobs: Vec<(BlobId, Vec<u8>, TierHint)>,
+    ) -> Result<Vec<std::result::Result<(), VsockFuseError>>> {
+        let request = messages::StoreBlobBatchRequest { blobs };
+
+        let response: messages::StoreBlobBatchResponse = self.request_with_retry(request).await?;
+
+        Ok(response
+            .results
+            .into_iter()
+            .map(|r| {
+                r.map_err(|e| {
+                    VsockFuseError::Rpc(proven_vsock_rpc::Error::Handler(
+                        proven_vsock_rpc::error::HandlerError::Internal(e),
+                    ))
+                })
+            })
+            .collect())
+    }
 }
 
 #[async_trait]
@@ -400,6 +428,36 @@ impl VsockRpcHandler {
         let stats = self.storage.get_stats().await?;
 
         Ok(messages::GetStorageStatsResponse { stats })
+    }
+
+    /// Handle batch store request
+    pub async fn handle_store_blob_batch(
+        &self,
+        request: messages::StoreBlobBatchRequest,
+    ) -> Result<messages::StoreBlobBatchResponse> {
+        let mut results = Vec::new();
+
+        // Process blobs in parallel
+        let futures: Vec<_> = request
+            .blobs
+            .into_iter()
+            .map(|(blob_id, data, tier_hint)| {
+                let storage = self.storage.clone();
+                async move {
+                    storage
+                        .store_blob(blob_id, data, tier_hint)
+                        .await
+                        .map(|_| Ok(()))
+                        .unwrap_or_else(|e| Err(e.to_string()))
+                }
+            })
+            .collect();
+
+        // Wait for all operations to complete
+        let batch_results = futures::future::join_all(futures).await;
+        results.extend(batch_results);
+
+        Ok(messages::StoreBlobBatchResponse { results })
     }
 }
 

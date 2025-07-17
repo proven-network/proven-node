@@ -65,16 +65,16 @@ pub struct EncryptionConfig {
 /// Key derivation configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyDerivationConfig {
-    /// Algorithm (Argon2id)
+    /// Algorithm (SHA256 for performance)
     pub algorithm: String,
 
-    /// Memory cost in KB
+    /// Memory cost in KB (legacy, not used with SHA256)
     pub memory_cost: u32,
 
-    /// Time cost (iterations)
+    /// Time cost (legacy, not used with SHA256)
     pub time_cost: u32,
 
-    /// Parallelism degree
+    /// Parallelism degree (legacy, not used with SHA256)
     pub parallelism: u32,
 }
 
@@ -262,7 +262,7 @@ impl Default for Config {
             encryption: EncryptionConfig {
                 algorithm: "AES-256-GCM".to_string(),
                 kdf: KeyDerivationConfig {
-                    algorithm: "Argon2id".to_string(),
+                    algorithm: "SHA256".to_string(),
                     memory_cost: 65536, // 64MB
                     time_cost: 3,
                     parallelism: 4,

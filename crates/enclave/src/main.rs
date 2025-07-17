@@ -23,11 +23,11 @@ use proven_vsock_tracing::enclave::VsockTracingProducer;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use proven_vsock_rpc::VsockAddr;
-use proven_vsock_rpc_cac::{
+use proven_vsock_cac::{
     CacServer, InitializeRequest, InitializeResponse, ShutdownResponse, commands::ShutdownRequest,
     server::CacCommandHandler,
 };
+use proven_vsock_rpc::VsockAddr;
 use tokio::sync::RwLock;
 use tokio_vsock::VMADDR_CID_ANY;
 use tracing::{error, info};
@@ -51,7 +51,7 @@ impl CacCommandHandler for EnclaveHandler {
     async fn handle_initialize(
         &self,
         request: InitializeRequest,
-    ) -> proven_vsock_rpc_cac::Result<InitializeResponse> {
+    ) -> proven_vsock_cac::Result<InitializeResponse> {
         // Check if already initialized
         if self.state.read().await.is_some() {
             error!("Already initialized");
@@ -92,7 +92,7 @@ impl CacCommandHandler for EnclaveHandler {
     async fn handle_shutdown(
         &self,
         _request: ShutdownRequest,
-    ) -> proven_vsock_rpc_cac::Result<ShutdownResponse> {
+    ) -> proven_vsock_cac::Result<ShutdownResponse> {
         let state = self.state.write().await.take();
         if let Some(enclave) = state {
             enclave.shutdown().await;

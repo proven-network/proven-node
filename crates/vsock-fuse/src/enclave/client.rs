@@ -114,4 +114,8 @@ impl BlobStorage for EnclaveStorageClient {
 
         Ok(response.stats)
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

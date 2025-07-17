@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use helios_ethereum::config::networks::Network;
 use proven_topology::adaptor::TopologyAdaptor;
-use proven_topology_helios::{HeliosTopologyAdaptor, HeliosTopologyAdaptorOptions};
+use proven_topology_governance::{GovernanceTopologyAdaptor, GovernanceTopologyAdaptorOptions};
 use tracing::info;
 
 #[tokio::main]
@@ -40,7 +40,7 @@ async fn main() {
     info!("Consensus RPC URL: {}", consensus_rpc);
 
     // Construct the governance options
-    let options = HeliosTopologyAdaptorOptions {
+    let options = GovernanceTopologyAdaptorOptions {
         consensus_rpc,
         data_dir: PathBuf::from("/tmp/helios").join(network.to_string()),
         execution_rpc: eth_rpc_url,
@@ -51,7 +51,7 @@ async fn main() {
     };
 
     // Create and initialize the governance client
-    let governance = HeliosTopologyAdaptor::new(options).await.unwrap();
+    let governance = GovernanceTopologyAdaptor::new(options).await.unwrap();
     info!("Governance client initialized");
 
     // Get active versions

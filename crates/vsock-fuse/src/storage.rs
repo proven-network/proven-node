@@ -29,6 +29,9 @@ pub trait BlobStorage: Send + Sync {
 
     /// Get storage statistics
     async fn get_stats(&self) -> Result<StorageStats>;
+
+    /// Get self as Any for downcasting
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 /// Streaming blob storage trait for efficient large blob operations
@@ -261,6 +264,29 @@ pub mod messages {
         }
     }
 
+    /// Store multiple blobs at once
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct StoreBlobBatchRequest {
+        pub blobs: Vec<(BlobId, Vec<u8>, TierHint)>,
+    }
+
+    /// Store batch response
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    pub struct StoreBlobBatchResponse {
+        pub results: Vec<std::result::Result<(), String>>,
+    }
+
+    impl_message_conversions!(StoreBlobBatchRequest);
+    impl_message_conversions!(StoreBlobBatchResponse);
+
+    impl RpcMessage for StoreBlobBatchRequest {
+        type Response = StoreBlobBatchResponse;
+
+        fn message_id(&self) -> &'static str {
+            "blob.store_batch"
+        }
+    }
+
     /// Streaming read request for large blobs
     #[derive(Debug, Clone, Serialize, Deserialize)]
     pub struct StreamingReadRequest {
@@ -446,10 +472,14 @@ impl BlobStorage for RpcBlobStorage {
 
         Ok(response.stats)
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 /// Mock storage implementation for testing
-#[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
 pub mod mock {
     use super::*;
     use parking_lot::RwLock;
@@ -533,6 +563,10 @@ pub mod mock {
                 },
                 migration_queue_size: 0,
             })
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
 }

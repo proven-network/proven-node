@@ -13,10 +13,10 @@ encrypt_metadata = true
 encrypt_filenames = true
 
 [encryption.kdf]
-algorithm = "Argon2id"
-memory_cost = 65536  # 64MB
-time_cost = 3
-parallelism = 4
+algorithm = "SHA256"  # Fast key derivation for performance
+memory_cost = 0  # Not used with SHA256
+time_cost = 0  # Not used with SHA256
+parallelism = 0  # Not used with SHA256
 
 [storage.hot_tier]
 base_path = "/tmp/vsock-fuse/hot"

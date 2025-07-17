@@ -89,6 +89,8 @@ pub struct StreamRoute {
     pub strategy: RoutingStrategy,
     /// Is route active
     pub is_active: bool,
+    /// Stream configuration
+    pub config: Option<crate::stream::StreamConfig>,
 }
 
 /// Group routing information

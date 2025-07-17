@@ -148,7 +148,7 @@ pub enum Error {
 
     /// VSOCK RPC CAC error.
     #[error(transparent)]
-    VsockRpcCac(#[from] proven_vsock_rpc_cac::Error),
+    VsockRpcCac(#[from] proven_vsock_cac::Error),
 
     /// VSOCK tracing error.
     #[error(transparent)]

@@ -26,7 +26,7 @@ pub mod config;
 pub(crate) mod coordinator;
 
 /// Pure consensus logic
-pub(crate) mod consensus;
+pub mod consensus;
 
 /// Engine - orchestration layer
 pub(crate) mod engine;
@@ -35,13 +35,13 @@ pub(crate) mod engine;
 pub mod error;
 
 /// Foundation module with core types and traits
-pub(crate) mod foundation;
+pub mod foundation;
 
 /// Services
 pub(crate) mod services;
 
 /// Stream subsystem
-pub(crate) mod stream;
+pub mod stream;
 
 pub use {
     builder::EngineBuilder, client::Client, config::EngineConfig, engine::Engine,

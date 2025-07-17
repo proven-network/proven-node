@@ -12,7 +12,7 @@
 //! ## Architecture
 //!
 //! - **FUSE Layer**: Provides POSIX-compliant filesystem interface
-//! - **Encryption Layer**: AES-256-GCM encryption with hierarchical key derivation
+//! - **Encryption Layer**: AES-256-GCM encryption with SHA256-based key derivation (optimized for performance)
 //! - **Metadata Store**: Encrypted file and directory metadata management
 //! - **RPC Communication**: Secure blob-based operations over VSOCK
 //! - **Tiered Storage**: Intelligent data placement between NVMe and S3

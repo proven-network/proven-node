@@ -15,20 +15,28 @@ pub const FRAME_HEADER_SIZE: usize = 9;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum FrameType {
-    /// Request frame.
+    /// Regular request-response frame.
     Request = 0x01,
-    /// Response frame.
-    Response = 0x02,
+    /// Request expecting stream response.
+    RequestStream = 0x02,
+    /// Stream of requests.
+    StreamRequest = 0x03,
+    /// Bidirectional streaming.
+    BidiStream = 0x04,
+    /// Single response frame.
+    Response = 0x81,
     /// Stream data frame.
-    Stream = 0x03,
+    Stream = 0x82,
+    /// End of stream marker.
+    StreamEnd = 0x83,
     /// Error frame.
-    Error = 0x04,
+    Error = 0x84,
     /// Heartbeat frame.
-    Heartbeat = 0x05,
+    Heartbeat = 0x85,
     /// Close frame.
-    Close = 0x06,
+    Close = 0x86,
     /// Acknowledgment frame.
-    Ack = 0x07,
+    Ack = 0x87,
 }
 
 impl TryFrom<u8> for FrameType {
@@ -37,12 +45,16 @@ impl TryFrom<u8> for FrameType {
     fn try_from(value: u8) -> std::result::Result<Self, ProtocolError> {
         match value {
             0x01 => Ok(Self::Request),
-            0x02 => Ok(Self::Response),
-            0x03 => Ok(Self::Stream),
-            0x04 => Ok(Self::Error),
-            0x05 => Ok(Self::Heartbeat),
-            0x06 => Ok(Self::Close),
-            0x07 => Ok(Self::Ack),
+            0x02 => Ok(Self::RequestStream),
+            0x03 => Ok(Self::StreamRequest),
+            0x04 => Ok(Self::BidiStream),
+            0x81 => Ok(Self::Response),
+            0x82 => Ok(Self::Stream),
+            0x83 => Ok(Self::StreamEnd),
+            0x84 => Ok(Self::Error),
+            0x85 => Ok(Self::Heartbeat),
+            0x86 => Ok(Self::Close),
+            0x87 => Ok(Self::Ack),
             _ => Err(ProtocolError::InvalidFrame(format!(
                 "Unknown frame type: {value:#x}"
             ))),

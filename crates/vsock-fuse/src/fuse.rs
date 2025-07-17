@@ -172,6 +172,19 @@ impl VsockFuseFs {
 }
 
 impl Filesystem for VsockFuseFs {
+    fn init(
+        &mut self,
+        _req: &Request<'_>,
+        _config: &mut fuser::KernelConfig,
+    ) -> Result<(), libc::c_int> {
+        tracing::info!("FUSE filesystem init called");
+        Ok(())
+    }
+
+    fn destroy(&mut self) {
+        tracing::info!("FUSE filesystem destroy called");
+    }
+
     fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
         // Get storage statistics
         let (tx, rx) = oneshot::channel();

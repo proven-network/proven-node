@@ -286,6 +286,23 @@ impl ColdTier {
         }
     }
 
+    /// Create a new cold tier with custom S3 client (for testing)
+    #[cfg(all(feature = "aws-sdk-s3", feature = "testing"))]
+    pub async fn with_client(
+        bucket: String,
+        prefix: String,
+        client: aws_sdk_s3::Client,
+    ) -> Result<Self> {
+        Ok(Self {
+            bucket,
+            prefix,
+            client,
+            compression_enabled: true,
+            storage_class: "ONEZONE_IA".to_string(),
+            metadata_cache: RwLock::new(HashMap::new()),
+        })
+    }
+
     /// Get S3 key for a blob
     fn get_s3_key(&self, id: &BlobId) -> String {
         let hex: String = id.0.iter().map(|b| format!("{b:02x}")).collect();
@@ -523,6 +540,17 @@ impl TieredStorage {
         })
     }
 
+    /// Create with custom tiers (for testing)
+    #[cfg(feature = "testing")]
+    pub async fn with_tiers(hot_tier: HotTier, cold_tier: ColdTier) -> Result<Self> {
+        Ok(Self {
+            hot_tier,
+            cold_tier,
+            blob_locations: RwLock::new(HashMap::new()),
+            policy_engine: None,
+        })
+    }
+
     /// Set the policy engine for tier selection
     pub fn set_policy_engine(&mut self, engine: Arc<crate::host::policy::PolicyEngine>) {
         self.policy_engine = Some(engine);
@@ -689,5 +717,9 @@ impl BlobStorage for TieredStorage {
             cold_tier: cold_stats,
             migration_queue_size: 0, // TODO: Implement migration queue
         })
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use cidr::Ipv4Cidr;
-use proven_vsock_rpc_cac::{
+use proven_vsock_cac::{
     CacServer, InitializeRequest, InitializeResponse, Result, ShutdownResponse,
     commands::ShutdownRequest, server::CacCommandHandler,
 };
