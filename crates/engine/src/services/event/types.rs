@@ -232,38 +232,6 @@ pub enum Event {
         removed_members: Vec<NodeId>,
     },
 
-    /// Discovery service started
-    DiscoveryStarted {
-        /// Node ID that started discovery
-        node_id: NodeId,
-        /// Discovery mode (coordinator election, etc)
-        mode: String,
-    },
-
-    /// Discovery completed successfully
-    DiscoveryCompleted {
-        /// Discovered nodes
-        nodes: Vec<NodeId>,
-        /// Elected coordinator (if applicable)
-        coordinator: Option<NodeId>,
-    },
-
-    /// Discovery failed
-    DiscoveryFailed {
-        /// Error message
-        error: String,
-        /// Whether retry is possible
-        can_retry: bool,
-    },
-
-    /// Coordinator elected
-    CoordinatorElected {
-        /// New coordinator node ID
-        coordinator: NodeId,
-        /// Term/epoch of election
-        term: u64,
-    },
-
     /// Global consensus initialized
     GlobalConsensusInitialized {
         /// Node ID
@@ -361,8 +329,6 @@ pub enum EventType {
     Migration,
     /// Health-related events
     Health,
-    /// Discovery-related events
-    Discovery,
     /// Consensus-related events
     Consensus,
     /// Custom events
@@ -536,11 +502,6 @@ impl Event {
 
             Event::GroupHealthChanged { .. } | Event::MembershipChanged { .. } => EventType::Health,
 
-            Event::DiscoveryStarted { .. }
-            | Event::DiscoveryCompleted { .. }
-            | Event::DiscoveryFailed { .. }
-            | Event::CoordinatorElected { .. } => EventType::Discovery,
-
             Event::GlobalConsensusInitialized { .. }
             | Event::RequestDefaultGroupCreation { .. }
             | Event::GlobalLeaderChanged { .. }
@@ -556,14 +517,13 @@ impl Event {
     /// Get the default priority for this event
     pub fn default_priority(&self) -> EventPriority {
         match self {
-            Event::NodeFailed { .. }
-            | Event::StreamMigrationFailed { .. }
-            | Event::DiscoveryFailed { .. } => EventPriority::Critical,
+            Event::NodeFailed { .. } | Event::StreamMigrationFailed { .. } => {
+                EventPriority::Critical
+            }
 
             Event::StreamMigrating { .. }
             | Event::GroupHealthChanged { .. }
             | Event::MembershipChanged { .. }
-            | Event::CoordinatorElected { .. }
             | Event::StreamMessageAppended { .. }
             | Event::GlobalLeaderChanged { .. }
             | Event::GroupLeaderChanged { .. }
@@ -574,8 +534,6 @@ impl Event {
             | Event::StreamDeleted { .. }
             | Event::GroupCreated { .. }
             | Event::GroupDeleted { .. }
-            | Event::DiscoveryStarted { .. }
-            | Event::DiscoveryCompleted { .. }
             | Event::GlobalConsensusInitialized { .. }
             | Event::RequestDefaultGroupCreation { .. }
             | Event::GroupConsensusInitialized { .. } => EventPriority::Normal,

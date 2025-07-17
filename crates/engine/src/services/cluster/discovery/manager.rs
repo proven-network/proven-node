@@ -7,7 +7,7 @@ use super::{
 };
 use crate::error::ConsensusResult;
 use crate::services::cluster::messages::{CLUSTER_NAMESPACE, DiscoveryRequest, DiscoveryResponse};
-use crate::services::event::{Event, EventPublisher};
+use crate::services::event::EventPublisher;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -173,18 +173,6 @@ where
     pub async fn start_discovery(&self) -> ConsensusResult<DiscoveryOutcome> {
         info!("Starting cluster discovery for node {}", self.local_node_id);
 
-        // Publish discovery started event
-        let _ = self
-            .event_publisher
-            .publish(
-                Event::DiscoveryStarted {
-                    node_id: self.local_node_id.clone(),
-                    mode: "cluster-discovery".to_string(),
-                },
-                format!("discovery-service-{}", self.local_node_id),
-            )
-            .await;
-
         // Update state to discovering
         {
             let mut state = self.state.write().await;
@@ -199,17 +187,6 @@ where
 
         if peer_ids.is_empty() {
             info!("No peers found in topology, initializing as single-node cluster");
-            // Publish discovery completed event
-            let _ = self
-                .event_publisher
-                .publish(
-                    Event::DiscoveryCompleted {
-                        nodes: vec![self.local_node_id.clone()],
-                        coordinator: Some(self.local_node_id.clone()),
-                    },
-                    format!("discovery-service-{}", self.local_node_id),
-                )
-                .await;
             return Ok(DiscoveryOutcome::SingleNode);
         }
 
@@ -251,17 +228,6 @@ where
                     };
                 }
 
-                // Publish discovery completed event
-                let _ = self
-                    .event_publisher
-                    .publish(
-                        Event::DiscoveryCompleted {
-                            nodes: vec![leader_id.clone()],
-                            coordinator: Some(leader_id.clone()),
-                        },
-                        format!("discovery-service-{}", self.local_node_id),
-                    )
-                    .await;
                 return Ok(DiscoveryOutcome::FoundCluster { leader_id });
             }
 
@@ -292,30 +258,6 @@ where
                         peers: peer_ids.clone(),
                     });
             }
-
-            // Publish coordinator elected event
-            let _ = self
-                .event_publisher
-                .publish(
-                    Event::CoordinatorElected {
-                        coordinator: self.local_node_id.clone(),
-                        term: 0, // Will be set by consensus
-                    },
-                    format!("discovery-service-{}", self.local_node_id),
-                )
-                .await;
-
-            // Publish discovery completed event
-            let _ = self
-                .event_publisher
-                .publish(
-                    Event::DiscoveryCompleted {
-                        nodes: peer_ids.clone(),
-                        coordinator: Some(self.local_node_id.clone()),
-                    },
-                    format!("discovery-service-{}", self.local_node_id),
-                )
-                .await;
 
             Ok(DiscoveryOutcome::BecomeCoordinator { peers: peer_ids })
         } else {
