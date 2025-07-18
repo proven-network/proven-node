@@ -13,14 +13,14 @@ use tokio::sync::RwLock;
 
 /// RocksDB log storage implementation
 #[derive(Clone)]
-pub struct RocksDBStorage {
+pub struct RocksDbStorage {
     /// The RocksDB instance
     db: Arc<DBWithThreadMode<MultiThreaded>>,
     /// Log bounds cache: namespace -> (first_index, last_index)
     log_bounds: Arc<RwLock<HashMap<StorageNamespace, (u64, u64)>>>,
 }
 
-impl RocksDBStorage {
+impl RocksDbStorage {
     /// Create a new RocksDB storage instance
     pub async fn new(path: impl AsRef<Path>) -> StorageResult<Self> {
         let path_str = path
@@ -32,8 +32,21 @@ impl RocksDBStorage {
         db_opts.create_if_missing(true);
         db_opts.create_missing_column_families(true);
 
-        // Create column families for different namespaces
-        let cf_names = vec!["default"];
+        // List existing column families if database exists
+        let cf_names = match DBWithThreadMode::<MultiThreaded>::list_cf(&db_opts, path_str) {
+            Ok(existing) => {
+                // Database exists, use existing column families
+                if existing.is_empty() {
+                    vec!["default".to_string()]
+                } else {
+                    existing
+                }
+            }
+            Err(_) => {
+                // Database doesn't exist, start with default
+                vec!["default".to_string()]
+            }
+        };
 
         let cfs: Vec<ColumnFamilyDescriptor> = cf_names
             .into_iter()
@@ -92,7 +105,7 @@ impl RocksDBStorage {
 }
 
 #[async_trait]
-impl LogStorage for RocksDBStorage {
+impl LogStorage for RocksDbStorage {
     async fn append(
         &self,
         namespace: &StorageNamespace,
@@ -279,6 +292,12 @@ impl LogStorage for RocksDBStorage {
     }
 }
 
+impl std::fmt::Debug for RocksDbStorage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RocksDbStorage")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -287,7 +306,7 @@ mod tests {
     #[tokio::test]
     async fn test_rocksdb_storage() {
         let temp_dir = TempDir::new().unwrap();
-        let storage = RocksDBStorage::new(temp_dir.path()).await.unwrap();
+        let storage = RocksDbStorage::new(temp_dir.path()).await.unwrap();
         let namespace = StorageNamespace::new("test");
 
         // Test append and read

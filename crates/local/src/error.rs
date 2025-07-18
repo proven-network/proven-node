@@ -79,6 +79,10 @@ pub enum Error {
     #[error("shutdown requested")]
     Shutdown,
 
+    /// Storage error
+    #[error("storage error: {0}")]
+    Storage(String),
+
     /// Stream error
     #[error("stream error: {0}")]
     Stream(String),

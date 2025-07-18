@@ -34,6 +34,7 @@ rocksdb.workspace = true
 # Storage backends
 proven-storage.workspace = true
 proven-storage-memory.workspace = true
+proven-storage-rocksdb.workspace = true
 byteorder.workspace = true
 maplit.workspace = true
 

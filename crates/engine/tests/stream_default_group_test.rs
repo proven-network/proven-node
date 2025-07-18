@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 mod common;
-use common::{TestCluster, TransportType};
+use common::test_cluster::{TestCluster, TransportType};
 
 #[tokio::test]
 async fn test_stream_with_default_group() {

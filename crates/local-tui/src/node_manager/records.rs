@@ -81,7 +81,7 @@ impl NodeHandle {
 
         // Create dedicated runtime for this node
         match tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(4)
+            .worker_threads(8)
             .thread_name(format!("node-{}-{}", id.execution_order(), id.pokemon_id()))
             .enable_all()
             .build()

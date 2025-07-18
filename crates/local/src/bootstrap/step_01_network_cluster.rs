@@ -30,7 +30,7 @@ use proven_engine::{
 };
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::NetworkManager;
-use proven_storage_memory::MemoryStorage;
+use proven_storage_rocksdb::RocksDbStorage;
 use proven_topology::{NodeId, TopologyManager};
 use proven_topology::{TopologyAdaptor, Version};
 use proven_transport::HttpIntegratedTransport;
@@ -142,8 +142,10 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         },
     };
 
-    // Create memory storage
-    let storage = MemoryStorage::new();
+    // Create RocksDB storage
+    let storage = RocksDbStorage::new("/tmp/proven-engine")
+        .await
+        .map_err(|e| Error::Storage(format!("Failed to create RocksDB storage: {e}")))?;
 
     // Create HTTP server and Core first, before starting the engine
     let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));

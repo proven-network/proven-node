@@ -65,7 +65,7 @@ pub struct Bootstrap<G: TopologyAdaptor> {
         proven_engine::Client<
             proven_transport_ws::WebsocketTransport<G, MockAttestor>,
             G,
-            proven_storage_memory::MemoryStorage,
+            proven_storage_rocksdb::RocksDbStorage,
         >,
     >,
 

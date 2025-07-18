@@ -4,7 +4,7 @@ use proven_engine::EngineState;
 use std::time::Duration;
 
 mod common;
-use common::{TestCluster, TransportType};
+use common::test_cluster::{TestCluster, TransportType};
 
 #[tokio::test]
 async fn test_engine_start_stop() {

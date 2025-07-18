@@ -1,7 +1,7 @@
 //! Test that verifies default group creation after cluster formation
 
 mod common;
-use common::{TestCluster, TransportType};
+use common::test_cluster::{TestCluster, TransportType};
 use std::time::Duration;
 use tokio::time::timeout;
 
