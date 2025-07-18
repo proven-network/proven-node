@@ -40,7 +40,7 @@ pub struct ClientService<T, G, L>
 where
     T: proven_transport::Transport,
     G: proven_topology::TopologyAdaptor,
-    L: proven_storage::LogStorage,
+    L: proven_storage::LogStorageWithDelete,
 {
     /// Service name
     name: String,
@@ -86,7 +86,7 @@ impl<T, G, L> ClientService<T, G, L>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorage + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
 {
     /// Create a new client service
     pub fn new(node_id: NodeId) -> Self {
@@ -732,6 +732,7 @@ where
                                                     }),
                                                     group_id: route.group_id,
                                                     last_sequence: stream_state.next_sequence.saturating_sub(1),
+                                                    message_count: stream_state.stats.message_count,
                                                 };
                                                 let _ = response_tx.send(Ok(Some(stream_info)));
                                             }
@@ -1102,7 +1103,7 @@ impl<T, G, L> ServiceLifecycle for ClientService<T, G, L>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorage + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         info!("Starting ClientService");

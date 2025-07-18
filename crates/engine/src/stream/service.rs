@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, oneshot};
 use tracing::{debug, error, info, warn};
 
-use proven_storage::LogStorage;
+use proven_storage::{LogStorageWithDelete, StorageNamespace};
 
 use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
 use crate::foundation::traits::{HealthStatus, ServiceHealth, ServiceLifecycle, SubsystemHealth};
@@ -61,7 +61,7 @@ impl Default for StreamServiceConfig {
 }
 
 /// Stream service for managing stream storage and operations
-pub struct StreamService<L: LogStorage> {
+pub struct StreamService<L: LogStorageWithDelete> {
     /// Service configuration
     config: StreamServiceConfig,
 
@@ -90,7 +90,7 @@ pub struct StreamService<L: LogStorage> {
     background_tasks: Arc<RwLock<Vec<tokio::task::JoinHandle<()>>>>,
 }
 
-impl<L: LogStorage> StreamService<L> {
+impl<L: LogStorageWithDelete> StreamService<L> {
     /// Create a new stream service
     pub fn new(config: StreamServiceConfig, storage: Arc<L>) -> Self {
         Self {
@@ -272,6 +272,51 @@ impl<L: LogStorage> StreamService<L> {
                     );
                 }
             }
+            Event::StreamMessageDeleted {
+                stream,
+                group_id,
+                sequence,
+                timestamp: _,
+            } => {
+                let _ = self
+                    .get_or_create_storage(stream, &group_id.to_string())
+                    .await;
+
+                // Delete the message from storage
+                let storage_namespace = StorageNamespace::new(format!("stream_{stream}"));
+                match self
+                    .storage
+                    .delete_entry(&storage_namespace, *sequence)
+                    .await
+                {
+                    Ok(deleted) => {
+                        if deleted {
+                            // Update metadata - decrement message count
+                            if let Some(metadata) =
+                                self.stream_metadata.write().await.get_mut(stream)
+                                && metadata.message_count > 0
+                            {
+                                metadata.message_count -= 1;
+                            }
+                            info!(
+                                "Deleted message {} from stream {} in group {}",
+                                sequence, stream, group_id
+                            );
+                        } else {
+                            debug!(
+                                "Message {} not found in stream {} storage",
+                                sequence, stream
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to delete message {} from stream {}: {}",
+                            sequence, stream, e
+                        );
+                    }
+                }
+            }
             _ => {
                 // Ignore other events
             }
@@ -387,7 +432,7 @@ impl<L: LogStorage> StreamService<L> {
 }
 
 // Implement Clone for StreamService to match other services
-impl<L: LogStorage> Clone for StreamService<L> {
+impl<L: LogStorageWithDelete> Clone for StreamService<L> {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
@@ -404,7 +449,7 @@ impl<L: LogStorage> Clone for StreamService<L> {
 }
 
 #[async_trait::async_trait]
-impl<L: LogStorage + 'static> ServiceLifecycle for StreamService<L> {
+impl<L: LogStorageWithDelete + 'static> ServiceLifecycle for StreamService<L> {
     async fn start(&self) -> ConsensusResult<()> {
         info!("Starting StreamService");
 
@@ -527,7 +572,7 @@ mod tests {
     use super::*;
     use crate::services::event::{EventConfig, EventService};
     use bytes::Bytes;
-    use proven_storage::{StorageNamespace, StorageResult};
+    use proven_storage::{LogStorage, StorageNamespace, StorageResult};
 
     // Create a dummy storage implementation for testing
     #[derive(Clone)]
@@ -570,6 +615,17 @@ mod tests {
             _index: u64,
         ) -> StorageResult<()> {
             Ok(())
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LogStorageWithDelete for DummyStorage {
+        async fn delete_entry(
+            &self,
+            _namespace: &StorageNamespace,
+            _index: u64,
+        ) -> StorageResult<bool> {
+            Ok(true)
         }
     }
 

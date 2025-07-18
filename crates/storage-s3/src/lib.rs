@@ -696,6 +696,103 @@ impl LogStorage for S3Storage {
     }
 }
 
+// Implement LogStorageWithDelete for S3Storage
+#[async_trait]
+impl proven_storage::LogStorageWithDelete for S3Storage {
+    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+        let timer = start_timer("delete_entry", namespace.as_str());
+
+        // Check if the entry exists in pending writes first
+        let in_pending = {
+            let mut pending = self.pending_writes.write().await;
+            if let Some(namespace_pending) = pending.get_mut(namespace) {
+                namespace_pending.remove(&index).is_some()
+            } else {
+                false
+            }
+        };
+
+        if in_pending {
+            // Entry was in pending writes and removed
+            // Invalidate cache
+            self.cache.invalidate(namespace, index).await;
+
+            record_operation("delete_entry", namespace.as_str(), true);
+            timer.record();
+            return Ok(true);
+        }
+
+        // Build the S3 key
+        let key = self.make_key(namespace, index);
+
+        // First check if the object exists with a HEAD request (more efficient than GET)
+        let head_result = self
+            .client
+            .head_object()
+            .bucket(&self.config.s3.bucket)
+            .key(&key)
+            .send()
+            .await;
+
+        let exists = match head_result {
+            Ok(_) => true,
+            Err(e) => {
+                let service_error = e.into_service_error();
+                if service_error.is_not_found() {
+                    false
+                } else {
+                    return Err(StorageError::Backend(format!(
+                        "S3 HEAD request failed: {service_error}"
+                    )));
+                }
+            }
+        };
+
+        if !exists {
+            record_operation("delete_entry", namespace.as_str(), true);
+            timer.record();
+            return Ok(false);
+        }
+
+        // Delete the object from S3
+        self.client
+            .delete_object()
+            .bucket(&self.config.s3.bucket)
+            .key(&key)
+            .send()
+            .await
+            .map_err(|e| StorageError::Backend(format!("S3 delete failed: {e}")))?;
+
+        // Invalidate cache entry
+        self.cache.invalidate(namespace, index).await;
+
+        // Record WAL delete operation if available
+        if let Some(wal) = &self.wal_client {
+            // Generate a unique operation ID for the delete
+            let operation_id = Uuid::new_v4().to_string();
+
+            // Log the delete operation to WAL for recovery purposes
+            // We use a special marker to indicate deletion
+            let delete_marker = Bytes::from(format!("__DELETED__{index}"));
+            if let Err(e) = wal
+                .append_logs(namespace, &[(index, delete_marker)], operation_id.clone())
+                .await
+            {
+                warn!("Failed to log delete operation to WAL: {}", e);
+            } else {
+                // Confirm the operation
+                if let Err(e) = wal.confirm_batch(operation_id).await {
+                    warn!("Failed to confirm delete operation with WAL: {}", e);
+                }
+            }
+        }
+
+        record_operation("delete_entry", namespace.as_str(), true);
+        timer.record();
+        Ok(true)
+    }
+}
+
 impl S3Storage {
     /// Create a simple S3 storage instance without advanced features
     pub async fn simple(

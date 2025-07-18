@@ -15,6 +15,7 @@ use tracing::{debug, warn};
 
 use proven_messaging::client::{Client, ClientError, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
+use proven_messaging::stream::InitializedStream;
 
 use crate::error::MessagingEngineError;
 use crate::stream::InitializedEngineStream;
@@ -210,6 +211,22 @@ where
                 Err(EngineMessagingClientError::NoResponse)
             }
         }
+    }
+
+    async fn delete(&self, seq: u64) -> Result<(), Self::Error> {
+        debug!("Deleting message at sequence {} from engine stream", seq);
+
+        // Use the stream's delete method directly
+        self.stream
+            .delete(seq)
+            .await
+            .map_err(EngineMessagingClientError::Engine)?;
+
+        debug!(
+            "Successfully deleted message at sequence {} from engine stream",
+            seq
+        );
+        Ok(())
     }
 }
 

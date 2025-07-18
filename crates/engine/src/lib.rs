@@ -50,3 +50,6 @@ pub use {
 
 // Re-export cluster types for the public API
 pub use services::cluster::{ClusterInfo, ClusterState, NodeRole};
+
+// Re-export client types for the public API
+pub use services::client::StreamInfo;

@@ -10,7 +10,7 @@ use tokio::time::Duration;
 use tracing::{error, info, warn};
 
 use proven_network::NetworkManager;
-use proven_storage::LogStorage;
+use proven_storage::LogStorageWithDelete;
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
@@ -42,7 +42,7 @@ pub struct Engine<T, G, L>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorage,
+    L: LogStorageWithDelete,
 {
     /// Node ID
     node_id: NodeId,
@@ -99,7 +99,7 @@ impl<T, G, L> Engine<T, G, L>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    L: LogStorageWithDelete + 'static,
 {
     /// Create a new engine (use EngineBuilder instead)
     #[allow(clippy::too_many_arguments)]
@@ -340,7 +340,7 @@ pub struct EngineHandleWrapper<T, G, L>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    L: LogStorageWithDelete + 'static,
 {
     engine: Arc<tokio::sync::Mutex<Engine<T, G, L>>>,
 }
@@ -349,7 +349,7 @@ impl<T, G, L> EngineHandleWrapper<T, G, L>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    L: LogStorageWithDelete + 'static,
 {
     /// Create a new engine handle wrapper
     pub fn new(engine: Arc<tokio::sync::Mutex<Engine<T, G, L>>>) -> Self {

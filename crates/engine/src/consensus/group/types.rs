@@ -31,6 +31,13 @@ pub enum StreamOperation {
         /// Trim up to this sequence
         up_to_seq: u64,
     },
+    /// Delete a specific message from stream
+    Delete {
+        /// Stream name
+        stream: StreamName,
+        /// Sequence number to delete
+        sequence: u64,
+    },
 }
 
 /// Administrative operations
@@ -68,6 +75,13 @@ pub enum GroupResponse {
         stream: StreamName,
         /// New start sequence
         new_start_seq: u64,
+    },
+    /// Message deleted
+    Deleted {
+        /// Stream name
+        stream: StreamName,
+        /// Deleted sequence number
+        sequence: u64,
     },
     /// Error response
     Error {

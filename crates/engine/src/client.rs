@@ -5,11 +5,12 @@
 
 use std::sync::Arc;
 
-use proven_storage::LogStorage;
+use proven_storage::LogStorageWithDelete;
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
+use crate::error::ConsensusError;
 use crate::{
     consensus::{
         global::{GlobalRequest, GlobalResponse},
@@ -31,7 +32,7 @@ pub struct Client<T, G, L>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorage,
+    L: LogStorageWithDelete,
 {
     /// Reference to the client service
     client_service: Arc<ClientService<T, G, L>>,
@@ -43,7 +44,7 @@ impl<T, G, L> Client<T, G, L>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    L: LogStorageWithDelete + 'static,
 {
     /// Create a new client
     pub(crate) fn new(client_service: Arc<ClientService<T, G, L>>, node_id: NodeId) -> Self {
@@ -194,13 +195,38 @@ where
             .read_stream(&stream_name, start_sequence, count)
             .await
     }
+
+    /// Delete a message from a stream
+    pub async fn delete_message(
+        &self,
+        stream_name: String,
+        sequence: u64,
+    ) -> ConsensusResult<GroupResponse> {
+        // Get stream info to find which group owns it
+        let stream_info = self.get_stream_info(&stream_name).await?.ok_or_else(|| {
+            ConsensusError::with_context(
+                crate::error::ErrorKind::NotFound,
+                format!("Stream '{stream_name}' not found"),
+            )
+        })?;
+
+        // Submit delete operation to the group that owns the stream
+        let request = GroupRequest::Stream(StreamOperation::Delete {
+            stream: stream_name.into(),
+            sequence,
+        });
+
+        self.client_service
+            .submit_group_request(stream_info.group_id, request)
+            .await
+    }
 }
 
 impl<T, G, L> Clone for Client<T, G, L>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorage,
+    L: LogStorageWithDelete,
 {
     fn clone(&self) -> Self {
         Self {

@@ -156,6 +156,17 @@ impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
                                         group_id: *group_id,
                                         new_start_seq: *new_start_seq,
                                     }),
+                                    GroupResponse::Deleted { stream, sequence } => {
+                                        Some(Event::StreamMessageDeleted {
+                                            stream: stream.clone(),
+                                            group_id: *group_id,
+                                            sequence: *sequence,
+                                            timestamp: std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap()
+                                                .as_secs(),
+                                        })
+                                    }
                                     _ => None,
                                 };
 

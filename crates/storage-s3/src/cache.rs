@@ -348,6 +348,21 @@ impl LogCache {
         debug!("Cache cleared");
     }
 
+    /// Invalidate a specific entry from the cache
+    pub async fn invalidate(&self, namespace: &StorageNamespace, index: u64) {
+        let mut cache = self.cache.write().await;
+        let key = (namespace.clone(), index);
+
+        // Remove from cache and update size
+        if let Some(entry) = cache.pop(&key) {
+            let mut current_size = self.current_size.write().await;
+            *current_size = current_size.saturating_sub(entry.data.len());
+        }
+
+        // Note: We don't remove from bloom filter as it's probabilistic
+        // and removing would require rebuilding the entire filter
+    }
+
     /// Get cache statistics
     pub async fn stats(&self) -> CacheStats {
         self.stats.read().await.clone()

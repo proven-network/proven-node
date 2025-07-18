@@ -183,6 +183,30 @@ impl proven_storage::LogStorage for MemoryStorage {
     }
 }
 
+// Implement LogStorageWithDelete for MemoryStorage
+#[async_trait]
+impl proven_storage::LogStorageWithDelete for MemoryStorage {
+    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+        let mut logs = self.logs.write().await;
+
+        if let Some(btree) = logs.get_mut(namespace) {
+            // Check if the entry exists and remove it
+            if btree.remove(&index).is_some() {
+                // Entry was deleted
+                // Note: We don't update bounds here because deletion of a single entry
+                // in the middle doesn't change the first/last bounds
+                Ok(true)
+            } else {
+                // Entry didn't exist
+                Ok(false)
+            }
+        } else {
+            // Namespace doesn't exist
+            Ok(false)
+        }
+    }
+}
+
 impl std::fmt::Debug for MemoryStorage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MemoryStorage")
@@ -196,7 +220,7 @@ impl std::fmt::Debug for MemoryStorage {
 mod tests {
     use super::*;
 
-    use proven_storage::LogStorage;
+    use proven_storage::{LogStorage, LogStorageWithDelete};
 
     #[tokio::test]
     async fn test_log_storage_append_and_get() {
@@ -299,5 +323,45 @@ mod tests {
         // Check bounds
         let bounds = storage.bounds(&namespace).await.unwrap();
         assert_eq!(bounds, Some((4, 5)));
+    }
+
+    #[tokio::test]
+    async fn test_log_storage_delete_entry() {
+        let storage = MemoryStorage::new();
+        let namespace = StorageNamespace::new("test");
+
+        // Append entries
+        let entries = vec![
+            (1, Bytes::from("data 1")),
+            (2, Bytes::from("data 2")),
+            (3, Bytes::from("data 3")),
+            (4, Bytes::from("data 4")),
+            (5, Bytes::from("data 5")),
+        ];
+        storage.append(&namespace, entries).await.unwrap();
+
+        // Delete entry at index 3
+        let deleted = storage.delete_entry(&namespace, 3).await.unwrap();
+        assert!(deleted);
+
+        // Try to delete the same entry again - should return false
+        let deleted_again = storage.delete_entry(&namespace, 3).await.unwrap();
+        assert!(!deleted_again);
+
+        // Check remaining entries
+        let range = storage.read_range(&namespace, 1, 6).await.unwrap();
+        assert_eq!(range.len(), 4);
+        assert_eq!(range[0].0, 1);
+        assert_eq!(range[1].0, 2);
+        assert_eq!(range[2].0, 4);
+        assert_eq!(range[3].0, 5);
+
+        // Check bounds - should remain unchanged
+        let bounds = storage.bounds(&namespace).await.unwrap();
+        assert_eq!(bounds, Some((1, 5)));
+
+        // Delete non-existent entry
+        let deleted_nonexistent = storage.delete_entry(&namespace, 10).await.unwrap();
+        assert!(!deleted_nonexistent);
     }
 }

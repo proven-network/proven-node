@@ -74,6 +74,16 @@ impl OperationHandler for GroupOperationHandler {
                 Ok(())
             }
             GroupRequest::Stream(StreamOperation::Trim { .. }) => Ok(()),
+            GroupRequest::Stream(StreamOperation::Delete { sequence, .. }) => {
+                // Validate sequence is not 0
+                if *sequence == 0 {
+                    return Err(ConsensusError::with_context(
+                        ErrorKind::Validation,
+                        "Cannot delete sequence 0",
+                    ));
+                }
+                Ok(())
+            }
             GroupRequest::Admin(_) => Ok(()),
         }
     }
@@ -113,6 +123,29 @@ impl GroupOperationHandler {
                 } else {
                     Ok(GroupResponse::Error {
                         message: format!("Stream {stream} not found"),
+                    })
+                }
+            }
+
+            StreamOperation::Delete { stream, sequence } => {
+                // Check if stream exists
+                if self.state.get_stream(&stream).await.is_none() {
+                    return Ok(GroupResponse::Error {
+                        message: format!("Stream {stream} not found"),
+                    });
+                }
+
+                // Delete the message
+                if let Some(deleted_seq) = self.state.delete_message(&stream, sequence).await {
+                    Ok(GroupResponse::Deleted {
+                        stream,
+                        sequence: deleted_seq,
+                    })
+                } else {
+                    Ok(GroupResponse::Error {
+                        message: format!(
+                            "Failed to delete message at sequence {sequence} from stream {stream}"
+                        ),
                     })
                 }
             }

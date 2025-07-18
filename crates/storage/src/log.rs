@@ -130,3 +130,13 @@ pub trait LogStorage: Clone + Send + Sync + 'static {
     /// Remove all entries after the given index
     async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()>;
 }
+
+/// Extended log storage trait that supports deletion of individual entries
+/// This trait is separate from LogStorage to ensure consensus logs remain immutable
+/// while allowing application streams to support deletion
+#[async_trait]
+pub trait LogStorageWithDelete: LogStorage {
+    /// Delete or tombstone a specific entry at the given index
+    /// Returns true if the entry existed and was deleted, false if it didn't exist
+    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool>;
+}

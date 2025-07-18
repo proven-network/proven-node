@@ -6,7 +6,9 @@
 pub mod log;
 
 // Re-export the essential types
-pub use log::{LogStorage, StorageError, StorageKey, StorageNamespace, StorageResult};
+pub use log::{
+    LogStorage, LogStorageWithDelete, StorageError, StorageKey, StorageNamespace, StorageResult,
+};
 
 // Version information
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

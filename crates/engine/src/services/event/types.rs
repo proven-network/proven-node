@@ -138,6 +138,18 @@ pub enum Event {
         new_start_seq: u64,
     },
 
+    /// Message was deleted from a stream
+    StreamMessageDeleted {
+        /// Stream name
+        stream: StreamName,
+        /// Consensus group ID
+        group_id: ConsensusGroupId,
+        /// Deleted sequence number
+        sequence: u64,
+        /// Timestamp when deleted
+        timestamp: u64,
+    },
+
     /// A consensus group was created
     GroupCreated {
         /// Group ID
@@ -486,7 +498,8 @@ impl Event {
             | Event::StreamConfigUpdated { .. }
             | Event::StreamReallocated { .. }
             | Event::StreamMessageAppended { .. }
-            | Event::StreamTrimmed { .. } => EventType::Stream,
+            | Event::StreamTrimmed { .. }
+            | Event::StreamMessageDeleted { .. } => EventType::Stream,
 
             Event::GroupCreated { .. } | Event::GroupDeleted { .. } => EventType::Group,
 

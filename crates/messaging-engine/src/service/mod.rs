@@ -114,6 +114,9 @@ where
     type Error = EngineMessagingServiceError;
     type Options = EngineMessagingServiceOptions;
     type Responder = EngineMessagingServiceResponder<
+        T,
+        D,
+        S,
         X::ResponseType,
         X::ResponseDeserializationError,
         X::ResponseSerializationError,
@@ -249,9 +252,10 @@ where
                             .unwrap_or_else(|| format!("{service_name}_responses"));
 
                         let responder = EngineMessagingServiceResponder::new(
-                            &stream.clone(),
+                            stream.clone(),
                             response_stream,
                             request_id,
+                            last_checked_seq,
                         );
 
                         // Handle the request

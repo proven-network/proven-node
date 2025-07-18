@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use proven_network::NetworkManager;
-use proven_storage::LogStorage;
+use proven_storage::LogStorageWithDelete;
 use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
@@ -26,7 +26,7 @@ pub struct EngineBuilder<T, G, L>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorage,
+    L: LogStorageWithDelete,
 {
     /// Node ID
     node_id: NodeId,
@@ -48,7 +48,7 @@ impl<T, G, L> EngineBuilder<T, G, L>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    L: LogStorageWithDelete + 'static,
 {
     /// Create a new engine builder
     pub fn new(node_id: NodeId) -> Self {
@@ -616,7 +616,7 @@ impl<T, G, L> ServiceLifecycle
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    L: LogStorage + Send + Sync + 'static,
+    L: LogStorageWithDelete + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
@@ -651,7 +651,7 @@ impl<T, G, L> ServiceLifecycle
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    L: LogStorage + Send + Sync + 'static,
+    L: LogStorageWithDelete + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
@@ -685,7 +685,7 @@ impl<T, G, L> ServiceLifecycle for ServiceWrapper<crate::services::client::Clien
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    L: LogStorage + Send + Sync + 'static,
+    L: LogStorageWithDelete + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
@@ -708,7 +708,7 @@ where
 #[async_trait]
 impl<L> ServiceLifecycle for ServiceWrapper<crate::stream::StreamService<L>>
 where
-    L: LogStorage + Send + Sync + 'static,
+    L: LogStorageWithDelete + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await

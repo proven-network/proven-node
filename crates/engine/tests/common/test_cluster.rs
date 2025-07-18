@@ -389,7 +389,7 @@ impl TestCluster {
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
-        L: proven_storage::LogStorage,
+        L: proven_storage::LogStorageWithDelete,
     {
         let start = Instant::now();
 
@@ -452,7 +452,7 @@ impl TestCluster {
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
-        L: proven_storage::LogStorage,
+        L: proven_storage::LogStorageWithDelete,
     {
         let start = Instant::now();
 
@@ -497,7 +497,7 @@ impl TestCluster {
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
-        L: proven_storage::LogStorage,
+        L: proven_storage::LogStorageWithDelete,
     {
         // Default group ID is 1
         let default_group_id = proven_engine::foundation::types::ConsensusGroupId::new(1);

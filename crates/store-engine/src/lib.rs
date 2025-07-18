@@ -187,7 +187,7 @@ struct ClientWrapperImpl<T, G, L>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorage + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
 {
     inner: Client<T, G, L>,
 }
@@ -196,7 +196,7 @@ impl<T, G, L> Debug for ClientWrapperImpl<T, G, L>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorage + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClientWrapperImpl").finish()
@@ -208,7 +208,7 @@ impl<T, G, L> ClientWrapper for ClientWrapperImpl<T, G, L>
 where
     T: proven_transport::Transport + Debug + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorage + Debug + 'static,
+    L: proven_storage::LogStorageWithDelete + Debug + 'static,
 {
     async fn create_stream_auto(&self, name: String, config: StreamConfig) -> Result<(), Error> {
         self.inner
@@ -270,7 +270,7 @@ where
     where
         Tr: proven_transport::Transport + Debug + 'static,
         G: proven_topology::TopologyAdaptor + 'static,
-        L: proven_storage::LogStorage + Debug + 'static,
+        L: proven_storage::LogStorageWithDelete + Debug + 'static,
     {
         Self {
             client: Arc::new(ClientWrapperImpl { inner: client }),
@@ -808,7 +808,7 @@ macro_rules! impl_scoped_store {
                 where
                     Tr: proven_transport::Transport + Debug + 'static,
                     G: proven_topology::TopologyAdaptor + 'static,
-                    L: proven_storage::LogStorage + Debug + 'static,
+                    L: proven_storage::LogStorageWithDelete + Debug + 'static,
                 {
                     Self {
                         client: Arc::new(ClientWrapperImpl { inner: client }),

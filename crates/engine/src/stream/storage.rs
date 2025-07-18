@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use proven_storage::{LogStorage, StorageError, StorageNamespace, StorageResult};
+use proven_storage::{LogStorageWithDelete, StorageError, StorageNamespace, StorageResult};
 
 use super::types::{MessageData, StoredMessage};
 use crate::stream::StreamName;
@@ -46,7 +46,7 @@ pub trait StreamStorage: StreamStorageReader + StreamStorageWriter + Send + Sync
 
 /// Storage backend for a single stream
 #[derive(Clone)]
-pub enum StreamStorageBackend<L: LogStorage> {
+pub enum StreamStorageBackend<L: LogStorageWithDelete> {
     /// Ephemeral storage in memory
     Ephemeral {
         /// BTreeMap of sequence numbers to messages
@@ -63,14 +63,14 @@ pub enum StreamStorageBackend<L: LogStorage> {
 
 /// Stream storage implementation
 #[derive(Clone)]
-pub struct StreamStorageImpl<L: LogStorage> {
+pub struct StreamStorageImpl<L: LogStorageWithDelete> {
     /// Stream name
     stream_name: StreamName,
     /// Storage backend
     backend: StreamStorageBackend<L>,
 }
 
-impl<L: LogStorage> StreamStorageImpl<L> {
+impl<L: LogStorageWithDelete> StreamStorageImpl<L> {
     /// Create ephemeral stream storage
     pub fn ephemeral(stream_name: StreamName) -> Self {
         Self {
@@ -95,7 +95,7 @@ impl<L: LogStorage> StreamStorageImpl<L> {
 }
 
 #[async_trait]
-impl<L: LogStorage> StreamStorageReader for StreamStorageImpl<L> {
+impl<L: LogStorageWithDelete> StreamStorageReader for StreamStorageImpl<L> {
     async fn read_range(&self, start: u64, end: u64) -> StorageResult<Vec<StoredMessage>> {
         match &self.backend {
             StreamStorageBackend::Ephemeral { data } => {
@@ -148,7 +148,7 @@ impl<L: LogStorage> StreamStorageReader for StreamStorageImpl<L> {
 }
 
 #[async_trait]
-impl<L: LogStorage> StreamStorageWriter for StreamStorageImpl<L> {
+impl<L: LogStorageWithDelete> StreamStorageWriter for StreamStorageImpl<L> {
     async fn append(
         &self,
         seq: u64,
@@ -194,4 +194,4 @@ impl<L: LogStorage> StreamStorageWriter for StreamStorageImpl<L> {
     }
 }
 
-impl<L: LogStorage> StreamStorage for StreamStorageImpl<L> {}
+impl<L: LogStorageWithDelete> StreamStorage for StreamStorageImpl<L> {}

@@ -195,9 +195,11 @@ impl GroupState {
                 .collect();
 
             let mut removed_bytes = 0u64;
+            let mut removed_count = 0u64;
             for seq in removed {
                 if let Some(msg) = state.messages.remove(&seq) {
                     removed_bytes += msg.data.payload.len() as u64;
+                    removed_count += 1;
                 }
             }
 
@@ -209,6 +211,7 @@ impl GroupState {
             }
 
             // Update stats
+            state.stats.message_count -= removed_count;
             state.stats.total_bytes -= removed_bytes;
             state.stats.last_update = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -220,9 +223,47 @@ impl GroupState {
             // Update metadata
             drop(streams);
             let mut metadata = self.metadata.write().await;
+            metadata.total_messages -= removed_count;
             metadata.total_bytes -= removed_bytes;
 
             Some(first_sequence)
+        } else {
+            None
+        }
+    }
+
+    /// Delete a specific message from stream
+    pub async fn delete_message(&self, stream: &StreamName, sequence: u64) -> Option<u64> {
+        let mut streams = self.streams.write().await;
+
+        if let Some(state) = streams.get_mut(stream) {
+            // Validate sequence is less than last seq and not 0
+            if sequence == 0 || sequence >= state.next_sequence - 1 {
+                return None;
+            }
+
+            // Remove the message
+            if let Some(msg) = state.messages.remove(&sequence) {
+                let removed_bytes = msg.data.payload.len() as u64;
+
+                // Update stats
+                state.stats.message_count -= 1;
+                state.stats.total_bytes -= removed_bytes;
+                state.stats.last_update = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+
+                // Update metadata
+                drop(streams);
+                let mut metadata = self.metadata.write().await;
+                metadata.total_messages -= 1;
+                metadata.total_bytes -= removed_bytes;
+
+                Some(sequence)
+            } else {
+                None
+            }
         } else {
             None
         }

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -10,14 +11,24 @@ use futures::stream::Stream;
 use tracing::{debug, warn};
 
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
+use proven_messaging::stream::InitializedStream;
 
 use crate::error::MessagingEngineError;
 use crate::stream::InitializedEngineStream;
 
 /// An engine messaging service responder.
 #[derive(Clone, Debug)]
-pub struct EngineMessagingServiceResponder<R, RD, RS>
+pub struct EngineMessagingServiceResponder<T, D, S, R, RD, RS>
 where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
     R: Clone
         + Debug
         + Send
@@ -28,16 +39,29 @@ where
     RD: Debug + Send + StdError + Sync + 'static,
     RS: Debug + Send + StdError + Sync + 'static,
 {
-    /// Stream to send responses to
-    stream: InitializedEngineStream<R, RD, RS>,
+    /// Stream to send responses to (request stream type)
+    stream: InitializedEngineStream<T, D, S>,
     /// Response stream name where responses should be sent
     response_stream_name: String,
     /// Request ID for correlation
     request_id: String,
+    /// Stream sequence number of the request
+    stream_sequence: u64,
+    /// Phantom data for response type
+    _marker: PhantomData<(R, RD, RS)>,
 }
 
-impl<R, RD, RS> EngineMessagingServiceResponder<R, RD, RS>
+impl<T, D, S, R, RD, RS> EngineMessagingServiceResponder<T, D, S, R, RD, RS>
 where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
     R: Clone
         + Debug
         + Send
@@ -50,28 +74,18 @@ where
 {
     /// Create a new engine messaging service responder.
     #[must_use]
-    pub const fn new<T, D, S>(
-        stream: &InitializedEngineStream<T, D, S>,
+    pub const fn new(
+        stream: InitializedEngineStream<T, D, S>,
         response_stream_name: String,
         request_id: String,
-    ) -> Self
-    where
-        T: Clone
-            + Debug
-            + Send
-            + Sync
-            + TryFrom<Bytes, Error = D>
-            + TryInto<Bytes, Error = S>
-            + 'static,
-        D: Debug + Send + StdError + Sync + 'static,
-        S: Debug + Send + StdError + Sync + 'static,
-    {
-        // Note: In a real implementation, we would need to handle the type conversion
-        // between the request stream type and response stream type
+        stream_sequence: u64,
+    ) -> Self {
         Self {
-            stream: unsafe { std::mem::transmute_copy(&stream) },
+            stream,
             response_stream_name,
             request_id,
+            stream_sequence,
+            _marker: PhantomData,
         }
     }
 
@@ -86,8 +100,14 @@ where
         let mut metadata = HashMap::new();
         metadata.insert("request_id".to_string(), self.request_id.clone());
         metadata.insert("response_type".to_string(), "service_response".to_string());
+        metadata.insert(
+            "response_stream".to_string(),
+            self.response_stream_name.clone(),
+        );
 
-        // Publish to response stream
+        // Publish to the request stream with metadata indicating it's a response
+        // In a real implementation, the response would be routed to the appropriate
+        // response stream based on the metadata
         let _seq = self
             .stream
             .publish_with_metadata(response_bytes, metadata)
@@ -95,7 +115,8 @@ where
 
         debug!(
             "Published response for request '{}' to stream '{}'",
-            self.request_id, self.response_stream_name
+            self.request_id,
+            self.stream.name()
         );
 
         Ok(())
@@ -110,7 +131,7 @@ impl UsedServiceResponder for EngineMessagingUsedResponder {}
 
 #[async_trait]
 impl<T, TD, TS, R, RD, RS> ServiceResponder<T, TD, TS, R, RD, RS>
-    for EngineMessagingServiceResponder<R, RD, RS>
+    for EngineMessagingServiceResponder<T, TD, TS, R, RD, RS>
 where
     T: Clone
         + Debug
@@ -169,13 +190,22 @@ where
     }
 
     async fn reply_and_delete_request(self, response: R) -> Self::UsedResponder {
-        // Engine doesn't support deletion, just reply
+        // Send the response first
         if let Err(e) = self.send_response(response).await {
             warn!(
                 "Failed to send response for request '{}': {:?}",
                 self.request_id, e
             );
         }
+
+        // Delete the request message from the stream
+        if let Err(e) = self.stream.delete(self.stream_sequence).await {
+            warn!(
+                "Failed to delete request message at sequence {} for request '{}': {:?}",
+                self.stream_sequence, self.request_id, e
+            );
+        }
+
         EngineMessagingUsedResponder
     }
 
@@ -183,7 +213,7 @@ where
     where
         W: Stream<Item = R> + Send + Unpin,
     {
-        // Engine doesn't support deletion, just stream
+        // Stream the responses
         use futures::StreamExt;
         while let Some(response) = response_stream.next().await {
             if let Err(e) = self.send_response(response).await {
@@ -194,11 +224,19 @@ where
                 break;
             }
         }
+
+        // Delete the request message from the stream
+        if let Err(e) = self.stream.delete(self.stream_sequence).await {
+            warn!(
+                "Failed to delete request message at sequence {} for request '{}': {:?}",
+                self.stream_sequence, self.request_id, e
+            );
+        }
+
         EngineMessagingUsedResponder
     }
 
     fn stream_sequence(&self) -> u64 {
-        // TODO: Implement when engine supports it
-        0
+        self.stream_sequence
     }
 }

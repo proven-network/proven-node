@@ -98,7 +98,14 @@ trait ClientWrapper: Debug + Send + Sync + 'static {
     async fn get_stream_info(
         &self,
         name: &str,
-    ) -> Result<Option<proven_engine::stream::StreamMetadata>, MessagingEngineError>;
+    ) -> Result<Option<proven_engine::StreamInfo>, MessagingEngineError>;
+
+    /// Delete a message from a stream
+    async fn delete_message(
+        &self,
+        stream: String,
+        sequence: u64,
+    ) -> Result<(), MessagingEngineError>;
 }
 
 /// Wrapper implementation for the engine client
@@ -106,7 +113,7 @@ struct ClientWrapperImpl<T, G, L>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorage + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
 {
     inner: EngineClient<T, G, L>,
 }
@@ -115,7 +122,7 @@ impl<T, G, L> Debug for ClientWrapperImpl<T, G, L>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorage + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClientWrapperImpl").finish()
@@ -127,7 +134,7 @@ impl<T, G, L> ClientWrapper for ClientWrapperImpl<T, G, L>
 where
     T: proven_transport::Transport + Debug + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorage + Debug + 'static,
+    L: proven_storage::LogStorageWithDelete + Debug + 'static,
 {
     async fn create_stream(
         &self,
@@ -147,16 +154,22 @@ where
         payload: Vec<u8>,
         metadata: Option<std::collections::HashMap<String, String>>,
     ) -> Result<u64, MessagingEngineError> {
-        let _response = self
+        let response = self
             .inner
-            .publish(stream, payload, metadata)
+            .publish(stream.clone(), payload, metadata)
             .await
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
 
         // Extract sequence number from GroupResponse
-        // For now, we'll use a placeholder since we don't know the exact structure
-        // TODO: Extract actual sequence number from GroupResponse
-        Ok(1)
+        match response {
+            proven_engine::consensus::group::GroupResponse::Appended {
+                stream: _,
+                sequence,
+            } => Ok(sequence),
+            _ => Err(MessagingEngineError::Engine(format!(
+                "Unexpected response from publish to stream '{stream}': expected Appended, got {response:?}"
+            ))),
+        }
     }
 
     async fn stream_exists(&self, name: &str) -> Result<bool, MessagingEngineError> {
@@ -182,22 +195,35 @@ where
     async fn get_stream_info(
         &self,
         name: &str,
-    ) -> Result<Option<proven_engine::stream::StreamMetadata>, MessagingEngineError> {
-        // Get stream info from engine
-        let info = self
-            .inner
+    ) -> Result<Option<proven_engine::StreamInfo>, MessagingEngineError> {
+        self.inner
             .get_stream_info(name)
+            .await
+            .map_err(|e| MessagingEngineError::Engine(e.to_string()))
+    }
+
+    async fn delete_message(
+        &self,
+        stream: String,
+        sequence: u64,
+    ) -> Result<(), MessagingEngineError> {
+        let response = self
+            .inner
+            .delete_message(stream.clone(), sequence)
             .await
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
 
-        // Convert StreamInfo to StreamMetadata
-        Ok(info.map(|i| proven_engine::stream::StreamMetadata {
-            name: i.name.into(),
-            group_id: i.group_id,
-            created_at: 0,    // TODO: Engine doesn't expose created_at
-            leader: None,     // TODO: Engine doesn't expose leader in stream config
-            replicas: vec![], // TODO: Engine doesn't expose replicas in stream config
-        }))
+        match response {
+            proven_engine::consensus::group::GroupResponse::Deleted { .. } => Ok(()),
+            proven_engine::consensus::group::GroupResponse::Error { message } => {
+                Err(MessagingEngineError::Engine(format!(
+                    "Failed to delete message {sequence} from stream '{stream}': {message}"
+                )))
+            }
+            _ => Err(MessagingEngineError::Engine(format!(
+                "Unexpected response from delete message {sequence} from stream '{stream}': {response:?}"
+            ))),
+        }
     }
 }
 
@@ -340,12 +366,12 @@ where
 
     /// Deletes a message at the given sequence number.
     async fn delete(&self, seq: u64) -> Result<(), Self::Error> {
-        // Engine streams don't support deletion - just remove from cache
+        // Delete from engine
+        self.client.delete_message(self.name.clone(), seq).await?;
+
+        // Also remove from local cache
         self.cache.write().await.remove(&seq);
-        info!(
-            "Removed message {} from cache for stream '{}'",
-            seq, self.name
-        );
+        info!("Deleted message {} from stream '{}'", seq, self.name);
         Ok(())
     }
 
@@ -391,16 +417,26 @@ where
 
     /// Gets the last sequence number.
     async fn last_seq(&self) -> Result<u64, Self::Error> {
-        // TODO: Engine doesn't expose last sequence directly
-        // For now, return a placeholder
-        Ok(0)
+        // Get stream info from engine
+        if let Some(info) = self.client.get_stream_info(&self.name).await? {
+            // The StreamInfo has a last_sequence field
+            Ok(info.last_sequence)
+        } else {
+            // Stream doesn't exist or no messages yet
+            Ok(0)
+        }
     }
 
     /// Gets the total number of messages.
     async fn messages(&self) -> Result<u64, Self::Error> {
-        // TODO: Engine doesn't expose message count directly
-        // For now, return a placeholder
-        Ok(0)
+        // Get stream info from engine
+        if let Some(info) = self.client.get_stream_info(&self.name).await? {
+            // Use the accurate message_count from StreamInfo
+            Ok(info.message_count)
+        } else {
+            // Stream doesn't exist or no messages yet
+            Ok(0)
+        }
     }
 
     /// Gets the stream name.
@@ -493,7 +529,7 @@ where
     where
         Tr: proven_transport::Transport + Debug + 'static,
         G: proven_topology::TopologyAdaptor + 'static,
-        L: proven_storage::LogStorage + Debug + 'static,
+        L: proven_storage::LogStorageWithDelete + Debug + 'static,
     {
         Self {
             name,
@@ -571,7 +607,7 @@ where
     where
         Tr: proven_transport::Transport + Debug + 'static,
         G: proven_topology::TopologyAdaptor + 'static,
-        L: proven_storage::LogStorage + Debug + 'static,
+        L: proven_storage::LogStorageWithDelete + Debug + 'static,
     {
         Self {
             name,
@@ -732,7 +768,7 @@ macro_rules! impl_scoped_stream {
                 where
                     Tr: proven_transport::Transport + Debug + 'static,
                     G: proven_topology::TopologyAdaptor + 'static,
-                    L: proven_storage::LogStorage + Debug + 'static,
+                    L: proven_storage::LogStorageWithDelete + Debug + 'static,
                 {
                     Self {
                         name,

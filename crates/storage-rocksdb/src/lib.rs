@@ -292,6 +292,33 @@ impl LogStorage for RocksDbStorage {
     }
 }
 
+// Implement LogStorageWithDelete for RocksDbStorage
+#[async_trait]
+impl proven_storage::LogStorageWithDelete for RocksDbStorage {
+    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+        let cf = self.get_or_create_cf(namespace)?;
+        let key = Self::encode_key(index);
+
+        // Note: RocksDB doesn't have a single atomic "delete-and-return-existed" operation.
+        // We use get_pinned_cf which is optimized to avoid data copying when we only need
+        // to check existence. This is the most efficient approach available.
+        match self.db.get_pinned_cf(&cf, &key) {
+            Ok(Some(_)) => {
+                // Entry exists, delete it
+                self.db
+                    .delete_cf(&cf, &key)
+                    .map_err(|e| StorageError::Backend(format!("Failed to delete entry: {e}")))?;
+                Ok(true)
+            }
+            Ok(None) => {
+                // Entry doesn't exist
+                Ok(false)
+            }
+            Err(e) => Err(StorageError::Backend(format!("Failed to check entry: {e}"))),
+        }
+    }
+}
+
 impl std::fmt::Debug for RocksDbStorage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "RocksDbStorage")

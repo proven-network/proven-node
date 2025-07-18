@@ -76,4 +76,14 @@ where
     /// Sends a request to the service and returns a response.
     async fn request(&self, request: T)
     -> Result<ClientResponseType<X::ResponseType>, Self::Error>;
+
+    /// Deletes a message at the given sequence number.
+    /// This is an optional method that implementations can override if they support deletion.
+    /// The default implementation does nothing and returns Ok(()).
+    /// Implementations that don't support deletion should return an appropriate error.
+    async fn delete(&self, _seq: u64) -> Result<(), Self::Error> {
+        // Default implementation - does nothing
+        // Implementations should override this if they support deletion
+        Ok(())
+    }
 }

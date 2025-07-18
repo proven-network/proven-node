@@ -54,10 +54,16 @@ pub enum ClientRequest {
 /// Stream information
 #[derive(Debug, Clone)]
 pub struct StreamInfo {
+    /// Stream name
     pub name: String,
+    /// Stream configuration
     pub config: StreamConfig,
+    /// Group ID that owns this stream
     pub group_id: ConsensusGroupId,
+    /// Last sequence number
     pub last_sequence: u64,
+    /// Total message count
+    pub message_count: u64,
 }
 
 /// Group information
