@@ -44,11 +44,15 @@ where
         &self,
         peers: Vec<NodeId>,
         round_timeout: Duration,
+        node_request_timeout: Duration,
+        enable_retry: bool,
+        max_retries: u32,
     ) -> ConsensusResult<DiscoveryRound> {
         info!(
-            "Starting discovery round with {} peers, timeout: {:?}",
+            "Starting discovery round with {} peers, timeout: {:?}, node timeout: {:?}",
             peers.len(),
-            round_timeout
+            round_timeout,
+            node_request_timeout
         );
 
         let started_at = std::time::Instant::now();
@@ -69,27 +73,76 @@ where
 
                 debug!("Sending discovery request to peer {}", peer_id);
 
-                match timeout(
-                    Duration::from_secs(10),
-                    network.request_namespaced::<DiscoveryRequest, DiscoveryResponse>(
-                        CLUSTER_NAMESPACE,
-                        peer_id.clone(),
-                        request,
-                        Duration::from_secs(10),
-                    ),
-                )
-                .await
-                {
-                    Ok(Ok(response)) => Some((peer_id, response)),
-                    Ok(Err(e)) => {
-                        warn!("Discovery request to {} failed: {}", peer_id, e);
-                        None
+                // Try with retries if enabled
+                let mut attempts = 0;
+                let max_attempts = if enable_retry { max_retries + 1 } else { 1 };
+
+                while attempts < max_attempts {
+                    let retry_timeout = if attempts > 0 {
+                        // Exponential backoff for retries
+                        node_request_timeout + Duration::from_millis(500 * (1 << (attempts - 1)))
+                    } else {
+                        node_request_timeout
+                    };
+
+                    match timeout(
+                        retry_timeout,
+                        network.request_namespaced::<DiscoveryRequest, DiscoveryResponse>(
+                            CLUSTER_NAMESPACE,
+                            peer_id.clone(),
+                            request.clone(),
+                            retry_timeout,
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(Ok(response)) => {
+                            if attempts > 0 {
+                                debug!(
+                                    "Discovery request to {} succeeded after {} retries",
+                                    peer_id, attempts
+                                );
+                            }
+                            return Some((peer_id, response));
+                        }
+                        Ok(Err(e)) => {
+                            if attempts + 1 < max_attempts {
+                                debug!(
+                                    "Discovery request to {} failed (attempt {}): {}, retrying...",
+                                    peer_id,
+                                    attempts + 1,
+                                    e
+                                );
+                            } else {
+                                warn!(
+                                    "Discovery request to {} failed after {} attempts: {}",
+                                    peer_id,
+                                    attempts + 1,
+                                    e
+                                );
+                            }
+                        }
+                        Err(_) => {
+                            if attempts + 1 < max_attempts {
+                                debug!(
+                                    "Discovery request to {} timed out (attempt {}), retrying...",
+                                    peer_id,
+                                    attempts + 1
+                                );
+                            } else {
+                                warn!(
+                                    "Discovery request to {} timed out after {} attempts",
+                                    peer_id,
+                                    attempts + 1
+                                );
+                            }
+                        }
                     }
-                    Err(_) => {
-                        warn!("Discovery request to {} timed out", peer_id);
-                        None
-                    }
+
+                    attempts += 1;
                 }
+
+                None
             };
 
             discovery_futures.push(fut);

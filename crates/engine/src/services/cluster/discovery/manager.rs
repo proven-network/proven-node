@@ -35,6 +35,16 @@ pub struct DiscoveryConfig {
     pub discovery_interval: Duration,
     /// Maximum discovery rounds before giving up
     pub max_discovery_rounds: u32,
+    /// Timeout for individual node requests
+    pub node_request_timeout: Duration,
+    /// Minimum percentage of nodes that must respond (0.0 - 1.0)
+    pub min_response_ratio: f64,
+    /// Minimum number of nodes that must respond
+    pub min_responding_nodes: usize,
+    /// Enable retry for failed requests
+    pub enable_request_retry: bool,
+    /// Maximum retries per node
+    pub max_retries_per_node: u32,
 }
 
 impl Default for DiscoveryConfig {
@@ -43,6 +53,11 @@ impl Default for DiscoveryConfig {
             discovery_timeout: Duration::from_secs(15),
             discovery_interval: Duration::from_secs(1),
             max_discovery_rounds: 10,
+            node_request_timeout: Duration::from_secs(3),
+            min_response_ratio: 0.5,
+            min_responding_nodes: 1,
+            enable_request_retry: true,
+            max_retries_per_node: 2,
         }
     }
 }
@@ -195,6 +210,7 @@ where
         // Execute discovery rounds
         let mut rounds_completed = 0;
         let start_time = std::time::Instant::now();
+        let mut last_round_result = None;
 
         while rounds_completed < self.config.max_discovery_rounds
             && start_time.elapsed() < self.config.discovery_timeout
@@ -202,8 +218,23 @@ where
             // Execute discovery round
             let round_result = self
                 .protocol
-                .execute_discovery_round(peer_ids.clone(), self.config.discovery_interval)
+                .execute_discovery_round(
+                    peer_ids.clone(),
+                    self.config.discovery_interval,
+                    self.config.node_request_timeout,
+                    self.config.enable_request_retry,
+                    self.config.max_retries_per_node,
+                )
                 .await?;
+
+            // Store the last round result for later use
+            last_round_result = Some(round_result.clone());
+
+            // Check if we have enough responses to make a decision
+            let response_ratio = round_result.responding_nodes.len() as f64 / peer_ids.len() as f64;
+            let has_minimum_responses = round_result.responding_nodes.len()
+                >= self.config.min_responding_nodes
+                && response_ratio >= self.config.min_response_ratio;
 
             // Check if we found any clusters
             if !round_result.nodes_with_clusters.is_empty() {
@@ -231,6 +262,17 @@ where
                 return Ok(DiscoveryOutcome::FoundCluster { leader_id });
             }
 
+            // Early termination if we have enough responses to determine no clusters exist
+            if has_minimum_responses && rounds_completed >= 1 {
+                info!(
+                    "Sufficient nodes responded ({}/{}, {:.1}%), no clusters found - proceeding to coordinator election",
+                    round_result.responding_nodes.len(),
+                    peer_ids.len(),
+                    response_ratio * 100.0
+                );
+                break;
+            }
+
             rounds_completed += 1;
 
             // Wait before next round
@@ -245,9 +287,50 @@ where
             rounds_completed
         );
 
+        // Get responding nodes from the last round (if available)
+        let responding_peers = if let Some(last_round) = &last_round_result {
+            last_round.responding_nodes.clone()
+        } else {
+            Vec::new()
+        };
+
         // Determine if we should become coordinator
-        if CoordinatorElection::should_become_coordinator(&self.local_node_id, &peer_ids) {
-            info!("Elected as coordinator, will initialize multi-node cluster");
+        // First check with all nodes, then with only responding nodes for fallback
+        let should_be_coordinator = if CoordinatorElection::should_become_coordinator(
+            &self.local_node_id,
+            &peer_ids,
+        ) {
+            info!("Elected as coordinator based on full peer list");
+            true
+        } else if !responding_peers.is_empty() {
+            // Check if expected coordinator is offline
+            let expected_coordinator = CoordinatorElection::get_expected_coordinator(&peer_ids);
+            let coordinator_responded = expected_coordinator
+                .as_ref()
+                .map(|c| responding_peers.contains(c))
+                .unwrap_or(false);
+
+            if !coordinator_responded
+                && CoordinatorElection::should_become_coordinator(
+                    &self.local_node_id,
+                    &responding_peers,
+                )
+            {
+                info!(
+                    "Expected coordinator {:?} is offline. Elected as fallback coordinator among {} responding nodes",
+                    expected_coordinator,
+                    responding_peers.len()
+                );
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if should_be_coordinator {
+            info!("Will initialize multi-node cluster as coordinator");
 
             // Update state
             {
@@ -261,17 +344,34 @@ where
 
             Ok(DiscoveryOutcome::BecomeCoordinator { peers: peer_ids })
         } else {
-            // Not elected - return the expected coordinator
-            match CoordinatorElection::get_expected_coordinator(&peer_ids) {
-                Some(coordinator) => {
+            // Not elected - try to find a coordinator among responding nodes
+            let coordinator = if !responding_peers.is_empty() {
+                // First try expected coordinator from all peers
+                let expected = CoordinatorElection::get_expected_coordinator(&peer_ids);
+                if expected
+                    .as_ref()
+                    .map(|c| responding_peers.contains(c))
+                    .unwrap_or(false)
+                {
+                    expected
+                } else {
+                    // Fallback to coordinator from responding peers
+                    CoordinatorElection::get_expected_coordinator(&responding_peers)
+                }
+            } else {
+                CoordinatorElection::get_expected_coordinator(&peer_ids)
+            };
+
+            match coordinator {
+                Some(coordinator_id) => {
                     info!(
                         "Not elected as coordinator, expected coordinator is: {}",
-                        coordinator
+                        coordinator_id
                     );
 
                     // Return that we should join the coordinator
                     Ok(DiscoveryOutcome::ShouldJoinCoordinator {
-                        coordinator,
+                        coordinator: coordinator_id,
                         peers: peer_ids,
                     })
                 }

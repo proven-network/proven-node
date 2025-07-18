@@ -142,6 +142,11 @@ where
             discovery_timeout: Duration::from_secs(30),
             discovery_interval: self.config.discovery.retry_delay,
             max_discovery_rounds: self.config.discovery.retry_attempts,
+            node_request_timeout: Duration::from_secs(3),
+            min_response_ratio: 0.5,
+            min_responding_nodes: 1,
+            enable_request_retry: true,
+            max_retries_per_node: 2,
         };
         let discovery_manager = Arc::new(DiscoveryManager::new(
             self.node_id.clone(),
