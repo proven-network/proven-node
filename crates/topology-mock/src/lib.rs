@@ -53,18 +53,13 @@ impl MockTopologyAdaptor {
     pub fn for_single_node(origin: String, private_key: &SigningKey, version: Version) -> Self {
         let node = Node::new(
             "local".to_string(),
-            origin,
+            origin.clone(),
             NodeId::from(private_key.verifying_key()),
             "local".to_string(),
             HashSet::new(),
         );
 
-        Self::new(
-            vec![node],
-            vec![version],
-            "http://localhost:3200".to_string(),
-            vec![],
-        )
+        Self::new(vec![node], vec![version], origin, vec![])
     }
 
     /// Create a new mock topology adaptor instance from a topology file

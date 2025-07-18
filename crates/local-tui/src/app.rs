@@ -140,7 +140,7 @@ impl App {
         MockTopologyAdaptor::new(
             Vec::new(),                          // No initial nodes
             vec![version],                       // Single version
-            "http://localhost:3200".to_string(), // Default primary auth gateway
+            "http://localhost:3000".to_string(), // Default primary auth gateway
             Vec::new(),                          // No alternate auth gateways
         )
     }
