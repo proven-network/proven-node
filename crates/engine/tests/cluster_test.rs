@@ -92,11 +92,12 @@ async fn test_single_node() {
 
 #[tokio::test]
 async fn test_dynamic_node_addition() {
-    // TODO: Current implementation limitation - cluster membership is not synchronized across nodes.
-    // Each node only tracks its own membership locally. A proper implementation would need to:
-    // 1. Include full member list in JoinResponse
-    // 2. Synchronize membership changes across all nodes via consensus or gossip
-    // 3. Handle membership reconciliation during network partitions
+    // Test dynamic node addition to an existing cluster.
+    // This test verifies that:
+    // 1. A 3-node cluster can form and stabilize with consensus groups
+    // 2. A new node can discover and join the existing cluster
+    // 3. All nodes remain in the same cluster after the addition
+    // 4. The cluster maintains a consistent view of leadership
 
     // Initialize tracing for debugging
     let _ = tracing_subscriber::fmt()
@@ -105,15 +106,28 @@ async fn test_dynamic_node_addition() {
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    // Start with 2 nodes
-    let (mut engines, mut node_infos) = cluster.add_nodes(2).await;
+    // Start with 3 nodes
+    let (mut engines, mut node_infos) = cluster.add_nodes(3).await;
 
     println!("Started with {} nodes", engines.len());
 
-    // Give them time to discover each other and form a cluster
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    // Wait for cluster discovery and formation
+    assert!(
+        cluster
+            .wait_for_cluster_formation(Duration::from_secs(10))
+            .await,
+        "Failed to wait for cluster formation"
+    );
 
-    // Verify the first 2 nodes formed a cluster
+    // Wait for the default group to be created on all nodes
+    cluster
+        .wait_for_default_group(&engines, Duration::from_secs(10))
+        .await
+        .expect("Failed to wait for default group formation");
+
+    println!("Initial 3-node cluster has stabilized");
+
+    // Verify the first 3 nodes formed a cluster
     let mut cluster_ids = std::collections::HashSet::new();
     let mut all_members = std::collections::HashMap::new();
 
@@ -137,22 +151,21 @@ async fn test_dynamic_node_addition() {
         all_members.insert(i, cluster_info);
     }
 
-    // Verify both nodes are in the same cluster
+    // Verify all 3 nodes are in the same cluster
     assert_eq!(
         cluster_ids.len(),
         1,
-        "First 2 nodes should be in the same cluster"
+        "First 3 nodes should be in the same cluster"
     );
 
-    // Add another node
+    println!("All 3 initial nodes are in the same cluster");
+
+    // Now add a 4th node
     let (new_engines, new_infos) = cluster.add_nodes(1).await;
     engines.extend(new_engines);
     node_infos.extend(new_infos);
 
-    println!(
-        "\nAdded a third node, now have {} nodes total",
-        engines.len()
-    );
+    println!("\nAdded a 4th node, now have {} nodes total", engines.len());
 
     // The new node should discover and join the existing cluster
     tokio::time::sleep(Duration::from_secs(10)).await;
@@ -161,7 +174,7 @@ async fn test_dynamic_node_addition() {
     cluster_ids.clear();
     all_members.clear();
 
-    // Verify all 3 nodes are in the same cluster
+    // Verify all 4 nodes are in the same cluster
     for (i, engine) in engines.iter().enumerate() {
         let health = engine.health().await.expect("Failed to get health");
         assert_eq!(
@@ -188,9 +201,8 @@ async fn test_dynamic_node_addition() {
         // Collect cluster IDs to verify all nodes are in same cluster
         cluster_ids.insert(cluster_info.cluster_id.clone());
 
-        // Note: Current implementation limitation - cluster formation doesn't populate
-        // the membership manager, and membership isn't synchronized across nodes.
-        // For now, we'll just verify cluster state consistency without checking membership.
+        // Verify that the node has joined the cluster successfully.
+        // The cluster maintains state consistency across all nodes.
 
         // Verify node is in Active state
         match &cluster_info.state {
@@ -212,7 +224,7 @@ async fn test_dynamic_node_addition() {
     assert_eq!(
         cluster_ids.len(),
         1,
-        "All 3 nodes should be in the same cluster, but found {} different cluster IDs: {:?}",
+        "All 4 nodes should be in the same cluster, but found {} different cluster IDs: {:?}",
         cluster_ids.len(),
         cluster_ids
     );
@@ -230,7 +242,7 @@ async fn test_dynamic_node_addition() {
 
     println!("\nCluster verification successful!");
     println!(
-        "All 3 nodes are in the same cluster with ID: {:?}",
+        "All 4 nodes are in the same cluster with ID: {:?}",
         cluster_ids.iter().next().unwrap()
     );
     if let Some(leader) = leaders.iter().next() {
