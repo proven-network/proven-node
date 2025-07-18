@@ -148,7 +148,7 @@ where
                     }
                 },
                 Err(e) => {
-                    error!("Failed to send request via NATS: {}", e);
+                    error!("Failed to send request: {}", e);
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         format!("Failed to communicate with backend: {e}"),

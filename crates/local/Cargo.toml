@@ -4,7 +4,6 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-nats.workspace = true
 axum.workspace = true
 bytes.workspace = true
 ciborium.workspace = true
@@ -45,7 +44,6 @@ proven-store.workspace = true
 proven-store-engine.workspace = true
 proven-store-fs.workspace = true
 proven-store-memory.workspace = true
-proven-store-nats.workspace = true
 proven-topology.workspace = true
 proven-transport.workspace = true
 proven-transport-ws.workspace = true

@@ -54,7 +54,6 @@ fn create_test_initialize_request() -> InitializeRequest {
         https_port: 443,
         kms_key_id: "test-key-id".to_string(),
         max_runtime_workers: 4,
-        nats_cluster_port: 4222,
         node_key: "test-node-key".to_string(),
         nfs_mount_point: "/mnt/nfs".to_string(),
         proxy_port: 3000,

@@ -80,7 +80,6 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [dotnet](https://dotnet.microsoft.com/): .NET runtime for running gateway.
 - [gocryptfs](https://github.com/rfjakob/gocryptfs): Used for encrypting NFS-mounted external filesystems. Threat model described [here](https://nuetzlich.net/gocryptfs/threat_model/).
 - [lighthouse](https://github.com/sigp/lighthouse): Ethereum consensus client to pair with Reth for full Ethereum node functionality.
-- [nats-server](https://github.com/nats-io/nats-server): NATS server for inter-node communication and control plane.
 - [openjdk](https://openjdk.java.net/): Java runtime for Java component of Radix DLT core node.
 - [postgres](https://www.postgresql.org/): Postgres server for storing gateway data.
 - [reth](https://github.com/paradigmxyz/reth): Ethereum execution client for running an Ethereum full node.
@@ -119,12 +118,8 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [local](crates/local): Binary to bootstrap other components locally. Similar to [enclave](crates/enclave) but for local development.
 - [locks](crates/locks): Abstract interface for managing system-global distributed locks.
 - [locks-memory](crates/locks-memory): In-memory (single node) implementation of locks for local development.
-- [locks-nats](crates/locks-nats): Implementation of distributed locks using NATS Jetstream with HA replication.
 - [messaging](crates/messaging): Abstract interface for pub/sub messaging across subjects.
 - [messaging-memory](crates/messaging-memory): In-memory (single node) implementation of messaging for local development.
-- [messaging-nats](crates/messaging-nats): Implementation of messaging using Core NATS.
-- [nats-monitor](crates/nats-monitor): Helper crate for querying NATS HTTP monitoring endpoints.
-- [nats-server](crates/nats-server): Configures and runs a NATS server for inter-node communication.
 - [network](crates/network): Manages network configuration and point-to-point node communication.
 - [passkeys](crates/passkeys): Manages active passkeys for discoverable WebAuthn.
 - [postgres](crates/postgres): Configures and runs a Postgres server to provide storage for Radix Gateway.
@@ -146,7 +141,6 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [store-asm](crates/store-asm): Implementation of key-value storage using AWS Secrets Manager. Values typically double-encrypted using KMS with enclave-specific keys.
 - [store-fs](crates/store-fs): Implementation of key-value storage using files on disk, for local development.
 - [store-memory](crates/store-memory): In-memory (single node) implementation of key-value storage for local development.
-- [store-nats](crates/store-nats): Implementation of key-value storage using NATS Jetstream with HA replication.
 - [store-s3](crates/store-s3): Implementation of key-value storage using AWS S3. Values encrypted using AES-256 via SSE-C.
 - [util](crates/util): Misc common utilities and value types.
 - [vsock-proxy](crates/vsock-proxy): High performance layer-3 proxy for enabling enclave networking over virtio sockets.

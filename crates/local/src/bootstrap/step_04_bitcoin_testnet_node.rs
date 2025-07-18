@@ -1,7 +1,7 @@
 //! Bootstrap Step 5: Bitcoin Testnet Node Initialization
 //!
 //! This step handles the initialization of Bitcoin testnet services, including:
-//! - NATS stream setup for Bitcoin testnet proxy
+//! - Stream setup for Bitcoin testnet proxy
 //! - Conditional Bitcoin testnet node startup based on specializations
 //! - HTTP proxy service/client configuration
 //! - RPC endpoint configuration

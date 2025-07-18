@@ -112,7 +112,6 @@ async fn main() -> Result<()> {
         kms_key_id: "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
             .to_string(),
         max_runtime_workers: 4,
-        nats_cluster_port: 4222,
         node_key: "ed25519_private_key_here".to_string(),
         nfs_mount_point: "/mnt/external".to_string(),
         proxy_port: 3000,

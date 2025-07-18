@@ -179,27 +179,6 @@ pub struct NodeConfig<G: TopologyAdaptor> {
     /// Proven HTTP port
     pub port: u16,
 
-    /// NATS CLI binary directory path
-    pub nats_cli_bin_dir: Option<PathBuf>,
-
-    /// NATS port
-    pub nats_client_port: u16,
-
-    /// NATS cluster port
-    pub nats_cluster_port: u16,
-
-    /// NATS config directory
-    pub nats_config_dir: PathBuf,
-
-    /// NATS HTTP port
-    pub nats_http_port: u16,
-
-    /// NATS server binary directory path
-    pub nats_server_bin_dir: Option<PathBuf>,
-
-    /// NATS store directory
-    pub nats_store_dir: PathBuf,
-
     /// Path to the network config file
     pub network_config_path: Option<PathBuf>,
 

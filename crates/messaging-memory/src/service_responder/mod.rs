@@ -15,12 +15,12 @@ use futures::StreamExt;
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
 use proven_messaging::stream::InitializedStream;
 
-/// A used responder for a NATS service.
+/// A used responder for a memory service.
 #[derive(Debug)]
 pub struct MemoryUsedServiceResponder;
 impl UsedServiceResponder for MemoryUsedServiceResponder {}
 
-/// A responder for a NATS service.
+/// A responder for a memory service.
 #[derive(Clone, Debug)]
 pub struct MemoryServiceResponder<T, TD, TS, R, RD, RS>
 where
@@ -73,7 +73,7 @@ where
     RD: Debug + Send + StdError + Sync + 'static,
     RS: Debug + Send + StdError + Sync + 'static,
 {
-    /// Creates a new NATS service responder.
+    /// Creates a new memory service responder.
     #[must_use]
     pub const fn new(
         service_name: String,

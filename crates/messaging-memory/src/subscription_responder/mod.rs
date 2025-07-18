@@ -14,12 +14,12 @@ use futures::StreamExt;
 use proven_messaging::subscription_responder::{SubscriptionResponder, UsedSubscriptionResponder};
 use uuid::Uuid;
 
-/// A used responder for a NATS subscription.
+/// A used responder for a memory subscription.
 #[derive(Debug)]
 pub struct MemoryUsedSubscriptionResponder;
 impl UsedSubscriptionResponder for MemoryUsedSubscriptionResponder {}
 
-/// A responder for a NATS subscription.
+/// A responder for a memory subscription.
 #[derive(Clone, Debug)]
 pub struct MemorySubscriptionResponder<R, D, S>
 where
@@ -51,7 +51,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    /// Creates a new NATS service responder.
+    /// Creates a new memory service responder.
     #[must_use]
     pub const fn new(reply_subject_name: String, request_id: String) -> Self {
         Self {

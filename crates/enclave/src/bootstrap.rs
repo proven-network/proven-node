@@ -284,18 +284,6 @@ impl Bootstrap {
             return Err(e);
         }
 
-        if let Err(e) = self.start_nats_fs().await {
-            error!("failed to start nats filesystem: {:?}", e);
-            self.unwind_services().await;
-            return Err(e);
-        }
-
-        if let Err(e) = self.start_nats_server().await {
-            error!("failed to start nats server: {:?}", e);
-            self.unwind_services().await;
-            return Err(e);
-        }
-
         if let Err(e) = self.start_core().await {
             error!("failed to start core: {:?}", e);
             self.unwind_services().await;

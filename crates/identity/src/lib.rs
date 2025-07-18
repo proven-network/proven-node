@@ -885,7 +885,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_node_leadership() {
-        // Create shared streams and lock manager (simulating the same NATS cluster)
+        // Create shared streams and lock manager
         let shared_lock_manager = MemoryLockManager::new();
         let stream_name = format!("test-shared-stream-{}", Uuid::new_v4());
         let command_stream =
@@ -929,7 +929,6 @@ mod tests {
         assert!(manager1.is_leader().await);
 
         // Second manager tries to create an identity
-        // This should work because NATS will route it to manager1's service
         let prf_key2 = Bytes::from(vec![2u8; 32]);
         let result2 = manager2
             .get_or_create_identity_by_prf_public_key(&prf_key2)

@@ -346,42 +346,6 @@ struct Args {
     #[arg(long, default_value_t = 3200, env = "PROVEN_PORT")]
     port: u16,
 
-    /// NATS CLI binary directory path
-    #[arg(long, env = "PROVEN_NATS_CLI_BIN_DIR")]
-    nats_cli_bin_dir: Option<PathBuf>,
-
-    /// NATS port
-    #[arg(long, default_value_t = 4222, env = "PROVEN_NATS_CLIENT_PORT")]
-    nats_client_port: u16,
-
-    /// NATS cluster port
-    #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
-    nats_cluster_port: u16,
-
-    /// NATS config directory
-    #[arg(
-        long,
-        default_value = "/tmp/proven/nats-config",
-        env = "PROVEN_NATS_CONFIG_DIR"
-    )]
-    nats_config_dir: PathBuf,
-
-    /// NATS HTTP port
-    #[arg(long, default_value_t = 8222, env = "PROVEN_NATS_HTTP_PORT")]
-    nats_http_port: u16,
-
-    /// NATS server binary directory path
-    #[arg(long, env = "PROVEN_NATS_SERVER_BIN_DIR")]
-    nats_server_bin_dir: Option<PathBuf>,
-
-    /// NATS store directory
-    #[arg(
-        long,
-        default_value = "/tmp/proven/nats",
-        env = "PROVEN_NATS_STORE_DIR"
-    )]
-    nats_store_dir: PathBuf,
-
     /// Path to the network config file
     #[arg(long, env = "PROVEN_NETWORK_CONFIG_PATH")]
     network_config_path: Option<PathBuf>,
@@ -543,13 +507,6 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockTopologyAdaptor
         ethereum_sepolia_fallback_rpc_endpoint: args.ethereum_sepolia_fallback_rpc_endpoint,
         governance,
         port: args.port,
-        nats_cli_bin_dir: args.nats_cli_bin_dir,
-        nats_client_port: args.nats_client_port,
-        nats_cluster_port: args.nats_cluster_port,
-        nats_config_dir: args.nats_config_dir,
-        nats_http_port: args.nats_http_port,
-        nats_server_bin_dir: args.nats_server_bin_dir,
-        nats_store_dir: args.nats_store_dir,
         network_config_path: args.network_config_path,
         node_key: private_key,
         postgres_bin_path: args.postgres_bin_path,

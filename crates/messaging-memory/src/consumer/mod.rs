@@ -87,7 +87,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    /// Creates a new NATS consumer.
+    /// Creates a new memory consumer.
     async fn process_messages(
         last_seq: Arc<Mutex<u64>>,
         mut receiver_stream: ReceiverStream<T>,

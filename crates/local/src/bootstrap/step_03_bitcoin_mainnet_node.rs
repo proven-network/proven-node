@@ -1,7 +1,7 @@
 //! Bootstrap Step 4: Bitcoin Mainnet Node Initialization
 //!
 //! This step handles the initialization of Bitcoin mainnet services, including:
-//! - NATS stream setup for Bitcoin mainnet proxy
+//! - Stream setup for Bitcoin mainnet proxy
 //! - Conditional Bitcoin mainnet node startup based on specializations
 //! - HTTP proxy service/client configuration
 //! - RPC endpoint configuration

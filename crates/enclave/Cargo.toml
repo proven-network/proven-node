@@ -4,7 +4,6 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-async-nats.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 bytes.workspace = true
@@ -33,9 +32,7 @@ proven-passkeys.workspace = true
 proven-sessions.workspace = true
 proven-instance-details.workspace = true
 proven-kms.workspace = true
-proven-locks-nats.workspace = true
 proven-messaging.workspace = true
-proven-messaging-nats.workspace = true
 proven-network.workspace = true
 proven-postgres.workspace = true
 proven-radix-aggregator.workspace = true
@@ -47,7 +44,6 @@ proven-sql.workspace = true
 proven-sql-streamed.workspace = true
 proven-store.workspace = true
 proven-store-asm.workspace = true
-proven-store-nats.workspace = true
 proven-store-s3.workspace = true
 proven-vsock-proxy.workspace = true
 proven-vsock-rpc.workspace = true

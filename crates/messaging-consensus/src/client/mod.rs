@@ -517,9 +517,6 @@ mod tests {
     #[traced_test]
     #[serial]
     async fn test_client_request_without_service() {
-        // Note: Since consensus client doesn't actually wait for responses yet
-        // (the response correlation mechanism needs to be implemented),
-        // this test will timeout as expected but for different reasons than NATS
         let options = create_test_options(next_port()).await;
 
         let stream = ConsensusStream::<

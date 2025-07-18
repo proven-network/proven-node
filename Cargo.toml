@@ -41,11 +41,9 @@ members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
-    "crates/locks-nats",
     "crates/messaging",
     # "crates/messaging-consensus",
     "crates/messaging-memory",
-    "crates/messaging-nats",
     "crates/network",
     "crates/passkeys",
     "crates/postgres",
@@ -72,7 +70,6 @@ members = [
     "crates/store-engine",
     "crates/store-fs",
     "crates/store-memory",
-    "crates/store-nats",
     "crates/store-s3",
     "crates/topology",
     "crates/topology-governance",
@@ -121,11 +118,9 @@ default-members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
-    "crates/locks-nats",
     "crates/messaging",
     # "crates/messaging-consensus",
     "crates/messaging-memory",
-    "crates/messaging-nats",
     "crates/network",
     "crates/passkeys",
     "crates/postgres",
@@ -152,7 +147,6 @@ default-members = [
     "crates/store-engine",
     "crates/store-fs",
     "crates/store-memory",
-    "crates/store-nats",
     "crates/store-s3",
     "crates/topology",
     "crates/topology-governance",
@@ -193,7 +187,6 @@ argon2 = "0.5"
 asn1-rs = "0.7.1"
 assert_matches = "1.5.0"
 async-compression = "0.4.27"
-async-nats = { version = "0.42.0", default-features = false, features = ["aws-lc-rs", "server_2_10", "server_2_11"] }
 async-once-cell = "0.5.4"
 async-stream = "0.3.6"
 async-trait = "0.1.87"
@@ -472,11 +465,9 @@ proven-local-cli = { path = "crates/local-cli" }
 proven-local-tui = { path = "crates/local-tui" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
-proven-locks-nats = { path = "crates/locks-nats" }
 proven-messaging = { path = "crates/messaging" }
 # proven-messaging-consensus = { path = "crates/messaging-consensus" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
-proven-messaging-nats = { path = "crates/messaging-nats" }
 proven-network = { path = "crates/network" }
 proven-passkeys = { path = "crates/passkeys" }
 proven-postgres = { path = "crates/postgres" }
@@ -503,7 +494,6 @@ proven-store-asm = { path = "crates/store-asm" }
 proven-store-engine = { path = "crates/store-engine" }
 proven-store-fs = { path = "crates/store-fs" }
 proven-store-memory = { path = "crates/store-memory" }
-proven-store-nats = { path = "crates/store-nats" }
 proven-store-s3 = { path = "crates/store-s3" }
 proven-topology = { path = "crates/topology" }
 proven-topology-governance = { path = "crates/topology-governance" }

@@ -84,18 +84,6 @@ pub enum Error {
     #[error(transparent)]
     Kms(#[from] proven_kms::Error),
 
-    /// NATS monitor error.
-    #[error(transparent)]
-    NatsMonitor(#[from] proven_nats_monitor::Error),
-
-    /// NATS server error.
-    #[error(transparent)]
-    NatsServer(#[from] proven_nats_server::Error),
-
-    /// NATS KV error.
-    #[error(transparent)]
-    NatsStore(#[from] proven_store_nats::Error),
-
     /// Network configuration error.
     #[cfg(target_os = "linux")]
     #[error(transparent)]

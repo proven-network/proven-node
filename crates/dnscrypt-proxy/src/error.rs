@@ -15,7 +15,7 @@ pub enum Error {
     AlreadyStarted,
 
     /// Failed to write config file.
-    #[error("failed to write nats config: {0}")]
+    #[error("failed to write dnscrypt-proxy config: {0}")]
     ConfigWrite(#[from] std::io::Error),
 
     /// Failed to encode DNS stamp.

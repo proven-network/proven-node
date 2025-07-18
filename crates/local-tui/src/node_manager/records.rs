@@ -540,14 +540,6 @@ pub fn build_node_config(
         governance: (**governance).clone(), // Use the shared governance instance
         port: main_port,
 
-        nats_cli_bin_dir: None,
-        nats_client_port: allocate_port().unwrap(),
-        nats_cluster_port: allocate_port().unwrap(),
-        nats_config_dir: PathBuf::from(format!("/tmp/proven/{session_id}/data/{name}/nats-config")),
-        nats_http_port: allocate_port().unwrap(),
-        nats_server_bin_dir: None,
-        nats_store_dir: PathBuf::from(format!("/tmp/proven/{session_id}/data/{name}/nats")),
-
         network_config_path: None, // Using shared governance instead
         node_key: private_key,
 

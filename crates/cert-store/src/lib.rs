@@ -1,4 +1,4 @@
-//! Shared cert store for both HTTPS and NATS.
+//! Shared cert store for HTTPS.
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]

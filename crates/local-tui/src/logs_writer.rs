@@ -462,8 +462,7 @@ where
 
         // Ignore targets from certain sources
         if let Some(target_str) = target.as_deref()
-            && (target_str.starts_with("async_nats")
-                || target_str.starts_with("openraft")
+            && (target_str.starts_with("openraft")
                 || target_str.starts_with("hyper_util")
                 || target_str.starts_with("swc_ecma_transforms_base")
                 || target_str.starts_with("swc_ecma_transforms_base")

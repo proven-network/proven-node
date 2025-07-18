@@ -118,9 +118,6 @@ struct StartArgs {
     #[arg(long, default_value_t = 100, env = "PROVEN_MAX_RUNTIME_WORKERS")]
     max_runtime_workers: u32,
 
-    #[arg(long, default_value_t = 6222, env = "PROVEN_NATS_CLUSTER_PORT")]
-    nats_cluster_port: u16,
-
     #[clap(long, required = true, env = "PROVEN_NFS_MOUNT_POINT")]
     nfs_mount_point: String,
 

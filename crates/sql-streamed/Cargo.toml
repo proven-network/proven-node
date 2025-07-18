@@ -22,21 +22,9 @@ tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-async-nats.workspace = true
 criterion.workspace = true
 proven-messaging-memory.workspace = true
-proven-messaging-nats.workspace = true
 proven-store-memory.workspace = true
-
-[[bench]]
-name = "nats"
-harness = false
-path = "benches/nats.rs"
-
-[[bench]]
-name = "nats-cluster"
-harness = false
-path = "benches/nats-cluster.rs"
 
 [[bench]]
 name = "memory"

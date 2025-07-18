@@ -1338,42 +1338,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-nats"
-version = "0.42.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08f6da6d49a956424ca4e28fe93656f790d748b469eaccbc7488fec545315180"
-dependencies = [
- "aws-lc-rs",
- "base64 0.22.1",
- "bytes",
- "futures",
- "memchr",
- "nkeys",
- "nuid",
- "once_cell",
- "pin-project",
- "portable-atomic",
- "rand 0.8.5",
- "regex",
- "rustls-native-certs 0.7.3",
- "rustls-pemfile",
- "rustls-webpki 0.102.8",
- "serde",
- "serde_json",
- "serde_nanos",
- "serde_repr",
- "thiserror 1.0.69",
- "time",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tokio-websockets",
- "tracing",
- "tryhard",
- "url",
-]
-
-[[package]]
 name = "async-once-cell"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4006,7 +3970,7 @@ dependencies = [
  "percent-encoding",
  "rustls",
  "rustls-pki-types",
- "rustls-webpki 0.103.4",
+ "rustls-webpki",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
@@ -4834,7 +4798,7 @@ dependencies = [
  "rustls-pemfile",
  "rustls-pki-types",
  "rustls-tokio-stream",
- "rustls-webpki 0.103.4",
+ "rustls-webpki",
  "serde",
  "thiserror 2.0.12",
  "tokio",
@@ -8656,21 +8620,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nkeys"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f49e787f4c61cbd0f9320b31cc26e58719f6aa5068e34697dd3aea361412fe3"
-dependencies = [
- "data-encoding",
- "ed25519",
- "ed25519-dalek",
- "getrandom 0.2.16",
- "log",
- "rand 0.8.5",
- "signatory",
-]
-
-[[package]]
 name = "node_resolver"
 version = "0.47.0"
 dependencies = [
@@ -8753,7 +8702,7 @@ dependencies = [
  "p384",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.4",
+ "rustls-webpki",
  "sealed",
  "serde",
  "serde_bytes",
@@ -8779,15 +8728,6 @@ checksum = "77a8165726e8236064dbb45459242600304b42a5ea24ee2948e18e023bf7ba84"
 dependencies = [
  "overload",
  "winapi",
-]
-
-[[package]]
-name = "nuid"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc895af95856f929163a0aa20c26a78d26bfdc839f51b9d5aa7a5b79e52b7e83"
-dependencies = [
- "rand 0.8.5",
 ]
 
 [[package]]
@@ -10662,7 +10602,6 @@ dependencies = [
 name = "proven-local"
 version = "0.1.0"
 dependencies = [
- "async-nats",
  "axum 0.8.4",
  "bytes",
  "ciborium",
@@ -10703,7 +10642,6 @@ dependencies = [
  "proven-store-engine",
  "proven-store-fs",
  "proven-store-memory",
- "proven-store-nats",
  "proven-topology",
  "proven-transport",
  "proven-transport-ws",
@@ -10810,22 +10748,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-locks-nats"
-version = "0.1.0"
-dependencies = [
- "assert_matches",
- "async-nats",
- "async-trait",
- "bytes",
- "fastrand",
- "proven-locks",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "proven-messaging"
 version = "0.1.0"
 dependencies = [
@@ -10846,28 +10768,6 @@ dependencies = [
  "paste",
  "proven-bootable",
  "proven-messaging",
- "serial_test",
- "thiserror 2.0.12",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "proven-messaging-nats"
-version = "0.1.0"
-dependencies = [
- "async-nats",
- "async-trait",
- "bytes",
- "futures",
- "paste",
- "proven-bootable",
- "proven-messaging",
- "serde",
- "serde_json",
  "serial_test",
  "thiserror 2.0.12",
  "tokio",
@@ -11059,7 +10959,6 @@ dependencies = [
 name = "proven-radix-stream"
 version = "0.1.0"
 dependencies = [
- "async-nats",
  "async-trait",
  "bytes",
  "ciborium",
@@ -11165,7 +11064,6 @@ dependencies = [
 name = "proven-sql-streamed"
 version = "0.1.0"
 dependencies = [
- "async-nats",
  "async-trait",
  "bytes",
  "ciborium",
@@ -11177,7 +11075,6 @@ dependencies = [
  "proven-libsql",
  "proven-messaging",
  "proven-messaging-memory",
- "proven-messaging-nats",
  "proven-sql",
  "proven-store",
  "proven-store-memory",
@@ -11340,21 +11237,6 @@ dependencies = [
  "async-trait",
  "bytes",
  "deno_error",
- "paste",
- "proven-store",
- "thiserror 2.0.12",
- "tokio",
-]
-
-[[package]]
-name = "proven-store-nats"
-version = "0.1.0"
-dependencies = [
- "async-nats",
- "async-trait",
- "bytes",
- "deno_error",
- "futures",
  "paste",
  "proven-store",
  "thiserror 2.0.12",
@@ -12850,7 +12732,7 @@ dependencies = [
  "once_cell",
  "ring",
  "rustls-pki-types",
- "rustls-webpki 0.103.4",
+ "rustls-webpki",
  "subtle",
  "zeroize",
 ]
@@ -12913,7 +12795,7 @@ dependencies = [
  "rustls",
  "rustls-native-certs 0.8.1",
  "rustls-platform-verifier-android",
- "rustls-webpki 0.103.4",
+ "rustls-webpki",
  "security-framework 3.2.0",
  "security-framework-sys",
  "webpki-root-certs 0.26.11",
@@ -12936,17 +12818,6 @@ dependencies = [
  "rustls",
  "socket2",
  "tokio",
-]
-
-[[package]]
-name = "rustls-webpki"
-version = "0.102.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
-dependencies = [
- "aws-lc-rs",
- "rustls-pki-types",
- "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -13505,15 +13376,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_nanos"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a93142f0367a4cc53ae0fead1bcda39e85beccfad3dcd717656cacab94b12985"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_path_to_error"
 version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13767,18 +13629,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9203b8055f63a2a00e2f593bb0510367fe707d7ff1e5c872de2f537b339e5410"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "signatory"
-version = "0.27.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1e303f8205714074f6068773f0e29527e0453937fe837c9717d066635b65f31"
-dependencies = [
- "pkcs8",
- "rand_core 0.6.4",
- "signature",
- "zeroize",
 ]
 
 [[package]]
@@ -15146,27 +14996,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-websockets"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f591660438b3038dd04d16c938271c79e7e06260ad2ea2885a4861bfb238605d"
-dependencies = [
- "aws-lc-rs",
- "base64 0.22.1",
- "bytes",
- "futures-core",
- "futures-sink",
- "http 1.3.1",
- "httparse",
- "rand 0.8.5",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "webpki-roots 0.26.11",
-]
-
-[[package]]
 name = "toml"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15541,16 +15370,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "tryhard"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9fe58ebd5edd976e0fe0f8a14d2a04b7c81ef153ea9a54eebc42e67c2c23b4e5"
-dependencies = [
- "pin-project-lite",
- "tokio",
-]
 
 [[package]]
 name = "tungstenite"

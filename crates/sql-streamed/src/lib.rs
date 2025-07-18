@@ -788,7 +788,6 @@ mod tests {
         assert!(result.is_ok(), "Test timed out");
     }
 
-    // A more complete snapshot test (verifying rollup) is in the nats.rs test file.
     #[tokio::test]
     async fn test_snapshotting() {
         let result = timeout(Duration::from_secs(10), async {
