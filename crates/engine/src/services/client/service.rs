@@ -539,7 +539,20 @@ where
                                 if let Some(service) = global.as_ref() {
                                     match service.submit_request(request.clone()).await {
                                         Ok(response) => {
-                                            let _ = response_tx.send(Ok(response));
+                                            // Check if the response is an error variant
+                                            match &response {
+                                                GlobalResponse::Error { message } => {
+                                                    let _ =
+                                                        response_tx
+                                                            .send(Err(ConsensusError::with_context(
+                                                            crate::error::ErrorKind::InvalidState,
+                                                            message.clone(),
+                                                        )));
+                                                }
+                                                _ => {
+                                                    let _ = response_tx.send(Ok(response));
+                                                }
+                                            }
                                         }
                                         Err(e) => {
                                             // Check if we need to forward to the leader
@@ -584,7 +597,18 @@ where
                                                                 .await
                                                             {
                                                                 Ok(super::ForwardGlobalResponse { response }) => {
-                                                                    let _ = response_tx.send(Ok(response));
+                                                                    // Check if the forwarded response is an error variant
+                                                                    match &response {
+                                                                        GlobalResponse::Error { message } => {
+                                                                            let _ = response_tx.send(Err(ConsensusError::with_context(
+                                                                                crate::error::ErrorKind::InvalidState,
+                                                                                message.clone(),
+                                                                            )));
+                                                                        }
+                                                                        _ => {
+                                                                            let _ = response_tx.send(Ok(response));
+                                                                        }
+                                                                    }
                                                                 }
                                                                 Err(e) => {
                                                                     let _ = response_tx.send(Err(

@@ -279,27 +279,132 @@ where
     }
 
     /// Ensure the stream exists
+    #[allow(clippy::cognitive_complexity)]
+    #[allow(clippy::too_many_lines)]
     async fn ensure_stream(&self) -> Result<(), Error> {
+        const MAX_RETRIES: u32 = 10;
+        const RETRY_DELAY_MS: u64 = 100;
+
+        const MAX_RETRIES_KEY_INDEX: u32 = 10;
+        const RETRY_DELAY_MS_KEY_INDEX: u64 = 100;
+
         let stream_name = self.get_stream_name();
 
         // Check if stream exists
         if !self.client.stream_exists(&stream_name).await? {
             // Create the stream
             let config = StreamConfig::default();
-            self.client
+            match self
+                .client
                 .create_stream_auto(stream_name.clone(), config)
-                .await?;
-            info!("Created store stream: {}", stream_name);
+                .await
+            {
+                Ok(()) => {
+                    info!("Created store stream: {}", stream_name);
+                }
+                Err(e) => {
+                    // Check if error is because stream already exists
+                    let error_msg = e.to_string();
+                    if error_msg.contains("already exists") {
+                        debug!("Store stream {} already exists, continuing", stream_name);
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+
+            // Wait for stream to be fully available in routing table
+            // This prevents race conditions where the stream is created but not yet routable
+            let mut retries = 0;
+
+            while retries < MAX_RETRIES {
+                // Try to verify the stream is accessible by checking if it exists
+                match self.client.stream_exists(&stream_name).await {
+                    Ok(true) => {
+                        debug!("Store stream {} verified as accessible", stream_name);
+                        break;
+                    }
+                    Ok(false) => {
+                        debug!(
+                            "Store stream {} not yet accessible, retrying...",
+                            stream_name
+                        );
+                    }
+                    Err(e) => {
+                        debug!(
+                            "Error checking store stream {}: {}, retrying...",
+                            stream_name, e
+                        );
+                    }
+                }
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(RETRY_DELAY_MS)).await;
+                retries += 1;
+            }
+
+            if retries >= MAX_RETRIES {
+                return Err(Error::Engine(format!(
+                    "Stream {stream_name} created but not accessible after {MAX_RETRIES} retries"
+                )));
+            }
         }
 
         // Also ensure key index stream exists
         let key_index = self.get_key_index_stream();
         if !self.client.stream_exists(&key_index).await? {
             let config = StreamConfig::default();
-            self.client
+            match self
+                .client
                 .create_stream_auto(key_index.clone(), config)
-                .await?;
-            info!("Created key index stream: {}", key_index);
+                .await
+            {
+                Ok(()) => {
+                    info!("Created key index stream: {}", key_index);
+                }
+                Err(e) => {
+                    // Check if error is because stream already exists
+                    let error_msg = e.to_string();
+                    if error_msg.contains("already exists") {
+                        debug!("Key index stream {} already exists, continuing", key_index);
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+
+            // Wait for key index stream to be fully available
+            let mut retries = 0;
+
+            while retries < MAX_RETRIES_KEY_INDEX {
+                match self.client.stream_exists(&key_index).await {
+                    Ok(true) => {
+                        debug!("Key index stream {} verified as accessible", key_index);
+                        break;
+                    }
+                    Ok(false) => {
+                        debug!(
+                            "Key index stream {} not yet accessible, retrying...",
+                            key_index
+                        );
+                    }
+                    Err(e) => {
+                        debug!(
+                            "Error checking key index stream {}: {}, retrying...",
+                            key_index, e
+                        );
+                    }
+                }
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(RETRY_DELAY_MS_KEY_INDEX))
+                    .await;
+                retries += 1;
+            }
+
+            if retries >= MAX_RETRIES {
+                return Err(Error::Engine(format!(
+                    "Key index stream {key_index} created but not accessible after {MAX_RETRIES} retries"
+                )));
+            }
         }
 
         Ok(())
