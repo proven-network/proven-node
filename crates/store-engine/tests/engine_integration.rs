@@ -379,7 +379,7 @@ async fn test_store_persistence_across_recreations() {
         for (i, store) in stores.iter().enumerate() {
             match store
                 .put(
-                    &format!("rapid_key_{i}"),
+                    format!("rapid_key_{i}"),
                     bytes::Bytes::from(format!("value_{i}")),
                 )
                 .await

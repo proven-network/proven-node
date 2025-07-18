@@ -27,18 +27,44 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Formatter};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use lru::LruCache;
 use proven_engine::{Client, stream::StreamConfig};
 use proven_store::{Store, Store1, Store2, Store3};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, info};
 
 /// Special stream name for key listing
 const KEY_INDEX_STREAM: &str = "__store_keys__";
+
+/// Default cache size for store states
+const DEFAULT_CACHE_SIZE: usize = 1000;
+
+/// How often to sync with the stream by default
+const DEFAULT_SYNC_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Type alias for the store state cache
+type StoreStateCache = Arc<Mutex<LruCache<String, Arc<CachedStoreState>>>>;
+
+/// Global cache for store states to avoid replaying messages
+static STORE_STATE_CACHE: std::sync::OnceLock<StoreStateCache> = std::sync::OnceLock::new();
+
+/// Get or initialize the global store state cache
+fn get_store_cache() -> StoreStateCache {
+    STORE_STATE_CACHE
+        .get_or_init(|| {
+            Arc::new(Mutex::new(LruCache::new(
+                NonZeroUsize::new(DEFAULT_CACHE_SIZE).unwrap(),
+            )))
+        })
+        .clone()
+}
 
 /// Key operation for tracking keys in a store
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,11 +75,22 @@ enum KeyOperation {
     Remove { key: String },
 }
 
-/// In-memory state for a store
+/// Cached store state that can be shared across instances
+struct CachedStoreState {
+    /// The actual store state
+    state: Arc<RwLock<StoreStateInner>>,
+    /// When we last synced with the stream
+    last_sync: Arc<RwLock<Instant>>,
+    /// Stream name for this state
+    #[allow(dead_code)]
+    stream_name: String,
+}
+
+/// Inner state that's protected by `RwLock`
 #[derive(Debug, Clone)]
-struct StoreState<T> {
-    /// The key-value data
-    data: HashMap<String, T>,
+struct StoreStateInner {
+    /// The key-value data  
+    data: HashMap<String, Bytes>,
     /// Last sequence number read from stream
     last_sequence: u64,
 }
@@ -75,8 +112,6 @@ where
     client: Arc<dyn ClientWrapper>,
     /// Optional scope prefix
     prefix: Option<String>,
-    /// In-memory state cache
-    state: Arc<RwLock<StoreState<T>>>,
     /// Phantom data for type parameters
     _marker: std::marker::PhantomData<(T, D, S)>,
 }
@@ -97,7 +132,6 @@ where
         Self {
             client: self.client.clone(),
             prefix: self.prefix.clone(),
-            state: self.state.clone(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -241,10 +275,6 @@ where
         Self {
             client: Arc::new(ClientWrapperImpl { inner: client }),
             prefix: None,
-            state: Arc::new(RwLock::new(StoreState {
-                data: HashMap::new(),
-                last_sequence: 0,
-            })),
             _marker: std::marker::PhantomData,
         }
     }
@@ -254,10 +284,6 @@ where
         Self {
             client,
             prefix: Some(prefix),
-            state: Arc::new(RwLock::new(StoreState {
-                data: HashMap::new(),
-                last_sequence: 0,
-            })),
             _marker: std::marker::PhantomData,
         }
     }
@@ -410,6 +436,46 @@ where
         Ok(())
     }
 
+    /// Get or create the cached state for this store
+    async fn get_or_create_cached_state(&self) -> Result<Arc<CachedStoreState>, Error> {
+        let stream_name = self.get_stream_name();
+        let cache = get_store_cache();
+
+        // Check if we already have this state cached
+        {
+            let mut cache_guard = cache.lock().await;
+            if let Some(cached) = cache_guard.get(&stream_name) {
+                return Ok(cached.clone());
+            }
+        }
+
+        // Create new cached state
+        let cached_state = Arc::new(CachedStoreState {
+            state: Arc::new(RwLock::new(StoreStateInner {
+                data: HashMap::new(),
+                last_sequence: 0,
+            })),
+            last_sync: Arc::new(RwLock::new(
+                Instant::now().checked_sub(Duration::from_secs(60)).unwrap(),
+            )), // Force initial sync
+            stream_name: stream_name.clone(),
+        });
+
+        // Insert into cache
+        {
+            let mut cache_guard = cache.lock().await;
+            cache_guard.put(stream_name, cached_state.clone());
+        }
+
+        Ok(cached_state)
+    }
+
+    /// Check if we should sync the state
+    async fn should_sync(&self, cached_state: &CachedStoreState) -> bool {
+        let last_sync = cached_state.last_sync.read().await;
+        last_sync.elapsed() > DEFAULT_SYNC_INTERVAL
+    }
+
     /// Track a key operation
     async fn track_key_operation(&self, op: KeyOperation) -> Result<(), Error> {
         let payload = serde_json::to_vec(&op).map_err(|e| Error::Serialization(e.to_string()))?;
@@ -421,17 +487,30 @@ where
         Ok(())
     }
 
-    /// Sync state from stream
-    async fn sync_state(&self) -> Result<(), Error> {
+    /// Sync state from stream (incremental)
+    async fn sync_state(&self, cached_state: &Arc<CachedStoreState>) -> Result<(), Error> {
         let stream_name = self.get_stream_name();
-        let mut state = self.state.write().await;
 
-        // Read messages from where we left off
+        // Check if we should sync
+        if !self.should_sync(cached_state).await {
+            return Ok(());
+        }
+
+        // Get current state
+        let last_sequence = {
+            let state = cached_state.state.read().await;
+            state.last_sequence
+        };
+
+        // Read only new messages since last sync
         let batch_size = 100;
+        let mut total_messages = 0;
+        let mut current_sequence = last_sequence;
+
         loop {
             let messages = self
                 .client
-                .read_stream(stream_name.clone(), state.last_sequence + 1, batch_size)
+                .read_stream(stream_name.clone(), current_sequence + 1, batch_size)
                 .await?;
 
             if messages.is_empty() {
@@ -439,38 +518,40 @@ where
             }
 
             let message_count = messages.len();
-            for msg in messages {
-                // Extract key from metadata
-                if let Some(key) = msg
-                    .data
-                    .headers
-                    .iter()
-                    .find(|(k, _)| k == "key")
-                    .map(|(_, v)| v.clone())
-                {
-                    // Check if this is a delete (empty payload with deleted=true)
-                    let is_deleted = msg
+            total_messages += message_count;
+
+            // Process messages
+            {
+                let mut state = cached_state.state.write().await;
+
+                for msg in messages {
+                    // Extract key from metadata
+                    if let Some(key) = msg
                         .data
                         .headers
                         .iter()
-                        .any(|(k, v)| k == "deleted" && v == "true");
+                        .find(|(k, _)| k == "key")
+                        .map(|(_, v)| v.clone())
+                    {
+                        // Check if this is a delete (empty payload with deleted=true)
+                        let is_deleted = msg
+                            .data
+                            .headers
+                            .iter()
+                            .any(|(k, v)| k == "deleted" && v == "true");
 
-                    if is_deleted {
-                        state.data.remove(&key);
-                    } else {
-                        // Try to deserialize the value
-                        match T::try_from(msg.data.payload) {
-                            Ok(value) => {
-                                state.data.insert(key, value);
-                            }
-                            Err(e) => {
-                                debug!("Failed to deserialize value: {:?}", e);
-                            }
+                        if is_deleted {
+                            state.data.remove(&key);
+                        } else {
+                            // Store as bytes directly - conversion happens on read
+                            state.data.insert(key, msg.data.payload);
                         }
                     }
-                }
 
-                state.last_sequence = msg.sequence;
+                    state.last_sequence = msg.sequence;
+                    current_sequence = msg.sequence;
+                }
+                drop(state);
             }
 
             #[allow(clippy::cast_possible_truncation)]
@@ -479,7 +560,19 @@ where
             }
         }
 
-        drop(state);
+        // Update last sync time
+        {
+            let mut last_sync = cached_state.last_sync.write().await;
+            *last_sync = Instant::now();
+        }
+
+        if total_messages > 0 {
+            debug!(
+                "Synced {} new messages for stream {}",
+                total_messages, stream_name
+            );
+        }
+
         Ok(())
     }
 }
@@ -514,8 +607,7 @@ where
         })
         .await?;
 
-        // In a real implementation, we'd need a way to mark a key as deleted
-        // For now, we'll store a special tombstone value
+        // Mark as deleted in stream
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("deleted".to_string(), "true".to_string());
         metadata.insert("key".to_string(), key.to_string());
@@ -523,6 +615,14 @@ where
         self.client
             .publish(self.get_stream_name(), vec![], Some(metadata))
             .await?;
+
+        // Update cache immediately
+        let cached_state = self.get_or_create_cached_state().await?;
+        {
+            let mut state = cached_state.state.write().await;
+            state.data.remove(key);
+            // Don't update sequence number here - let sync handle it
+        }
 
         Ok(())
     }
@@ -536,12 +636,24 @@ where
         let key = key.as_ref();
         debug!("Getting key: {}", key);
 
-        // Sync state from stream
-        self.sync_state().await?;
+        // Get or create cached state
+        let cached_state = self.get_or_create_cached_state().await?;
 
-        // Get value from state
-        let state = self.state.read().await;
-        Ok(state.data.get(key).cloned())
+        // Sync if needed (incremental)
+        self.sync_state(&cached_state).await?;
+
+        // Get value from cache
+        let state = cached_state.state.read().await;
+        state.data.get(key).map_or_else(
+            || Ok(None),
+            |bytes| match T::try_from(bytes.clone()) {
+                Ok(value) => Ok(Some(value)),
+                Err(e) => {
+                    debug!("Failed to deserialize value for key {}: {:?}", key, e);
+                    Ok(None)
+                }
+            },
+        )
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
@@ -557,14 +669,15 @@ where
         let prefix = prefix.as_ref();
         debug!("Listing keys with prefix: {}", prefix);
 
-        // Sync state from stream
-        self.sync_state().await?;
+        // Get or create cached state
+        let cached_state = self.get_or_create_cached_state().await?;
 
-        // Get keys from state
-        Ok(self
-            .state
-            .read()
-            .await
+        // Sync if needed (incremental)
+        self.sync_state(&cached_state).await?;
+
+        // Get keys from cache
+        let state = cached_state.state.read().await;
+        Ok(state
             .data
             .keys()
             .filter(|k| k.starts_with(prefix))
@@ -580,9 +693,6 @@ where
 
         let key = key.as_ref();
         debug!("Putting key: {}", key);
-
-        // Clone the value before conversion since we need it later
-        let value_clone = value.clone();
 
         // Convert value to bytes
         let bytes: Bytes = value
@@ -604,10 +714,13 @@ where
         })
         .await?;
 
-        // Update local state
-        let mut state = self.state.write().await;
-        state.data.insert(key.to_string(), value_clone);
-        drop(state);
+        // Update cache immediately
+        let cached_state = self.get_or_create_cached_state().await?;
+        {
+            let mut state = cached_state.state.write().await;
+            state.data.insert(key.to_string(), bytes);
+            // Don't update sequence number here - let sync handle it
+        }
 
         Ok(())
     }
@@ -633,7 +746,6 @@ macro_rules! impl_scoped_store {
             {
                 client: Arc<dyn ClientWrapper>,
                 prefix: Option<String>,
-                state: Arc<RwLock<StoreState<T>>>,
                 _marker: std::marker::PhantomData<(T, D, S)>,
             }
 
@@ -653,7 +765,6 @@ macro_rules! impl_scoped_store {
                     Self {
                         client: self.client.clone(),
                         prefix: self.prefix.clone(),
-                        state: self.state.clone(),
                         _marker: std::marker::PhantomData,
                     }
                 }
@@ -702,10 +813,6 @@ macro_rules! impl_scoped_store {
                     Self {
                         client: Arc::new(ClientWrapperImpl { inner: client }),
                         prefix: None,
-                        state: Arc::new(RwLock::new(StoreState {
-                            data: HashMap::new(),
-                            last_sequence: 0,
-                        })),
                         _marker: std::marker::PhantomData,
                     }
                 }
@@ -719,10 +826,6 @@ macro_rules! impl_scoped_store {
                     Self {
                         client,
                         prefix: Some(prefix),
-                        state: Arc::new(RwLock::new(StoreState {
-                            data: HashMap::new(),
-                            last_sequence: 0,
-                        })),
                         _marker: std::marker::PhantomData,
                     }
                 }
