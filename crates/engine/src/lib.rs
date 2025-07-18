@@ -49,4 +49,4 @@ pub use {
 };
 
 // Re-export cluster types for the public API
-pub use services::cluster::{ClusterInfo, ClusterState};
+pub use services::cluster::{ClusterInfo, ClusterState, NodeRole};

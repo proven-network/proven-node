@@ -315,6 +315,17 @@ where
 
                     info!("Cluster formed successfully: {}", result.cluster_id);
 
+                    // Update discovery manager's cluster state
+                    if let Some(dm) = &self.discovery_manager {
+                        dm.update_cluster_state(
+                            true,                       // active
+                            Some(1),                    // initial term
+                            Some(self.node_id.clone()), // we are the leader
+                            Some(result.members.len()), // cluster size
+                        )
+                        .await;
+                    }
+
                     // Trigger formation callback
                     if let Some(callback) = &self.formation_callback {
                         let event = ClusterFormationEvent::FormedAsLeader {
