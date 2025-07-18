@@ -143,7 +143,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     };
 
     // Create RocksDB storage
-    let storage = RocksDbStorage::new("/tmp/proven-engine")
+    let storage = RocksDbStorage::new(&bootstrap.config.rocksdb_store_dir)
         .await
         .map_err(|e| Error::Storage(format!("Failed to create RocksDB storage: {e}")))?;
 

@@ -456,6 +456,21 @@ impl NodeManager {
             }
         }
 
+        // Always handle RocksDB storage directory regardless of specializations
+        // This ensures engine persistence across restarts
+        if let Some(dir_num) = self.get_persistent_directory("rocksdb") {
+            let persistent_dir = proven_dir.join(format!("rocksdb-{dir_num}"));
+            Self::create_symlink_and_update_config(
+                &persistent_dir,
+                &node_config.rocksdb_store_dir,
+            )?;
+            assignments.push(("rocksdb".to_string(), dir_num));
+            info!(
+                "RocksDB data will persist at: {:?} (via symlink from {:?})",
+                persistent_dir, node_config.rocksdb_store_dir
+            );
+        }
+
         // Store directory assignments for this node
         if !assignments.is_empty() {
             let mut node_assignments = self.node_dir_assignments.write();

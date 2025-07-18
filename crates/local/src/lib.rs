@@ -220,6 +220,9 @@ pub struct NodeConfig<G: TopologyAdaptor> {
 
     /// Radix Stokenet store directory
     pub radix_stokenet_store_dir: PathBuf,
+
+    /// `RocksDB` store directory
+    pub rocksdb_store_dir: PathBuf,
 }
 
 /// A managed node instance that can be started, stopped, and queried

@@ -5,11 +5,12 @@ use crate::messages::{NodeOperation, TuiNodeConfig};
 use crate::node_id::TuiNodeId;
 
 use anyhow::Result;
-use ed25519_dalek::SigningKey;
+use ed25519_dalek::{SECRET_KEY_LENGTH, SigningKey};
 use parking_lot::RwLock;
 use proven_local::{LocalNode, NodeStatus};
 use proven_topology::{Node, NodeId};
 use proven_topology_mock::MockTopologyAdaptor;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc};
@@ -436,9 +437,9 @@ impl NodeHandle {
     }
 }
 
-/// Create a default node configuration
+/// Create a default node configuration with deterministic key generation
 pub fn create_node_config(
-    _id: TuiNodeId,
+    id: TuiNodeId,
     name: &str,
     governance: &Arc<MockTopologyAdaptor>,
     session_id: &str,
@@ -448,7 +449,8 @@ pub fn create_node_config(
         3000 // Fallback port
     });
 
-    let private_key = SigningKey::generate(&mut rand::thread_rng());
+    // Generate deterministic signing key based on execution order only
+    let private_key = generate_deterministic_signing_key(id.execution_order);
 
     build_node_config(name, main_port, governance, private_key, session_id)
 }
@@ -561,5 +563,65 @@ pub fn build_node_config(
         radix_stokenet_store_dir: PathBuf::from(format!(
             "/tmp/proven/{session_id}/data/{name}/radix-node-stokenet"
         )),
+
+        rocksdb_store_dir: PathBuf::from(format!("/tmp/proven/{session_id}/data/{name}/rocksdb")),
+    }
+}
+
+/// Generate a deterministic signing key based on execution order only
+fn generate_deterministic_signing_key(execution_order: u8) -> SigningKey {
+    // Create a deterministic seed from execution order
+    let mut hasher = Sha256::new();
+    hasher.update(b"proven-node-deterministic-key");
+    hasher.update(execution_order.to_le_bytes());
+
+    let hash = hasher.finalize();
+    let mut seed = [0u8; SECRET_KEY_LENGTH];
+    seed.copy_from_slice(&hash[..SECRET_KEY_LENGTH]);
+
+    SigningKey::from_bytes(&seed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deterministic_key_generation() {
+        use ed25519_dalek::ed25519::signature::SignerMut;
+
+        // Test that same inputs produce same key
+        let mut key1 = generate_deterministic_signing_key(1);
+        let key2 = generate_deterministic_signing_key(1);
+        assert_eq!(
+            key1.to_bytes(),
+            key2.to_bytes(),
+            "Same inputs should produce same key"
+        );
+
+        // Test that different execution orders produce different keys
+        let key3 = generate_deterministic_signing_key(2);
+        assert_ne!(
+            key1.to_bytes(),
+            key3.to_bytes(),
+            "Different execution orders should produce different keys"
+        );
+
+        // Test that execution order 0 produces different key than 1
+        let key4 = generate_deterministic_signing_key(0);
+        assert_ne!(
+            key1.to_bytes(),
+            key4.to_bytes(),
+            "Different execution orders should produce different keys"
+        );
+
+        // Verify the keys are valid
+        let msg = b"test message";
+        let sig1 = key1.sign(msg);
+        let verifying_key1 = key1.verifying_key();
+        assert!(
+            verifying_key1.verify_strict(msg, &sig1).is_ok(),
+            "Generated key should be valid"
+        );
     }
 }

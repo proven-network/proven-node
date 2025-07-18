@@ -425,6 +425,14 @@ struct Args {
     /// Skip vacuuming the database
     #[arg(long, env = "PROVEN_SKIP_VACUUM")]
     skip_vacuum: bool,
+
+    /// `RocksDB` store directory
+    #[arg(
+        long,
+        default_value = "/tmp/proven/rocksdb",
+        env = "PROVEN_ROCKSDB_STORE_DIR"
+    )]
+    rocksdb_store_dir: PathBuf,
 }
 
 /// Create a `NodeConfig` from Args, handling async operations
@@ -521,6 +529,7 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockTopologyAdaptor
         radix_stokenet_http_port: args.radix_stokenet_http_port,
         radix_stokenet_p2p_port: args.radix_stokenet_p2p_port,
         radix_stokenet_store_dir: args.radix_stokenet_store_dir,
+        rocksdb_store_dir: args.rocksdb_store_dir,
     })
 }
 
