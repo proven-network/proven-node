@@ -22,6 +22,12 @@ uuid.workspace = true
 
 [dev-dependencies]
 proven-attestation-mock.workspace = true
+proven-network.workspace = true
 proven-topology-mock.workspace = true
+proven-util.workspace = true
+rand.workspace = true
+reqwest.workspace = true
+serde = { workspace = true, features = ["derive"] }
 tokio-test.workspace = true
+tower-http = { workspace = true, features = ["cors"] }
 tracing-subscriber.workspace = true

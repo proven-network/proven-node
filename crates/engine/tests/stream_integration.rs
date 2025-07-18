@@ -55,17 +55,18 @@ async fn test_stream_operations() {
     let client = engines[0].client();
     println!("Using first node's client - all nodes should receive events via global consensus");
 
-    // Wait for default group formation on at least one node (the leader)
-    // In the current implementation, only the leader creates the default group
+    // Wait for default group formation on all nodes
+    // The leader creates the group first, then it's replicated to followers
+    println!("Waiting for default group to be replicated to all nodes...");
     cluster
         .wait_for_specific_group(
             &engines,
             proven_engine::foundation::types::ConsensusGroupId::new(1),
-            1,
-            Duration::from_secs(10),
+            engines.len(),           // Expect all nodes to have the group
+            Duration::from_secs(30), // Increased timeout for replication
         )
         .await
-        .expect("Failed to wait for default group formation on leader");
+        .expect("Failed to wait for default group formation on all nodes");
 
     // Step 2: Create a stream
     let stream_name = format!("test-stream-{}", uuid::Uuid::new_v4());

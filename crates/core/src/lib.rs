@@ -104,7 +104,7 @@ where
 
     /// Get the current mode
     pub async fn mode(&self) -> CoreMode {
-        self.mode.read().await.clone()
+        *self.mode.read().await
     }
 
     /// Bootstrap from Bootstrapping to Bootstrapped mode
@@ -164,6 +164,7 @@ where
 
         // Rebuild and install the router to include the new bootstrapped routes
         if *self.router_installed.read().await {
+            warn!("Core transitioning to bootstrapped mode - router will be replaced");
             self.build_and_install_main_router().await?;
             info!("Router reinstalled with bootstrapped routes");
         }
@@ -200,10 +201,14 @@ where
 
     /// Build and install the complete router for the main hostname atomically
     async fn build_and_install_main_router(&self) -> Result<(), Error> {
+        let mode = *self.mode.read().await;
+        info!("Building and installing router for mode: {:?}", mode);
+
         let router = RouterBuilder::create_base_router(self.engine_router.clone());
 
         // Add bootstrapped routes if in bootstrapped mode
-        let router = if let CoreMode::Bootstrapped = *self.mode.read().await {
+        let router = if let CoreMode::Bootstrapped = mode {
+            info!("Adding bootstrapped routes to router");
             self.add_bootstrapped_routes_to_router(router)
         } else {
             router
@@ -215,7 +220,9 @@ where
         // Set the complete router atomically
         let fqdn = extract_hostname_from_origin(&self.origin)?;
 
-        RouterInstaller::install_router(&self.http_server, fqdn, router).await?;
+        info!("Installing router for hostname: {}", fqdn);
+        RouterInstaller::install_router(&self.http_server, fqdn.clone(), router).await?;
+        info!("Router installation complete for hostname: {}", fqdn);
 
         Ok(())
     }

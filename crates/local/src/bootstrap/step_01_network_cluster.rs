@@ -145,23 +145,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     // Create memory storage
     let storage = MemoryStorage::new();
 
-    let mut engine = EngineBuilder::new(node_id.clone())
-        .with_config(engine_config)
-        .with_network(network_manager.clone())
-        .with_topology(topology_manager.clone())
-        .with_storage(storage)
-        .build()
-        .await
-        .map_err(|e| Error::Consensus(format!("failed to build engine: {e}")))?;
-
-    engine
-        .start()
-        .await
-        .map_err(|e| Error::Bootable(Box::new(e)))?;
-
-    // Save the engine client for use in later steps
-    bootstrap.engine_client = Some(engine.client());
-
+    // Create HTTP server and Core first, before starting the engine
     let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));
     let http_server = InsecureHttpServer::new(
         http_sock_addr,
@@ -178,7 +162,29 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         origin: origin.to_string(),
     });
 
+    // Start the Core first to ensure HTTP server with WebSocket routes is ready
     core.start().await.map_err(Error::Bootable)?;
+
+    // Give the HTTP server time to fully start and bind
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Now build and start the engine
+    let mut engine = EngineBuilder::new(node_id.clone())
+        .with_config(engine_config)
+        .with_network(network_manager.clone())
+        .with_topology(topology_manager.clone())
+        .with_storage(storage)
+        .build()
+        .await
+        .map_err(|e| Error::Consensus(format!("failed to build engine: {e}")))?;
+
+    engine
+        .start()
+        .await
+        .map_err(|e| Error::Bootable(Box::new(e)))?;
+
+    // Save the engine client for use in later steps
+    bootstrap.engine_client = Some(engine.client());
 
     // TODO: Add components to bootable vec
 

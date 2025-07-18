@@ -14,7 +14,7 @@ use proven_sessions::SessionManagement;
 use proven_topology::TopologyAdaptor;
 
 /// Core mode state
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum CoreMode {
     /// Bootstrapping mode with minimal functionality
     Bootstrapping,
