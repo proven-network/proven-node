@@ -367,5 +367,3 @@ where
         self.task_tracker.wait().await;
     }
 }
-
-// TODO: Add tests for engine-based messaging consumer

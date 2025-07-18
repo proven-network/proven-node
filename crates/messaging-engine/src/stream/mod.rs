@@ -825,5 +825,3 @@ impl_scoped_stream!(1, EngineStream, Stream, "A single-scoped engine stream.");
 impl_scoped_stream!(2, EngineStream1, Stream1, "A double-scoped engine stream.");
 
 impl_scoped_stream!(3, EngineStream2, Stream2, "A triple-scoped engine stream.");
-
-// TODO: Add tests for engine-based messaging

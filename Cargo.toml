@@ -487,6 +487,7 @@ proven-sql-direct = { path = "crates/sql-direct" }
 proven-sql-streamed = { path = "crates/sql-streamed" }
 proven-storage = { path = "crates/storage" }
 proven-storage-memory = { path = "crates/storage-memory" }
+proven-transport-memory = { path = "crates/transport-memory" }
 proven-storage-rocksdb = { path = "crates/storage-rocksdb" }
 proven-storage-s3 = { path = "crates/storage-s3" }
 proven-store = { path = "crates/store" }
@@ -555,6 +556,7 @@ sec1 = "0.7.3"
 semver = "1.0.26"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = "0.11.17"
+serde_cbor = "0.11.2"
 serde_json = "1.0.140"
 serde_yaml = "0.9.33"
 serde-value = "0.7.0"
