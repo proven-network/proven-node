@@ -137,6 +137,7 @@ where
                                 node_id.clone(),
                                 network_manager,
                                 storage,
+                                event_publisher.clone(),
                             ).await?;
 
                             // Get member nodes from topology
@@ -163,6 +164,10 @@ where
                             let handler: &dyn RaftMessageHandler = layer.as_ref();
                             handler.initialize_cluster(raft_members).await?;
 
+                            // Event publisher already set during layer creation
+
+                            // Store the layer clone for later use
+                            let layer_clone = layer.clone();
                             let mut consensus_guard = consensus_layer.write().await;
                             *consensus_guard = Some(layer);
 
@@ -174,13 +179,35 @@ where
                                 }, "global_consensus".to_string()).await;
                             }
 
-                            // Request creation of default group via event
-                            tracing::info!("GlobalConsensusService: Requesting default group creation");
-                            if let Some(ref publisher) = event_publisher {
-                                let _ = publisher.publish(Event::RequestDefaultGroupCreation {
-                                    members: members.clone(),
-                                }, "global_consensus".to_string()).await;
-                            }
+                            // Create default group through global consensus
+                            tracing::info!("GlobalConsensusService: Creating default group through consensus");
+                            // Spawn a task to create the default group after a small delay
+                            // This ensures Raft has time to stabilize after initialization
+                            tokio::spawn(async move {
+                                // Wait a bit for Raft to stabilize
+                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                // Submit CreateGroup request to global consensus
+                                let create_group_request = crate::consensus::global::GlobalRequest::CreateGroup {
+                                    info: crate::consensus::global::types::GroupInfo {
+                                        id: crate::foundation::types::ConsensusGroupId::new(1),
+                                        members: members.clone(),
+                                        created_at: std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap()
+                                            .as_secs(),
+                                        metadata: std::collections::HashMap::new(),
+                                    },
+                                };
+                                // Submit the request to create the default group using the clone
+                                match layer_clone.submit_request(create_group_request).await {
+                                    Ok(_) => {
+                                        tracing::info!("Successfully submitted default group creation to consensus");
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to create default group through consensus: {}", e);
+                                    }
+                                }
+                            });
                         }
                         ClusterFormationEvent::JoinedAsFollower { cluster_id, .. } => {
                             tracing::info!("GlobalConsensusService: Joining consensus as follower in cluster {}", cluster_id);
@@ -191,7 +218,10 @@ where
                                 node_id.clone(),
                                 network_manager,
                                 storage,
+                                event_publisher.clone(),
                             ).await?;
+
+                            // Event publisher already set during layer creation
 
                             let mut consensus_guard = consensus_layer.write().await;
                             *consensus_guard = Some(layer);
@@ -227,6 +257,7 @@ where
         node_id: NodeId,
         network_manager: Arc<NetworkManager<T, G>>,
         storage: L,
+        event_publisher: Option<EventPublisher>,
     ) -> ConsensusResult<Arc<GlobalConsensusLayer<L>>> {
         use super::adaptor::GlobalNetworkFactory;
         use openraft::Config;
@@ -244,8 +275,14 @@ where
         let network_stats = Arc::new(RwLock::new(Default::default()));
         let network_factory = GlobalNetworkFactory::new(network_manager, network_stats);
 
-        let layer =
-            GlobalConsensusLayer::new(node_id, raft_config, network_factory, storage).await?;
+        let mut layer =
+            GlobalConsensusLayer::new(node_id.clone(), raft_config, network_factory, storage)
+                .await?;
+
+        // Set event publisher if provided
+        if let Some(publisher) = event_publisher {
+            layer.set_event_publisher(publisher).await;
+        }
 
         Ok(Arc::new(layer))
     }
@@ -340,6 +377,24 @@ where
             .map_err(|e| ConsensusError::with_context(ErrorKind::Network, e.to_string()))?;
 
         Ok(())
+    }
+
+    /// Submit a request to global consensus
+    pub async fn submit_request(
+        &self,
+        request: crate::consensus::global::GlobalRequest,
+    ) -> ConsensusResult<crate::consensus::global::GlobalResponse> {
+        // Check if consensus layer is initialized
+        let consensus_guard = self.consensus_layer.read().await;
+        let consensus = consensus_guard.as_ref().ok_or_else(|| {
+            ConsensusError::with_context(
+                ErrorKind::InvalidState,
+                "Global consensus not initialized",
+            )
+        })?;
+
+        // Submit to consensus
+        consensus.submit_request(request).await
     }
 
     /// Check if service is healthy

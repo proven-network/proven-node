@@ -21,6 +21,9 @@ pub struct RoutingService {
     /// Service configuration
     config: RoutingConfig,
 
+    /// Local node ID
+    local_node_id: NodeId,
+
     /// Operation router
     router: Arc<OperationRouter>,
 
@@ -61,7 +64,7 @@ enum ServiceState {
 
 impl RoutingService {
     /// Create a new routing service
-    pub fn new(config: RoutingConfig) -> Self {
+    pub fn new(config: RoutingConfig, local_node_id: NodeId) -> Self {
         let routing_table = Arc::new(RoutingTable::new(config.cache_ttl));
         let load_balancer = Arc::new(LoadBalancer::new(
             config.default_strategy,
@@ -75,6 +78,7 @@ impl RoutingService {
 
         Self {
             config,
+            local_node_id,
             router,
             routing_table,
             load_balancer,
@@ -114,6 +118,7 @@ impl RoutingService {
             health: GroupHealth::Healthy,
             last_updated: SystemTime::now(),
             stream_count: 0,
+            location: GroupLocation::Remote, // Default to remote until we know it's local
         };
         self.routing_table
             .update_group_route(default_group_id, default_group_route)
@@ -221,6 +226,11 @@ impl RoutingService {
         metrics.successful_routes += 1;
 
         Ok(RouteDecision::RouteToGlobal)
+    }
+
+    /// Get global consensus leader
+    pub async fn get_global_leader(&self) -> Option<NodeId> {
+        self.routing_table.get_global_leader().await
     }
 
     /// Update stream assignment
@@ -343,6 +353,75 @@ impl RoutingService {
         self.load_balancer.get_all_load_info().await
     }
 
+    /// Check if a group is local to this node
+    pub async fn is_group_local(&self, group_id: ConsensusGroupId) -> RoutingResult<bool> {
+        let group_routes = self.routing_table.get_all_group_routes().await?;
+
+        if let Some(route) = group_routes.get(&group_id) {
+            Ok(route.location == GroupLocation::Local
+                || route.location == GroupLocation::Distributed)
+        } else {
+            Err(RoutingError::GroupNotFound(group_id))
+        }
+    }
+
+    /// Get the location information for a group
+    pub async fn get_group_location(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> RoutingResult<GroupLocationInfo> {
+        let group_routes = self.routing_table.get_all_group_routes().await?;
+
+        if let Some(route) = group_routes.get(&group_id) {
+            let is_local = route.location == GroupLocation::Local
+                || route.location == GroupLocation::Distributed;
+
+            // Find nodes that have this group
+            let nodes_with_group: Vec<NodeId> = if is_local {
+                // If local, include this node
+                let mut nodes = vec![self.local_node_id.clone()];
+                // Add other members that are not this node
+                for member in &route.members {
+                    if member != &self.local_node_id {
+                        nodes.push(member.clone());
+                    }
+                }
+                nodes
+            } else {
+                // If remote, return all members
+                route.members.clone()
+            };
+
+            Ok(GroupLocationInfo {
+                group_id,
+                location: route.location,
+                is_local,
+                nodes: nodes_with_group,
+                leader: route.leader.clone(),
+            })
+        } else {
+            Err(RoutingError::GroupNotFound(group_id))
+        }
+    }
+
+    /// Get the best node to forward a request to for a group
+    pub async fn get_best_node_for_group(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> RoutingResult<Option<NodeId>> {
+        let location_info = self.get_group_location(group_id).await?;
+
+        if location_info.is_local {
+            // If local, no need to forward
+            Ok(None)
+        } else {
+            // Prefer the leader if available, otherwise pick the first node
+            Ok(location_info
+                .leader
+                .or_else(|| location_info.nodes.first().cloned()))
+        }
+    }
+
     // Private helper methods
 
     /// Ensure service is running
@@ -426,6 +505,7 @@ impl RoutingService {
         let event_service = self.event_service.clone();
         let routing_table = self.routing_table.clone();
         let shutdown = self.shutdown_signal.clone();
+        let local_node_id = self.local_node_id.clone();
 
         tokio::spawn(async move {
             let event_service = match event_service.read().await.as_ref() {
@@ -454,7 +534,7 @@ impl RoutingService {
             loop {
                 tokio::select! {
                     Some(envelope) = subscriber.recv() => {
-                        if let Err(e) = Self::handle_event(envelope, &routing_table).await {
+                        if let Err(e) = Self::handle_event(envelope, &routing_table, &local_node_id).await {
                             error!("Error handling event: {}", e);
                         }
                     }
@@ -475,6 +555,7 @@ impl RoutingService {
     async fn handle_event(
         envelope: EventEnvelope,
         routing_table: &Arc<RoutingTable>,
+        local_node_id: &NodeId,
     ) -> RoutingResult<()> {
         match &envelope.event {
             Event::StreamCreated {
@@ -504,8 +585,20 @@ impl RoutingService {
                 group_id, members, ..
             } => {
                 info!(
-                    "RoutingService: Handling GroupConsensusInitialized for group {:?}",
-                    group_id
+                    "RoutingService: Handling GroupConsensusInitialized for group {:?} with members: {:?}",
+                    group_id, members
+                );
+
+                // Determine group location based on whether this node is a member
+                let location = if members.contains(local_node_id) {
+                    GroupLocation::Local
+                } else {
+                    GroupLocation::Remote
+                };
+
+                info!(
+                    "RoutingService: Group {:?} location determined as {:?} for node {}",
+                    group_id, location, local_node_id
                 );
 
                 let group_route = GroupRoute {
@@ -515,6 +608,7 @@ impl RoutingService {
                     health: GroupHealth::Healthy,
                     last_updated: SystemTime::now(),
                     stream_count: 0,
+                    location,
                 };
 
                 routing_table
@@ -584,6 +678,21 @@ impl RoutingService {
                     route.last_updated = SystemTime::now();
                     routing_table.update_group_route(*group_id, route).await?;
                 }
+            }
+            Event::GlobalLeaderChanged {
+                old_leader: _,
+                new_leader,
+                term: _,
+            } => {
+                info!(
+                    "RoutingService: Handling GlobalLeaderChanged, new leader: {}",
+                    new_leader
+                );
+
+                // Update global consensus leader
+                routing_table
+                    .update_global_leader(Some(new_leader.clone()))
+                    .await;
             }
             _ => {
                 // Ignore other events

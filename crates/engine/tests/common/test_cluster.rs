@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ed25519_dalek::SigningKey;
 use proven_attestation_mock::MockAttestor;
@@ -376,5 +376,130 @@ impl TestCluster {
         }
 
         false
+    }
+
+    /// Wait for all nodes to have joined consensus groups
+    pub async fn wait_for_group_formation<T, G, L>(
+        &self,
+        engines: &[Engine<T, G, L>],
+        timeout: Duration,
+    ) -> Result<(), String>
+    where
+        T: proven_transport::Transport,
+        G: TopologyAdaptor,
+        L: proven_storage::LogStorage,
+    {
+        let start = Instant::now();
+
+        while start.elapsed() < timeout {
+            let mut all_have_groups = true;
+
+            for engine in engines {
+                // Check if node has any groups
+                match engine.node_groups().await {
+                    Ok(groups) => {
+                        if groups.is_empty() {
+                            all_have_groups = false;
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        all_have_groups = false;
+                        break;
+                    }
+                }
+            }
+
+            if all_have_groups {
+                info!("All {} nodes have joined consensus groups", engines.len());
+                return Ok(());
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        // Log which nodes don't have groups
+        for (i, engine) in engines.iter().enumerate() {
+            match engine.node_groups().await {
+                Ok(groups) => {
+                    if groups.is_empty() {
+                        info!("Node {} has no groups", i);
+                    } else {
+                        info!("Node {} is in {} groups", i, groups.len());
+                    }
+                }
+                Err(e) => {
+                    info!("Node {} failed to get groups: {}", i, e);
+                }
+            }
+        }
+
+        Err(format!(
+            "Timeout after {timeout:?} waiting for group formation"
+        ))
+    }
+
+    /// Wait for a specific group to be formed on all expected nodes
+    pub async fn wait_for_specific_group<T, G, L>(
+        &self,
+        engines: &[Engine<T, G, L>],
+        group_id: proven_engine::foundation::types::ConsensusGroupId,
+        expected_members: usize,
+        timeout: Duration,
+    ) -> Result<(), String>
+    where
+        T: proven_transport::Transport,
+        G: TopologyAdaptor,
+        L: proven_storage::LogStorage,
+    {
+        let start = Instant::now();
+
+        while start.elapsed() < timeout {
+            let mut members_found = 0;
+
+            for engine in engines {
+                match engine.group_state(group_id).await {
+                    Ok(state) => {
+                        if state.is_member {
+                            members_found += 1;
+                        }
+                    }
+                    Err(_) => {
+                        // Group doesn't exist on this node yet
+                    }
+                }
+            }
+
+            if members_found >= expected_members {
+                info!(
+                    "Group {:?} has {} members (expected {})",
+                    group_id, members_found, expected_members
+                );
+                return Ok(());
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        Err(format!(
+            "Timeout after {timeout:?} waiting for group {group_id:?} to have {expected_members} members"
+        ))
+    }
+
+    /// Wait for the default group to be created
+    pub async fn wait_for_default_group<T, G, L>(
+        &self,
+        engines: &[Engine<T, G, L>],
+        timeout: Duration,
+    ) -> Result<(), String>
+    where
+        T: proven_transport::Transport,
+        G: TopologyAdaptor,
+        L: proven_storage::LogStorage,
+    {
+        // Default group ID is 1
+        let default_group_id = proven_engine::foundation::types::ConsensusGroupId::new(1);
+        self.wait_for_specific_group(engines, default_group_id, engines.len(), timeout)
+            .await
     }
 }

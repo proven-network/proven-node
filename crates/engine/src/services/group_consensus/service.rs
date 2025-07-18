@@ -204,6 +204,74 @@ where
         Ok(state.get_stream(&stream_name).await)
     }
 
+    /// Get all group IDs this node is a member of
+    pub async fn get_node_groups(&self) -> ConsensusResult<Vec<ConsensusGroupId>> {
+        let groups = self.groups.read().await;
+        // For now, return all groups that this node has joined
+        // TODO: Properly track membership through Raft state
+        Ok(groups.keys().cloned().collect())
+    }
+
+    /// Get group state information
+    pub async fn get_group_state_info(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<super::types::GroupStateInfo> {
+        use std::time::SystemTime;
+
+        let groups = self.groups.read().await;
+        let layer = groups.get(&group_id).ok_or_else(|| {
+            ConsensusError::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
+        })?;
+
+        // Get state from the layer
+        let state = layer.state();
+
+        // Get Raft metrics to find leader and term
+        let metrics_rx = layer.metrics();
+        let raft_metrics = metrics_rx.borrow();
+
+        // Collect stream information
+        let stream_names = state.list_streams().await;
+        let mut stream_infos = Vec::new();
+        let mut total_messages = 0u64;
+        let mut total_bytes = 0u64;
+
+        for stream_name in stream_names {
+            if let Some(stream_state) = state.get_stream(&stream_name).await {
+                let info = super::types::StreamInfo {
+                    name: stream_name.to_string(),
+                    message_count: stream_state.stats.message_count,
+                    next_sequence: stream_state.next_sequence,
+                    first_sequence: stream_state.first_sequence,
+                    total_bytes: stream_state.stats.total_bytes,
+                    last_update: stream_state.stats.last_update,
+                };
+                total_messages += stream_state.stats.message_count;
+                total_bytes += stream_state.stats.total_bytes;
+                stream_infos.push(info);
+            }
+        }
+
+        // TODO: Get actual members from Raft membership config
+        // For now, assume all nodes with this group are members
+        let members = vec![self.node_id.clone()];
+        let is_member = true;
+
+        Ok(super::types::GroupStateInfo {
+            group_id,
+            members,
+            leader: raft_metrics.current_leader.clone(),
+            term: raft_metrics.current_term,
+            is_member,
+            streams: stream_infos,
+            total_messages,
+            total_bytes,
+            created_at: SystemTime::now(), // TODO: Track actual creation time
+            last_updated: SystemTime::now(),
+        })
+    }
+
     /// Start event processing
     async fn start_event_processing(&self) {
         let event_service = match self.event_service.read().await.as_ref() {
@@ -214,8 +282,12 @@ where
             }
         };
 
-        // Subscribe to consensus events
-        let filter = EventFilter::ByType(vec![EventType::Consensus]);
+        // Subscribe to consensus, stream, and group events
+        let filter = EventFilter::ByType(vec![
+            EventType::Consensus,
+            EventType::Stream,
+            EventType::Group,
+        ]);
         let mut subscriber = match event_service
             .subscribe("group-consensus-service".to_string(), filter)
             .await
@@ -262,6 +334,72 @@ where
                     tracing::error!("Failed to create default group: {}", e);
                 } else {
                     tracing::info!("Successfully created default group");
+                }
+            }
+            Event::StreamCreated {
+                name,
+                group_id,
+                config: _,
+            } => {
+                tracing::info!(
+                    "GroupConsensusService: Received StreamCreated event for {} in group {:?}",
+                    name,
+                    group_id
+                );
+                // Check if we have this group locally
+                let groups = self.groups.read().await;
+                if let Some(consensus) = groups.get(group_id) {
+                    tracing::info!("Initializing stream {} in local group {:?}", name, group_id);
+                    // Initialize the stream in the group
+                    let request = crate::consensus::group::GroupRequest::Admin(
+                        crate::consensus::group::types::AdminOperation::InitializeStream {
+                            stream: name.clone(),
+                        },
+                    );
+                    match consensus.submit_request(request).await {
+                        Ok(_) => {
+                            tracing::info!(
+                                "Successfully initialized stream {} in group {:?}",
+                                name,
+                                group_id
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "Failed to initialize stream {} in group {:?}: {}",
+                                name,
+                                group_id,
+                                e
+                            );
+                        }
+                    }
+                } else {
+                    tracing::debug!(
+                        "Group {:?} not found locally, ignoring StreamCreated event",
+                        group_id
+                    );
+                }
+            }
+            Event::GroupCreated { group_id, members } => {
+                tracing::info!(
+                    "GroupConsensusService: Received GroupCreated event for group {:?} with members: {:?}",
+                    group_id,
+                    members
+                );
+                // Check if this node is a member of the group
+                if members.contains(&self.node_id) {
+                    tracing::info!("Creating local group {:?} as we are a member", group_id);
+                    // Create the group locally
+                    if let Err(e) = self.create_group(*group_id, members.clone()).await {
+                        tracing::error!("Failed to create group {:?}: {}", group_id, e);
+                    } else {
+                        tracing::info!("Successfully created local group {:?}", group_id);
+                    }
+                } else {
+                    tracing::debug!(
+                        "Not a member of group {:?}, skipping local creation",
+                        group_id
+                    );
                 }
             }
             _ => {

@@ -282,6 +282,46 @@ where
             )
         })
     }
+
+    /// Get all group IDs this node is a member of
+    pub async fn node_groups(&self) -> ConsensusResult<Vec<ConsensusGroupId>> {
+        let group_consensus = self.group_consensus_service.as_ref().ok_or_else(|| {
+            ConsensusError::with_context(
+                ErrorKind::InvalidState,
+                "Group consensus service not initialized",
+            )
+        })?;
+
+        group_consensus.get_node_groups().await.map_err(|e| {
+            ConsensusError::with_context(
+                ErrorKind::Internal,
+                format!("Failed to get node groups: {e}"),
+            )
+        })
+    }
+
+    /// Get group state information
+    pub async fn group_state(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<crate::services::group_consensus::GroupStateInfo> {
+        let group_consensus = self.group_consensus_service.as_ref().ok_or_else(|| {
+            ConsensusError::with_context(
+                ErrorKind::InvalidState,
+                "Group consensus service not initialized",
+            )
+        })?;
+
+        group_consensus
+            .get_group_state_info(group_id)
+            .await
+            .map_err(|e| {
+                ConsensusError::with_context(
+                    ErrorKind::Internal,
+                    format!("Failed to get group state: {e}"),
+                )
+            })
+    }
 }
 
 /// Engine health information

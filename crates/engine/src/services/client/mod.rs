@@ -4,8 +4,10 @@
 //! consensus system. It receives client requests and routes them through the
 //! event bus to the appropriate consensus services.
 
+mod messages;
 mod service;
 mod types;
 
+pub use messages::*;
 pub use service::ClientService;
 pub use types::*;

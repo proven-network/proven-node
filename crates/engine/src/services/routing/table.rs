@@ -26,6 +26,8 @@ pub struct RoutingTable {
     stream_routes: Arc<RwLock<HashMap<String, RouteEntry>>>,
     /// Group routes
     group_routes: Arc<RwLock<HashMap<ConsensusGroupId, GroupRoute>>>,
+    /// Global consensus leader
+    global_leader: Arc<RwLock<Option<proven_topology::NodeId>>>,
     /// Cache TTL
     cache_ttl: Duration,
 }
@@ -36,6 +38,7 @@ impl RoutingTable {
         Self {
             stream_routes: Arc::new(RwLock::new(HashMap::new())),
             group_routes: Arc::new(RwLock::new(HashMap::new())),
+            global_leader: Arc::new(RwLock::new(None)),
             cache_ttl,
         }
     }
@@ -164,6 +167,22 @@ impl RoutingTable {
         }
 
         Ok(removed)
+    }
+
+    /// Update global consensus leader
+    pub async fn update_global_leader(&self, leader: Option<proven_topology::NodeId>) {
+        let mut current_leader = self.global_leader.write().await;
+        *current_leader = leader.clone();
+        if let Some(ref leader_id) = leader {
+            info!("Updated global consensus leader to {}", leader_id);
+        } else {
+            info!("Cleared global consensus leader");
+        }
+    }
+
+    /// Get global consensus leader
+    pub async fn get_global_leader(&self) -> Option<proven_topology::NodeId> {
+        self.global_leader.read().await.clone()
     }
 
     /// Get streams by group

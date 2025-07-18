@@ -32,8 +32,13 @@ async fn test_stream_operations() {
         println!("  - Node {} on port {}", info.node_id, info.port);
     }
 
-    // Give cluster time to discover and form
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // Wait for cluster discovery and formation
+    assert!(
+        cluster
+            .wait_for_cluster_formation(Duration::from_secs(10))
+            .await,
+        "Failed to wait for cluster formation"
+    );
 
     // Verify all nodes are healthy
     for (i, engine) in engines.iter().enumerate() {
@@ -45,11 +50,22 @@ async fn test_stream_operations() {
         );
     }
 
-    // Get client from first node (will be the leader)
+    // Stream creation now properly goes through global consensus
+    // All nodes will receive the StreamCreated event
     let client = engines[0].client();
+    println!("Using first node's client - all nodes should receive events via global consensus");
 
-    // Give time for group formation
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    // Wait for default group formation on at least one node (the leader)
+    // In the current implementation, only the leader creates the default group
+    cluster
+        .wait_for_specific_group(
+            &engines,
+            proven_engine::foundation::types::ConsensusGroupId::new(1),
+            1,
+            Duration::from_secs(10),
+        )
+        .await
+        .expect("Failed to wait for default group formation on leader");
 
     // Step 2: Create a stream
     let stream_name = format!("test-stream-{}", uuid::Uuid::new_v4());

@@ -108,6 +108,34 @@ pub struct GroupRoute {
     pub health: GroupHealth,
     /// Last updated
     pub last_updated: SystemTime,
+    /// Location of the group relative to this node
+    pub location: GroupLocation,
+}
+
+/// Group location relative to the current node
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum GroupLocation {
+    /// Group exists on this node
+    Local,
+    /// Group exists on remote nodes only
+    Remote,
+    /// Group exists on both local and remote nodes
+    Distributed,
+}
+
+/// Detailed group location information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupLocationInfo {
+    /// Group ID
+    pub group_id: ConsensusGroupId,
+    /// Location type
+    pub location: GroupLocation,
+    /// Whether the group is local to the current node
+    pub is_local: bool,
+    /// Nodes that have this group
+    pub nodes: Vec<NodeId>,
+    /// Current leader of the group
+    pub leader: Option<NodeId>,
 }
 
 /// Group health status

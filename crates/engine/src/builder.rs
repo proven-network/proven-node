@@ -181,7 +181,10 @@ where
             system_view,
         ));
 
-        let routing_service = Arc::new(RoutingService::new(config.services.routing.clone()));
+        let routing_service = Arc::new(RoutingService::new(
+            config.services.routing.clone(),
+            self.node_id.clone(),
+        ));
 
         let migration_service = Arc::new(MigrationService::new(config.services.migration.clone()));
 
@@ -282,6 +285,9 @@ where
             .await;
         client_service
             .set_event_service(event_service.clone())
+            .await;
+        client_service
+            .set_network_manager(network_manager.clone())
             .await;
 
         // Wire up StreamService dependencies

@@ -471,6 +471,12 @@ where
     pub async fn join_cluster(&self, target_node: NodeId) -> ClusterResult<()> {
         self.ensure_running().await?;
 
+        // Check if we're trying to join ourselves (this can happen if we're the coordinator)
+        if target_node == self.node_id {
+            info!("Cannot join cluster with ourselves as target, we must be the leader");
+            return Ok(());
+        }
+
         // Start joining
         self.state_manager.start_joining(target_node.clone())?;
 

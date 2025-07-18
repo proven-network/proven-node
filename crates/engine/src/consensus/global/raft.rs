@@ -186,8 +186,59 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         self.event_publisher = Some(publisher.clone());
         // Also set it on the state machine
         self.state_machine
-            .set_event_publisher(publisher, self.node_id.clone())
+            .set_event_publisher(publisher.clone(), self.node_id.clone())
             .await;
+
+        // Start monitoring leader changes
+        self.start_leader_monitoring(publisher);
+    }
+
+    /// Start monitoring for leader changes
+    fn start_leader_monitoring(&self, publisher: EventPublisher) {
+        let mut metrics_rx = self.metrics();
+        let node_id = self.node_id.clone();
+
+        tokio::spawn(async move {
+            let mut current_leader: Option<NodeId> = None;
+            let mut current_term: u64 = 0;
+
+            loop {
+                tokio::select! {
+                    Ok(_) = metrics_rx.changed() => {
+                        let metrics = metrics_rx.borrow().clone();
+
+                        // Check for leader change
+                        if metrics.current_leader != current_leader || metrics.current_term != current_term {
+                            let old_leader = current_leader.clone();
+                            current_leader = metrics.current_leader.clone();
+                            current_term = metrics.current_term;
+
+                            if let Some(new_leader) = &current_leader {
+                                tracing::info!(
+                                    "Global consensus leader changed: {:?} -> {} (term {})",
+                                    old_leader, new_leader, current_term
+                                );
+
+                                // Publish event
+                                let event = crate::services::event::Event::GlobalLeaderChanged {
+                                    old_leader,
+                                    new_leader: new_leader.clone(),
+                                    term: current_term,
+                                };
+
+                                let source = format!("global-consensus-{node_id}");
+                                if let Err(e) = publisher.publish(event, source).await {
+                                    tracing::warn!("Failed to publish GlobalLeaderChanged event: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    else => break,
+                }
+            }
+
+            tracing::debug!("Leader monitoring task stopped");
+        });
     }
 
     /// Get the global state
