@@ -1,5 +1,5 @@
 [package]
-name = "proven-messaging-consensus"
+name = "proven-messaging-engine"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,13 +7,12 @@ edition = "2024"
 async-trait.workspace = true
 
 futures.workspace = true
-proven-attestation.workspace = true
-proven-attestation-mock.workspace = true
 proven-bootable.workspace = true
 proven-engine.workspace = true
-proven-topology.workspace = true
-proven-topology-mock.workspace = true
 proven-messaging.workspace = true
+proven-transport.workspace = true
+proven-storage.workspace = true
+proven-topology.workspace = true
 parking_lot.workspace = true
 
 tokio.workspace = true
@@ -33,9 +32,12 @@ thiserror.workspace = true
 # Collections and utilities
 tokio-util.workspace = true
 uuid.workspace = true
+paste.workspace = true
 
 [dev-dependencies]
 ed25519-dalek.workspace = true
+proven-attestation-mock.workspace = true
+proven-topology-mock.workspace = true
 proven-util.workspace = true
 rand.workspace = true
 serial_test.workspace = true

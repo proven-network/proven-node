@@ -10626,7 +10626,7 @@ dependencies = [
  "proven-identity",
  "proven-locks-memory",
  "proven-messaging",
- "proven-messaging-memory",
+ "proven-messaging-engine",
  "proven-network",
  "proven-passkeys",
  "proven-postgres",
@@ -10758,6 +10758,40 @@ dependencies = [
  "futures",
  "paste",
  "proven-bootable",
+]
+
+[[package]]
+name = "proven-messaging-engine"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "ed25519-dalek",
+ "futures",
+ "hex",
+ "parking_lot 0.12.4",
+ "paste",
+ "proven-attestation-mock",
+ "proven-bootable",
+ "proven-engine",
+ "proven-messaging",
+ "proven-storage",
+ "proven-topology",
+ "proven-topology-mock",
+ "proven-transport",
+ "proven-util",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "serial_test",
+ "tempfile",
+ "thiserror 2.0.12",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber 0.3.19",
+ "tracing-test",
+ "uuid",
 ]
 
 [[package]]

@@ -1,7 +1,8 @@
-//! Subjects in the consensus messaging system.
+//! Subjects in the engine messaging system.
 
-use crate::stream::InitializedConsensusStream;
-use crate::subscription::{ConsensusSubscription, ConsensusSubscriptionOptions};
+use crate::error::MessagingEngineError;
+use crate::stream::InitializedEngineStream;
+use crate::subscription::{EngineMessagingSubscription, EngineMessagingSubscriptionOptions};
 
 use std::error::Error as StdError;
 use std::fmt::Debug;
@@ -9,18 +10,13 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_attestation::Attestor;
-use proven_engine::Consensus;
 use proven_messaging::subject::Subject;
-use proven_topology::TopologyAdaptor;
 use tracing::debug;
 
-/// A consensus subject.
+/// An engine messaging subject.
 #[derive(Debug)]
-pub struct ConsensusSubject<G, A, T, D, S>
+pub struct EngineMessagingSubject<T, D, S>
 where
-    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
         + Send
@@ -34,16 +30,11 @@ where
     /// Subject name
     name: String,
 
-    /// Consensus manager for actual messaging operations
-    consensus: std::sync::Arc<Consensus<G, A>>,
-
     _marker: PhantomData<(T, D, S)>,
 }
 
-impl<G, A, T, D, S> Clone for ConsensusSubject<G, A, T, D, S>
+impl<T, D, S> Clone for EngineMessagingSubject<T, D, S>
 where
-    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
         + Send
@@ -57,16 +48,13 @@ where
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
-            consensus: self.consensus.clone(),
             _marker: PhantomData,
         }
     }
 }
 
-impl<G, A, T, D, S> ConsensusSubject<G, A, T, D, S>
+impl<T, D, S> EngineMessagingSubject<T, D, S>
 where
-    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
         + Send
@@ -77,35 +65,25 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    /// Creates a new consensus subject.
+    /// Creates a new engine messaging subject.
     #[must_use]
-    pub const fn new(name: String, consensus: std::sync::Arc<Consensus<G, A>>) -> Self {
+    pub const fn new(name: String) -> Self {
         Self {
             name,
-            consensus,
             _marker: PhantomData,
         }
     }
 
     /// Get the subject name
     #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
     pub fn name(&self) -> &str {
         &self.name
-    }
-
-    /// Get access to the consensus manager for this subject
-    #[must_use]
-    pub const fn consensus(&self) -> &std::sync::Arc<Consensus<G, A>> {
-        &self.consensus
     }
 }
 
 #[async_trait]
-impl<G, A, T, D, S> Subject<T, D, S> for ConsensusSubject<G, A, T, D, S>
+impl<T, D, S> Subject<T, D, S> for EngineMessagingSubject<T, D, S>
 where
-    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
         + Send
@@ -116,10 +94,10 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Error = crate::error::MessagingConsensusError;
-    type StreamType = crate::stream::InitializedConsensusStream<G, A, T, D, S>;
+    type Error = MessagingEngineError;
+    type StreamType = InitializedEngineStream<T, D, S>;
     type SubscriptionType<X>
-        = crate::subscription::ConsensusSubscription<G, A, X, T, D, S>
+        = EngineMessagingSubscription<X, T, D, S>
     where
         X: proven_messaging::subscription_handler::SubscriptionHandler<T, D, S>;
 
@@ -129,9 +107,9 @@ where
     {
         debug!("Creating subscription for subject '{}'", self.name);
 
-        let options = ConsensusSubscriptionOptions::default();
+        let options = EngineMessagingSubscriptionOptions::default();
 
-        <ConsensusSubscription<G, A, X, T, D, S> as proven_messaging::subscription::Subscription<
+        <EngineMessagingSubscription<X, T, D, S> as proven_messaging::subscription::Subscription<
             X,
             T,
             D,
@@ -161,7 +139,7 @@ where
             stream_name, self.name
         );
 
-        <InitializedConsensusStream<G, A, T, D, S> as proven_messaging::stream::InitializedStream<
+        <InitializedEngineStream<T, D, S> as proven_messaging::stream::InitializedStream<
             T,
             D,
             S,
@@ -170,12 +148,8 @@ where
     }
 }
 
-// Note: From<String> trait removed since we now require governance and attestor parameters
-
-impl<G, A, T, D, S> From<ConsensusSubject<G, A, T, D, S>> for String
+impl<T, D, S> From<String> for EngineMessagingSubject<T, D, S>
 where
-    G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug,
-    A: Attestor + Send + Sync + 'static + std::fmt::Debug,
     T: Clone
         + Debug
         + Send
@@ -186,7 +160,24 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    fn from(val: ConsensusSubject<G, A, T, D, S>) -> Self {
+    fn from(name: String) -> Self {
+        Self::new(name)
+    }
+}
+
+impl<T, D, S> From<EngineMessagingSubject<T, D, S>> for String
+where
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn from(val: EngineMessagingSubject<T, D, S>) -> Self {
         val.name
     }
 }

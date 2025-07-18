@@ -15,9 +15,9 @@ use proven_http_proxy::{
     HttpProxyClient, HttpProxyClientOptions, HttpProxyService, HttpProxyServiceOptions,
 };
 use proven_messaging::stream::Stream;
-use proven_messaging_memory::client::MemoryClientOptions;
-use proven_messaging_memory::service::MemoryServiceOptions;
-use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
+use proven_messaging_engine::client::EngineMessagingClientOptions;
+use proven_messaging_engine::service::EngineMessagingServiceOptions;
+use proven_messaging_engine::stream::{EngineStream, EngineStreamOptions};
 use proven_topology::{NodeSpecialization, TopologyAdaptor};
 use tracing::info;
 use url::Url;
@@ -28,11 +28,20 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         panic!("node not set before bitcoin testnet node step");
     });
 
-    let bitcoin_testnet_proxy_stream =
-        MemoryStream::new("BITCOIN_TESTNET_PROXY", MemoryStreamOptions)
-            .init()
-            .await
-            .map_err(|e| Error::Stream(e.to_string()))?;
+    // Create engine stream for bitcoin testnet proxy
+    let engine_client = bootstrap
+        .engine_client
+        .as_ref()
+        .ok_or_else(|| Error::Stream("Engine client not initialized".to_string()))?;
+
+    let bitcoin_testnet_proxy_stream = EngineStream::new(
+        "BITCOIN_TESTNET_PROXY".to_string(),
+        engine_client.clone(),
+        EngineStreamOptions::default(),
+    )
+    .init()
+    .await
+    .map_err(|e| Error::Stream(e.to_string()))?;
 
     if node
         .specializations()
@@ -54,7 +63,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         info!("bitcoin testnet node started");
 
         let bitcoin_testnet_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
-            service_options: MemoryServiceOptions,
+            service_options: EngineMessagingServiceOptions::default(),
             stream: bitcoin_testnet_proxy_stream,
             target_addr: bitcoin_testnet_node.rpc_socket_addr().await?,
         })
@@ -74,7 +83,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         info!("bitcoin testnet proxy service started");
     } else {
         let bitcoin_testnet_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
-            client_options: MemoryClientOptions,
+            client_options: EngineMessagingClientOptions::default(),
             http_port: bootstrap.config.bitcoin_testnet_proxy_port,
             stream: bitcoin_testnet_proxy_stream,
         });

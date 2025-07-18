@@ -100,13 +100,13 @@ fn split_out_inherited_discriminated_types(schema: &mut Value) {
                 );
 
                 // Generate unique base type name
-                let mut base_type_name = format!("{}Base", type_name);
+                let mut base_type_name = format!("{type_name}Base");
                 while types.contains_key(Value::String(base_type_name.clone())) {
-                    base_type_name = format!("{}Derived", base_type_name);
+                    base_type_name = format!("{base_type_name}Derived");
                 }
 
-                let type_ref = format!("#/components/schemas/{}", type_name);
-                let base_type_ref = format!("#/components/schemas/{}", base_type_name);
+                let type_ref = format!("#/components/schemas/{type_name}");
+                let base_type_ref = format!("#/components/schemas/{base_type_name}");
 
                 type_refs_changed.insert(type_ref, (base_type_ref, discriminator.clone()));
 

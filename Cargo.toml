@@ -42,7 +42,7 @@ members = [
     "crates/locks",
     "crates/locks-memory",
     "crates/messaging",
-    # "crates/messaging-consensus",
+    "crates/messaging-engine",
     "crates/messaging-memory",
     "crates/network",
     "crates/passkeys",
@@ -119,7 +119,7 @@ default-members = [
     "crates/locks",
     "crates/locks-memory",
     "crates/messaging",
-    # "crates/messaging-consensus",
+    "crates/messaging-engine",
     "crates/messaging-memory",
     "crates/network",
     "crates/passkeys",
@@ -466,7 +466,7 @@ proven-local-tui = { path = "crates/local-tui" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
 proven-messaging = { path = "crates/messaging" }
-# proven-messaging-consensus = { path = "crates/messaging-consensus" }
+proven-messaging-engine = { path = "crates/messaging-engine" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
 proven-network = { path = "crates/network" }
 proven-passkeys = { path = "crates/passkeys" }

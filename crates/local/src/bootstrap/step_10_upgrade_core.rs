@@ -18,12 +18,10 @@ use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_core::BootstrapUpgrade;
 use proven_identity::IdentityManager;
 use proven_locks_memory::MemoryLockManager;
-use proven_messaging::stream::Stream;
-use proven_messaging_memory::client::MemoryClientOptions;
-use proven_messaging_memory::consumer::MemoryConsumerOptions;
-use proven_messaging_memory::service::MemoryServiceOptions;
-use proven_messaging_memory::stream::{
-    MemoryStream, MemoryStream2, MemoryStream3, MemoryStreamOptions,
+use proven_messaging_engine::consumer::EngineMessagingConsumerOptions;
+use proven_messaging_engine::service::EngineMessagingServiceOptions;
+use proven_messaging_engine::stream::{
+    EngineStream, EngineStream2, EngineStream3, EngineStreamOptions,
 };
 use proven_passkeys::{PasskeyManagement, PasskeyManager, PasskeyManagerOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
@@ -52,15 +50,23 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
     let identity_manager = IdentityManager::new(
         // Command stream for processing identity commands
-        MemoryStream::new("IDENTITY_COMMANDS", MemoryStreamOptions),
+        EngineStream::new(
+            "IDENTITY_COMMANDS".to_string(),
+            engine_client.clone(),
+            EngineStreamOptions::default(),
+        ),
         // Event stream for publishing identity events
-        MemoryStream::new("IDENTITY_EVENTS", MemoryStreamOptions),
+        EngineStream::new(
+            "IDENTITY_EVENTS".to_string(),
+            engine_client.clone(),
+            EngineStreamOptions::default(),
+        ),
         // Service options for the command processing service
-        MemoryServiceOptions,
+        EngineMessagingServiceOptions::default(),
         // Client options for the command client
-        MemoryClientOptions,
+        proven_messaging_engine::client::EngineMessagingClientOptions::default(),
         // Consumer options for the event consumer
-        MemoryConsumerOptions,
+        EngineMessagingConsumerOptions::default(),
         // Lock manager for distributed leadership
         lock_manager.clone(),
     )
@@ -77,15 +83,23 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
     let application_manager = ApplicationManager::new(
         // Command stream for processing application commands
-        MemoryStream::new("APPLICATION_COMMANDS", MemoryStreamOptions),
+        EngineStream::new(
+            "APPLICATION_COMMANDS".to_string(),
+            engine_client.clone(),
+            EngineStreamOptions::default(),
+        ),
         // Event stream for publishing application events
-        MemoryStream::new("APPLICATION_EVENTS", MemoryStreamOptions),
+        EngineStream::new(
+            "APPLICATION_EVENTS".to_string(),
+            engine_client.clone(),
+            EngineStreamOptions::default(),
+        ),
         // Service options for the command processing service
-        MemoryServiceOptions,
+        EngineMessagingServiceOptions::default(),
         // Client options for the command client
-        MemoryClientOptions,
+        proven_messaging_engine::client::EngineMessagingClientOptions::default(),
         // Consumer options for the event consumer
-        MemoryConsumerOptions,
+        EngineMessagingConsumerOptions::default(),
         // Lock manager for distributed leadership
         lock_manager,
     )
@@ -97,27 +111,39 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     let application_store = EngineStore2::new(engine_client.clone());
 
     let application_sql_store = StreamedSqlStore2::new(
-        MemoryStream2::new("APPLICATION_SQL", MemoryStreamOptions),
-        MemoryServiceOptions,
-        MemoryClientOptions,
+        EngineStream2::new(
+            "APPLICATION_SQL".to_string(),
+            engine_client.clone(),
+            EngineStreamOptions::default(),
+        ),
+        EngineMessagingServiceOptions::default(),
+        proven_messaging_engine::client::EngineMessagingClientOptions::default(),
         FsStore2::new("/tmp/proven/application_snapshots"),
     );
 
     let personal_store = EngineStore3::new(engine_client.clone());
 
     let personal_sql_store = StreamedSqlStore3::new(
-        MemoryStream3::new("PERSONAL_SQL", MemoryStreamOptions),
-        MemoryServiceOptions,
-        MemoryClientOptions,
+        EngineStream3::new(
+            "PERSONAL_SQL".to_string(),
+            engine_client.clone(),
+            EngineStreamOptions::default(),
+        ),
+        EngineMessagingServiceOptions::default(),
+        proven_messaging_engine::client::EngineMessagingClientOptions::default(),
         FsStore3::new("/tmp/proven/personal_snapshots"),
     );
 
-    let nft_store = EngineStore3::new(engine_client);
+    let nft_store = EngineStore3::new(engine_client.clone());
 
     let nft_sql_store = StreamedSqlStore3::new(
-        MemoryStream3::new("NFT_SQL", MemoryStreamOptions),
-        MemoryServiceOptions,
-        MemoryClientOptions,
+        EngineStream3::new(
+            "NFT_SQL".to_string(),
+            engine_client.clone(),
+            EngineStreamOptions::default(),
+        ),
+        EngineMessagingServiceOptions::default(),
+        proven_messaging_engine::client::EngineMessagingClientOptions::default(),
         FsStore3::new("/tmp/proven/nft_snapshots"),
     );
 
