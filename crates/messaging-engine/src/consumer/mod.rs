@@ -39,10 +39,12 @@ pub enum EngineMessagingConsumerError {
 impl ConsumerError for EngineMessagingConsumerError {}
 
 /// An engine messaging consumer.
-#[derive(Debug)]
 #[allow(dead_code)]
-pub struct EngineMessagingConsumer<X, T, D, S>
+pub struct EngineMessagingConsumer<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -55,7 +57,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedEngineStream<T, D, S>,
+    stream: InitializedEngineStream<Tr, G, L, T, D, S>,
     options: EngineMessagingConsumerOptions,
     handler: X,
     last_processed_seq: u64,
@@ -67,8 +69,38 @@ where
     task_tracker: TaskTracker,
 }
 
-impl<X, T, D, S> Clone for EngineMessagingConsumer<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Debug for EngineMessagingConsumer<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+    X: ConsumerHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineMessagingConsumer")
+            .field("name", &self.name)
+            .field("stream", &self.stream)
+            .field("options", &self.options)
+            .field("last_processed_seq", &self.last_processed_seq)
+            .field("current_seq", &self.current_seq)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<Tr, G, L, X, T, D, S> Clone for EngineMessagingConsumer<Tr, G, L, X, T, D, S>
+where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ConsumerHandler<T, D, S> + Clone,
     T: Clone
         + Debug
@@ -95,8 +127,11 @@ where
 }
 
 #[async_trait]
-impl<X, T, D, S> Consumer<X, T, D, S> for EngineMessagingConsumer<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Consumer<X, T, D, S> for EngineMessagingConsumer<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -110,7 +145,7 @@ where
 {
     type Error = EngineMessagingConsumerError;
     type Options = EngineMessagingConsumerOptions;
-    type StreamType = InitializedEngineStream<T, D, S>;
+    type StreamType = InitializedEngineStream<Tr, G, L, T, D, S>;
 
     async fn new(
         name: String,
@@ -135,8 +170,11 @@ where
     }
 }
 
-impl<X, T, D, S> EngineMessagingConsumer<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> EngineMessagingConsumer<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -152,7 +190,7 @@ where
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     async fn process_messages(
-        stream: InitializedEngineStream<T, D, S>,
+        stream: InitializedEngineStream<Tr, G, L, T, D, S>,
         handler: X,
         current_seq: Arc<Mutex<u64>>,
         start_sequence: u64,
@@ -271,8 +309,11 @@ where
 }
 
 #[async_trait]
-impl<X, T, D, S> Bootable for EngineMessagingConsumer<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Bootable for EngineMessagingConsumer<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug

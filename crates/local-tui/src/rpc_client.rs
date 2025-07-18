@@ -312,7 +312,9 @@ impl RpcClient {
             self.sessions.insert(SessionType::Management, session);
         }
 
-        Ok(self.sessions.get(&SessionType::Management).unwrap())
+        self.sessions.get(&SessionType::Management).ok_or_else(|| {
+            RpcError::SessionCreation("Failed to get management session after creation".to_string())
+        })
     }
 
     /// Ensure we have an identified management session, creating and identifying one if needed

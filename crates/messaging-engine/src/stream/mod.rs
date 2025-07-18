@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_engine::consensus::GroupResponse;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
@@ -26,18 +27,87 @@ use crate::service::EngineMessagingService;
 use crate::subject::EngineMessagingSubject;
 
 /// Options for the engine stream.
-#[derive(Debug, Clone, Default)]
-pub struct EngineStreamOptions {
+pub struct EngineStreamOptions<T, G, L>
+where
+    T: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+{
     /// Optional stream configuration
     pub stream_config: Option<StreamConfig>,
+    /// Engine client
+    pub client: EngineClient<T, G, L>,
 }
 
-impl StreamOptions for EngineStreamOptions {}
+impl<T, G, L> Clone for EngineStreamOptions<T, G, L>
+where
+    T: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+{
+    fn clone(&self) -> Self {
+        Self {
+            stream_config: self.stream_config.clone(),
+            client: self.client.clone(),
+        }
+    }
+}
+
+impl<T, G, L> Default for EngineStreamOptions<T, G, L>
+where
+    T: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+{
+    fn default() -> Self {
+        panic!("EngineStreamOptions requires a client to be provided")
+    }
+}
+
+impl<T, G, L> EngineStreamOptions<T, G, L>
+where
+    T: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+{
+    /// Create new engine stream options with an engine client
+    #[must_use]
+    pub const fn new(client: EngineClient<T, G, L>, stream_config: Option<StreamConfig>) -> Self {
+        Self {
+            stream_config,
+            client,
+        }
+    }
+}
+
+impl<T, G, L> Debug for EngineStreamOptions<T, G, L>
+where
+    T: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineStreamOptions")
+            .field("stream_config", &self.stream_config)
+            .field("client", &"<EngineClient>")
+            .finish()
+    }
+}
+
+impl<T, G, L> StreamOptions for EngineStreamOptions<T, G, L>
+where
+    T: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+{
+}
 
 /// An initialized engine stream.
-#[derive(Debug)]
-pub struct InitializedEngineStream<T, D, S>
+pub struct InitializedEngineStream<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -52,10 +122,10 @@ where
     name: String,
 
     /// Engine client.
-    client: Arc<dyn ClientWrapper>,
+    client: EngineClient<Tr, G, L>,
 
     /// Stream options.
-    options: EngineStreamOptions,
+    options: EngineStreamOptions<Tr, G, L>,
 
     /// Local cache of stream data.
     cache: Arc<RwLock<HashMap<u64, T>>>,
@@ -64,171 +134,36 @@ where
     _marker: PhantomData<(T, D, S)>,
 }
 
-/// Trait to abstract over the engine client's concrete types
-#[async_trait]
-trait ClientWrapper: Debug + Send + Sync + 'static {
-    /// Create a stream
-    async fn create_stream(
-        &self,
-        name: String,
-        config: StreamConfig,
-    ) -> Result<(), MessagingEngineError>;
-
-    /// Publish to a stream
-    async fn publish(
-        &self,
-        stream: String,
-        payload: Vec<u8>,
-        metadata: Option<std::collections::HashMap<String, String>>,
-    ) -> Result<u64, MessagingEngineError>;
-
-    /// Check if stream exists
-    async fn stream_exists(&self, name: &str) -> Result<bool, MessagingEngineError>;
-
-    /// Read messages from a stream
-    async fn read_stream(
-        &self,
-        stream_name: String,
-        start_sequence: u64,
-        count: u64,
-    ) -> Result<Vec<proven_engine::stream::StoredMessage>, MessagingEngineError>;
-
-    /// Get stream info
-    #[allow(dead_code)]
-    async fn get_stream_info(
-        &self,
-        name: &str,
-    ) -> Result<Option<proven_engine::StreamInfo>, MessagingEngineError>;
-
-    /// Delete a message from a stream
-    async fn delete_message(
-        &self,
-        stream: String,
-        sequence: u64,
-    ) -> Result<(), MessagingEngineError>;
-}
-
-/// Wrapper implementation for the engine client
-struct ClientWrapperImpl<T, G, L>
+impl<Tr, G, L, T, D, S> Debug for InitializedEngineStream<Tr, G, L, T, D, S>
 where
-    T: proven_transport::Transport + 'static,
+    Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
     L: proven_storage::LogStorageWithDelete + 'static,
-{
-    inner: EngineClient<T, G, L>,
-}
-
-impl<T, G, L> Debug for ClientWrapperImpl<T, G, L>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClientWrapperImpl").finish()
+        f.debug_struct("InitializedEngineStream")
+            .field("name", &self.name)
+            .field("client", &"<EngineClient>")
+            .field("options", &"<EngineStreamOptions>")
+            .field("cache", &"<Cache>")
+            .finish()
     }
 }
 
-#[async_trait]
-impl<T, G, L> ClientWrapper for ClientWrapperImpl<T, G, L>
+impl<Tr, G, L, T, D, S> Clone for InitializedEngineStream<Tr, G, L, T, D, S>
 where
-    T: proven_transport::Transport + Debug + 'static,
+    Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + Debug + 'static,
-{
-    async fn create_stream(
-        &self,
-        name: String,
-        config: StreamConfig,
-    ) -> Result<(), MessagingEngineError> {
-        self.inner
-            .create_stream(name, config)
-            .await
-            .map(|_| ())
-            .map_err(|e| MessagingEngineError::Engine(e.to_string()))
-    }
-
-    async fn publish(
-        &self,
-        stream: String,
-        payload: Vec<u8>,
-        metadata: Option<std::collections::HashMap<String, String>>,
-    ) -> Result<u64, MessagingEngineError> {
-        let response = self
-            .inner
-            .publish(stream.clone(), payload, metadata)
-            .await
-            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
-
-        // Extract sequence number from GroupResponse
-        match response {
-            proven_engine::consensus::group::GroupResponse::Appended {
-                stream: _,
-                sequence,
-            } => Ok(sequence),
-            _ => Err(MessagingEngineError::Engine(format!(
-                "Unexpected response from publish to stream '{stream}': expected Appended, got {response:?}"
-            ))),
-        }
-    }
-
-    async fn stream_exists(&self, name: &str) -> Result<bool, MessagingEngineError> {
-        self.inner
-            .get_stream_info(name)
-            .await
-            .map(|info| info.is_some())
-            .map_err(|e| MessagingEngineError::Engine(e.to_string()))
-    }
-
-    async fn read_stream(
-        &self,
-        stream_name: String,
-        start_sequence: u64,
-        count: u64,
-    ) -> Result<Vec<proven_engine::stream::StoredMessage>, MessagingEngineError> {
-        self.inner
-            .read_stream(stream_name, start_sequence, count)
-            .await
-            .map_err(|e| MessagingEngineError::Engine(e.to_string()))
-    }
-
-    async fn get_stream_info(
-        &self,
-        name: &str,
-    ) -> Result<Option<proven_engine::StreamInfo>, MessagingEngineError> {
-        self.inner
-            .get_stream_info(name)
-            .await
-            .map_err(|e| MessagingEngineError::Engine(e.to_string()))
-    }
-
-    async fn delete_message(
-        &self,
-        stream: String,
-        sequence: u64,
-    ) -> Result<(), MessagingEngineError> {
-        let response = self
-            .inner
-            .delete_message(stream.clone(), sequence)
-            .await
-            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
-
-        match response {
-            proven_engine::consensus::group::GroupResponse::Deleted { .. } => Ok(()),
-            proven_engine::consensus::group::GroupResponse::Error { message } => {
-                Err(MessagingEngineError::Engine(format!(
-                    "Failed to delete message {sequence} from stream '{stream}': {message}"
-                )))
-            }
-            _ => Err(MessagingEngineError::Engine(format!(
-                "Unexpected response from delete message {sequence} from stream '{stream}': {response:?}"
-            ))),
-        }
-    }
-}
-
-impl<T, D, S> Clone for InitializedEngineStream<T, D, S>
-where
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -251,8 +186,11 @@ where
 }
 
 #[async_trait]
-impl<T, D, S> InitializedStream<T, D, S> for InitializedEngineStream<T, D, S>
+impl<Tr, G, L, T, D, S> InitializedStream<T, D, S> for InitializedEngineStream<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -264,21 +202,21 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = MessagingEngineError;
-    type Options = EngineStreamOptions;
-    type Subject = EngineMessagingSubject<T, D, S>;
+    type Options = EngineStreamOptions<Tr, G, L>;
+    type Subject = EngineMessagingSubject<Tr, G, L, T, D, S>;
 
     type Client<X>
-        = EngineMessagingClient<X, T, D, S>
+        = EngineMessagingClient<Tr, G, L, X, T, D, S>
     where
         X: proven_messaging::service_handler::ServiceHandler<T, D, S>;
 
     type Consumer<X>
-        = EngineMessagingConsumer<X, T, D, S>
+        = EngineMessagingConsumer<Tr, G, L, X, T, D, S>
     where
         X: proven_messaging::consumer_handler::ConsumerHandler<T, D, S>;
 
     type Service<X>
-        = EngineMessagingService<X, T, D, S>
+        = EngineMessagingService<Tr, G, L, X, T, D, S>
     where
         X: proven_messaging::service_handler::ServiceHandler<T, D, S>;
 
@@ -367,12 +305,30 @@ where
     /// Deletes a message at the given sequence number.
     async fn delete(&self, seq: u64) -> Result<(), Self::Error> {
         // Delete from engine
-        self.client.delete_message(self.name.clone(), seq).await?;
+        let response = self
+            .client
+            .delete_message(self.name.clone(), seq)
+            .await
+            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
 
-        // Also remove from local cache
-        self.cache.write().await.remove(&seq);
-        info!("Deleted message {} from stream '{}'", seq, self.name);
-        Ok(())
+        match response {
+            proven_engine::consensus::group::GroupResponse::Deleted { .. } => {
+                // Also remove from local cache
+                self.cache.write().await.remove(&seq);
+                info!("Deleted message {} from stream '{}'", seq, self.name);
+                Ok(())
+            }
+            proven_engine::consensus::group::GroupResponse::Error { message } => {
+                Err(MessagingEngineError::Engine(format!(
+                    "Failed to delete message {seq} from stream '{}': {message}",
+                    self.name
+                )))
+            }
+            _ => Err(MessagingEngineError::Engine(format!(
+                "Unexpected response from delete message {seq} from stream '{}': {response:?}",
+                self.name
+            ))),
+        }
     }
 
     /// Gets a message by sequence number.
@@ -386,7 +342,11 @@ where
         }
 
         // Query from engine storage
-        let messages = self.client.read_stream(self.name.clone(), seq, 1).await?;
+        let messages = self
+            .client
+            .read_stream(self.name.clone(), seq, 1)
+            .await
+            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
         if let Some(stored_msg) = messages.first() {
             let bytes = stored_msg.data.payload.clone();
             match T::try_from(bytes) {
@@ -418,7 +378,12 @@ where
     /// Gets the last sequence number.
     async fn last_seq(&self) -> Result<u64, Self::Error> {
         // Get stream info from engine
-        if let Some(info) = self.client.get_stream_info(&self.name).await? {
+        if let Some(info) = self
+            .client
+            .get_stream_info(&self.name)
+            .await
+            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?
+        {
             // The StreamInfo has a last_sequence field
             Ok(info.last_sequence)
         } else {
@@ -430,7 +395,12 @@ where
     /// Gets the total number of messages.
     async fn messages(&self) -> Result<u64, Self::Error> {
         // Get stream info from engine
-        if let Some(info) = self.client.get_stream_info(&self.name).await? {
+        if let Some(info) = self
+            .client
+            .get_stream_info(&self.name)
+            .await
+            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?
+        {
             // Use the accurate message_count from StreamInfo
             Ok(info.message_count)
         } else {
@@ -452,10 +422,23 @@ where
         })?;
 
         // Publish through engine client
-        let seq = self
+        let response = self
             .client
             .publish(self.name.clone(), bytes.to_vec(), None)
-            .await?;
+            .await
+            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
+
+        // Extract sequence number from GroupResponse
+        let GroupResponse::Appended {
+            stream: _,
+            sequence: seq,
+        } = response
+        else {
+            return Err(MessagingEngineError::Engine(format!(
+                "Unexpected response from publish to stream '{}': expected Appended, got {response:?}",
+                self.name
+            )));
+        };
 
         // Cache the message locally
         self.cache.write().await.insert(seq, message);
@@ -507,8 +490,11 @@ where
     }
 }
 
-impl<T, D, S> InitializedEngineStream<T, D, S>
+impl<Tr, G, L, T, D, S> InitializedEngineStream<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -519,27 +505,6 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    /// Create a new initialized stream with an engine client
-    #[must_use]
-    pub fn with_client<Tr, G, L>(
-        name: String,
-        client: EngineClient<Tr, G, L>,
-        options: EngineStreamOptions,
-    ) -> Self
-    where
-        Tr: proven_transport::Transport + Debug + 'static,
-        G: proven_topology::TopologyAdaptor + 'static,
-        L: proven_storage::LogStorageWithDelete + Debug + 'static,
-    {
-        Self {
-            name,
-            client: Arc::new(ClientWrapperImpl { inner: client }),
-            options,
-            cache: Arc::new(RwLock::new(HashMap::new())),
-            _marker: PhantomData,
-        }
-    }
-
     /// Publish a message with metadata.
     ///
     /// # Errors
@@ -551,10 +516,23 @@ where
         metadata: HashMap<String, String>,
     ) -> Result<u64, MessagingEngineError> {
         // Publish through engine with metadata
-        let seq = self
+        let response = self
             .client
             .publish(self.name.clone(), message.to_vec(), Some(metadata))
-            .await?;
+            .await
+            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
+
+        // Extract sequence number from GroupResponse
+        let GroupResponse::Appended {
+            stream: _,
+            sequence: seq,
+        } = response
+        else {
+            return Err(MessagingEngineError::Engine(format!(
+                "Unexpected response from publish to stream '{}': expected Appended, got {response:?}",
+                self.name
+            )));
+        };
 
         info!(
             "Published message with metadata to stream '{}' at sequence {}",
@@ -566,9 +544,11 @@ where
 }
 
 /// An engine-backed stream.
-#[derive(Debug)]
-pub struct EngineStream<T, D, S>
+pub struct EngineStream<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -580,13 +560,15 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    client: Arc<dyn ClientWrapper>,
-    options: EngineStreamOptions,
+    options: EngineStreamOptions<Tr, G, L>,
     _marker: PhantomData<(T, D, S)>,
 }
 
-impl<T, D, S> EngineStream<T, D, S>
+impl<Tr, G, L, T, D, S> Debug for EngineStream<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -597,29 +579,19 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    /// Create a new engine stream
-    #[must_use]
-    pub fn new<Tr, G, L>(
-        name: String,
-        client: EngineClient<Tr, G, L>,
-        options: EngineStreamOptions,
-    ) -> Self
-    where
-        Tr: proven_transport::Transport + Debug + 'static,
-        G: proven_topology::TopologyAdaptor + 'static,
-        L: proven_storage::LogStorageWithDelete + Debug + 'static,
-    {
-        Self {
-            name,
-            client: Arc::new(ClientWrapperImpl { inner: client }),
-            options,
-            _marker: PhantomData,
-        }
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineStream")
+            .field("name", &self.name)
+            .field("options", &"<EngineStreamOptions>")
+            .finish()
     }
 }
 
-impl<T, D, S> Clone for EngineStream<T, D, S>
+impl<Tr, G, L, T, D, S> Clone for EngineStream<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -633,7 +605,6 @@ where
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
-            client: self.client.clone(),
             options: self.options.clone(),
             _marker: PhantomData,
         }
@@ -641,8 +612,11 @@ where
 }
 
 #[async_trait]
-impl<T, D, S> Stream<T, D, S> for EngineStream<T, D, S>
+impl<Tr, G, L, T, D, S> Stream<T, D, S> for EngineStream<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -653,33 +627,45 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Options = EngineStreamOptions;
-    type Initialized = InitializedEngineStream<T, D, S>;
-    type Subject = EngineMessagingSubject<T, D, S>;
+    type Options = EngineStreamOptions<Tr, G, L>;
+    type Initialized = InitializedEngineStream<Tr, G, L, T, D, S>;
+    type Subject = EngineMessagingSubject<Tr, G, L, T, D, S>;
 
-    fn new<K>(_stream_name: K, _options: Self::Options) -> Self
+    fn new<K>(stream_name: K, options: Self::Options) -> Self
     where
         K: Clone + Into<String> + Send,
     {
-        panic!(
-            "EngineStream::new should not be called directly, use new() with engine client instead"
-        )
+        Self {
+            name: stream_name.into(),
+            options,
+            _marker: PhantomData,
+        }
     }
 
     async fn init(&self) -> Result<Self::Initialized, MessagingEngineError> {
+        // Get the client from options
+        let client = &self.options.client;
+
         // Ensure the stream exists
         let stream_config = self.options.stream_config.clone().unwrap_or_default();
 
-        if !self.client.stream_exists(&self.name).await? {
-            self.client
+        let stream_exists = client
+            .get_stream_info(&self.name)
+            .await
+            .map_err(|e| MessagingEngineError::Engine(e.to_string()))?
+            .is_some();
+
+        if !stream_exists {
+            client
                 .create_stream(self.name.clone(), stream_config)
-                .await?;
+                .await
+                .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
             info!("Created stream: {}", self.name);
         }
 
         Ok(InitializedEngineStream {
             name: self.name.clone(),
-            client: self.client.clone(),
+            client: client.clone(),
             options: self.options.clone(),
             cache: Arc::new(RwLock::new(HashMap::new())),
             _marker: PhantomData,
@@ -706,9 +692,11 @@ macro_rules! impl_scoped_stream {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            #[derive(Debug)]
-            pub struct [< EngineStream $index >]<T, D, S>
+            pub struct [< EngineStream $index >]<Tr, G, L, T, D, S>
             where
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                L: proven_storage::LogStorageWithDelete + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -720,13 +708,64 @@ macro_rules! impl_scoped_stream {
                 S: Debug + Send + StdError + Sync + 'static,
             {
                 name: String,
-                client: Arc<dyn ClientWrapper>,
-                options: EngineStreamOptions,
+                options: EngineStreamOptions<Tr, G, L>,
                 _marker: PhantomData<(T, D, S)>,
             }
 
-            impl<T, D, S> Clone for [< EngineStream $index >]<T, D, S>
+            impl<Tr, G, L, T, D, S> [< EngineStream $index >]<Tr, G, L, T, D, S>
             where
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                L: proven_storage::LogStorageWithDelete + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+            {
+                /// Create a new engine stream.
+                #[must_use]
+                pub const fn new(name: String, options: EngineStreamOptions<Tr, G, L>) -> Self {
+                    Self {
+                        name,
+                        options,
+                        _marker: PhantomData,
+                    }
+                }
+            }
+
+            impl<Tr, G, L, T, D, S> Debug for [< EngineStream $index >]<Tr, G, L, T, D, S>
+            where
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                L: proven_storage::LogStorageWithDelete + 'static,
+                T: Clone
+                    + Debug
+                    + Send
+                    + Sync
+                    + TryFrom<Bytes, Error = D>
+                    + TryInto<Bytes, Error = S>
+                    + 'static,
+                D: Debug + Send + StdError + Sync + 'static,
+                S: Debug + Send + StdError + Sync + 'static,
+            {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    f.debug_struct(stringify!([< EngineStream $index >]))
+                        .field("name", &self.name)
+                        .field("options", &"<EngineStreamOptions>")
+                        .finish()
+                }
+            }
+
+            impl<Tr, G, L, T, D, S> Clone for [< EngineStream $index >]<Tr, G, L, T, D, S>
+            where
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                L: proven_storage::LogStorageWithDelete + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -740,48 +779,19 @@ macro_rules! impl_scoped_stream {
                 fn clone(&self) -> Self {
                     Self {
                         name: self.name.clone(),
-                        client: self.client.clone(),
                         options: self.options.clone(),
                         _marker: PhantomData,
                     }
                 }
             }
 
-            impl<T, D, S> [< EngineStream $index >]<T, D, S>
-            where
-                T: Clone
-                    + Debug
-                    + Send
-                    + Sync
-                    + TryFrom<Bytes, Error = D>
-                    + TryInto<Bytes, Error = S>
-                    + 'static,
-                D: Debug + Send + StdError + Sync + 'static,
-                S: Debug + Send + StdError + Sync + 'static,
-            {
-                /// Creates a new scoped engine stream
-                #[must_use] pub fn new<Tr, G, L>(
-                    name: String,
-                    client: EngineClient<Tr, G, L>,
-                    options: EngineStreamOptions,
-                ) -> Self
-                where
-                    Tr: proven_transport::Transport + Debug + 'static,
-                    G: proven_topology::TopologyAdaptor + 'static,
-                    L: proven_storage::LogStorageWithDelete + Debug + 'static,
-                {
-                    Self {
-                        name,
-                        client: Arc::new(ClientWrapperImpl { inner: client }),
-                        options,
-                        _marker: PhantomData,
-                    }
-                }
-            }
 
             #[async_trait]
-            impl<T, D, S> [< Stream $index >]<T, D, S> for [< EngineStream $index >]<T, D, S>
+            impl<Tr, G, L, T, D, S> [< Stream $index >]<T, D, S> for [< EngineStream $index >]<Tr, G, L, T, D, S>
             where
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                L: proven_storage::LogStorageWithDelete + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -792,16 +802,15 @@ macro_rules! impl_scoped_stream {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
-                type Options = EngineStreamOptions;
-                type Scoped = $parent<T, D, S>;
+                type Options = EngineStreamOptions<Tr, G, L>;
+                type Scoped = $parent<Tr, G, L, T, D, S>;
 
-                fn scope<K>(&self, scope: K) -> $parent<T, D, S>
+                fn scope<K>(&self, scope: K) -> $parent<Tr, G, L, T, D, S>
                 where
                     K: AsRef<str> + Send,
                 {
-                    $parent::<T, D, S> {
+                    $parent::<Tr, G, L, T, D, S> {
                         name: format!("{}_{}", self.name, scope.as_ref()),
-                        client: self.client.clone(),
                         options: self.options.clone(),
                         _marker: PhantomData,
                     }
@@ -811,7 +820,7 @@ macro_rules! impl_scoped_stream {
     };
 }
 
-impl_scoped_stream!(1, EngineStream, Stream1, "A single-scoped engine stream.");
+impl_scoped_stream!(1, EngineStream, Stream, "A single-scoped engine stream.");
 
 impl_scoped_stream!(2, EngineStream1, Stream1, "A double-scoped engine stream.");
 

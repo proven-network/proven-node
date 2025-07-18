@@ -18,6 +18,7 @@ use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_core::BootstrapUpgrade;
 use proven_identity::IdentityManager;
 use proven_locks_memory::MemoryLockManager;
+use proven_messaging::stream::Stream;
 use proven_messaging_engine::consumer::EngineMessagingConsumerOptions;
 use proven_messaging_engine::service::EngineMessagingServiceOptions;
 use proven_messaging_engine::stream::{
@@ -52,14 +53,18 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         // Command stream for processing identity commands
         EngineStream::new(
             "IDENTITY_COMMANDS".to_string(),
-            engine_client.clone(),
-            EngineStreamOptions::default(),
+            EngineStreamOptions {
+                stream_config: None,
+                client: engine_client.clone(),
+            },
         ),
         // Event stream for publishing identity events
         EngineStream::new(
             "IDENTITY_EVENTS".to_string(),
-            engine_client.clone(),
-            EngineStreamOptions::default(),
+            EngineStreamOptions {
+                stream_config: None,
+                client: engine_client.clone(),
+            },
         ),
         // Service options for the command processing service
         EngineMessagingServiceOptions::default(),
@@ -85,14 +90,18 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         // Command stream for processing application commands
         EngineStream::new(
             "APPLICATION_COMMANDS".to_string(),
-            engine_client.clone(),
-            EngineStreamOptions::default(),
+            EngineStreamOptions {
+                stream_config: None,
+                client: engine_client.clone(),
+            },
         ),
         // Event stream for publishing application events
         EngineStream::new(
             "APPLICATION_EVENTS".to_string(),
-            engine_client.clone(),
-            EngineStreamOptions::default(),
+            EngineStreamOptions {
+                stream_config: None,
+                client: engine_client.clone(),
+            },
         ),
         // Service options for the command processing service
         EngineMessagingServiceOptions::default(),
@@ -113,8 +122,10 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     let application_sql_store = StreamedSqlStore2::new(
         EngineStream2::new(
             "APPLICATION_SQL".to_string(),
-            engine_client.clone(),
-            EngineStreamOptions::default(),
+            EngineStreamOptions {
+                stream_config: None,
+                client: engine_client.clone(),
+            },
         ),
         EngineMessagingServiceOptions::default(),
         proven_messaging_engine::client::EngineMessagingClientOptions::default(),
@@ -126,8 +137,10 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     let personal_sql_store = StreamedSqlStore3::new(
         EngineStream3::new(
             "PERSONAL_SQL".to_string(),
-            engine_client.clone(),
-            EngineStreamOptions::default(),
+            EngineStreamOptions {
+                stream_config: None,
+                client: engine_client.clone(),
+            },
         ),
         EngineMessagingServiceOptions::default(),
         proven_messaging_engine::client::EngineMessagingClientOptions::default(),
@@ -139,8 +152,10 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     let nft_sql_store = StreamedSqlStore3::new(
         EngineStream3::new(
             "NFT_SQL".to_string(),
-            engine_client.clone(),
-            EngineStreamOptions::default(),
+            EngineStreamOptions {
+                stream_config: None,
+                client: engine_client.clone(),
+            },
         ),
         EngineMessagingServiceOptions::default(),
         proven_messaging_engine::client::EngineMessagingClientOptions::default(),

@@ -58,9 +58,11 @@ pub enum EngineMessagingClientError {
 impl ClientError for EngineMessagingClientError {}
 
 /// An engine messaging client.
-#[derive(Debug)]
-pub struct EngineMessagingClient<X, T, D, S>
+pub struct EngineMessagingClient<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -73,7 +75,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedEngineStream<T, D, S>,
+    stream: InitializedEngineStream<Tr, G, L, T, D, S>,
     options: EngineMessagingClientOptions,
     /// Counter for generating unique request IDs
     request_id_counter: Arc<AtomicUsize>,
@@ -81,11 +83,41 @@ where
     response_map: Arc<TokioMutex<ResponseMap<X::ResponseType>>>,
     /// Response stream name for this client
     response_stream_name: String,
-    _marker: PhantomData<X>,
+    _marker: PhantomData<(Tr, G, L, X)>,
 }
 
-impl<X, T, D, S> Clone for EngineMessagingClient<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Debug for EngineMessagingClient<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineMessagingClient")
+            .field("name", &self.name)
+            .field("stream", &self.stream)
+            .field("options", &self.options)
+            .field("request_id_counter", &self.request_id_counter)
+            .field("response_stream_name", &self.response_stream_name)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<Tr, G, L, X, T, D, S> Clone for EngineMessagingClient<Tr, G, L, X, T, D, S>
+where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -111,8 +143,11 @@ where
 }
 
 #[async_trait]
-impl<X, T, D, S> Client<X, T, D, S> for EngineMessagingClient<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Client<X, T, D, S> for EngineMessagingClient<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -127,7 +162,7 @@ where
     type Error = EngineMessagingClientError;
     type Options = EngineMessagingClientOptions;
     type ResponseType = X::ResponseType;
-    type StreamType = InitializedEngineStream<T, D, S>;
+    type StreamType = InitializedEngineStream<Tr, G, L, T, D, S>;
 
     async fn new(
         name: String,

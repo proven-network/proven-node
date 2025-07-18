@@ -17,9 +17,12 @@ use crate::error::MessagingEngineError;
 use crate::stream::InitializedEngineStream;
 
 /// An engine messaging service responder.
-#[derive(Clone, Debug)]
-pub struct EngineMessagingServiceResponder<T, D, S, R, RD, RS>
+#[derive(Clone)]
+pub struct EngineMessagingServiceResponder<Tr, G, L, T, D, S, R, RD, RS>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -40,7 +43,7 @@ where
     RS: Debug + Send + StdError + Sync + 'static,
 {
     /// Stream to send responses to (request stream type)
-    stream: InitializedEngineStream<T, D, S>,
+    stream: InitializedEngineStream<Tr, G, L, T, D, S>,
     /// Response stream name where responses should be sent
     response_stream_name: String,
     /// Request ID for correlation
@@ -51,8 +54,46 @@ where
     _marker: PhantomData<(R, RD, RS)>,
 }
 
-impl<T, D, S, R, RD, RS> EngineMessagingServiceResponder<T, D, S, R, RD, RS>
+impl<Tr, G, L, T, D, S, R, RD, RS> Debug
+    for EngineMessagingServiceResponder<Tr, G, L, T, D, S, R, RD, RS>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+    R: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = RD>
+        + TryInto<Bytes, Error = RS>
+        + 'static,
+    RD: Debug + Send + StdError + Sync + 'static,
+    RS: Debug + Send + StdError + Sync + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineMessagingServiceResponder")
+            .field("stream", &self.stream)
+            .field("response_stream_name", &self.response_stream_name)
+            .field("request_id", &self.request_id)
+            .field("stream_sequence", &self.stream_sequence)
+            .finish()
+    }
+}
+
+impl<Tr, G, L, T, D, S, R, RD, RS> EngineMessagingServiceResponder<Tr, G, L, T, D, S, R, RD, RS>
+where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -75,7 +116,7 @@ where
     /// Create a new engine messaging service responder.
     #[must_use]
     pub const fn new(
-        stream: InitializedEngineStream<T, D, S>,
+        stream: InitializedEngineStream<Tr, G, L, T, D, S>,
         response_stream_name: String,
         request_id: String,
         stream_sequence: u64,
@@ -130,9 +171,12 @@ pub struct EngineMessagingUsedResponder;
 impl UsedServiceResponder for EngineMessagingUsedResponder {}
 
 #[async_trait]
-impl<T, TD, TS, R, RD, RS> ServiceResponder<T, TD, TS, R, RD, RS>
-    for EngineMessagingServiceResponder<T, TD, TS, R, RD, RS>
+impl<Tr, G, L, T, TD, TS, R, RD, RS> ServiceResponder<T, TD, TS, R, RD, RS>
+    for EngineMessagingServiceResponder<Tr, G, L, T, TD, TS, R, RD, RS>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send

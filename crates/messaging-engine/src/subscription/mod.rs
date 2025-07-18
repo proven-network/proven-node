@@ -28,9 +28,11 @@ struct EngineMessagingSubscriptionInner {
 }
 
 /// A subscription to an engine-backed subject pattern
-#[derive(Debug)]
-pub struct EngineMessagingSubscription<X, T, D, S>
+pub struct EngineMessagingSubscription<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -47,11 +49,38 @@ where
     /// The handler for this subscription
     handler: Arc<RwLock<X>>,
     /// Type markers
-    _marker: PhantomData<(X, T, D, S)>,
+    _marker: PhantomData<(Tr, G, L, X, T, D, S)>,
 }
 
-impl<X, T, D, S> Clone for EngineMessagingSubscription<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Debug for EngineMessagingSubscription<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+    X: SubscriptionHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineMessagingSubscription")
+            .field("inner", &"<EngineMessagingSubscriptionInner>")
+            .field("handler", &"<Handler>")
+            .finish()
+    }
+}
+
+impl<Tr, G, L, X, T, D, S> Clone for EngineMessagingSubscription<Tr, G, L, X, T, D, S>
+where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: SubscriptionHandler<T, D, S> + Clone,
     T: Clone
         + Debug
@@ -96,8 +125,12 @@ impl Default for EngineMessagingSubscriptionOptions {
 impl SubscriptionOptions for EngineMessagingSubscriptionOptions {}
 
 #[async_trait]
-impl<X, T, D, S> Subscription<X, T, D, S> for EngineMessagingSubscription<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Subscription<X, T, D, S>
+    for EngineMessagingSubscription<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug
@@ -111,7 +144,7 @@ where
 {
     type Error = MessagingEngineError;
     type Options = EngineMessagingSubscriptionOptions;
-    type Subject = crate::subject::EngineMessagingSubject<T, D, S>;
+    type Subject = crate::subject::EngineMessagingSubject<Tr, G, L, T, D, S>;
 
     async fn new(
         subject: Self::Subject,
@@ -146,8 +179,11 @@ where
     }
 }
 
-impl<X, T, D, S> EngineMessagingSubscription<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> EngineMessagingSubscription<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: SubscriptionHandler<T, D, S>,
     T: Clone
         + Debug

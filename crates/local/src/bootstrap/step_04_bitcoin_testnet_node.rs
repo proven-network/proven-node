@@ -36,8 +36,10 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
     let bitcoin_testnet_proxy_stream = EngineStream::new(
         "BITCOIN_TESTNET_PROXY".to_string(),
-        engine_client.clone(),
-        EngineStreamOptions::default(),
+        EngineStreamOptions {
+            stream_config: None,
+            client: engine_client.clone(),
+        },
     )
     .init()
     .await

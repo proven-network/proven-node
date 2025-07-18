@@ -14,9 +14,11 @@ use proven_messaging::subject::Subject;
 use tracing::debug;
 
 /// An engine messaging subject.
-#[derive(Debug)]
-pub struct EngineMessagingSubject<T, D, S>
+pub struct EngineMessagingSubject<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -30,11 +32,36 @@ where
     /// Subject name
     name: String,
 
-    _marker: PhantomData<(T, D, S)>,
+    _marker: PhantomData<(Tr, G, L, T, D, S)>,
 }
 
-impl<T, D, S> Clone for EngineMessagingSubject<T, D, S>
+impl<Tr, G, L, T, D, S> Debug for EngineMessagingSubject<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineMessagingSubject")
+            .field("name", &self.name)
+            .finish()
+    }
+}
+
+impl<Tr, G, L, T, D, S> Clone for EngineMessagingSubject<Tr, G, L, T, D, S>
+where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -53,8 +80,11 @@ where
     }
 }
 
-impl<T, D, S> EngineMessagingSubject<T, D, S>
+impl<Tr, G, L, T, D, S> EngineMessagingSubject<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -82,8 +112,11 @@ where
 }
 
 #[async_trait]
-impl<T, D, S> Subject<T, D, S> for EngineMessagingSubject<T, D, S>
+impl<Tr, G, L, T, D, S> Subject<T, D, S> for EngineMessagingSubject<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -95,9 +128,9 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = MessagingEngineError;
-    type StreamType = InitializedEngineStream<T, D, S>;
+    type StreamType = InitializedEngineStream<Tr, G, L, T, D, S>;
     type SubscriptionType<X>
-        = EngineMessagingSubscription<X, T, D, S>
+        = EngineMessagingSubscription<Tr, G, L, X, T, D, S>
     where
         X: proven_messaging::subscription_handler::SubscriptionHandler<T, D, S>;
 
@@ -109,7 +142,7 @@ where
 
         let options = EngineMessagingSubscriptionOptions::default();
 
-        <EngineMessagingSubscription<X, T, D, S> as proven_messaging::subscription::Subscription<
+        <EngineMessagingSubscription<Tr, G, L, X, T, D, S> as proven_messaging::subscription::Subscription<
             X,
             T,
             D,
@@ -139,7 +172,7 @@ where
             stream_name, self.name
         );
 
-        <InitializedEngineStream<T, D, S> as proven_messaging::stream::InitializedStream<
+        <InitializedEngineStream<Tr, G, L, T, D, S> as proven_messaging::stream::InitializedStream<
             T,
             D,
             S,
@@ -148,8 +181,11 @@ where
     }
 }
 
-impl<T, D, S> From<String> for EngineMessagingSubject<T, D, S>
+impl<Tr, G, L, T, D, S> From<String> for EngineMessagingSubject<Tr, G, L, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -165,8 +201,11 @@ where
     }
 }
 
-impl<T, D, S> From<EngineMessagingSubject<T, D, S>> for String
+impl<Tr, G, L, T, D, S> From<EngineMessagingSubject<Tr, G, L, T, D, S>> for String
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     T: Clone
         + Debug
         + Send
@@ -177,7 +216,7 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    fn from(val: EngineMessagingSubject<T, D, S>) -> Self {
+    fn from(val: EngineMessagingSubject<Tr, G, L, T, D, S>) -> Self {
         val.name
     }
 }

@@ -42,10 +42,12 @@ pub enum EngineMessagingServiceError {
 impl ServiceError for EngineMessagingServiceError {}
 
 /// An engine messaging service.
-#[derive(Debug)]
 #[allow(dead_code)]
-pub struct EngineMessagingService<X, T, D, S>
+pub struct EngineMessagingService<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -58,7 +60,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedEngineStream<T, D, S>,
+    stream: InitializedEngineStream<Tr, G, L, T, D, S>,
     options: EngineMessagingServiceOptions,
     handler: X,
     last_processed_seq: u64,
@@ -70,8 +72,38 @@ where
     task_tracker: TaskTracker,
 }
 
-impl<X, T, D, S> Clone for EngineMessagingService<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Debug for EngineMessagingService<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
+    X: ServiceHandler<T, D, S>,
+    T: Clone
+        + Debug
+        + Send
+        + Sync
+        + TryFrom<Bytes, Error = D>
+        + TryInto<Bytes, Error = S>
+        + 'static,
+    D: Debug + Send + StdError + Sync + 'static,
+    S: Debug + Send + StdError + Sync + 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EngineMessagingService")
+            .field("name", &self.name)
+            .field("stream", &self.stream)
+            .field("options", &self.options)
+            .field("last_processed_seq", &self.last_processed_seq)
+            .field("current_seq", &self.current_seq)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<Tr, G, L, X, T, D, S> Clone for EngineMessagingService<Tr, G, L, X, T, D, S>
+where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ServiceHandler<T, D, S> + Clone,
     T: Clone
         + Debug
@@ -98,8 +130,11 @@ where
 }
 
 #[async_trait]
-impl<X, T, D, S> Service<X, T, D, S> for EngineMessagingService<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Service<X, T, D, S> for EngineMessagingService<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -114,6 +149,9 @@ where
     type Error = EngineMessagingServiceError;
     type Options = EngineMessagingServiceOptions;
     type Responder = EngineMessagingServiceResponder<
+        Tr,
+        G,
+        L,
         T,
         D,
         S,
@@ -122,7 +160,7 @@ where
         X::ResponseSerializationError,
     >;
     type UsedResponder = EngineMessagingUsedResponder;
-    type StreamType = InitializedEngineStream<T, D, S>;
+    type StreamType = InitializedEngineStream<Tr, G, L, T, D, S>;
 
     async fn new(
         name: String,
@@ -151,8 +189,11 @@ where
     }
 }
 
-impl<X, T, D, S> EngineMessagingService<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> EngineMessagingService<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -168,7 +209,7 @@ where
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     async fn process_requests(
-        stream: InitializedEngineStream<T, D, S>,
+        stream: InitializedEngineStream<Tr, G, L, T, D, S>,
         handler: X,
         current_seq: Arc<Mutex<u64>>,
         start_sequence: u64,
@@ -299,8 +340,11 @@ where
 }
 
 #[async_trait]
-impl<X, T, D, S> Bootable for EngineMessagingService<X, T, D, S>
+impl<Tr, G, L, X, T, D, S> Bootable for EngineMessagingService<Tr, G, L, X, T, D, S>
 where
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    L: proven_storage::LogStorageWithDelete + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
