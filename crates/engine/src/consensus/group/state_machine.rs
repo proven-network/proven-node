@@ -17,6 +17,21 @@ use super::snapshot::{GroupSnapshot, GroupSnapshotBuilder};
 use super::state::GroupState;
 use super::types::{GroupRequest, GroupResponse, StreamOperation};
 use crate::foundation::traits::OperationHandler;
+use proven_topology::NodeId;
+
+/// Callback for state machine events
+pub trait StateChangeCallback: Send + Sync {
+    /// Called when a stream operation is processed
+    fn on_stream_operation(
+        &self,
+        stream_name: &str,
+        operation: &StreamOperation,
+        response: &GroupResponse,
+    );
+
+    /// Called when membership changes
+    fn on_membership_changed(&self, new_members: &[NodeId], removed_members: &[NodeId]);
+}
 
 /// Raft state machine - handles applying committed entries
 #[derive(Clone)]
@@ -48,6 +63,92 @@ impl GroupStateMachine {
     pub fn state(&self) -> &Arc<GroupState> {
         &self.state
     }
+
+    /// Apply entries with optional callback
+    pub async fn apply_entries<I>(
+        &self,
+        entries: I,
+        callback: Option<&dyn StateChangeCallback>,
+    ) -> Result<Vec<GroupResponse>, StorageError<GroupTypeConfig>>
+    where
+        I: IntoIterator<Item = Entry<GroupTypeConfig>> + Send,
+        I::IntoIter: Send,
+    {
+        let mut responses = Vec::new();
+
+        for entry in entries {
+            // Update applied index
+            let log_id = entry.log_id.clone();
+            *self.applied.write().await = Some(log_id.clone());
+
+            match &entry.payload {
+                EntryPayload::Normal(req) => {
+                    // Process the business logic
+                    let operation = GroupOperation::new(req.clone());
+                    match self.handler.handle(operation).await {
+                        Ok(response) => {
+                            // Notify callback if provided
+                            if let (Some(cb), GroupRequest::Stream(stream_op)) = (callback, req) {
+                                let stream_name = match stream_op {
+                                    StreamOperation::Append { stream, .. } => stream.to_string(),
+                                    StreamOperation::Trim { stream, .. } => stream.to_string(),
+                                    StreamOperation::Delete { stream, .. } => stream.to_string(),
+                                };
+                                cb.on_stream_operation(&stream_name, stream_op, &response);
+                            }
+                            responses.push(response);
+                        }
+                        Err(e) => responses.push(GroupResponse::Error {
+                            message: e.to_string(),
+                        }),
+                    }
+                }
+                EntryPayload::Membership(membership) => {
+                    // Update membership
+                    let old_membership = self.membership.read().await.clone();
+                    *self.membership.write().await =
+                        StoredMembership::new(Some(log_id), membership.clone());
+
+                    // Calculate membership changes
+                    let old_members: Vec<NodeId> =
+                        old_membership.nodes().map(|(id, _)| id.clone()).collect();
+
+                    let new_members: Vec<NodeId> =
+                        membership.nodes().map(|(id, _)| id.clone()).collect();
+
+                    // Find removed members
+                    let removed_members: Vec<NodeId> = old_members
+                        .iter()
+                        .filter(|id| !new_members.contains(id))
+                        .cloned()
+                        .collect();
+
+                    // Find added members
+                    let added_members: Vec<NodeId> = new_members
+                        .iter()
+                        .filter(|id| !old_members.contains(id))
+                        .cloned()
+                        .collect();
+
+                    if (!added_members.is_empty() || !removed_members.is_empty())
+                        && let Some(cb) = callback
+                    {
+                        cb.on_membership_changed(&added_members, &removed_members);
+                    }
+
+                    // OpenRaft expects a response for every entry
+                    responses.push(GroupResponse::Success);
+                }
+                EntryPayload::Blank => {
+                    // Blank entries are used for leader election
+                    // OpenRaft expects a response for every entry
+                    responses.push(GroupResponse::Success);
+                }
+            }
+        }
+
+        Ok(responses)
+    }
 }
 
 impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
@@ -75,43 +176,8 @@ impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
         I: IntoIterator<Item = Entry<GroupTypeConfig>> + Send,
         I::IntoIter: Send,
     {
-        // Apply committed entries to state machine
-        let mut responses = Vec::new();
-
-        for entry in entries {
-            // Update applied index
-            let log_id = entry.log_id.clone();
-            *self.applied.write().await = Some(log_id.clone());
-
-            match &entry.payload {
-                EntryPayload::Normal(req) => {
-                    // Process the business logic
-                    let operation = GroupOperation::new(req.clone());
-
-                    match self.handler.handle(operation.clone()).await {
-                        Ok(response) => responses.push(response),
-                        Err(e) => responses.push(GroupResponse::Error {
-                            message: e.to_string(),
-                        }),
-                    }
-                }
-                EntryPayload::Membership(membership) => {
-                    // Update membership
-                    *self.membership.write().await =
-                        StoredMembership::new(Some(log_id), membership.clone());
-
-                    // OpenRaft expects a response for every entry
-                    responses.push(GroupResponse::Success);
-                }
-                EntryPayload::Blank => {
-                    // Blank entries are used for leader election
-                    // OpenRaft expects a response for every entry
-                    responses.push(GroupResponse::Success);
-                }
-            }
-        }
-
-        Ok(responses)
+        // Apply entries without callback (trait requirement)
+        self.apply_entries(entries, None).await
     }
 
     async fn begin_receiving_snapshot(

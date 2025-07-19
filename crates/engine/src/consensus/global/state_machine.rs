@@ -17,8 +17,16 @@ use super::snapshot::{GlobalSnapshot, GlobalSnapshotBuilder};
 use super::state::GlobalState;
 use super::types::{GlobalRequest, GlobalResponse};
 use crate::foundation::traits::OperationHandler;
-use crate::services::event::{Event, EventPublisher, EventResult};
 use proven_topology::NodeId;
+
+/// Callback for state machine events
+pub trait StateChangeCallback: Send + Sync {
+    /// Called when a response is processed
+    fn on_response_processed(&self, response: &GlobalResponse);
+
+    /// Called when membership changes
+    fn on_membership_changed(&self, new_members: &[NodeId], removed_members: &[NodeId]);
+}
 
 /// Raft state machine - handles applying committed entries
 #[derive(Clone)]
@@ -31,10 +39,6 @@ pub struct GlobalStateMachine {
     applied: Arc<RwLock<Option<LogId<GlobalTypeConfig>>>>,
     /// Current membership
     membership: Arc<RwLock<StoredMembership<GlobalTypeConfig>>>,
-    /// Event publisher for consensus events
-    event_publisher: Arc<RwLock<Option<EventPublisher>>>,
-    /// Node ID for event source
-    node_id: Arc<RwLock<Option<NodeId>>>,
 }
 
 impl GlobalStateMachine {
@@ -47,20 +51,93 @@ impl GlobalStateMachine {
             handler,
             applied: Arc::new(RwLock::new(None)),
             membership: Arc::new(RwLock::new(StoredMembership::default())),
-            event_publisher: Arc::new(RwLock::new(None)),
-            node_id: Arc::new(RwLock::new(None)),
         }
-    }
-
-    /// Set the event publisher
-    pub async fn set_event_publisher(&self, publisher: EventPublisher, node_id: NodeId) {
-        *self.event_publisher.write().await = Some(publisher);
-        *self.node_id.write().await = Some(node_id);
     }
 
     /// Get the state reference
     pub fn state(&self) -> &Arc<GlobalState> {
         &self.state
+    }
+
+    /// Apply entries with optional callback
+    pub async fn apply_entries<I>(
+        &self,
+        entries: I,
+        callback: Option<&dyn StateChangeCallback>,
+    ) -> Result<Vec<GlobalResponse>, StorageError<GlobalTypeConfig>>
+    where
+        I: IntoIterator<Item = Entry<GlobalTypeConfig>> + Send,
+        I::IntoIter: Send,
+    {
+        let mut responses = Vec::new();
+
+        for entry in entries {
+            // Update applied index
+            let log_id = entry.log_id.clone();
+            *self.applied.write().await = Some(log_id.clone());
+
+            match &entry.payload {
+                EntryPayload::Normal(req) => {
+                    // Process the business logic
+                    let operation = GlobalOperation::new(req.clone());
+                    match self.handler.handle(operation).await {
+                        Ok(response) => {
+                            // Notify callback if provided
+                            if let Some(cb) = callback {
+                                cb.on_response_processed(&response);
+                            }
+                            responses.push(response);
+                        }
+                        Err(e) => responses.push(GlobalResponse::Error {
+                            message: e.to_string(),
+                        }),
+                    }
+                }
+                EntryPayload::Membership(membership) => {
+                    // Update membership
+                    let old_membership = self.membership.read().await.clone();
+                    *self.membership.write().await =
+                        StoredMembership::new(Some(log_id), membership.clone());
+
+                    // Calculate membership changes
+                    let old_members: Vec<NodeId> =
+                        old_membership.nodes().map(|(id, _)| id.clone()).collect();
+
+                    let new_members: Vec<NodeId> =
+                        membership.nodes().map(|(id, _)| id.clone()).collect();
+
+                    // Find removed members
+                    let removed_members: Vec<NodeId> = old_members
+                        .iter()
+                        .filter(|id| !new_members.contains(id))
+                        .cloned()
+                        .collect();
+
+                    // Find added members
+                    let added_members: Vec<NodeId> = new_members
+                        .iter()
+                        .filter(|id| !old_members.contains(id))
+                        .cloned()
+                        .collect();
+
+                    if (!added_members.is_empty() || !removed_members.is_empty())
+                        && let Some(cb) = callback
+                    {
+                        cb.on_membership_changed(&added_members, &removed_members);
+                    }
+
+                    // OpenRaft expects a response for every entry
+                    responses.push(GlobalResponse::Success);
+                }
+                EntryPayload::Blank => {
+                    // Blank entries are used for leader election
+                    // OpenRaft expects a response for every entry
+                    responses.push(GlobalResponse::Success);
+                }
+            }
+        }
+
+        Ok(responses)
     }
 }
 
@@ -89,159 +166,8 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
         I: IntoIterator<Item = Entry<GlobalTypeConfig>> + Send,
         I::IntoIter: Send,
     {
-        // Apply committed entries to state machine
-        let mut responses = Vec::new();
-
-        for entry in entries {
-            // Update applied index
-            let log_id = entry.log_id.clone();
-            *self.applied.write().await = Some(log_id.clone());
-
-            match &entry.payload {
-                EntryPayload::Normal(req) => {
-                    // Process the business logic
-                    let operation = GlobalOperation::new(req.clone());
-
-                    match self.handler.handle(operation).await {
-                        Ok(response) => {
-                            // Publish event based on response
-                            let publisher = self.event_publisher.read().await;
-                            let node_id = self.node_id.read().await;
-                            if let (Some(publisher), Some(node_id)) =
-                                (publisher.as_ref(), node_id.as_ref())
-                            {
-                                let event = match &response {
-                                    GlobalResponse::StreamCreated { name, group_id } => {
-                                        // Get config from state for the event
-                                        if let Some(stream_info) = self.state.get_stream(name).await
-                                        {
-                                            Some(Event::StreamCreated {
-                                                name: name.clone(),
-                                                config: stream_info.config.clone(),
-                                                group_id: *group_id,
-                                            })
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                    GlobalResponse::StreamDeleted { name: _ } => {
-                                        // Need to get group_id from somewhere - maybe include in response
-                                        None // TODO: Include group_id in response
-                                    }
-                                    GlobalResponse::GroupCreated { id } => {
-                                        if let Some(group_info) = self.state.get_group(id).await {
-                                            Some(Event::GroupCreated {
-                                                group_id: *id,
-                                                members: group_info.members.clone(),
-                                            })
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                    GlobalResponse::GroupDissolved { id } => {
-                                        Some(Event::GroupDeleted { group_id: *id })
-                                    }
-                                    _ => None,
-                                };
-
-                                if let Some(event) = event {
-                                    let publisher = publisher.clone();
-                                    let source = format!("global-consensus-{node_id}");
-
-                                    // For critical events that affect routing, use synchronous handling
-                                    match &event {
-                                        Event::StreamCreated { .. }
-                                        | Event::GroupCreated { .. } => {
-                                            // Wait for routing service to update before continuing
-                                            match publisher.request(event, source).await {
-                                                Ok(EventResult::Success) => {
-                                                    tracing::debug!("Routing updated successfully");
-                                                }
-                                                Ok(EventResult::Failed(msg)) => {
-                                                    tracing::error!(
-                                                        "Failed to update routing: {}",
-                                                        msg
-                                                    );
-                                                    // Note: We log but don't fail the consensus operation
-                                                    // as routing is eventually consistent
-                                                }
-                                                Ok(result) => {
-                                                    tracing::debug!(
-                                                        "Routing handler returned: {:?}",
-                                                        result
-                                                    );
-                                                }
-                                                Err(e) => {
-                                                    tracing::error!(
-                                                        "Failed to notify routing service: {}",
-                                                        e
-                                                    );
-                                                }
-                                            }
-                                        }
-                                        _ => {
-                                            // Other events can be async
-                                            tokio::spawn(async move {
-                                                if let Err(e) =
-                                                    publisher.publish(event, source).await
-                                                {
-                                                    tracing::warn!(
-                                                        "Failed to publish consensus event: {}",
-                                                        e
-                                                    );
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-                            }
-
-                            responses.push(response)
-                        }
-                        Err(e) => responses.push(GlobalResponse::Error {
-                            message: e.to_string(),
-                        }),
-                    }
-                }
-                EntryPayload::Membership(membership) => {
-                    // Update membership
-                    *self.membership.write().await =
-                        StoredMembership::new(Some(log_id), membership.clone());
-
-                    // Publish membership change event
-                    let publisher = self.event_publisher.read().await;
-                    let node_id = self.node_id.read().await;
-                    if let (Some(publisher), Some(node_id)) = (publisher.as_ref(), node_id.as_ref())
-                    {
-                        let event = Event::MembershipChanged {
-                            new_members: membership
-                                .nodes()
-                                .map(|(node_id, _)| node_id.clone())
-                                .collect(),
-                            removed_members: vec![], // Would need to track previous membership
-                        };
-
-                        let publisher = publisher.clone();
-                        let source = format!("global-consensus-{node_id}");
-                        tokio::spawn(async move {
-                            if let Err(e) = publisher.publish(event, source).await {
-                                tracing::warn!("Failed to publish membership event: {}", e);
-                            }
-                        });
-                    }
-
-                    // OpenRaft expects a response for every entry
-                    responses.push(GlobalResponse::Success);
-                }
-                EntryPayload::Blank => {
-                    // Blank entries are used for leader election
-                    // OpenRaft expects a response for every entry
-                    responses.push(GlobalResponse::Success);
-                }
-            }
-        }
-
-        Ok(responses)
+        // Apply entries without callback (trait requirement)
+        self.apply_entries(entries, None).await
     }
 
     async fn begin_receiving_snapshot(

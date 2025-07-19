@@ -4,6 +4,7 @@ use crate::error::{NetworkError, NetworkResult};
 use crate::message::ServiceMessage;
 use crate::peer::Peer;
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -100,7 +101,7 @@ where
     /// Pending requests waiting for responses
     pending_requests: Arc<RwLock<DashMap<Uuid, PendingRequest>>>,
     /// Service handlers
-    service_handlers: Arc<DashMap<&'static str, Arc<dyn ServiceHandler>>>,
+    service_handlers: Arc<RwLock<HashMap<&'static str, Arc<dyn ServiceHandler>>>>,
     /// Task tracker for background tasks
     task_tracker: TaskTracker,
     /// Cancellation token for graceful shutdown
@@ -123,7 +124,7 @@ where
             transport,
             topology,
             pending_requests: Arc::new(RwLock::new(DashMap::new())),
-            service_handlers: Arc::new(DashMap::new()),
+            service_handlers: Arc::new(RwLock::new(HashMap::new())),
             task_tracker: TaskTracker::new(),
             cancellation_token: CancellationToken::new(),
         }
@@ -279,7 +280,8 @@ where
         let service_id = M::service_id();
 
         // Check if already registered
-        if self.service_handlers.contains_key(service_id) {
+        let mut handlers = self.service_handlers.write().await;
+        if handlers.contains_key(service_id) {
             return Err(NetworkError::Internal(format!(
                 "Service '{service_id}' already registered"
             )));
@@ -290,8 +292,7 @@ where
             _phantom: std::marker::PhantomData,
         };
 
-        self.service_handlers
-            .insert(service_id, Arc::new(typed_handler));
+        handlers.insert(service_id, Arc::new(typed_handler));
         info!("Registered service handler for '{}'", service_id);
         Ok(())
     }
@@ -303,7 +304,8 @@ where
     {
         let service_id = M::service_id();
 
-        if self.service_handlers.remove(service_id).is_some() {
+        let mut handlers = self.service_handlers.write().await;
+        if handlers.remove(service_id).is_some() {
             info!("Unregistered service handler for '{}'", service_id);
             Ok(())
         } else {
@@ -392,7 +394,7 @@ where
     async fn message_router_loop_static(
         transport: Arc<T>,
         pending_requests: Arc<RwLock<DashMap<Uuid, PendingRequest>>>,
-        service_handlers: Arc<DashMap<&'static str, Arc<dyn ServiceHandler>>>,
+        service_handlers: Arc<RwLock<HashMap<&'static str, Arc<dyn ServiceHandler>>>>,
     ) {
         debug!("Message router loop started");
         let mut incoming = transport.incoming();
@@ -427,7 +429,7 @@ where
     async fn process_incoming_message_static(
         envelope: TransportEnvelope,
         pending_requests: Arc<RwLock<DashMap<Uuid, PendingRequest>>>,
-        service_handlers: Arc<DashMap<&'static str, Arc<dyn ServiceHandler>>>,
+        service_handlers: Arc<RwLock<HashMap<&'static str, Arc<dyn ServiceHandler>>>>,
         transport: Arc<T>,
     ) -> NetworkResult<()> {
         let TransportEnvelope {
@@ -461,7 +463,13 @@ where
         }
 
         // Try to find a service handler
-        if let Some(handler) = service_handlers.get(service_id.as_str()) {
+        // Clone the handler Arc to avoid holding the read lock during execution
+        let handler = {
+            let handlers = service_handlers.read().await;
+            handlers.get(service_id.as_str()).cloned()
+        };
+
+        if let Some(handler) = handler {
             debug!(
                 "Found handler for service '{}', correlation_id: {:?}",
                 service_id, correlation_id

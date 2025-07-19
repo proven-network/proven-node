@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use proven_network::NetworkManager;
-use proven_storage::{ConsensusStorage, StorageAdaptor, StorageManager};
+use proven_storage::{ConsensusStorage, LogStorage, StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
@@ -14,10 +14,7 @@ use crate::{
     consensus::group::GroupConsensusLayer,
     error::{ConsensusError, ConsensusResult, ErrorKind},
     foundation::types::ConsensusGroupId,
-    services::event::{
-        Event, EventEnvelope, EventFilter, EventHandler, EventPublisher, EventResult, EventService,
-        EventType, EventingResult,
-    },
+    services::event::{Event, EventEnvelope, EventPublisher, EventService},
 };
 use async_trait::async_trait;
 
@@ -91,10 +88,43 @@ where
         // Register handlers
         self.register_message_handlers().await?;
 
-        // Register event handlers for synchronous processing
-        self.register_event_handlers().await;
+        // Start event subscription if event service is available
+        if let Some(event_service) = self.event_service.read().await.as_ref() {
+            self.start_event_subscription(event_service.clone()).await;
+        }
 
         Ok(())
+    }
+
+    /// Start event subscription for handling events
+    async fn start_event_subscription(&self, event_service: Arc<EventService>) {
+        use crate::services::event::EventFilter;
+
+        // Subscribe to events we care about
+        let filter = crate::services::event::EventFilter::ByType(vec![
+            crate::services::event::EventType::Group,
+            crate::services::event::EventType::Stream,
+        ]);
+
+        match event_service
+            .subscribe("group_consensus_service".to_string(), filter)
+            .await
+        {
+            Ok(mut subscriber) => {
+                let service = self.clone();
+                tokio::spawn(async move {
+                    while let Some(envelope) = subscriber.recv().await {
+                        if let Err(e) = service.handle_event(envelope).await {
+                            tracing::error!("Failed to handle event: {}", e);
+                        }
+                    }
+                    tracing::debug!("Group consensus event subscription ended");
+                });
+            }
+            Err(e) => {
+                tracing::error!("Failed to subscribe to events: {}", e);
+            }
+        }
     }
 
     /// Stop the service
@@ -182,6 +212,16 @@ where
 
         // Store the layer
         self.groups.write().await.insert(group_id, layer.clone());
+
+        // Start event monitoring for this group
+        if let Some(ref publisher) = self.event_publisher {
+            Self::start_group_event_monitoring(
+                layer.clone(),
+                publisher.clone(),
+                self.node_id.clone(),
+                group_id,
+            );
+        }
 
         // Initialize the group if we're one of the members
         if members.contains(&self.node_id) {
@@ -336,7 +376,93 @@ where
             ConsensusError::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
         })?;
 
-        layer.submit_request(request).await
+        let response = layer.submit_request(request.clone()).await?;
+
+        // Handle response for event publishing
+        self.handle_group_response(group_id, &request, &response)
+            .await;
+
+        Ok(response)
+    }
+
+    /// Handle group consensus response for event publishing
+    async fn handle_group_response(
+        &self,
+        group_id: ConsensusGroupId,
+        request: &crate::consensus::group::GroupRequest,
+        response: &crate::consensus::group::GroupResponse,
+    ) {
+        use crate::consensus::group::types::{GroupRequest, GroupResponse, StreamOperation};
+
+        if let Some(ref publisher) = self.event_publisher {
+            let source = format!("group-consensus-{}", self.node_id);
+
+            match (request, response) {
+                (
+                    GroupRequest::Stream(StreamOperation::Append { stream, message }),
+                    GroupResponse::Appended { sequence, .. },
+                ) => {
+                    // Get current term from consensus layer
+                    let term = if let Some(layer) = self.groups.read().await.get(&group_id) {
+                        let metrics = layer.metrics();
+                        metrics.borrow().current_term
+                    } else {
+                        0
+                    };
+
+                    let event = Event::StreamMessageAppended {
+                        stream: stream.clone(),
+                        group_id,
+                        sequence: *sequence,
+                        message: message.clone(),
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                        term,
+                    };
+
+                    if let Err(e) = publisher.publish(event, source).await {
+                        tracing::warn!("Failed to publish StreamMessageAppended event: {}", e);
+                    }
+                }
+                (
+                    GroupRequest::Stream(StreamOperation::Trim { stream, .. }),
+                    GroupResponse::Trimmed { new_start_seq, .. },
+                ) => {
+                    let event = Event::StreamTrimmed {
+                        stream: stream.clone(),
+                        group_id,
+                        new_start_seq: *new_start_seq,
+                    };
+
+                    if let Err(e) = publisher.publish(event, source).await {
+                        tracing::warn!("Failed to publish StreamTrimmed event: {}", e);
+                    }
+                }
+                (
+                    GroupRequest::Stream(StreamOperation::Delete { stream, sequence }),
+                    GroupResponse::Deleted { .. },
+                ) => {
+                    let event = Event::StreamMessageDeleted {
+                        stream: stream.clone(),
+                        group_id,
+                        sequence: *sequence,
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs(),
+                    };
+
+                    if let Err(e) = publisher.publish(event, source).await {
+                        tracing::warn!("Failed to publish StreamMessageDeleted event: {}", e);
+                    }
+                }
+                _ => {
+                    // Other combinations don't generate events
+                }
+            }
+        }
     }
 
     /// Get stream state from a specific group
@@ -423,61 +549,63 @@ where
         })
     }
 
-    /// Register event handlers for synchronous processing
-    async fn register_event_handlers(&self) {
-        let event_service = match self.event_service.read().await.as_ref() {
-            Some(service) => service.clone(),
-            None => {
-                tracing::warn!("Event service not set, skipping event handler registration");
-                return;
+    /// Start monitoring a group consensus layer for events
+    fn start_group_event_monitoring<L>(
+        layer: Arc<GroupConsensusLayer<L>>,
+        publisher: EventPublisher,
+        node_id: NodeId,
+        group_id: ConsensusGroupId,
+    ) where
+        L: LogStorage + 'static,
+    {
+        // Monitor for leader changes
+        let mut metrics_rx = layer.metrics();
+        let publisher_clone = publisher.clone();
+        let node_id_clone = node_id.clone();
+        let group_id_clone = group_id;
+
+        tokio::spawn(async move {
+            let mut current_leader: Option<NodeId> = None;
+            let mut current_term: u64 = 0;
+
+            loop {
+                tokio::select! {
+                    Ok(_) = metrics_rx.changed() => {
+                        let metrics = metrics_rx.borrow().clone();
+
+                        // Check for leader change
+                        if metrics.current_leader != current_leader || metrics.current_term != current_term {
+                            let old_leader = current_leader.clone();
+                            current_leader = metrics.current_leader.clone();
+                            current_term = metrics.current_term;
+
+                            if let Some(new_leader) = &current_leader {
+                                tracing::info!(
+                                    "Group {} consensus leader changed: {:?} -> {} (term {})",
+                                    group_id_clone, old_leader, new_leader, current_term
+                                );
+
+                                // Publish event
+                                let event = Event::GroupLeaderChanged {
+                                    group_id: group_id_clone,
+                                    old_leader,
+                                    new_leader: new_leader.clone(),
+                                    term: current_term,
+                                };
+
+                                let source = format!("group-consensus-{node_id_clone}");
+                                if let Err(e) = publisher_clone.publish(event, source).await {
+                                    tracing::warn!("Failed to publish GroupLeaderChanged event: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    else => break,
+                }
             }
-        };
 
-        // Create handler
-        let handler = Arc::new(GroupConsensusEventHandler::new(self.clone()));
-
-        if let Err(e) = event_service
-            .register_handler("group-consensus-handler".to_string(), handler)
-            .await
-        {
-            tracing::error!("Failed to register group consensus event handler: {}", e);
-            return;
-        }
-
-        // Add routes for the events we care about
-        use crate::services::event::{EventRoute, EventRoutePattern};
-
-        let consensus_route = EventRoute {
-            pattern: EventRoutePattern::ByType(EventType::Consensus),
-            handler_name: "group-consensus-handler".to_string(),
-            priority: 100, // High priority for immediate consistency
-        };
-
-        if let Err(e) = event_service.add_route(consensus_route).await {
-            tracing::error!("Failed to add consensus event route: {}", e);
-        }
-
-        let stream_route = EventRoute {
-            pattern: EventRoutePattern::ByType(EventType::Stream),
-            handler_name: "group-consensus-handler".to_string(),
-            priority: 100,
-        };
-
-        if let Err(e) = event_service.add_route(stream_route).await {
-            tracing::error!("Failed to add stream event route: {}", e);
-        }
-
-        let group_route = EventRoute {
-            pattern: EventRoutePattern::ByType(EventType::Group),
-            handler_name: "group-consensus-handler".to_string(),
-            priority: 100,
-        };
-
-        if let Err(e) = event_service.add_route(group_route).await {
-            tracing::error!("Failed to add group event route: {}", e);
-        }
-
-        tracing::info!("GroupConsensusService: Using synchronous event handlers");
+            tracing::debug!("Group {} leader monitoring task stopped", group_id_clone);
+        });
     }
 
     /// Handle events
@@ -590,50 +718,5 @@ where
             event_publisher: self.event_publisher.clone(),
             event_service: self.event_service.clone(),
         }
-    }
-}
-
-/// Event handler for group consensus service
-pub struct GroupConsensusEventHandler<T, G, S>
-where
-    T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
-    S: StorageAdaptor + 'static,
-{
-    service: GroupConsensusService<T, G, S>,
-}
-
-impl<T, G, S> GroupConsensusEventHandler<T, G, S>
-where
-    T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
-    S: StorageAdaptor + 'static,
-{
-    pub fn new(service: GroupConsensusService<T, G, S>) -> Self {
-        Self { service }
-    }
-}
-
-#[async_trait::async_trait]
-impl<T, G, S> EventHandler for GroupConsensusEventHandler<T, G, S>
-where
-    T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
-    S: StorageAdaptor + 'static,
-{
-    async fn handle(&self, envelope: EventEnvelope) -> EventingResult<EventResult> {
-        tracing::debug!(
-            "GroupConsensusEventHandler: Processing event: {:?}",
-            envelope.event
-        );
-
-        match self.service.handle_event(envelope).await {
-            Ok(_) => Ok(EventResult::Success),
-            Err(e) => Ok(EventResult::Failed(e.to_string())),
-        }
-    }
-
-    fn name(&self) -> &str {
-        "GroupConsensusEventHandler"
     }
 }

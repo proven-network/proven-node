@@ -53,6 +53,8 @@ where
     task_tracker: Arc<RwLock<Option<TaskTracker>>>,
     /// Cancellation token for graceful shutdown
     cancellation_token: Arc<RwLock<Option<CancellationToken>>>,
+    /// Routing service for immediate consistency updates
+    routing_service: Arc<RwLock<Option<Arc<crate::services::routing::RoutingService>>>>,
 }
 
 impl<T, G, S> GlobalConsensusService<T, G, S>
@@ -80,6 +82,7 @@ where
             handlers_registered: Arc::new(RwLock::new(false)),
             task_tracker: Arc::new(RwLock::new(None)),
             cancellation_token: Arc::new(RwLock::new(None)),
+            routing_service: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -93,6 +96,14 @@ where
     pub fn with_event_publisher(mut self, publisher: EventPublisher) -> Self {
         self.event_publisher = Some(publisher);
         self
+    }
+
+    /// Set routing service for immediate consistency
+    pub async fn set_routing_service(
+        &self,
+        routing_service: Arc<crate::services::routing::RoutingService>,
+    ) {
+        *self.routing_service.write().await = Some(routing_service);
     }
 
     /// Start the service
@@ -247,7 +258,6 @@ where
                             node_id.clone(),
                             network_manager.clone(),
                             consensus_storage,
-                            event_publisher.clone(),
                         )
                         .await
                         {
@@ -289,7 +299,14 @@ where
                             return;
                         }
 
-                        // Event publisher already set during layer creation
+                        // Start event monitoring for the layer
+                        if let Some(ref publisher) = event_publisher {
+                            Self::start_event_monitoring(
+                                layer.clone(),
+                                publisher.clone(),
+                                node_id.clone(),
+                            );
+                        }
 
                         // Store the layer clone for later use
                         let mut consensus_guard = consensus_layer.write().await;
@@ -337,7 +354,6 @@ where
                             node_id.clone(),
                             network_manager.clone(),
                             consensus_storage,
-                            event_publisher.clone(),
                         )
                         .await
                         {
@@ -398,7 +414,6 @@ where
         node_id: NodeId,
         network_manager: Arc<NetworkManager<T, G>>,
         storage: L,
-        event_publisher: Option<EventPublisher>,
     ) -> ConsensusResult<Arc<GlobalConsensusLayer<L>>>
     where
         L: LogStorage + 'static,
@@ -419,14 +434,9 @@ where
         let network_stats = Arc::new(RwLock::new(Default::default()));
         let network_factory = GlobalNetworkFactory::new(network_manager, network_stats);
 
-        let mut layer =
+        let layer =
             GlobalConsensusLayer::new(node_id.clone(), raft_config, network_factory, storage)
                 .await?;
-
-        // Set event publisher if provided
-        if let Some(publisher) = event_publisher {
-            layer.set_event_publisher(publisher).await;
-        }
 
         Ok(Arc::new(layer))
     }
@@ -504,7 +514,102 @@ where
         })?;
 
         // Submit to consensus
-        consensus.submit_request(request).await
+        let response = consensus.submit_request(request).await?;
+
+        // Handle immediate consistency updates
+        self.handle_consensus_response(&response).await;
+
+        Ok(response)
+    }
+
+    /// Handle consensus response for immediate consistency
+    async fn handle_consensus_response(&self, response: &crate::consensus::global::GlobalResponse) {
+        use crate::consensus::global::types::GlobalResponse;
+
+        match response {
+            GlobalResponse::StreamCreated { name, group_id } => {
+                // Update routing service immediately
+                if let Some(routing) = self.routing_service.read().await.as_ref() {
+                    if let Err(e) = routing
+                        .update_stream_assignment(name.to_string(), *group_id)
+                        .await
+                    {
+                        tracing::error!("Failed to update routing for new stream {}: {}", name, e);
+                    } else {
+                        tracing::info!(
+                            "Updated routing for new stream {} -> group {:?}",
+                            name,
+                            group_id
+                        );
+                    }
+                }
+
+                // Publish event for eventual consistency
+                if let Some(ref publisher) = self.event_publisher {
+                    // Get stream config from state
+                    if let Some(consensus) = self.consensus_layer.read().await.as_ref()
+                        && let Some(stream_info) = consensus.state().get_stream(name).await
+                    {
+                        let event = Event::StreamCreated {
+                            name: name.clone(),
+                            config: stream_info.config.clone(),
+                            group_id: *group_id,
+                        };
+                        let source = format!("global-consensus-{}", self.node_id);
+                        if let Err(e) = publisher.publish(event, source).await {
+                            tracing::warn!("Failed to publish StreamCreated event: {}", e);
+                        }
+                    }
+                }
+            }
+            GlobalResponse::GroupCreated { id } => {
+                // Get group info from state to get members
+                if let Some(consensus) = self.consensus_layer.read().await.as_ref()
+                    && let Some(group_info) = consensus.state().get_group(id).await
+                {
+                    // Update routing service immediately
+                    if let Some(routing) = self.routing_service.read().await.as_ref() {
+                        let group_route = crate::services::routing::GroupRoute {
+                            group_id: *id,
+                            members: group_info.members.clone(),
+                            leader: None,    // Will be updated when leader is elected
+                            stream_count: 0, // Will be updated as streams are added
+                            health: crate::services::routing::GroupHealth::Healthy,
+                            last_updated: std::time::SystemTime::now(),
+                            location: if group_info.members.contains(&self.node_id) {
+                                crate::services::routing::GroupLocation::Local
+                            } else {
+                                crate::services::routing::GroupLocation::Remote
+                            },
+                        };
+                        if let Err(e) = routing.update_group_info(*id, group_route).await {
+                            tracing::error!(
+                                "Failed to update routing for new group {:?}: {}",
+                                id,
+                                e
+                            );
+                        } else {
+                            tracing::info!("Updated routing for new group {:?}", id);
+                        }
+                    }
+
+                    // Publish event for eventual consistency
+                    if let Some(ref publisher) = self.event_publisher {
+                        let event = Event::GroupCreated {
+                            group_id: *id,
+                            members: group_info.members.clone(),
+                        };
+                        let source = format!("global-consensus-{}", self.node_id);
+                        if let Err(e) = publisher.publish(event, source).await {
+                            tracing::warn!("Failed to publish GroupCreated event: {}", e);
+                        }
+                    }
+                }
+            }
+            _ => {
+                // Other responses don't need immediate handling
+            }
+        }
     }
 
     /// Check if service is healthy
@@ -572,6 +677,62 @@ where
                 ))
             }
         }
+    }
+
+    /// Start monitoring the consensus layer for events
+    fn start_event_monitoring<L>(
+        layer: Arc<GlobalConsensusLayer<L>>,
+        publisher: EventPublisher,
+        node_id: NodeId,
+    ) where
+        L: LogStorage + 'static,
+    {
+        // Monitor for leader changes
+        let mut metrics_rx = layer.metrics();
+        let publisher_clone = publisher.clone();
+        let node_id_clone = node_id.clone();
+
+        tokio::spawn(async move {
+            let mut current_leader: Option<NodeId> = None;
+            let mut current_term: u64 = 0;
+
+            loop {
+                tokio::select! {
+                    Ok(_) = metrics_rx.changed() => {
+                        let metrics = metrics_rx.borrow().clone();
+
+                        // Check for leader change
+                        if metrics.current_leader != current_leader || metrics.current_term != current_term {
+                            let old_leader = current_leader.clone();
+                            current_leader = metrics.current_leader.clone();
+                            current_term = metrics.current_term;
+
+                            if let Some(new_leader) = &current_leader {
+                                tracing::info!(
+                                    "Global consensus leader changed: {:?} -> {} (term {})",
+                                    old_leader, new_leader, current_term
+                                );
+
+                                // Publish event
+                                let event = Event::GlobalLeaderChanged {
+                                    old_leader,
+                                    new_leader: new_leader.clone(),
+                                    term: current_term,
+                                };
+
+                                let source = format!("global-consensus-{node_id_clone}");
+                                if let Err(e) = publisher_clone.publish(event, source).await {
+                                    tracing::warn!("Failed to publish GlobalLeaderChanged event: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    else => break,
+                }
+            }
+
+            tracing::debug!("Leader monitoring task stopped");
+        });
     }
 
     /// Spawn the default group checker background task

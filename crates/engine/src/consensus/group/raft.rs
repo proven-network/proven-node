@@ -21,8 +21,6 @@ use crate::foundation::{
     types::{ConsensusGroupId, ConsensusRole, OperationId, Term},
 };
 
-use crate::services::event::EventPublisher;
-
 use super::operations::{GroupOperation, GroupOperationHandler};
 use super::snapshot::GroupSnapshot;
 use super::state::GroupState;
@@ -158,6 +156,11 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
     /// Get the group state
     pub fn state(&self) -> &Arc<GroupState> {
         &self.state
+    }
+
+    /// Get the state machine
+    pub fn state_machine(&self) -> &Arc<GroupStateMachine> {
+        &self.state_machine
     }
 
     /// Submit a request
