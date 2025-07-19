@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 /// Cluster service message
 #[allow(clippy::large_enum_variant)] // TODO: Box the large enum variants
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ClusterServiceMessage {
     /// Request to discover existing clusters
     Discovery {
@@ -42,6 +43,7 @@ pub enum ClusterServiceMessage {
 
 /// Cluster service response
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ClusterServiceResponse {
     /// Response to discovery request
     Discovery {

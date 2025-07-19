@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 /// Monitoring service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum MonitoringServiceMessage {
     /// Health check request
     HealthCheckRequest,
@@ -13,6 +14,7 @@ pub enum MonitoringServiceMessage {
 
 /// Monitoring service response
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum MonitoringServiceResponse {
     /// Health check response
     HealthResponse {

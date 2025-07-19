@@ -15,6 +15,7 @@ use crate::{
 
 /// Client service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ClientServiceMessage {
     /// Forward a global consensus request to another node
     ForwardGlobalRequest {
@@ -36,6 +37,7 @@ pub enum ClientServiceMessage {
 
 /// Client service response
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum ClientServiceResponse {
     /// Response to a forwarded global request
     ForwardGlobalResponse {

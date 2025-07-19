@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 /// PubSub service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum PubSubServiceMessage {
     /// Regular publish message
     Publish {
@@ -78,6 +79,7 @@ pub enum PubSubServiceMessage {
 
 /// PubSub service response
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum PubSubServiceResponse {
     /// Acknowledgment of publish
     PublishAck {

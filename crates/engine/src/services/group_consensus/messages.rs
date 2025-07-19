@@ -13,6 +13,7 @@ use crate::foundation::types::ConsensusGroupId;
 
 /// Group consensus service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum GroupConsensusMessage {
     /// Vote request from Raft
     Vote {
@@ -39,6 +40,7 @@ pub enum GroupConsensusMessage {
 /// Group consensus service response
 #[allow(clippy::large_enum_variant)] // TODO: Box the large enum variants
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum GroupConsensusServiceResponse {
     /// Vote response
     Vote {

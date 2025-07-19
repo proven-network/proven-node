@@ -12,6 +12,7 @@ use crate::consensus::global::{GlobalRequest, GlobalResponse, GlobalTypeConfig};
 
 /// Global consensus service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum GlobalConsensusMessage {
     /// Vote request from Raft
     Vote(VoteRequest<GlobalTypeConfig>),
@@ -26,6 +27,7 @@ pub enum GlobalConsensusMessage {
 /// Global consensus service response
 #[allow(clippy::large_enum_variant)] // TODO: Box the large enum variants
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
 pub enum GlobalConsensusResponse {
     /// Vote response
     Vote(VoteResponse<GlobalTypeConfig>),
