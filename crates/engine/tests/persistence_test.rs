@@ -279,5 +279,45 @@ async fn test_single_node_persistence() {
         panic!("No storage path found for node");
     }
 
+    // Try to read the stream back
+    info!("Attempting to read stream back after restart");
+
+    let client = engines[0].client();
+
+    // First check if the stream exists
+    match client.get_stream_info(stream_name).await {
+        Ok(Some(info)) => {
+            info!(
+                "Stream '{}' exists with {} messages",
+                stream_name, info.message_count
+            );
+            assert_eq!(info.message_count, 20, "Should have 20 messages");
+        }
+        Ok(None) => {
+            panic!("Stream '{}' not found after restart!", stream_name);
+        }
+        Err(e) => {
+            panic!("Failed to get stream info: {}", e);
+        }
+    }
+
+    // Now try to read the messages
+    match client.read_stream(stream_name.to_string(), 0, 20).await {
+        Ok(messages) => {
+            info!("Successfully read {} messages from stream", messages.len());
+            assert_eq!(messages.len(), 20, "Should have read 20 messages");
+
+            // Verify message content
+            for (i, msg) in messages.iter().enumerate() {
+                let expected = format!("Single node message {}", i + 1);
+                let actual = String::from_utf8_lossy(&msg.data.payload);
+                assert_eq!(actual, expected, "Message {} content mismatch", i + 1);
+            }
+        }
+        Err(e) => {
+            panic!("Failed to read messages from stream: {}", e);
+        }
+    }
+
     info!("=== Single node persistence test completed successfully ===");
 }
