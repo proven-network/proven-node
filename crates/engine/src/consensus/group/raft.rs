@@ -5,7 +5,13 @@
 
 use std::sync::Arc;
 
-use openraft::{Config, Entry, Raft, RaftMetrics, RaftNetworkFactory};
+use openraft::{
+    Config, Entry, Raft, RaftMetrics, RaftNetworkFactory,
+    raft::{
+        AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest,
+        InstallSnapshotResponse, VoteRequest, VoteResponse,
+    },
+};
 use proven_storage::LogStorage;
 use proven_topology::NodeId;
 
@@ -23,6 +29,34 @@ use super::state::GroupState;
 use super::state_machine::GroupStateMachine;
 use super::storage::GroupRaftLogStorage;
 use super::types::{GroupRequest, GroupResponse};
+
+/// Trait for handling Raft RPC messages
+#[async_trait::async_trait]
+pub trait GroupRaftMessageHandler: Send + Sync {
+    /// Handle vote request
+    async fn handle_vote(
+        &self,
+        req: VoteRequest<GroupTypeConfig>,
+    ) -> ConsensusResult<VoteResponse<GroupTypeConfig>>;
+
+    /// Handle append entries request
+    async fn handle_append_entries(
+        &self,
+        req: AppendEntriesRequest<GroupTypeConfig>,
+    ) -> ConsensusResult<AppendEntriesResponse<GroupTypeConfig>>;
+
+    /// Handle install snapshot request
+    async fn handle_install_snapshot(
+        &self,
+        req: InstallSnapshotRequest<GroupTypeConfig>,
+    ) -> ConsensusResult<InstallSnapshotResponse<GroupTypeConfig>>;
+
+    /// Initialize cluster with members
+    async fn initialize_cluster(
+        &self,
+        members: std::collections::BTreeMap<NodeId, proven_topology::Node>,
+    ) -> ConsensusResult<()>;
+}
 
 // Declare Raft types for group consensus
 openraft::declare_raft_types!(
@@ -49,20 +83,30 @@ pub struct GroupConsensusLayer<L: LogStorage> {
     state: Arc<GroupState>,
     /// Operation handler
     handler: Arc<GroupOperationHandler>,
-    /// Log storage
+    /// Log storage (consensus logs - no deletion allowed)
     log_storage: Arc<GroupRaftLogStorage<L>>,
     /// State machine
     state_machine: Arc<GroupStateMachine>,
 }
 
 impl<L: LogStorage> GroupConsensusLayer<L> {
+    /// Shutdown the Raft instance
+    pub async fn shutdown(&self) -> ConsensusResult<()> {
+        self.raft.shutdown().await.map_err(|e| {
+            ConsensusError::with_context(
+                ErrorKind::Consensus,
+                format!("Failed to shutdown Raft: {e}"),
+            )
+        })
+    }
+
     /// Create a new group consensus layer
     pub async fn new<NF>(
         node_id: NodeId,
         group_id: ConsensusGroupId,
         config: Config,
         network_factory: NF,
-        storage: L,
+        log_storage: L,
     ) -> ConsensusResult<Self>
     where
         NF: RaftNetworkFactory<GroupTypeConfig>,
@@ -71,7 +115,7 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
         let handler = Arc::new(GroupOperationHandler::new(state.clone()));
 
         // Create separated storage and state machine
-        let log_storage = Arc::new(GroupRaftLogStorage::new(Arc::new(storage), group_id));
+        let log_storage = Arc::new(GroupRaftLogStorage::new(Arc::new(log_storage), group_id));
         let state_machine = Arc::new(GroupStateMachine::new(state.clone()));
 
         let validated_config =
@@ -99,13 +143,6 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
             log_storage,
             state_machine,
         })
-    }
-
-    /// Set event publisher
-    pub async fn set_event_publisher(&self, publisher: EventPublisher) {
-        self.state_machine
-            .set_event_context(publisher, self.node_id.clone(), self.group_id)
-            .await;
     }
 
     /// Get the group ID
@@ -167,27 +204,7 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
                                 }
                             };
 
-                        // Emit event for stream service to store the message
-                        if let Some(publisher) = self.state_machine.event_publisher().await {
-                            let event = crate::services::event::Event::StreamMessageAppended {
-                                stream: stream.clone(),
-                                group_id: self.group_id,
-                                sequence,
-                                message: message.clone(),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap()
-                                    .as_secs(),
-                                term: 1, // Simplified for testing
-                            };
-                            let source =
-                                format!("group-consensus-{}-{}", self.group_id, self.node_id);
-                            tokio::spawn(async move {
-                                if let Err(e) = publisher.publish(event, source).await {
-                                    tracing::warn!("Failed to publish stream append event: {}", e);
-                                }
-                            });
-                        }
+                        // Storage is now handled synchronously in the state machine
 
                         Ok(GroupResponse::Appended { stream, sequence })
                     }
@@ -249,5 +266,49 @@ impl<L: LogStorage> ConsensusLayer for GroupConsensusLayer<L> {
             // TODO: Query actual membership to determine if voter or learner
             ConsensusRole::Follower
         }
+    }
+}
+
+/// Implementation of GroupRaftMessageHandler for GroupConsensusLayer
+#[async_trait::async_trait]
+impl<L: LogStorage> GroupRaftMessageHandler for GroupConsensusLayer<L> {
+    async fn handle_vote(
+        &self,
+        req: VoteRequest<GroupTypeConfig>,
+    ) -> ConsensusResult<VoteResponse<GroupTypeConfig>> {
+        self.raft
+            .vote(req)
+            .await
+            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))
+    }
+
+    async fn handle_append_entries(
+        &self,
+        req: AppendEntriesRequest<GroupTypeConfig>,
+    ) -> ConsensusResult<AppendEntriesResponse<GroupTypeConfig>> {
+        self.raft
+            .append_entries(req)
+            .await
+            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))
+    }
+
+    async fn handle_install_snapshot(
+        &self,
+        req: InstallSnapshotRequest<GroupTypeConfig>,
+    ) -> ConsensusResult<InstallSnapshotResponse<GroupTypeConfig>> {
+        self.raft
+            .install_snapshot(req)
+            .await
+            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))
+    }
+
+    async fn initialize_cluster(
+        &self,
+        members: std::collections::BTreeMap<NodeId, proven_topology::Node>,
+    ) -> ConsensusResult<()> {
+        self.raft
+            .initialize(members)
+            .await
+            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))
     }
 }

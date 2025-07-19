@@ -21,7 +21,7 @@ use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use super::interest::InterestTracker;
-use super::messages::{InterestUpdateMessage, PubSubMessageType, PubSubNetworkMessage};
+use super::messages::{PubSubServiceMessage, PubSubServiceResponse};
 use super::router::MessageRouter;
 use super::subject::{Subject, SubjectPattern, subject_matches_pattern};
 use super::types::*;

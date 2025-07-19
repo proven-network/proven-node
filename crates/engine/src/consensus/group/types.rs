@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::stream::MessageData;
-use crate::stream::StreamName;
+pub use crate::services::stream::StreamMessage as MessageData;
+use crate::services::stream::StreamName;
 
 /// Group consensus request
 #[derive(Debug, Clone, Serialize, Deserialize)]

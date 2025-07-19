@@ -53,6 +53,10 @@ pub struct TestCluster {
     nodes: Vec<NodeInfo>,
     /// Available versions
     versions: Vec<Version>,
+    /// Unique cluster ID for this test instance
+    cluster_id: String,
+    /// Temp directories to keep alive
+    temp_dirs: Vec<TempDir>,
 }
 
 impl TestCluster {
@@ -73,18 +77,45 @@ impl TestCluster {
             vec![],
         );
 
+        // Generate a unique cluster ID using timestamp and random number
+        let cluster_id = format!(
+            "test_cluster_{}_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            rand::random::<u32>()
+        );
+
         Self {
             governance: RwLock::new(Arc::new(governance)),
             attestor,
             transport_type,
             nodes: Vec::new(),
             versions,
+            cluster_id,
+            temp_dirs: Vec::new(),
         }
     }
 
     /// Get the governance instance
     pub async fn governance(&self) -> Arc<MockTopologyAdaptor> {
         self.governance.read().await.clone()
+    }
+
+    /// Get the unique cluster ID
+    pub fn cluster_id(&self) -> &str {
+        &self.cluster_id
+    }
+
+    /// Get the storage path for a node (for persistence tests)
+    pub fn get_node_storage_path(&self, node_id: &NodeId) -> Option<std::path::PathBuf> {
+        self.temp_dirs.first().map(|temp_dir| {
+            temp_dir
+                .path()
+                .join(&self.cluster_id)
+                .join(format!("node_{node_id}"))
+        })
     }
 
     /// Add nodes to the cluster and start them
@@ -488,29 +519,47 @@ impl TestCluster {
         ))
     }
 
-    /// Wait for the default group to be created
-    pub async fn wait_for_default_group<T, G, L>(
-        &self,
-        engines: &[Engine<T, G, L>],
-        timeout: Duration,
-    ) -> Result<(), String>
-    where
-        T: proven_transport::Transport,
-        G: TopologyAdaptor,
-        L: proven_storage::LogStorageWithDelete,
-    {
-        // Default group ID is 1
-        let default_group_id = proven_engine::foundation::types::ConsensusGroupId::new(1);
-        self.wait_for_specific_group(engines, default_group_id, engines.len(), timeout)
-            .await
-    }
-
     /// Add nodes to the cluster with RocksDB storage and start them
-    /// Returns (engines, node_infos, temp_dir) tuple - temp_dir must be kept alive
+    /// Returns (engines, node_infos) tuple
     pub async fn add_nodes_with_rocksdb(
         &mut self,
         count: usize,
-        temp_dir: &TempDir,
+    ) -> (
+        Vec<
+            Engine<
+                TcpTransport<MockTopologyAdaptor, MockAttestor>,
+                MockTopologyAdaptor,
+                RocksDbStorage,
+            >,
+        >,
+        Vec<NodeInfo>,
+    ) {
+        self.add_nodes_with_rocksdb_internal(count, None).await
+    }
+
+    /// Add nodes with RocksDB storage using provided keys (for restart scenarios)
+    pub async fn add_nodes_with_rocksdb_and_keys(
+        &mut self,
+        node_infos: Vec<NodeInfo>,
+    ) -> (
+        Vec<
+            Engine<
+                TcpTransport<MockTopologyAdaptor, MockAttestor>,
+                MockTopologyAdaptor,
+                RocksDbStorage,
+            >,
+        >,
+        Vec<NodeInfo>,
+    ) {
+        self.add_nodes_with_rocksdb_internal(node_infos.len(), Some(node_infos))
+            .await
+    }
+
+    /// Internal implementation for adding nodes with RocksDB
+    async fn add_nodes_with_rocksdb_internal(
+        &mut self,
+        count: usize,
+        existing_node_infos: Option<Vec<NodeInfo>>,
     ) -> (
         Vec<
             Engine<
@@ -527,12 +576,32 @@ impl TestCluster {
         let mut transports = Vec::new();
         let mut topology_managers = Vec::new();
 
+        // Create a temp dir if we don't have one yet
+        if self.temp_dirs.is_empty() {
+            let temp_dir = TempDir::new().expect("Failed to create temp dir");
+            self.temp_dirs.push(temp_dir);
+        }
+        let temp_dir_path = self.temp_dirs.last().unwrap().path().to_path_buf();
+
         // First, create all nodes without starting anything
         // This ensures all nodes are in governance before any network/engine starts
         for i in 0..count {
-            let path = temp_dir.path().join(format!("node_{i}"));
+            // Use existing node info if provided (for restarts), otherwise generate new
+            let (signing_key, node_id) = if let Some(ref existing) = existing_node_infos {
+                let info = &existing[i];
+                (info.signing_key.clone(), info.node_id.clone())
+            } else {
+                let signing_key = SigningKey::generate(&mut OsRng);
+                let node_id = NodeId::from(signing_key.verifying_key());
+                (signing_key, node_id)
+            };
+
+            // Use cluster ID and node ID in path to ensure consistency across restarts
+            let path = temp_dir_path
+                .join(&self.cluster_id)
+                .join(format!("node_{node_id}"));
             let (engine, info, network_manager, transport, topology_manager) = self
-                .create_tcp_node_without_starting_with_rocksdb(path)
+                .create_tcp_node_without_starting_with_rocksdb(path, signing_key)
                 .await;
             engines.push(engine);
             node_infos.push(info);
@@ -620,6 +689,7 @@ impl TestCluster {
     async fn create_tcp_node_without_starting_with_rocksdb(
         &mut self,
         path: std::path::PathBuf,
+        signing_key: SigningKey,
     ) -> (
         Engine<
             TcpTransport<MockTopologyAdaptor, MockAttestor>,
@@ -631,8 +701,7 @@ impl TestCluster {
         Arc<TcpTransport<MockTopologyAdaptor, MockAttestor>>,
         Arc<TopologyManager<MockTopologyAdaptor>>,
     ) {
-        // Generate node identity
-        let signing_key = SigningKey::generate(&mut OsRng);
+        // Use the provided signing key
         let node_id = NodeId::from(signing_key.verifying_key());
         let port = allocate_port();
 
@@ -680,6 +749,9 @@ impl TestCluster {
             transport.clone(),
             topology_manager.clone(),
         ));
+
+        // Ensure the directory exists
+        std::fs::create_dir_all(&path).expect("Failed to create directory for RocksDB");
 
         // Create RocksDB storage
         let storage = RocksDbStorage::new(path)

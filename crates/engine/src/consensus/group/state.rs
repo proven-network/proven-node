@@ -2,12 +2,12 @@
 //!
 //! Pure state container for group consensus operations.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::types::{MessageData, StoredMessage};
-use crate::stream::StreamName;
+use super::types::MessageData;
+use crate::services::stream::StreamName;
 
 /// Group consensus state
 #[derive(Clone)]
@@ -24,8 +24,6 @@ pub struct GroupState {
 pub struct StreamState {
     /// Stream name
     pub name: StreamName,
-    /// Messages stored in order
-    pub messages: BTreeMap<u64, StoredMessage>,
     /// Next sequence number
     pub next_sequence: u64,
     /// First sequence (for trimmed streams)
@@ -89,7 +87,6 @@ impl GroupState {
             name.clone(),
             StreamState {
                 name,
-                messages: BTreeMap::new(),
                 next_sequence: 1,
                 first_sequence: 1,
                 stats: StreamStats::default(),
@@ -135,15 +132,6 @@ impl GroupState {
 
             let message_size = message.payload.len() as u64;
 
-            state.messages.insert(
-                sequence,
-                StoredMessage {
-                    sequence,
-                    data: message,
-                    timestamp,
-                },
-            );
-
             // Update stats
             state.stats.message_count += 1;
             state.stats.total_bytes += message_size;
@@ -161,72 +149,27 @@ impl GroupState {
         }
     }
 
-    /// Read messages from stream
-    pub async fn read_messages(
-        &self,
-        stream: &StreamName,
-        from_seq: u64,
-        count: u32,
-    ) -> Vec<StoredMessage> {
-        let streams = self.streams.read().await;
-
-        if let Some(state) = streams.get(stream) {
-            state
-                .messages
-                .range(from_seq..)
-                .take(count as usize)
-                .map(|(_, msg)| msg.clone())
-                .collect()
-        } else {
-            Vec::new()
-        }
-    }
-
     /// Trim stream up to sequence
     pub async fn trim_stream(&self, stream: &StreamName, up_to_seq: u64) -> Option<u64> {
         let mut streams = self.streams.write().await;
 
         if let Some(state) = streams.get_mut(stream) {
-            // Remove messages up to the sequence
-            let removed: Vec<_> = state
-                .messages
-                .range(..=up_to_seq)
-                .map(|(seq, _)| *seq)
-                .collect();
+            // Can only trim if up_to_seq is valid
+            if up_to_seq >= state.first_sequence && up_to_seq < state.next_sequence {
+                // Update first sequence
+                state.first_sequence = up_to_seq + 1;
 
-            let mut removed_bytes = 0u64;
-            let mut removed_count = 0u64;
-            for seq in removed {
-                if let Some(msg) = state.messages.remove(&seq) {
-                    removed_bytes += msg.data.payload.len() as u64;
-                    removed_count += 1;
-                }
-            }
+                // Note: We can't update stats accurately without knowing the actual messages trimmed
+                // This would need to be coordinated with StreamService
+                state.stats.last_update = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
 
-            // Update first sequence
-            if let Some((&first_seq, _)) = state.messages.iter().next() {
-                state.first_sequence = first_seq;
+                Some(state.first_sequence)
             } else {
-                state.first_sequence = state.next_sequence;
+                None
             }
-
-            // Update stats
-            state.stats.message_count -= removed_count;
-            state.stats.total_bytes -= removed_bytes;
-            state.stats.last_update = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
-
-            let first_sequence = state.first_sequence;
-
-            // Update metadata
-            drop(streams);
-            let mut metadata = self.metadata.write().await;
-            metadata.total_messages -= removed_count;
-            metadata.total_bytes -= removed_bytes;
-
-            Some(first_sequence)
         } else {
             None
         }
@@ -234,36 +177,17 @@ impl GroupState {
 
     /// Delete a specific message from stream
     pub async fn delete_message(&self, stream: &StreamName, sequence: u64) -> Option<u64> {
-        let mut streams = self.streams.write().await;
+        let streams = self.streams.read().await;
 
-        if let Some(state) = streams.get_mut(stream) {
-            // Validate sequence is less than last seq and not 0
-            if sequence == 0 || sequence >= state.next_sequence - 1 {
+        if let Some(state) = streams.get(stream) {
+            // Validate sequence is valid
+            if sequence == 0 || sequence >= state.next_sequence {
                 return None;
             }
 
-            // Remove the message
-            if let Some(msg) = state.messages.remove(&sequence) {
-                let removed_bytes = msg.data.payload.len() as u64;
-
-                // Update stats
-                state.stats.message_count -= 1;
-                state.stats.total_bytes -= removed_bytes;
-                state.stats.last_update = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-
-                // Update metadata
-                drop(streams);
-                let mut metadata = self.metadata.write().await;
-                metadata.total_messages -= 1;
-                metadata.total_bytes -= removed_bytes;
-
-                Some(sequence)
-            } else {
-                None
-            }
+            // Return the sequence to indicate success
+            // The actual deletion happens in StreamService
+            Some(sequence)
         } else {
             None
         }

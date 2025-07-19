@@ -9,6 +9,53 @@ use uuid::Uuid;
 use crate::foundation::types::ConsensusGroupId;
 use proven_topology::NodeId;
 
+/// Message type for PubSub
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PubSubMessageType {
+    /// Regular publish message
+    Publish,
+    /// Request expecting response
+    Request,
+    /// Response to a request
+    Response,
+    /// Control message (interest updates, etc)
+    Control,
+}
+
+/// Internal network message for PubSub
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PubSubNetworkMessage {
+    /// Unique message ID
+    pub id: Uuid,
+    /// Subject the message is for
+    pub subject: String,
+    /// Message payload
+    pub payload: Bytes,
+    /// Optional headers
+    pub headers: Vec<(String, String)>,
+    /// Timestamp
+    pub timestamp: SystemTime,
+    /// Source node
+    pub source: NodeId,
+    /// Message type
+    pub msg_type: PubSubMessageType,
+    /// Reply subject for requests
+    pub reply_to: Option<String>,
+    /// Correlation ID for request/response
+    pub correlation_id: Option<Uuid>,
+}
+
+/// Interest update message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterestUpdateMessage {
+    /// Node ID
+    pub node_id: NodeId,
+    /// Interests (subject patterns)
+    pub interests: Vec<String>,
+    /// Timestamp
+    pub timestamp: SystemTime,
+}
+
 /// Result type for PubSub operations
 pub type PubSubResult<T> = Result<T, PubSubError>;
 

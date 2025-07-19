@@ -19,7 +19,7 @@ use crate::{
     error::ConsensusResult,
     foundation::types::ConsensusGroupId,
     services::client::{ClientService, GroupInfo, StreamInfo},
-    stream::{MessageData, StreamConfig},
+    services::stream::{MessageData, StreamConfig},
 };
 
 /// Client for interacting with the consensus engine
@@ -190,7 +190,7 @@ where
         stream_name: String,
         start_sequence: u64,
         count: u64,
-    ) -> ConsensusResult<Vec<crate::stream::StoredMessage>> {
+    ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         self.client_service
             .read_stream(&stream_name, start_sequence, count)
             .await

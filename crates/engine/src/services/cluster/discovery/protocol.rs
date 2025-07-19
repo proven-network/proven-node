@@ -2,7 +2,7 @@
 
 use crate::error::ConsensusResult;
 use crate::services::cluster::messages::{
-    CLUSTER_NAMESPACE, DiscoveryRequest, DiscoveryResponse, DiscoveryRound,
+    ClusterServiceMessage, ClusterServiceResponse, DiscoveryRound,
 };
 
 use std::sync::Arc;
@@ -67,7 +67,7 @@ where
             let local_id = self.local_node_id.clone();
 
             let fut = async move {
-                let request = DiscoveryRequest {
+                let request = ClusterServiceMessage::Discovery {
                     requester_id: local_id,
                 };
 
@@ -87,12 +87,7 @@ where
 
                     match timeout(
                         retry_timeout,
-                        network.request_namespaced::<DiscoveryRequest, DiscoveryResponse>(
-                            CLUSTER_NAMESPACE,
-                            peer_id.clone(),
-                            request.clone(),
-                            retry_timeout,
-                        ),
+                        network.request_service(peer_id.clone(), request.clone(), retry_timeout),
                     )
                     .await
                     {
@@ -153,18 +148,28 @@ where
 
         // Process responses
         for response in responses.into_iter().flatten() {
-            let (peer_id, discovery_response) = response;
+            let (peer_id, service_response) = response;
             responding_nodes.push(peer_id.clone());
 
-            if discovery_response.has_active_cluster {
-                debug!(
-                    "Node {} has active cluster (term: {:?}, leader: {:?}, size: {:?})",
-                    peer_id,
-                    discovery_response.current_term,
-                    discovery_response.current_leader,
-                    discovery_response.cluster_size
-                );
-                nodes_with_clusters.push((peer_id, discovery_response));
+            match &service_response {
+                ClusterServiceResponse::Discovery {
+                    responder_id: _,
+                    has_active_cluster,
+                    current_term,
+                    current_leader,
+                    cluster_size,
+                } => {
+                    if *has_active_cluster {
+                        debug!(
+                            "Node {} has active cluster (term: {:?}, leader: {:?}, size: {:?})",
+                            peer_id, current_term, current_leader, cluster_size
+                        );
+                        nodes_with_clusters.push((peer_id, service_response));
+                    }
+                }
+                _ => {
+                    warn!("Unexpected response type from {}", peer_id);
+                }
             }
         }
 
@@ -180,32 +185,5 @@ where
             nodes_with_clusters,
             started_at,
         })
-    }
-
-    /// Send discovery response to a requester
-    pub async fn send_discovery_response(
-        &self,
-        requester_id: NodeId,
-        has_active_cluster: bool,
-        current_term: Option<u64>,
-        current_leader: Option<NodeId>,
-        cluster_size: Option<usize>,
-    ) -> ConsensusResult<()> {
-        let response = DiscoveryResponse {
-            responder_id: self.local_node_id.clone(),
-            has_active_cluster,
-            current_term,
-            current_leader,
-            cluster_size,
-        };
-
-        self.network
-            .send(requester_id.clone(), response)
-            .await
-            .map_err(|e| {
-                crate::error::ConsensusError::network(format!(
-                    "Failed to send discovery response to {requester_id}: {e}"
-                ))
-            })
     }
 }

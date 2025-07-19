@@ -7,8 +7,7 @@
 //! 4. Read messages back and verify ordering/content
 
 use proven_engine::EngineState;
-use proven_engine::stream::config::RetentionPolicy;
-use proven_engine::stream::{PersistenceType, StreamConfig};
+use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
 use std::collections::HashMap;
 use std::time::Duration;
 

@@ -37,7 +37,7 @@ pub mod subscription;
 pub mod subscription_responder;
 
 // Re-export engine types for convenience
-pub use proven_engine::{Client as EngineClient, stream::StreamConfig};
+pub use proven_engine::{Client as EngineClient, StreamConfig};
 
 // Re-export messaging-specific error types
 pub use error::MessagingEngineError;

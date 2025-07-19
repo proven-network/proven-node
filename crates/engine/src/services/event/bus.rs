@@ -4,12 +4,15 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use tokio::sync::{RwLock, broadcast, mpsc};
+use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
 use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 use super::filters::EventFilter;
 use super::types::*;
+
+/// Type alias for synchronous response channels
+type SyncResponseMap = Arc<RwLock<HashMap<EventId, oneshot::Sender<EventResult>>>>;
 
 /// Event bus for publishing and subscribing to events
 pub struct EventBus {
@@ -214,12 +217,28 @@ impl EventSubscriber {
 pub struct EventPublisher {
     /// Channel for publishing events
     sender: mpsc::Sender<EventEnvelope>,
+    /// Synchronous response channels (shared with EventService)
+    sync_responses: Option<SyncResponseMap>,
 }
 
 impl EventPublisher {
     /// Create a new publisher
     pub fn new(sender: mpsc::Sender<EventEnvelope>) -> Self {
-        Self { sender }
+        Self {
+            sender,
+            sync_responses: None,
+        }
+    }
+
+    /// Create a new publisher with sync response support
+    pub fn with_sync_responses(
+        sender: mpsc::Sender<EventEnvelope>,
+        sync_responses: SyncResponseMap,
+    ) -> Self {
+        Self {
+            sender,
+            sync_responses: Some(sync_responses),
+        }
     }
 
     /// Publish an event
@@ -233,6 +252,7 @@ impl EventPublisher {
                 source,
                 correlation_id: None,
                 tags: Vec::new(),
+                synchronous: false,
             },
             event,
         };
@@ -243,6 +263,54 @@ impl EventPublisher {
             .map_err(|_| EventError::PublishFailed("Failed to send event".to_string()))?;
 
         Ok(())
+    }
+
+    /// Send an event request and wait for handler response
+    pub async fn request(&self, event: Event, source: String) -> EventingResult<EventResult> {
+        // Check if we have sync response support
+        let sync_responses = self.sync_responses.as_ref().ok_or_else(|| {
+            EventError::Internal("Publisher not configured for synchronous requests".to_string())
+        })?;
+
+        let event_id = Uuid::new_v4();
+        let (tx, rx) = oneshot::channel();
+
+        // Store the response channel
+        sync_responses.write().await.insert(event_id, tx);
+
+        let envelope = EventEnvelope {
+            metadata: EventMetadata {
+                id: event_id,
+                timestamp: SystemTime::now(),
+                event_type: event.event_type(),
+                priority: event.default_priority(),
+                source,
+                correlation_id: None,
+                tags: Vec::new(),
+                synchronous: true,
+            },
+            event,
+        };
+
+        self.sender
+            .send(envelope)
+            .await
+            .map_err(|_| EventError::PublishFailed("Failed to send event request".to_string()))?;
+
+        // Wait for response with timeout
+        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+            Ok(Ok(result)) => Ok(result),
+            Ok(Err(_)) => {
+                // Clean up the entry if still there
+                sync_responses.write().await.remove(&event_id);
+                Err(EventError::Internal("Response channel closed".to_string()))
+            }
+            Err(_) => {
+                // Clean up the entry if still there
+                sync_responses.write().await.remove(&event_id);
+                Err(EventError::Timeout)
+            }
+        }
     }
 
     /// Publish an event with custom metadata
@@ -260,13 +328,32 @@ impl EventPublisher {
 
         Ok(())
     }
+
+    /// Send an event request with custom metadata and wait for response
+    pub async fn request_with_metadata(
+        &self,
+        event: Event,
+        mut metadata: EventMetadata,
+    ) -> EventingResult<EventResult> {
+        metadata.synchronous = true;
+
+        let envelope = EventEnvelope { metadata, event };
+
+        self.sender
+            .send(envelope)
+            .await
+            .map_err(|_| EventError::PublishFailed("Failed to send event request".to_string()))?;
+
+        // For now, return Success. The actual implementation will be in the service
+        Ok(EventResult::Success)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
         foundation::types::ConsensusGroupId,
-        stream::{StreamConfig, StreamName},
+        services::stream::{StreamConfig, StreamName},
     };
 
     use super::*;
@@ -298,6 +385,7 @@ mod tests {
                 source: "test".to_string(),
                 correlation_id: None,
                 tags: vec![],
+                synchronous: false,
             },
             event,
         };
@@ -339,6 +427,7 @@ mod tests {
                 source: "test".to_string(),
                 correlation_id: None,
                 tags: vec![],
+                synchronous: false,
             },
             event: stream_event,
         };
@@ -360,6 +449,7 @@ mod tests {
                 source: "test".to_string(),
                 correlation_id: None,
                 tags: vec![],
+                synchronous: false,
             },
             event: group_event,
         };

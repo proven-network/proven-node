@@ -24,7 +24,7 @@ use crate::services::event::EventPublisher;
 
 /// Trait for handling Raft RPC messages
 #[async_trait::async_trait]
-pub trait RaftMessageHandler: Send + Sync {
+pub trait GlobalRaftMessageHandler: Send + Sync {
     /// Handle vote request
     async fn handle_vote(
         &self,
@@ -89,7 +89,7 @@ pub struct GlobalConsensusLayer<L: LogStorage> {
 }
 
 #[async_trait::async_trait]
-impl<L: LogStorage> RaftMessageHandler for GlobalConsensusLayer<L> {
+impl<L: LogStorage> GlobalRaftMessageHandler for GlobalConsensusLayer<L> {
     async fn handle_vote(
         &self,
         req: VoteRequest<GlobalTypeConfig>,
@@ -137,6 +137,16 @@ impl<L: LogStorage> RaftMessageHandler for GlobalConsensusLayer<L> {
 }
 
 impl<L: LogStorage> GlobalConsensusLayer<L> {
+    /// Shutdown the Raft instance
+    pub async fn shutdown(&self) -> ConsensusResult<()> {
+        self.raft.shutdown().await.map_err(|e| {
+            ConsensusError::with_context(
+                ErrorKind::Consensus,
+                format!("Failed to shutdown Raft: {e}"),
+            )
+        })
+    }
+
     /// Create a new global consensus layer
     pub async fn new<NF>(
         node_id: NodeId,

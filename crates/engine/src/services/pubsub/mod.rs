@@ -15,11 +15,12 @@ pub mod subject;
 pub mod types;
 
 pub use interest::InterestTracker;
-pub use messages::{InterestUpdateMessage, PubSubMessageType, PubSubNetworkMessage};
+pub use messages::{PubSubServiceMessage, PubSubServiceResponse};
 pub use router::MessageRouter;
 pub use service::PubSubService;
 pub use subject::{Subject, SubjectPattern, subject_matches_pattern};
 pub use types::{
-    DeliveryMode, GlobalConsensusHandle, GroupConsensusHandle, PubSubError, PubSubRequest,
-    PubSubResponse, PubSubResult, StreamMapping, Subscription,
+    DeliveryMode, GlobalConsensusHandle, GroupConsensusHandle, InterestUpdateMessage, PubSubError,
+    PubSubMessageType, PubSubNetworkMessage, PubSubRequest, PubSubResponse, PubSubResult,
+    StreamMapping, Subscription,
 };

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use proven_network::NetworkManager;
-use proven_storage::LogStorageWithDelete;
+use proven_storage::{LogStorage, LogStorageWithDelete};
 use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
@@ -155,7 +155,7 @@ where
                 group_consensus_config,
                 self.node_id.clone(),
                 network_manager.clone(),
-                storage.clone(),
+                storage.clone(), // Used for consensus logs
             )
             .with_event_publisher(event_service.create_publisher()),
         );
@@ -200,9 +200,9 @@ where
         let client_service = Arc::new(ClientService::new(self.node_id.clone()));
 
         // Create StreamService
-        use crate::stream::{StreamService, StreamServiceConfig};
+        use crate::services::stream::{StreamService, StreamServiceConfig};
         let stream_config = StreamServiceConfig::default();
-        let stream_service = Arc::new(StreamService::new(stream_config, Arc::new(storage.clone())));
+        let stream_service = Arc::new(StreamService::new(stream_config, storage.clone()));
 
         // Create service wrappers that implement ServiceLifecycle
         let network_service = Arc::new(network_service);
@@ -311,12 +311,12 @@ where
                 "network".to_string(),
                 "event".to_string(),
                 "monitoring".to_string(),
+                "routing".to_string(), // Start routing before consensus services
+                "stream".to_string(),  // Start stream service before consensus
                 "group_consensus".to_string(), // Start group_consensus before global_consensus
                 "global_consensus".to_string(), // So it's ready to receive events
                 "cluster".to_string(),
-                "routing".to_string(),
                 "pubsub".to_string(),
-                "stream".to_string(),
                 "client".to_string(),
                 "migration".to_string(),
                 "lifecycle".to_string(),
@@ -616,7 +616,7 @@ impl<T, G, L> ServiceLifecycle
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    L: LogStorageWithDelete + Send + Sync + 'static,
+    L: LogStorage + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
@@ -651,7 +651,7 @@ impl<T, G, L> ServiceLifecycle
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    L: LogStorageWithDelete + Send + Sync + 'static,
+    L: LogStorage + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
@@ -706,7 +706,7 @@ where
 
 // Implement for StreamService
 #[async_trait]
-impl<L> ServiceLifecycle for ServiceWrapper<crate::stream::StreamService<L>>
+impl<L> ServiceLifecycle for ServiceWrapper<crate::services::stream::StreamService<L>>
 where
     L: LogStorageWithDelete + Send + Sync + 'static,
 {

@@ -4,7 +4,6 @@ mod common;
 
 use common::test_cluster::TestCluster;
 use std::time::Duration;
-use tempfile::TempDir;
 use tracing::{Level, info};
 use tracing_subscriber::EnvFilter;
 
@@ -19,14 +18,10 @@ async fn test_rocksdb_storage_basic() {
         )
         .try_init();
 
-    // Create persistent storage directory
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    info!("Using temp directory: {:?}", temp_dir.path());
-
     info!("=== Starting node with RocksDB storage ===");
     let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
-    let (engines, node_infos) = cluster.add_nodes_with_rocksdb(1, &temp_dir).await;
+    let (engines, node_infos) = cluster.add_nodes_with_rocksdb(1).await;
 
     let node_id = node_infos[0].node_id.clone();
     info!("Created node: {}", node_id);
@@ -36,7 +31,7 @@ async fn test_rocksdb_storage_basic() {
 
     // Create a stream
     let stream_name = "test_rocksdb_stream";
-    let stream_config = proven_engine::stream::config::StreamConfig::default();
+    let stream_config = proven_engine::StreamConfig::default();
 
     let client = engines[0].client();
     client
@@ -67,23 +62,26 @@ async fn test_rocksdb_storage_basic() {
     info!("Stream verified: {:?}", stream_info);
 
     // Check storage files were created
-    let storage_path = temp_dir.path().join("node_0");
-    assert!(storage_path.exists(), "Storage path should exist");
+    if let Some(storage_path) = cluster.get_node_storage_path(&node_id) {
+        assert!(storage_path.exists(), "Storage path should exist");
 
-    let entries: Vec<_> = std::fs::read_dir(&storage_path)
-        .expect("Failed to read directory")
-        .filter_map(Result::ok)
-        .collect();
+        let entries: Vec<_> = std::fs::read_dir(&storage_path)
+            .expect("Failed to read directory")
+            .filter_map(Result::ok)
+            .collect();
 
-    assert!(
-        !entries.is_empty(),
-        "Storage directory should contain RocksDB files"
-    );
-    info!("Found {} RocksDB files", entries.len());
+        assert!(
+            !entries.is_empty(),
+            "Storage directory should contain RocksDB files"
+        );
+        info!("Found {} RocksDB files", entries.len());
 
-    // Log some of the files
-    for (i, entry) in entries.iter().take(5).enumerate() {
-        info!("  File {}: {:?}", i + 1, entry.file_name());
+        // Log some of the files
+        for (i, entry) in entries.iter().take(5).enumerate() {
+            info!("  File {}: {:?}", i + 1, entry.file_name());
+        }
+    } else {
+        panic!("No storage path found for node");
     }
 
     info!("Test completed successfully - RocksDB storage is working");
@@ -100,14 +98,10 @@ async fn test_rocksdb_multi_node() {
         )
         .try_init();
 
-    // Create persistent storage directory
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    info!("Using temp directory: {:?}", temp_dir.path());
-
     info!("=== Starting 3-node cluster with RocksDB storage ===");
     let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
-    let (engines, node_infos) = cluster.add_nodes_with_rocksdb(3, &temp_dir).await;
+    let (engines, node_infos) = cluster.add_nodes_with_rocksdb(3).await;
 
     info!("Created nodes:");
     for (i, info) in node_infos.iter().enumerate() {
@@ -124,7 +118,7 @@ async fn test_rocksdb_multi_node() {
 
     // Create a stream on the first node
     let stream_name = "multi_node_stream";
-    let stream_config = proven_engine::stream::config::StreamConfig::default();
+    let stream_config = proven_engine::StreamConfig::default();
 
     let client = engines[0].client();
     client
@@ -148,19 +142,22 @@ async fn test_rocksdb_multi_node() {
     }
 
     // Verify each node has its own RocksDB storage
-    for i in 0..3 {
-        let storage_path = temp_dir.path().join(format!("node_{i}"));
-        assert!(
-            storage_path.exists(),
-            "Storage path for node {i} should exist"
-        );
+    for (i, node_info) in node_infos.iter().enumerate() {
+        if let Some(storage_path) = cluster.get_node_storage_path(&node_info.node_id) {
+            assert!(
+                storage_path.exists(),
+                "Storage path for node {i} should exist"
+            );
 
-        let entry_count = std::fs::read_dir(&storage_path)
-            .expect("Failed to read directory")
-            .count();
+            let entry_count = std::fs::read_dir(&storage_path)
+                .expect("Failed to read directory")
+                .count();
 
-        assert!(entry_count > 0, "Node {i} should have RocksDB files");
-        info!("Node {i} has {entry_count} storage files");
+            assert!(entry_count > 0, "Node {i} should have RocksDB files");
+            info!("Node {i} has {entry_count} storage files");
+        } else {
+            panic!("No storage path found for node {i}");
+        }
     }
 
     info!("Multi-node RocksDB test completed successfully");

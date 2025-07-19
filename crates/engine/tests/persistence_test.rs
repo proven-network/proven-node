@@ -5,7 +5,6 @@ mod common;
 use common::test_cluster::TestCluster;
 use proven_engine::foundation::types::ConsensusGroupId;
 use std::time::Duration;
-use tempfile::TempDir;
 use tracing::{Level, info};
 use tracing_subscriber::EnvFilter;
 
@@ -20,25 +19,22 @@ async fn test_cluster_persistence_across_restarts() {
         )
         .try_init();
 
-    // Create persistent storage directory
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    info!("Using temp directory: {:?}", temp_dir.path());
-
     // Phase 1: Start initial cluster and write some data
-    let node_id_1;
-    let node_id_2;
-    let node_id_3;
+    let stored_node_infos;
+    let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
+
     {
         info!("=== Phase 1: Starting initial cluster ===");
-        let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
         // Create a 3-node cluster with RocksDB storage
-        let (mut engines, node_infos) = cluster.add_nodes_with_rocksdb(3, &temp_dir).await;
+        let (mut engines, node_infos) = cluster.add_nodes_with_rocksdb(3).await;
 
-        // Store node IDs for verification later
-        node_id_1 = node_infos[0].node_id.clone();
-        node_id_2 = node_infos[1].node_id.clone();
-        node_id_3 = node_infos[2].node_id.clone();
+        // Store node info for restart
+        stored_node_infos = node_infos.clone();
+
+        let node_id_1 = node_infos[0].node_id.clone();
+        let node_id_2 = node_infos[1].node_id.clone();
+        let node_id_3 = node_infos[2].node_id.clone();
 
         info!("Created nodes: {}, {}, {}", node_id_1, node_id_2, node_id_3);
 
@@ -51,7 +47,7 @@ async fn test_cluster_persistence_across_restarts() {
         // Create a stream on the first node
         info!("Creating test stream");
         let stream_name = "test_persistent_stream";
-        let stream_config = proven_engine::stream::config::StreamConfig::default();
+        let stream_config = proven_engine::StreamConfig::default();
 
         let client = engines[0].client();
         client
@@ -99,13 +95,11 @@ async fn test_cluster_persistence_across_restarts() {
     // Phase 2: Restart cluster with same storage and verify data persistence
     {
         info!("=== Phase 2: Restarting cluster with persisted data ===");
-        let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
-        // Important: We need to restore the same node identities
-        // In a real implementation, we'd persist and restore the node keys
-        // For this test, we'll create new nodes but verify the data persists
-
-        let (engines, node_infos) = cluster.add_nodes_with_rocksdb(3, &temp_dir).await;
+        // Restart nodes with the same keys - the cluster still has the temp dir alive
+        let (engines, node_infos) = cluster
+            .add_nodes_with_rocksdb_and_keys(stored_node_infos.clone())
+            .await;
 
         info!(
             "Restarted nodes: {}, {}, {}",
@@ -141,23 +135,8 @@ async fn test_cluster_persistence_across_restarts() {
                     e
                 );
 
-                // At minimum, verify the storage layer persisted data
-                // We can check that RocksDB files exist and contain data
-                let storage_paths: Vec<_> = (0..3)
-                    .map(|i| temp_dir.path().join(format!("node_{i}")))
-                    .collect();
-
-                for path in &storage_paths {
-                    assert!(path.exists(), "Storage path should exist: {path:?}");
-
-                    // Check that the directory is not empty (has RocksDB files)
-                    let entries: Vec<_> = std::fs::read_dir(path)
-                        .expect("Failed to read directory")
-                        .collect();
-                    assert!(!entries.is_empty(), "Storage directory should not be empty");
-                }
-
-                info!("Storage directories verified - data was persisted");
+                // This shouldn't happen now that we're using the same node IDs
+                panic!("Stream not found after restart - persistence test failed");
             }
         }
 
@@ -187,7 +166,7 @@ async fn test_cluster_persistence_across_restarts() {
         // Test writing new data to verify the cluster is functional
         info!("Testing new writes after restart");
         let new_stream = "post_restart_stream";
-        let stream_config = proven_engine::stream::config::StreamConfig::default();
+        let stream_config = proven_engine::StreamConfig::default();
 
         let client = engines[0].client();
         client
@@ -221,16 +200,15 @@ async fn test_single_node_persistence() {
         )
         .try_init();
 
-    // Create persistent storage directory
-    let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    info!("Using temp directory: {:?}", temp_dir.path());
-
     // Phase 1: Start single node and write data
+    let stored_node_info;
+    let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
+
     {
         info!("=== Phase 1: Starting single node ===");
-        let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
-        let (mut engines, node_infos) = cluster.add_nodes_with_rocksdb(1, &temp_dir).await;
+        let (mut engines, node_infos) = cluster.add_nodes_with_rocksdb(1).await;
+        stored_node_info = node_infos[0].clone();
 
         let node_id = node_infos[0].node_id.clone();
         info!("Created node: {}", node_id);
@@ -240,7 +218,7 @@ async fn test_single_node_persistence() {
 
         // Create streams and write data
         let stream_name = "single_node_stream";
-        let stream_config = proven_engine::stream::config::StreamConfig::default();
+        let stream_config = proven_engine::StreamConfig::default();
 
         let client = engines[0].client();
         client
@@ -262,9 +240,6 @@ async fn test_single_node_persistence() {
         // Stop
         engines[0].stop().await.expect("Failed to stop engine");
 
-        // Drop the engines to ensure storage is fully released
-        drop(engines);
-
         // Give time for all resources to be released
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -272,33 +247,43 @@ async fn test_single_node_persistence() {
     // Phase 2: Restart and verify
     {
         info!("=== Phase 2: Restarting single node ===");
-        let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
-        let (_engines, node_infos) = cluster.add_nodes_with_rocksdb(1, &temp_dir).await;
+        let (_engines, node_infos) = cluster
+            .add_nodes_with_rocksdb_and_keys(vec![stored_node_info])
+            .await;
 
         info!("Restarted node: {}", node_infos[0].node_id);
 
         // Wait for initialization
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        // Verify storage persistence by checking that data files exist
-        let storage_path = temp_dir.path().join("node_0");
-        assert!(storage_path.exists(), "Storage path should exist");
+        // Verify storage persistence exists
+        info!("Verifying storage persistence after restart");
 
-        let entries: Vec<_> = std::fs::read_dir(&storage_path)
-            .expect("Failed to read directory")
-            .filter_map(Result::ok)
-            .collect();
+        // Check that the storage path exists and has data
+        if let Some(storage_path) = cluster.get_node_storage_path(&node_infos[0].node_id) {
+            assert!(
+                storage_path.exists(),
+                "Storage path should exist: {storage_path:?}"
+            );
 
-        assert!(
-            !entries.is_empty(),
-            "Storage directory should contain RocksDB files"
-        );
-        info!("Found {} storage files", entries.len());
+            let entries: Vec<_> = std::fs::read_dir(&storage_path)
+                .expect("Failed to read directory")
+                .filter_map(Result::ok)
+                .collect();
 
-        // Log the files found
-        for entry in entries {
-            info!("Storage file: {:?}", entry.file_name());
+            assert!(
+                !entries.is_empty(),
+                "Storage directory should contain RocksDB files"
+            );
+            info!("Found {} storage files", entries.len());
+
+            // Log the files found
+            for entry in entries {
+                info!("Storage file: {:?}", entry.file_name());
+            }
+        } else {
+            panic!("No storage path found for node");
         }
 
         info!("Single node persistence test completed");

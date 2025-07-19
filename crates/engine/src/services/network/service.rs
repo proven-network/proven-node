@@ -14,23 +14,10 @@ use crate::services::event::{Event, EventPublisher};
 use crate::{
     error::{ConsensusError, ConsensusResult, ErrorKind},
     foundation::types::ConsensusGroupId,
-    services::monitoring::HealthCheckRequest,
+    services::monitoring::MonitoringServiceMessage,
 };
 
-use super::handlers::*;
 use super::types::NetworkStats;
-
-/// Handle for engine operations used by network handlers
-#[async_trait::async_trait]
-pub trait EngineHandle: Send + Sync {
-    /// Handle cluster join request
-    fn handle_cluster_join(
-        &self,
-        request: crate::services::cluster::ConsensusGroupJoinRequest,
-    ) -> ConsensusResult<crate::services::cluster::ConsensusGroupJoinResponse>;
-    /// Get cluster state
-    fn get_cluster_state(&self) -> Arc<RwLock<ClusterStateInfo>>;
-}
 
 /// Configuration for network service
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -68,8 +55,6 @@ where
     event_publisher: Option<EventPublisher>,
     /// Cluster state for handlers
     cluster_state: Arc<RwLock<ClusterStateInfo>>,
-    /// Engine handle for handlers
-    engine_handle: Option<Arc<dyn EngineHandle>>,
 }
 
 impl<T, G> NetworkService<T, G>
@@ -90,18 +75,12 @@ where
             stats: Arc::new(RwLock::new(NetworkStats::default())),
             event_publisher: None,
             cluster_state: Arc::new(RwLock::new(ClusterStateInfo::new())),
-            engine_handle: None,
         }
     }
 
     /// Set event publisher
     pub fn set_event_publisher(&mut self, publisher: EventPublisher) {
         self.event_publisher = Some(publisher);
-    }
-
-    /// Set engine handle
-    pub fn set_engine_handle(&mut self, handle: Arc<dyn EngineHandle>) {
-        self.engine_handle = Some(handle);
     }
 
     /// Set cluster state

@@ -34,7 +34,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use bytes::Bytes;
 use lru::LruCache;
-use proven_engine::{Client, stream::StreamConfig};
+use proven_engine::{Client, StreamConfig};
 use proven_store::{Store, Store1, Store2, Store3};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
@@ -179,7 +179,7 @@ trait ClientWrapper: Debug + Send + Sync + 'static {
         stream_name: String,
         start_sequence: u64,
         count: u64,
-    ) -> Result<Vec<proven_engine::stream::StoredMessage>, Error>;
+    ) -> Result<Vec<proven_engine::StoredMessage>, Error>;
 }
 
 /// Wrapper implementation for the engine client
@@ -244,7 +244,7 @@ where
         stream_name: String,
         start_sequence: u64,
         count: u64,
-    ) -> Result<Vec<proven_engine::stream::StoredMessage>, Error> {
+    ) -> Result<Vec<proven_engine::StoredMessage>, Error> {
         self.inner
             .read_stream(stream_name, start_sequence, count)
             .await

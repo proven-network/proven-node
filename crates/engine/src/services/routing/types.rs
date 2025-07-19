@@ -90,7 +90,7 @@ pub struct StreamRoute {
     /// Is route active
     pub is_active: bool,
     /// Stream configuration
-    pub config: Option<crate::stream::StreamConfig>,
+    pub config: Option<crate::services::stream::StreamConfig>,
 }
 
 /// Group routing information

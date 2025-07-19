@@ -8,7 +8,10 @@ use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::foundation::ConsensusGroupId;
-use crate::services::event::{Event, EventEnvelope, EventFilter, EventService, EventType};
+use crate::services::event::{
+    Event, EventEnvelope, EventFilter, EventHandler, EventResult, EventService, EventType,
+    EventingResult as EventResult2,
+};
 use proven_topology::NodeId;
 
 use super::balancer::LoadBalancer;
@@ -134,9 +137,55 @@ impl RoutingService {
         // Start metrics aggregation
         tasks.push(self.spawn_metrics_aggregator());
 
-        // Start event processing
-        if self.event_service.read().await.is_some() {
-            tasks.push(self.spawn_event_processor());
+        // Register event handler for synchronous processing
+        if let Some(event_service) = self.event_service.read().await.as_ref() {
+            let handler = Arc::new(RoutingEventHandler::new(
+                self.routing_table.clone(),
+                self.local_node_id.clone(),
+            ));
+
+            if let Err(e) = event_service
+                .register_handler("routing-handler".to_string(), handler)
+                .await
+            {
+                error!("Failed to register routing event handler: {}", e);
+            }
+
+            // Add routes for the events we care about
+            use crate::services::event::{EventRoute, EventRoutePattern};
+
+            let stream_route = EventRoute {
+                pattern: EventRoutePattern::ByType(EventType::Stream),
+                handler_name: "routing-handler".to_string(),
+                priority: 100, // High priority for immediate consistency
+            };
+
+            if let Err(e) = event_service.add_route(stream_route).await {
+                error!("Failed to add stream event route: {}", e);
+            }
+
+            let consensus_route = EventRoute {
+                pattern: EventRoutePattern::ByType(EventType::Consensus),
+                handler_name: "routing-handler".to_string(),
+                priority: 100,
+            };
+
+            if let Err(e) = event_service.add_route(consensus_route).await {
+                error!("Failed to add consensus event route: {}", e);
+            }
+
+            let group_route = EventRoute {
+                pattern: EventRoutePattern::ByType(EventType::Group),
+                handler_name: "routing-handler".to_string(),
+                priority: 100,
+            };
+
+            if let Err(e) = event_service.add_route(group_route).await {
+                error!("Failed to add group event route: {}", e);
+            }
+
+            // No longer spawn the event processor - we're using handlers only
+            info!("RoutingService: Using synchronous event handlers only");
         }
 
         Ok(())
@@ -499,207 +548,6 @@ impl RoutingService {
             }
         })
     }
-
-    /// Spawn event processor task
-    fn spawn_event_processor(&self) -> JoinHandle<()> {
-        let event_service = self.event_service.clone();
-        let routing_table = self.routing_table.clone();
-        let shutdown = self.shutdown_signal.clone();
-        let local_node_id = self.local_node_id.clone();
-
-        tokio::spawn(async move {
-            let event_service = match event_service.read().await.as_ref() {
-                Some(service) => service.clone(),
-                None => {
-                    error!("Event service not set for routing service");
-                    return;
-                }
-            };
-
-            // Subscribe to relevant events
-            let filter = EventFilter::ByType(vec![EventType::Stream, EventType::Consensus]);
-            let mut subscriber = match event_service
-                .subscribe("routing-service".to_string(), filter)
-                .await
-            {
-                Ok(sub) => sub,
-                Err(e) => {
-                    error!("Failed to subscribe to events: {}", e);
-                    return;
-                }
-            };
-
-            info!("RoutingService: Event processing started");
-
-            loop {
-                tokio::select! {
-                    Some(envelope) = subscriber.recv() => {
-                        if let Err(e) = Self::handle_event(envelope, &routing_table, &local_node_id).await {
-                            error!("Error handling event: {}", e);
-                        }
-                    }
-                    _ = shutdown.notified() => {
-                        info!("RoutingService: Event processor shutting down");
-                        break;
-                    }
-                    else => {
-                        info!("RoutingService: Event channel closed");
-                        break;
-                    }
-                }
-            }
-        })
-    }
-
-    /// Handle events
-    async fn handle_event(
-        envelope: EventEnvelope,
-        routing_table: &Arc<RoutingTable>,
-        local_node_id: &NodeId,
-    ) -> RoutingResult<()> {
-        match &envelope.event {
-            Event::StreamCreated {
-                name,
-                group_id,
-                config,
-            } => {
-                info!(
-                    "RoutingService: Handling StreamCreated event for {} in group {:?}",
-                    name, group_id
-                );
-
-                let route = StreamRoute {
-                    stream_name: name.to_string(),
-                    group_id: *group_id,
-                    assigned_at: SystemTime::now(),
-                    strategy: RoutingStrategy::Sticky,
-                    is_active: true,
-                    config: Some(config.clone()),
-                };
-
-                routing_table
-                    .update_stream_route(name.to_string(), route)
-                    .await?;
-            }
-            Event::GroupConsensusInitialized {
-                group_id, members, ..
-            } => {
-                info!(
-                    "RoutingService: Handling GroupConsensusInitialized for group {:?} with members: {:?}",
-                    group_id, members
-                );
-
-                // Determine group location based on whether this node is a member
-                let location = if members.contains(local_node_id) {
-                    GroupLocation::Local
-                } else {
-                    GroupLocation::Remote
-                };
-
-                info!(
-                    "RoutingService: Group {:?} location determined as {:?} for node {}",
-                    group_id, location, local_node_id
-                );
-
-                let group_route = GroupRoute {
-                    group_id: *group_id,
-                    members: members.clone(),
-                    leader: members.first().cloned(),
-                    health: GroupHealth::Healthy,
-                    last_updated: SystemTime::now(),
-                    stream_count: 0,
-                    location,
-                };
-
-                routing_table
-                    .update_group_route(*group_id, group_route)
-                    .await?;
-            }
-            Event::MembershipChanged {
-                new_members,
-                removed_members,
-            } => {
-                info!(
-                    "RoutingService: Handling MembershipChanged - {} new, {} removed",
-                    new_members.len(),
-                    removed_members.len()
-                );
-
-                // Update all group routes that contain any of the affected members
-                // In a real implementation, this event should include the group_id
-                // For now, we'll need to check all groups
-                let group_routes = routing_table.get_all_group_routes().await?;
-
-                for (group_id, mut route) in group_routes {
-                    let mut updated = false;
-
-                    // Remove members that left
-                    for removed in removed_members {
-                        if let Some(pos) = route.members.iter().position(|m| m == removed) {
-                            route.members.remove(pos);
-                            updated = true;
-                        }
-                    }
-
-                    // Add new members
-                    for new_member in new_members {
-                        if !route.members.contains(new_member) {
-                            route.members.push(new_member.clone());
-                            updated = true;
-                        }
-                    }
-
-                    if updated {
-                        // Update leader if necessary
-                        if let Some(ref leader) = route.leader
-                            && removed_members.contains(leader)
-                        {
-                            route.leader = route.members.first().cloned();
-                        }
-
-                        route.last_updated = SystemTime::now();
-                        routing_table.update_group_route(group_id, route).await?;
-                    }
-                }
-            }
-            Event::GroupLeaderChanged {
-                group_id,
-                new_leader,
-                ..
-            } => {
-                info!(
-                    "RoutingService: Handling GroupLeaderChanged for group {:?}, new leader {:?}",
-                    group_id, new_leader
-                );
-
-                // Update leader for the specific group
-                if let Ok(Some(mut route)) = routing_table.get_group_route(*group_id).await {
-                    route.leader = Some(new_leader.clone());
-                    route.last_updated = SystemTime::now();
-                    routing_table.update_group_route(*group_id, route).await?;
-                }
-            }
-            Event::GlobalLeaderChanged {
-                old_leader: _,
-                new_leader,
-                term: _,
-            } => {
-                info!(
-                    "RoutingService: Handling GlobalLeaderChanged, new leader: {}",
-                    new_leader
-                );
-
-                // Update global consensus leader
-                routing_table
-                    .update_global_leader(Some(new_leader.clone()))
-                    .await;
-            }
-            _ => {
-                // Ignore other events
-            }
-        }
-        Ok(())
-    }
 }
 
 impl Drop for RoutingService {
@@ -773,3 +621,188 @@ impl crate::foundation::traits::ServiceLifecycle for RoutingService {
 
 // Re-export config for convenience
 pub use super::types::RoutingConfig;
+
+/// Event handler wrapper for routing service
+pub struct RoutingEventHandler {
+    routing_table: Arc<RoutingTable>,
+    local_node_id: NodeId,
+}
+
+impl RoutingEventHandler {
+    pub fn new(routing_table: Arc<RoutingTable>, local_node_id: NodeId) -> Self {
+        Self {
+            routing_table,
+            local_node_id,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl EventHandler for RoutingEventHandler {
+    async fn handle(&self, envelope: EventEnvelope) -> EventResult2<EventResult> {
+        // Only handle specific events
+        match &envelope.event {
+            Event::StreamCreated {
+                name,
+                group_id,
+                config,
+            } => {
+                info!(
+                    "RoutingEventHandler: Handling StreamCreated event for {} in group {:?}",
+                    name, group_id
+                );
+
+                let route = StreamRoute {
+                    stream_name: name.to_string(),
+                    group_id: *group_id,
+                    assigned_at: SystemTime::now(),
+                    strategy: RoutingStrategy::Sticky,
+                    is_active: true,
+                    config: Some(config.clone()),
+                };
+
+                match self
+                    .routing_table
+                    .update_stream_route(name.to_string(), route)
+                    .await
+                {
+                    Ok(_) => Ok(EventResult::Success),
+                    Err(e) => Ok(EventResult::Failed(e.to_string())),
+                }
+            }
+            Event::GroupCreated { group_id, members } => {
+                info!(
+                    "RoutingEventHandler: Handling GroupCreated for group {:?} with {} members",
+                    group_id,
+                    members.len()
+                );
+
+                let location = if members.contains(&self.local_node_id) {
+                    GroupLocation::Local
+                } else {
+                    GroupLocation::Remote
+                };
+
+                let group_route = GroupRoute {
+                    group_id: *group_id,
+                    members: members.clone(),
+                    leader: members.first().cloned(),
+                    health: GroupHealth::Healthy,
+                    last_updated: SystemTime::now(),
+                    stream_count: 0,
+                    location,
+                };
+
+                match self
+                    .routing_table
+                    .update_group_route(*group_id, group_route)
+                    .await
+                {
+                    Ok(_) => {
+                        info!(
+                            "Successfully updated routing table for group {:?} (location: {:?})",
+                            group_id, location
+                        );
+                        Ok(EventResult::Success)
+                    }
+                    Err(e) => Ok(EventResult::Failed(e.to_string())),
+                }
+            }
+            Event::MembershipChanged {
+                new_members,
+                removed_members,
+            } => {
+                info!(
+                    "RoutingEventHandler: Handling MembershipChanged - {} new, {} removed",
+                    new_members.len(),
+                    removed_members.len()
+                );
+
+                // Update all group routes that contain any of the affected members
+                match self.routing_table.get_all_group_routes().await {
+                    Ok(group_routes) => {
+                        for (group_id, mut route) in group_routes {
+                            let mut updated = false;
+
+                            // Remove members that left
+                            for removed in removed_members {
+                                if let Some(pos) = route.members.iter().position(|m| m == removed) {
+                                    route.members.remove(pos);
+                                    updated = true;
+                                }
+                            }
+
+                            // Add new members
+                            for new_member in new_members {
+                                if !route.members.contains(new_member) {
+                                    route.members.push(new_member.clone());
+                                    updated = true;
+                                }
+                            }
+
+                            if updated {
+                                // Update leader if necessary
+                                if let Some(ref leader) = route.leader
+                                    && removed_members.contains(leader)
+                                {
+                                    route.leader = route.members.first().cloned();
+                                }
+
+                                route.last_updated = SystemTime::now();
+                                if let Err(e) =
+                                    self.routing_table.update_group_route(group_id, route).await
+                                {
+                                    error!("Failed to update group route: {}", e);
+                                }
+                            }
+                        }
+                        Ok(EventResult::Success)
+                    }
+                    Err(e) => Ok(EventResult::Failed(e.to_string())),
+                }
+            }
+            Event::GroupLeaderChanged {
+                group_id,
+                new_leader,
+                ..
+            } => {
+                info!(
+                    "RoutingEventHandler: Handling GroupLeaderChanged for group {:?}, new leader {:?}",
+                    group_id, new_leader
+                );
+
+                match self.routing_table.get_group_route(*group_id).await {
+                    Ok(Some(mut route)) => {
+                        route.leader = Some(new_leader.clone());
+                        route.last_updated = SystemTime::now();
+                        match self
+                            .routing_table
+                            .update_group_route(*group_id, route)
+                            .await
+                        {
+                            Ok(_) => Ok(EventResult::Success),
+                            Err(e) => Ok(EventResult::Failed(e.to_string())),
+                        }
+                    }
+                    Ok(None) => Ok(EventResult::Ignored),
+                    Err(e) => Ok(EventResult::Failed(e.to_string())),
+                }
+            }
+            Event::GlobalLeaderChanged { new_leader, .. } => {
+                info!(
+                    "RoutingEventHandler: Handling GlobalLeaderChanged, new leader: {}",
+                    new_leader
+                );
+                self.routing_table
+                    .update_global_leader(Some(new_leader.clone()))
+                    .await;
+                Ok(EventResult::Success)
+            }
+            _ => Ok(EventResult::Ignored),
+        }
+    }
+
+    fn name(&self) -> &str {
+        "RoutingEventHandler"
+    }
+}

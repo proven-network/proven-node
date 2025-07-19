@@ -1,4 +1,4 @@
-//! Simple integration test for namespace-based request/reply with longer timeouts
+//! Simple integration test for service-based request/reply with longer timeouts
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -6,39 +6,32 @@ use std::time::Duration;
 use ed25519_dalek::SigningKey;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
-use proven_network::{NetworkManager, namespace::MessageType};
+use proven_network::{NetworkManager, ServiceMessage};
 use proven_topology::{Node, NodeId, TopologyManager, Version};
 use proven_topology_mock::MockTopologyAdaptor;
 use proven_transport::{Config as TransportConfig, Transport};
 use proven_transport_tcp::{TcpConfig, TcpTransport};
 use proven_util::port_allocator::allocate_port;
-// No longer need to import verification components for manual construction
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-/// Test request message
+/// Test service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct TestRequest {
-    id: u64,
-    message: String,
+enum TestServiceMessage {
+    Request { id: u64, message: String },
 }
 
-/// Test response message
+/// Test service response
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct TestResponse {
-    id: u64,
-    reply: String,
+enum TestServiceResponse {
+    Response { id: u64, reply: String },
 }
 
-impl MessageType for TestRequest {
-    fn message_type(&self) -> &'static str {
-        "test_request"
-    }
-}
+impl ServiceMessage for TestServiceMessage {
+    type Response = TestServiceResponse;
 
-impl MessageType for TestResponse {
-    fn message_type(&self) -> &'static str {
-        "test_response"
+    fn service_id() -> &'static str {
+        "test_service"
     }
 }
 
@@ -175,40 +168,28 @@ async fn test_simple_request_reply() {
     // Wait for connection to establish
     tokio::time::sleep(Duration::from_secs(6)).await;
 
-    // Register namespace on both nodes
-    let namespace = "test.namespace";
-    info!("Registering namespace '{}' on both nodes", namespace);
-    network1
-        .register_namespace(namespace)
-        .await
-        .expect("Failed to register namespace on node1");
-    network2
-        .register_namespace(namespace)
-        .await
-        .expect("Failed to register namespace on node2");
-
-    // Register request handler on node2
+    // Register service handler on node2
     let handler_called = Arc::new(tokio::sync::Mutex::new(false));
     let handler_called_clone = handler_called.clone();
 
-    info!("Registering request handler on node2");
+    info!("Registering service handler on node2");
     network2
-        .register_namespaced_request_handler::<TestRequest, TestResponse, _, _>(
-            namespace,
-            "test_request",
-            move |sender, request| {
-                let handler_called = handler_called_clone.clone();
-                async move {
-                    info!("Handler called! Sender: {}, Request: {:?}", sender, request);
-                    *handler_called.lock().await = true;
+        .register_service::<TestServiceMessage, _>(move |sender, message| {
+            let handler_called = handler_called_clone.clone();
+            Box::pin(async move {
+                info!("Handler called! Sender: {}, Message: {:?}", sender, message);
+                *handler_called.lock().await = true;
 
-                    Ok(TestResponse {
-                        id: request.id,
-                        reply: format!("Reply to: {}", request.message),
-                    })
+                match message {
+                    TestServiceMessage::Request { id, message } => {
+                        Ok(TestServiceResponse::Response {
+                            id,
+                            reply: format!("Reply to: {message}"),
+                        })
+                    }
                 }
-            },
-        )
+            })
+        })
         .await
         .expect("Failed to register handler");
 
@@ -218,7 +199,7 @@ async fn test_simple_request_reply() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Send request from node1 to node2 with longer timeout
-    let request = TestRequest {
+    let request = TestServiceMessage::Request {
         id: 42,
         message: "Hello from node1".to_string(),
     };
@@ -226,10 +207,9 @@ async fn test_simple_request_reply() {
     info!("Sending request from {} to {}", node1_id, node2_id);
 
     let response_result = network1
-        .request_namespaced::<TestRequest, TestResponse>(
-            namespace,
+        .request_service(
             node2_id.clone(),
-            request.clone(),
+            request,
             Duration::from_secs(15), // 15 second timeout
         )
         .await;
@@ -238,8 +218,12 @@ async fn test_simple_request_reply() {
     match response_result {
         Ok(response) => {
             info!("Got response: {:?}", response);
-            assert_eq!(response.id, 42);
-            assert_eq!(response.reply, "Reply to: Hello from node1");
+            match response {
+                TestServiceResponse::Response { id, reply } => {
+                    assert_eq!(id, 42);
+                    assert_eq!(reply, "Reply to: Hello from node1");
+                }
+            }
             assert!(
                 *handler_called.lock().await,
                 "Handler should have been called"

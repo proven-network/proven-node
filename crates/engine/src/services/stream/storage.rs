@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use proven_storage::{LogStorageWithDelete, StorageError, StorageNamespace, StorageResult};
 
 use super::types::{MessageData, StoredMessage};
-use crate::stream::StreamName;
+use crate::services::stream::StreamName;
 
 /// Stream storage reader interface
 #[async_trait]
@@ -55,7 +55,7 @@ pub enum StreamStorageBackend<L: LogStorageWithDelete> {
     /// Persistent storage using LogStorage
     Persistent {
         /// LogStorage instance
-        storage: Arc<L>,
+        storage: L,
         /// Storage namespace
         namespace: StorageNamespace,
     },
@@ -82,14 +82,13 @@ impl<L: LogStorageWithDelete> StreamStorageImpl<L> {
     }
 
     /// Create persistent stream storage
-    pub fn persistent(
-        stream_name: StreamName,
-        storage: Arc<L>,
-        namespace: StorageNamespace,
-    ) -> Self {
+    pub fn persistent(stream_name: StreamName, storage: L, namespace: StorageNamespace) -> Self {
         Self {
             stream_name,
-            backend: StreamStorageBackend::Persistent { storage, namespace },
+            backend: StreamStorageBackend::Persistent {
+                storage: storage.clone(),
+                namespace,
+            },
         }
     }
 }

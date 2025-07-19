@@ -275,7 +275,7 @@ mod tests {
     use super::*;
     use crate::{
         foundation::types::ConsensusGroupId,
-        stream::{StreamConfig, StreamName},
+        services::stream::{StreamConfig, StreamName},
     };
     use uuid::Uuid;
 
@@ -293,6 +293,7 @@ mod tests {
                 source: "test".to_string(),
                 correlation_id: None,
                 tags: vec![],
+                synchronous: false,
             },
             event: Event::StreamCreated {
                 name: StreamName::new("test-stream"),
@@ -332,6 +333,7 @@ mod tests {
                     source: format!("test-{i}"),
                     correlation_id: None,
                     tags: vec![],
+                    synchronous: false,
                 },
                 event: Event::Custom {
                     event_type: "test".to_string(),

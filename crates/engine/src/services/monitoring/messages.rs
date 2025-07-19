@@ -1,35 +1,32 @@
 //! Health and monitoring network messages
 
-use proven_network::message::HandledMessage;
-use proven_network::namespace::MessageType;
+use proven_network::ServiceMessage;
 use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};
 
-/// Health check request
+/// Monitoring service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HealthCheckRequest;
-
-impl MessageType for HealthCheckRequest {
-    fn message_type(&self) -> &'static str {
-        "consensus.health_check_request"
-    }
+pub enum MonitoringServiceMessage {
+    /// Health check request
+    HealthCheckRequest,
 }
 
-/// Health check response
+/// Monitoring service response
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HealthResponse {
-    /// Whether the node is healthy
-    pub healthy: bool,
-    /// Current leader if known
-    pub leader: Option<NodeId>,
+pub enum MonitoringServiceResponse {
+    /// Health check response
+    HealthResponse {
+        /// Whether the node is healthy
+        healthy: bool,
+        /// Current leader if known
+        leader: Option<NodeId>,
+    },
 }
 
-impl MessageType for HealthResponse {
-    fn message_type(&self) -> &'static str {
-        "consensus.health_response"
+impl ServiceMessage for MonitoringServiceMessage {
+    type Response = MonitoringServiceResponse;
+
+    fn service_id() -> &'static str {
+        "monitoring"
     }
-}
-
-impl HandledMessage for HealthCheckRequest {
-    type Response = HealthResponse;
 }

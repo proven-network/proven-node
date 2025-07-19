@@ -1,10 +1,10 @@
 //! Network manager for handling message routing and peer communication
 
 use crate::error::{NetworkError, NetworkResult};
-use crate::namespace::{MessageType, NamespaceManager};
+use crate::message::ServiceMessage;
 use crate::peer::Peer;
 
-use std::fmt::Debug;
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,10 +23,66 @@ use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-/// Pending request tracking (legacy - will be removed)
+/// Pending request tracking
 struct PendingRequest {
     tx: oneshot::Sender<Bytes>,
     sent_at: std::time::Instant,
+}
+
+/// Type-erased service handler
+#[async_trait]
+trait ServiceHandler: Send + Sync {
+    /// Handle a message and return a response
+    async fn handle(
+        &self,
+        sender: NodeId,
+        payload: Bytes,
+        correlation_id: Option<Uuid>,
+    ) -> NetworkResult<Option<Bytes>>;
+}
+
+/// Concrete implementation of a service handler
+struct TypedServiceHandler<M, F>
+where
+    M: ServiceMessage,
+    F: Fn(NodeId, M) -> std::pin::Pin<Box<dyn Future<Output = NetworkResult<M::Response>> + Send>>
+        + Send
+        + Sync,
+{
+    handler: F,
+    _phantom: std::marker::PhantomData<M>,
+}
+
+#[async_trait]
+impl<M, F> ServiceHandler for TypedServiceHandler<M, F>
+where
+    M: ServiceMessage,
+    F: Fn(NodeId, M) -> std::pin::Pin<Box<dyn Future<Output = NetworkResult<M::Response>> + Send>>
+        + Send
+        + Sync,
+{
+    async fn handle(
+        &self,
+        sender: NodeId,
+        payload: Bytes,
+        _correlation_id: Option<Uuid>,
+    ) -> NetworkResult<Option<Bytes>> {
+        // Deserialize the message
+        let message: M = ciborium::from_reader(payload.as_ref()).map_err(|e| {
+            NetworkError::Serialization(format!("Failed to deserialize message: {e}"))
+        })?;
+
+        // Call the handler
+        let response = (self.handler)(sender, message).await?;
+
+        // Serialize the response
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&response, &mut bytes).map_err(|e| {
+            NetworkError::Serialization(format!("Failed to serialize response: {e}"))
+        })?;
+
+        Ok(Some(Bytes::from(bytes)))
+    }
 }
 
 /// Network manager for handling message routing and peer communication
@@ -41,10 +97,10 @@ where
     pub(crate) transport: Arc<T>,
     /// Topology manager
     topology: Arc<TopologyManager<G>>,
-    /// Pending requests waiting for responses (legacy - will be removed)
+    /// Pending requests waiting for responses
     pending_requests: Arc<RwLock<DashMap<Uuid, PendingRequest>>>,
-    /// Namespace manager
-    namespace_manager: Arc<NamespaceManager>,
+    /// Service handlers
+    service_handlers: Arc<DashMap<&'static str, Arc<dyn ServiceHandler>>>,
     /// Task tracker for background tasks
     task_tracker: TaskTracker,
     /// Cancellation token for graceful shutdown
@@ -67,7 +123,7 @@ where
             transport,
             topology,
             pending_requests: Arc::new(RwLock::new(DashMap::new())),
-            namespace_manager: Arc::new(NamespaceManager::new()),
+            service_handlers: Arc::new(DashMap::new()),
             task_tracker: TaskTracker::new(),
             cancellation_token: CancellationToken::new(),
         }
@@ -79,12 +135,12 @@ where
         {
             let transport = self.transport.clone();
             let pending_requests = self.pending_requests.clone();
-            let namespace_manager = self.namespace_manager.clone();
+            let service_handlers = self.service_handlers.clone();
             let cancellation = self.cancellation_token.clone();
 
             self.task_tracker.spawn(async move {
                 tokio::select! {
-                    _ = Self::message_router_loop_static(transport, pending_requests, namespace_manager) => {
+                    _ = Self::message_router_loop_static(transport, pending_requests, service_handlers) => {
                         error!("Message router loop exited unexpectedly");
                     }
                     _ = cancellation.cancelled() => {
@@ -97,12 +153,11 @@ where
         // Start cleanup task
         {
             let pending_requests = self.pending_requests.clone();
-            let namespace_manager = self.namespace_manager.clone();
             let cancellation = self.cancellation_token.clone();
 
             self.task_tracker.spawn(async move {
                 tokio::select! {
-                    _ = Self::cleanup_loop_static(pending_requests, namespace_manager) => {
+                    _ = Self::cleanup_loop_static(pending_requests) => {
                         error!("Cleanup loop exited unexpectedly");
                     }
                     _ = cancellation.cancelled() => {
@@ -208,70 +263,84 @@ where
         })
     }
 
-    /// Register a namespace
-    pub async fn register_namespace(&self, namespace: &str) -> NetworkResult<()> {
-        self.namespace_manager.register_namespace(namespace).await
-    }
-
-    /// Send a typed request with namespace and wait for typed response
-    pub async fn request_namespaced<Req, Resp>(
-        &self,
-        namespace: &str,
-        target: NodeId,
-        request: Req,
-        timeout: Duration,
-    ) -> NetworkResult<Resp>
+    /// Register a service handler
+    pub async fn register_service<M, F>(&self, handler: F) -> NetworkResult<()>
     where
-        Req: MessageType
-            + serde::Serialize
-            + serde::de::DeserializeOwned
+        M: ServiceMessage,
+        F: Fn(
+                NodeId,
+                M,
+            )
+                -> std::pin::Pin<Box<dyn Future<Output = NetworkResult<M::Response>> + Send>>
             + Send
             + Sync
-            + Debug
             + 'static,
-        Resp: serde::de::DeserializeOwned,
+    {
+        let service_id = M::service_id();
+
+        // Check if already registered
+        if self.service_handlers.contains_key(service_id) {
+            return Err(NetworkError::Internal(format!(
+                "Service '{service_id}' already registered"
+            )));
+        }
+
+        let typed_handler = TypedServiceHandler {
+            handler,
+            _phantom: std::marker::PhantomData,
+        };
+
+        self.service_handlers
+            .insert(service_id, Arc::new(typed_handler));
+        info!("Registered service handler for '{}'", service_id);
+        Ok(())
+    }
+
+    /// Send a typed request to a service and wait for response
+    pub async fn request_service<M>(
+        &self,
+        target: NodeId,
+        message: M,
+        timeout: Duration,
+    ) -> NetworkResult<M::Response>
+    where
+        M: ServiceMessage,
     {
         let correlation_id = Uuid::new_v4();
-        let message_type = MessageType::message_type(&request);
-        let full_message_type =
-            crate::namespace::NamespaceManager::combine_message_type(namespace, message_type);
+        let service_id = M::service_id();
 
-        // Serialize the request
-        let request_bytes = crate::message::NetworkMessage::serialize(&request)?;
-
-        // Get or create namespace
-        let namespace_state = self
-            .namespace_manager
-            .get_or_create_namespace(namespace)
-            .await;
+        // Serialize the message
+        let mut message_bytes = Vec::new();
+        ciborium::into_writer(&message, &mut message_bytes).map_err(|e| {
+            NetworkError::Serialization(format!("Failed to serialize message: {e}"))
+        })?;
 
         // Create oneshot channel for response
         let (tx, rx) = oneshot::channel();
 
-        // Store pending request in namespace
-        namespace_state.pending_requests.insert(
-            correlation_id,
-            crate::namespace::PendingRequest {
-                tx,
-                sent_at: std::time::Instant::now(),
-                timeout: Some(timeout),
-            },
-        );
-
-        // Update metrics
-        namespace_state.metrics.record_request();
+        // Store pending request
+        {
+            let pending = self.pending_requests.read().await;
+            pending.insert(
+                correlation_id,
+                PendingRequest {
+                    tx,
+                    sent_at: std::time::Instant::now(),
+                },
+            );
+        }
 
         debug!(
-            "Sending request to {} with correlation_id {} in namespace '{}', message_type: '{}'",
-            target, correlation_id, namespace, full_message_type
+            "Sending request to {} for service '{}' with correlation_id {}",
+            target, service_id, correlation_id
         );
 
         // Send the request via transport
         self.transport
             .send_envelope(
                 &target,
-                &request_bytes,
-                &full_message_type,
+                &Bytes::from(message_bytes),
+                service_id,
                 Some(correlation_id),
             )
             .await
@@ -279,18 +348,15 @@ where
 
         // Wait for response with timeout
         let response_bytes = match tokio::time::timeout(timeout, rx).await {
-            Ok(Ok(response)) => {
-                namespace_state.metrics.record_response();
-                response
-            }
+            Ok(Ok(response)) => response,
             Ok(Err(_)) => {
-                namespace_state.pending_requests.remove(&correlation_id);
+                self.cleanup_request(correlation_id).await;
                 return Err(NetworkError::ChannelClosed(
                     "Response channel closed".to_string(),
                 ));
             }
             Err(_) => {
-                namespace_state.pending_requests.remove(&correlation_id);
+                self.cleanup_request(correlation_id).await;
                 return Err(NetworkError::Timeout(format!(
                     "Request to {target} timed out after {timeout:?}"
                 )));
@@ -303,140 +369,11 @@ where
         })
     }
 
-    /// Register a handler for a specific message type within a namespace
-    pub async fn register_namespaced_handler<M, F, Fut>(
-        &self,
-        namespace: &str,
-        message_type: &str,
-        handler: F,
-    ) -> NetworkResult<()>
-    where
-        M: crate::message::NetworkMessage + serde::de::DeserializeOwned + 'static,
-        F: Fn(NodeId, M) -> Fut + Clone + Send + Sync + 'static,
-        Fut: std::future::Future<Output = ()> + Send + 'static,
-    {
-        let namespace_state = self
-            .namespace_manager
-            .get_or_create_namespace(namespace)
-            .await;
-
-        // Create type-erased handler
-        let handler = Arc::new(
-            move |sender: NodeId,
-                  payload: Bytes,
-                  _msg_type: &str,
-                  _correlation_id: Option<Uuid>| {
-                let handler = handler.clone();
-                Box::pin(async move {
-                    // Deserialize the message
-                    let message: M = match ciborium::from_reader(payload.as_ref()) {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            warn!("Failed to deserialize message: {}", e);
-                            return Ok(None);
-                        }
-                    };
-
-                    // Call the handler
-                    handler(sender, message).await;
-                    Ok(None)
-                })
-                    as std::pin::Pin<
-                        Box<
-                            dyn std::future::Future<
-                                    Output = crate::handler::HandlerResult<Option<Bytes>>,
-                                > + Send,
-                        >,
-                    >
-            },
-        );
-
-        namespace_state
-            .handlers
-            .insert(message_type.to_string(), handler);
-        Ok(())
-    }
-
-    /// Register a request handler that returns a response
-    pub async fn register_namespaced_request_handler<Req, Resp, F, Fut>(
-        &self,
-        namespace: &str,
-        message_type: &str,
-        handler: F,
-    ) -> NetworkResult<()>
-    where
-        Req: crate::message::NetworkMessage + serde::de::DeserializeOwned + 'static,
-        Resp: MessageType
-            + serde::Serialize
-            + serde::de::DeserializeOwned
-            + Send
-            + Sync
-            + Debug
-            + 'static,
-        F: Fn(NodeId, Req) -> Fut + Clone + Send + Sync + 'static,
-        Fut: std::future::Future<Output = NetworkResult<Resp>> + Send + 'static,
-    {
-        let namespace_state = self
-            .namespace_manager
-            .get_or_create_namespace(namespace)
-            .await;
-
-        // Create type-erased handler
-        let handler = Arc::new(
-            move |sender: NodeId,
-                  payload: Bytes,
-                  _msg_type: &str,
-                  _correlation_id: Option<Uuid>| {
-                let handler = handler.clone();
-                Box::pin(async move {
-                    // Deserialize the request
-                    let request: Req = match ciborium::from_reader(payload.as_ref()) {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            warn!("Failed to deserialize request: {}", e);
-                            return Ok(None);
-                        }
-                    };
-
-                    // Call the handler
-                    match handler(sender, request).await {
-                        Ok(response) => {
-                            // Serialize the response
-                            match crate::message::NetworkMessage::serialize(&response) {
-                                Ok(bytes) => Ok(Some(bytes)),
-                                Err(e) => {
-                                    warn!("Failed to serialize response: {}", e);
-                                    Ok(None)
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            warn!("Handler returned error: {}", e);
-                            Ok(None)
-                        }
-                    }
-                })
-                    as std::pin::Pin<
-                        Box<
-                            dyn std::future::Future<
-                                    Output = crate::handler::HandlerResult<Option<Bytes>>,
-                                > + Send,
-                        >,
-                    >
-            },
-        );
-
-        namespace_state
-            .handlers
-            .insert(message_type.to_string(), handler);
-        Ok(())
-    }
-
     /// Message router loop - processes incoming messages (static version)
     async fn message_router_loop_static(
         transport: Arc<T>,
         pending_requests: Arc<RwLock<DashMap<Uuid, PendingRequest>>>,
-        namespace_manager: Arc<NamespaceManager>,
+        service_handlers: Arc<DashMap<&'static str, Arc<dyn ServiceHandler>>>,
     ) {
         debug!("Message router loop started");
         let mut incoming = transport.incoming();
@@ -447,14 +384,14 @@ where
                 envelope.sender, envelope.message_type, envelope.correlation_id
             );
             let pending_requests = pending_requests.clone();
-            let namespace_manager = namespace_manager.clone();
+            let service_handlers = service_handlers.clone();
             let transport = transport.clone();
 
             tokio::spawn(async move {
                 if let Err(e) = Self::process_incoming_message_static(
                     envelope,
                     pending_requests,
-                    namespace_manager,
+                    service_handlers,
                     transport,
                 )
                 .await
@@ -471,45 +408,27 @@ where
     async fn process_incoming_message_static(
         envelope: TransportEnvelope,
         pending_requests: Arc<RwLock<DashMap<Uuid, PendingRequest>>>,
-        namespace_manager: Arc<NamespaceManager>,
+        service_handlers: Arc<DashMap<&'static str, Arc<dyn ServiceHandler>>>,
         transport: Arc<T>,
     ) -> NetworkResult<()> {
-        // The transport has already verified the COSE signature and extracted metadata
         let TransportEnvelope {
             sender,
             payload: payload_bytes,
-            message_type,
+            message_type: service_id,
             correlation_id,
         } = envelope;
 
-        // Extract namespace from message type
-        let (namespace, local_message_type) =
-            crate::namespace::NamespaceManager::extract_namespace(&message_type);
-
-        // Check if this is a response to a pending request in namespace
+        // Check if this is a response to a pending request
         if let Some(correlation_id) = correlation_id {
             debug!(
                 "Received message with correlation_id {} from {}",
                 correlation_id, sender
             );
 
-            // First check namespace-based pending requests
-            let namespace_state = namespace_manager.get_or_create_namespace(namespace).await;
-            if let Some((_, request)) = namespace_state.pending_requests.remove(&correlation_id) {
-                debug!(
-                    "Found pending request in namespace '{}' for correlation_id {}",
-                    namespace, correlation_id
-                );
-                let _ = request.tx.send(payload_bytes);
-                namespace_state.metrics.record_response();
-                return Ok(());
-            }
-
-            // Fall back to legacy pending requests
             let pending = pending_requests.read().await;
             if let Some((_, request)) = pending.remove(&correlation_id) {
                 debug!(
-                    "Found pending request in legacy map for correlation_id {}",
+                    "Found pending request for correlation_id {}",
                     correlation_id
                 );
                 let _ = request.tx.send(payload_bytes);
@@ -517,57 +436,48 @@ where
             }
 
             debug!(
-                "No pending request found for correlation_id {} in namespace '{}' or legacy map",
-                correlation_id, namespace
+                "No pending request found for correlation_id {}",
+                correlation_id
             );
         }
 
-        // Try namespace-based handler first
-        let namespace_state = namespace_manager.get_or_create_namespace(namespace).await;
-        namespace_state.metrics.record_message();
-
-        if let Some(handler) = namespace_state.handlers.get(local_message_type) {
+        // Try to find a service handler
+        if let Some(handler) = service_handlers.get(service_id.as_str()) {
             debug!(
-                "Found handler for message type '{}' in namespace '{}', correlation_id: {:?}",
-                local_message_type, namespace, correlation_id
+                "Found handler for service '{}', correlation_id: {:?}",
+                service_id, correlation_id
             );
-            match handler(
-                sender.clone(),
-                payload_bytes.clone(),
-                local_message_type,
-                correlation_id,
-            )
-            .await
+
+            match handler
+                .handle(sender.clone(), payload_bytes, correlation_id)
+                .await
             {
                 Ok(Some(response_bytes)) => {
-                    debug!(
-                        "Handler returned response, sending back to {} with correlation_id {:?}",
-                        sender, correlation_id
-                    );
-                    // Send response back via transport with the same correlation_id
-                    // For responses, we use the original message type so the correlation works
-                    transport
-                        .send_envelope(&sender, &response_bytes, &message_type, correlation_id)
-                        .await
-                        .map_err(NetworkError::Transport)?;
-                    return Ok(());
+                    if let Some(corr_id) = correlation_id {
+                        debug!(
+                            "Handler returned response, sending back to {} with correlation_id {}",
+                            sender, corr_id
+                        );
+                        // Send response back with the same service_id and correlation_id
+                        transport
+                            .send_envelope(&sender, &response_bytes, &service_id, Some(corr_id))
+                            .await
+                            .map_err(NetworkError::Transport)?;
+                    }
                 }
                 Ok(None) => {
                     // No response needed
-                    return Ok(());
                 }
                 Err(e) => {
-                    warn!("Namespace handler error: {}", e);
-                    // Fall through to legacy handler
+                    warn!("Service handler error: {}", e);
                 }
             }
+        } else {
+            warn!(
+                "No handler found for service '{}', correlation_id: {:?}",
+                service_id, correlation_id
+            );
         }
-
-        // If no namespace handler found, log a warning
-        warn!(
-            "No handler found for message type '{}' (local: '{}') in namespace '{}', correlation_id: {:?}",
-            message_type, local_message_type, namespace, correlation_id
-        );
 
         Ok(())
     }
@@ -579,10 +489,7 @@ where
     }
 
     /// Periodic cleanup of old pending requests (static version)
-    async fn cleanup_loop_static(
-        pending_requests: Arc<RwLock<DashMap<Uuid, PendingRequest>>>,
-        namespace_manager: Arc<NamespaceManager>,
-    ) {
+    async fn cleanup_loop_static(pending_requests: Arc<RwLock<DashMap<Uuid, PendingRequest>>>) {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
 
         loop {
@@ -603,11 +510,6 @@ where
             for id in old_requests {
                 pending.remove(&id);
             }
-
-            // Also cleanup namespace-based pending requests
-            namespace_manager
-                .cleanup_all_namespaces(Duration::from_secs(300))
-                .await;
         }
     }
 

@@ -21,6 +21,7 @@ use crate::foundation::{
 };
 use crate::services::global_consensus::GlobalConsensusService;
 use crate::services::group_consensus::GroupConsensusService;
+use crate::services::stream::StreamService;
 use crate::services::{
     client::ClientService,
     cluster::{ClusterFormationEvent, ClusterInfo, ClusterService, FormationMode},
@@ -32,7 +33,6 @@ use crate::services::{
     pubsub::PubSubService,
     routing::RoutingService,
 };
-use crate::stream::StreamService;
 
 use super::config::EngineConfig;
 use super::coordinator::ServiceCoordinator;
@@ -161,17 +161,6 @@ where
         self.topology_manager = Some(topology);
     }
 
-    /// Setup network service with engine handle (must be called before start)
-    pub(super) fn setup_network_service_handle(&self) -> ConsensusResult<()> {
-        // This is a bit of a hack, but we need to give the network service
-        // a handle to the engine for routing consensus messages
-        // We can't do this during construction due to circular dependencies
-
-        // For now, we'll skip this and register handlers differently
-        // TODO: Refactor to avoid circular dependency
-        Ok(())
-    }
-
     /// Start the engine
     pub async fn start(&mut self) -> ConsensusResult<()> {
         // Check state
@@ -196,7 +185,11 @@ where
         // GlobalConsensusService registered during builder setup
         self.cluster_service.discover_and_join().await?;
 
-        // 3. Update state
+        // 3. Wait for default group to be created
+        // This ensures the engine is ready to handle stream operations
+        self.wait_for_default_group(Duration::from_secs(30)).await?;
+
+        // 4. Update state
         {
             let mut state = self.state.write().await;
             *state = EngineState::Running;
@@ -244,6 +237,62 @@ where
             ));
         }
         Ok(())
+    }
+
+    /// Wait for the default group to be created
+    async fn wait_for_default_group(&self, timeout: Duration) -> ConsensusResult<()> {
+        use tokio::time::timeout as tokio_timeout;
+
+        let start = std::time::Instant::now();
+        let default_group_id = crate::foundation::types::ConsensusGroupId::new(1);
+
+        // Try to wait for the default group to exist in the routing table
+        let result = tokio_timeout(timeout, async {
+            loop {
+                // Check if the routing service knows about the default group
+                // Check if the default group exists in the routing table
+                match self
+                    .routing_service
+                    .get_group_location(default_group_id)
+                    .await
+                {
+                    Ok(location_info) => {
+                        info!(
+                            "Default group (ID 1) found in routing table with {} nodes",
+                            location_info.nodes.len()
+                        );
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        // Group might not exist in routing table yet
+                        tracing::debug!("Default group not in routing table yet: {}", e);
+                    }
+                }
+
+                // Check timeout
+                if start.elapsed() > timeout {
+                    break;
+                }
+
+                // Wait a bit before checking again
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+
+            Err(ConsensusError::with_context(
+                ErrorKind::Timeout,
+                format!("Timeout waiting for default group after {timeout:?}"),
+            ))
+        })
+        .await;
+
+        match result {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err(ConsensusError::with_context(
+                ErrorKind::Timeout,
+                format!("Timeout waiting for default group after {timeout:?}"),
+            )),
+        }
     }
 
     /// Get engine health

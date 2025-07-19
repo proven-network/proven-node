@@ -52,10 +52,10 @@ mod types;
 
 pub use bus::{EventBus, EventPublisher, EventSubscriber};
 pub use filters::{EventFilter, FilterExpression, FilterOperator, FilterValue};
-pub use router::{EventHandler, EventRoute, EventRouter};
+pub use router::{EventHandler, EventRoute, EventRoutePattern, EventRouter};
 pub use service::{EventConfig, EventService};
 pub use store::{EventHistory, EventQuery, EventStore};
 pub use types::{
-    Event, EventEnvelope, EventError, EventId, EventMetadata, EventPriority, EventReply,
-    EventResult, EventTimestamp, EventType, EventingResult, ReplyChannel,
+    Event, EventEnvelope, EventError, EventId, EventMetadata, EventPriority, EventResult,
+    EventTimestamp, EventType, EventingResult,
 };

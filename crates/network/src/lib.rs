@@ -13,12 +13,11 @@ pub mod error;
 pub mod handler;
 pub mod manager;
 pub mod message;
-pub mod namespace;
 pub mod peer;
 
 // Re-export commonly used types
 pub use error::{NetworkError, NetworkResult};
 pub use handler::{HandlerRegistry, HandlerResult};
 pub use manager::NetworkManager;
-pub use message::{HandledMessage, NetworkEnvelope, NetworkMessage};
+pub use message::{HandledMessage, NetworkEnvelope, NetworkMessage, ServiceMessage};
 pub use peer::Peer;

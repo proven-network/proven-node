@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     foundation::types::ConsensusGroupId,
-    stream::{StreamConfig, StreamName},
+    services::stream::{StreamConfig, StreamName},
 };
 use proven_topology::NodeId;
 

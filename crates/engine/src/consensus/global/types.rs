@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::foundation::types::ConsensusGroupId;
-use crate::stream::{StreamConfig, StreamName};
+use crate::services::stream::{StreamConfig, StreamName};
 use proven_topology::NodeId;
 
 /// Consensus group information

@@ -6,7 +6,7 @@ use super::{
     state_machine::{DiscoveryEvent, DiscoveryState},
 };
 use crate::error::ConsensusResult;
-use crate::services::cluster::messages::{CLUSTER_NAMESPACE, DiscoveryRequest, DiscoveryResponse};
+use crate::services::cluster::messages::{ClusterServiceMessage, ClusterServiceResponse};
 use crate::services::event::EventPublisher;
 
 use std::sync::Arc;
@@ -113,59 +113,45 @@ where
         }
     }
 
-    /// Register namespace-based handlers
-    pub async fn register_namespace_handlers(&self) -> ConsensusResult<()> {
-        info!("Registering namespace handlers for discovery service");
+    /// Handle discovery request
+    pub async fn handle_discovery_request(
+        &self,
+        sender: NodeId,
+        requester_id: NodeId,
+    ) -> ClusterServiceResponse {
+        debug!(
+            "Handling discovery request from {} (requester: {})",
+            sender, requester_id
+        );
 
-        // Register namespace
-        self.network.register_namespace(CLUSTER_NAMESPACE).await?;
+        // Check current cluster state
+        let state = self.cluster_state.read().await;
+        let (has_active_cluster, current_term, current_leader, cluster_size) = if let Some((
+            active,
+            term,
+            leader,
+            size,
+        )) = &*state
+        {
+            info!(
+                "Discovery handler: Have cluster state - active: {}, term: {:?}, leader: {:?}, size: {:?}",
+                active, term, leader, size
+            );
+            (*active, *term, leader.clone(), *size)
+        } else {
+            info!("Discovery handler: No cluster state yet");
+            (false, None, None, None)
+        };
+        drop(state);
 
-        info!("Namespace '{}' registered", CLUSTER_NAMESPACE);
-
-        // Register discovery request handler
-        let local_node_id = self.local_node_id.clone();
-        let cluster_state = self.cluster_state.clone();
-
-        self.network
-            .register_namespaced_request_handler::<DiscoveryRequest, DiscoveryResponse, _, _>(
-                CLUSTER_NAMESPACE,
-                "discovery_request",
-                move |sender, _request| {
-                    let local_node_id = local_node_id.clone();
-                    let cluster_state = cluster_state.clone();
-
-                    async move {
-                        debug!("Handling discovery request from {}", sender);
-
-                        // Check current cluster state
-                        let state = cluster_state.read().await;
-                        let (has_active_cluster, current_term, current_leader, cluster_size) =
-                            if let Some((active, term, leader, size)) = &*state {
-                                info!("Discovery handler: Have cluster state - active: {}, term: {:?}, leader: {:?}, size: {:?}", active, term, leader, size);
-                                (*active, *term, leader.clone(), *size)
-                            } else {
-                                info!("Discovery handler: No cluster state yet");
-                                (false, None, None, None)
-                            };
-                        drop(state);
-
-                        // Return the response
-                        Ok(DiscoveryResponse {
-                            responder_id: local_node_id,
-                            has_active_cluster,
-                            current_term,
-                            current_leader,
-                            cluster_size,
-                        })
-                    }
-                },
-            )
-            .await?;
-
-        info!("Discovery request handler registered successfully");
-
-        // Note: Join handler is now managed by ClusterService
-        Ok(())
+        // Return the response
+        ClusterServiceResponse::Discovery {
+            responder_id: self.local_node_id.clone(),
+            has_active_cluster,
+            current_term,
+            current_leader,
+            cluster_size,
+        }
     }
 
     /// Update cluster state (called by cluster service when state changes)
@@ -242,12 +228,22 @@ where
                 let (leader_id, response) = round_result
                     .nodes_with_clusters
                     .into_iter()
-                    .max_by_key(|(_, r)| r.current_term.unwrap_or(0))
+                    .max_by_key(|(_, r)| match r {
+                        ClusterServiceResponse::Discovery { current_term, .. } => {
+                            current_term.unwrap_or(0)
+                        }
+                        _ => 0,
+                    })
                     .unwrap();
+
+                let term = match &response {
+                    ClusterServiceResponse::Discovery { current_term, .. } => current_term,
+                    _ => &None,
+                };
 
                 info!(
                     "Found existing cluster led by {} (term: {:?})",
-                    leader_id, response.current_term
+                    leader_id, term
                 );
 
                 // Update state to joining

@@ -12,7 +12,7 @@ use crate::{
     },
     error::ConsensusResult,
     foundation::types::ConsensusGroupId,
-    stream::{MessageData, StreamConfig},
+    services::stream::{MessageData, StreamConfig},
 };
 
 /// Client request types that can be submitted through the ClientService

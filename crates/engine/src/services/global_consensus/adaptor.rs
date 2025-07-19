@@ -17,7 +17,7 @@ use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
-use super::messages::*;
+use super::messages::{GlobalConsensusMessage, GlobalConsensusResponse};
 use crate::consensus::global::GlobalTypeConfig;
 use crate::services::network::NetworkStats;
 
@@ -112,17 +112,12 @@ where
         let timeout = option.hard_ttl();
 
         // Create the request message
-        let message = GlobalAppendEntriesRequest(rpc);
+        let message = GlobalConsensusMessage::AppendEntries(rpc);
 
         // Send request and wait for response
-        let response: GlobalAppendEntriesResponse = self
+        let response = self
             .network_manager
-            .request_namespaced(
-                super::messages::GLOBAL_CONSENSUS_NAMESPACE,
-                self.target_node_id.clone(),
-                message,
-                timeout,
-            )
+            .request_service(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
 
@@ -133,8 +128,13 @@ where
             stats.messages_received += 1;
         }
 
-        // Extract the inner response
-        Ok(response.0)
+        // Extract the response
+        match response {
+            GlobalConsensusResponse::AppendEntries(resp) => Ok(resp),
+            _ => Err(RPCError::Network(openraft::error::NetworkError::new(
+                &std::io::Error::new(std::io::ErrorKind::InvalidData, "Unexpected response type"),
+            ))),
+        }
     }
 
     async fn install_snapshot(
@@ -148,17 +148,12 @@ where
         let timeout = option.hard_ttl();
 
         // Create the request message
-        let message = GlobalInstallSnapshotRequest(rpc);
+        let message = GlobalConsensusMessage::InstallSnapshot(rpc);
 
         // Send request and wait for response
-        let response: GlobalInstallSnapshotResponse = self
+        let response = self
             .network_manager
-            .request_namespaced(
-                super::messages::GLOBAL_CONSENSUS_NAMESPACE,
-                self.target_node_id.clone(),
-                message,
-                timeout,
-            )
+            .request_service(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
 
@@ -169,8 +164,13 @@ where
             stats.messages_received += 1;
         }
 
-        // Extract the inner response
-        Ok(response.0)
+        // Extract the response
+        match response {
+            GlobalConsensusResponse::InstallSnapshot(resp) => Ok(resp),
+            _ => Err(RPCError::Network(openraft::error::NetworkError::new(
+                &std::io::Error::new(std::io::ErrorKind::InvalidData, "Unexpected response type"),
+            ))),
+        }
     }
 
     async fn vote(
@@ -184,28 +184,66 @@ where
         let timeout = option.hard_ttl();
 
         // Create the request message
-        let message = GlobalVoteRequest(rpc);
+        let message = GlobalConsensusMessage::Vote(rpc);
 
-        // Send request and wait for response
-        let response: GlobalVoteResponse = self
-            .network_manager
-            .request_namespaced(
-                super::messages::GLOBAL_CONSENSUS_NAMESPACE,
-                self.target_node_id.clone(),
-                message,
-                timeout,
-            )
-            .await
-            .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
+        // Implement exponential backoff for transient network failures
+        let mut attempt = 0;
+        let max_attempts = 3;
+        let mut backoff = tokio::time::Duration::from_millis(100);
 
-        // Update stats
-        {
-            let mut stats = self.stats.write().await;
-            stats.messages_sent += 1;
-            stats.messages_received += 1;
+        loop {
+            match self
+                .network_manager
+                .request_service(self.target_node_id.clone(), message.clone(), timeout)
+                .await
+            {
+                Ok(response) => {
+                    // Update stats
+                    {
+                        let mut stats = self.stats.write().await;
+                        stats.messages_sent += 1;
+                        stats.messages_received += 1;
+                    }
+                    // Extract the response
+                    match response {
+                        GlobalConsensusResponse::Vote(resp) => return Ok(resp),
+                        _ => {
+                            return Err(RPCError::Network(openraft::error::NetworkError::new(
+                                &std::io::Error::new(
+                                    std::io::ErrorKind::InvalidData,
+                                    "Unexpected response type",
+                                ),
+                            )));
+                        }
+                    }
+                }
+                Err(e) => {
+                    attempt += 1;
+                    if attempt >= max_attempts {
+                        return Err(RPCError::Network(openraft::error::NetworkError::new(&e)));
+                    }
+
+                    // Check if this is a "no handler" error that might be transient
+                    let error_str = e.to_string();
+                    if error_str.contains("No pending request found")
+                        || error_str.contains("Handler not found")
+                        || error_str.contains("not initialized")
+                    {
+                        tracing::debug!(
+                            "Vote request to {} failed (attempt {}/{}), retrying with backoff: {}",
+                            self.target_node_id,
+                            attempt,
+                            max_attempts,
+                            error_str
+                        );
+                        tokio::time::sleep(backoff).await;
+                        backoff *= 2; // Exponential backoff
+                    } else {
+                        // Non-transient error, fail immediately
+                        return Err(RPCError::Network(openraft::error::NetworkError::new(&e)));
+                    }
+                }
+            }
         }
-
-        // Extract the inner response
-        Ok(response.0)
     }
 }

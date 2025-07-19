@@ -179,6 +179,9 @@ where
 
         info!("Starting cluster service for node {}", self.node_id);
 
+        // Register service handlers for message forwarding
+        self.register_service_handlers().await?;
+
         let mut tasks = self.background_tasks.write().await;
 
         // Start health check task
@@ -231,15 +234,6 @@ where
         let discovery_manager = self.discovery_manager.as_ref().ok_or_else(|| {
             ClusterError::Internal("Discovery manager not initialized".to_string())
         })?;
-
-        // Register namespace handlers
-        discovery_manager
-            .register_namespace_handlers()
-            .await
-            .map_err(|e| ClusterError::Internal(e.to_string()))?;
-
-        // Also register our join handler
-        self.register_join_handler().await?;
 
         // Start discovery
         let outcome = discovery_manager
@@ -358,124 +352,101 @@ where
         }
     }
 
-    /// Register join request handler
-    async fn register_join_handler(&self) -> ClusterResult<()> {
-        let network = self
-            .discovery_manager
-            .as_ref()
-            .ok_or_else(|| ClusterError::Internal("No network access".to_string()))?
-            .network
-            .clone();
+    /// Handle join request
+    async fn handle_join_request(
+        node_id: NodeId,
+        state_manager: Arc<StateManager>,
+        membership_manager: Arc<MembershipManager>,
+        sender: NodeId,
+        request: messages::JoinRequest,
+    ) -> messages::JoinResponse {
+        debug!("Processing join request from {}", sender);
 
-        let node_id = self.node_id.clone();
-        let state_manager = self.state_manager.clone();
-        let membership_manager = self.membership_manager.clone();
+        let current_state = state_manager.get_state();
+        match current_state {
+            // Handle the case where we're still forming the cluster
+            ClusterState::Forming { mode, .. } => {
+                // If we're forming a multi-node cluster, tell the joiner to retry
+                if let FormationMode::MultiNode { .. } = mode {
+                    messages::JoinResponse {
+                        error_message: Some(
+                            "Cluster formation in progress, please retry".to_string(),
+                        ),
+                        cluster_size: None,
+                        current_term: None,
+                        responder_id: node_id,
+                        success: false,
+                        current_leader: None,
+                    }
+                } else {
+                    messages::JoinResponse {
+                        error_message: Some("Not accepting joins".to_string()),
+                        cluster_size: None,
+                        current_term: None,
+                        responder_id: node_id,
+                        success: false,
+                        current_leader: None,
+                    }
+                }
+            }
+            ClusterState::Active {
+                role, cluster_size, ..
+            } => {
+                if role != NodeRole::Leader {
+                    return messages::JoinResponse {
+                        error_message: Some("Not the cluster leader".to_string()),
+                        cluster_size: Some(cluster_size),
+                        current_term: None,
+                        responder_id: node_id,
+                        success: false,
+                        current_leader: None, // TODO: Get actual leader
+                    };
+                }
 
-        network
-            .register_namespaced_request_handler::<messages::JoinRequest, messages::JoinResponse, _, _>(
-                messages::CLUSTER_NAMESPACE,
-                "join_request",
-                move |sender, request| {
-                    let node_id = node_id.clone();
-                    let state_manager = state_manager.clone();
-                    let membership_manager = membership_manager.clone();
+                // Process the join
+                info!("Processing join request from {}", request.requester_id);
 
-                    async move {
-                        debug!("Processing join request from {}", sender);
+                // Add to membership
+                // TODO: Remove socket address from membership tracking - network layer handles routing by NodeId
+                let join_req = JoinRequest {
+                    node_id: request.requester_id.clone(),
+                    address: "0.0.0.0:0".parse().unwrap(), // Placeholder - network layer handles routing
+                    as_learner: false,
+                };
 
-                        let current_state = state_manager.get_state();
-                        match current_state {
-                            // Handle the case where we're still forming the cluster
-                            ClusterState::Forming { mode, .. } => {
-                                // If we're forming a multi-node cluster, tell the joiner to retry
-                                if let FormationMode::MultiNode { .. } = mode {
-                                    Ok(messages::JoinResponse {
-                                        error_message: Some("Cluster formation in progress, please retry".to_string()),
-                                        cluster_size: None,
-                                        current_term: None,
-                                        responder_id: node_id,
-                                        success: false,
-                                        current_leader: None,
-                                    })
-                                } else {
-                                    Ok(messages::JoinResponse {
-                                        error_message: Some("Not accepting joins".to_string()),
-                                        cluster_size: None,
-                                        current_term: None,
-                                        responder_id: node_id,
-                                        success: false,
-                                        current_leader: None,
-                                    })
-                                }
-                            }
-                            ClusterState::Active { role, cluster_size, .. } => {
-                                if role != NodeRole::Leader {
-                                    return Ok(messages::JoinResponse {
-                                        error_message: Some("Not the cluster leader".to_string()),
-                                        cluster_size: Some(cluster_size),
-                                        current_term: None,
-                                        responder_id: node_id,
-                                        success: false,
-                                        current_leader: None, // TODO: Get actual leader
-                                    });
-                                }
+                match membership_manager.process_join(join_req).await {
+                    Ok(_) => {
+                        let new_size = cluster_size + 1;
+                        state_manager.update_cluster_size(new_size).ok();
 
-                                // Process the join
-                                info!("Processing join request from {}", request.requester_id);
-
-                                // Add to membership
-                                // TODO: Remove socket address from membership tracking - network layer handles routing by NodeId
-                                let join_req = JoinRequest {
-                                    node_id: request.requester_id.clone(),
-                                    address: "0.0.0.0:0".parse().unwrap(), // Placeholder - network layer handles routing
-                                    as_learner: false,
-                                };
-
-                                match membership_manager.process_join(join_req).await {
-                                    Ok(_) => {
-                                        let new_size = cluster_size + 1;
-                                        state_manager.update_cluster_size(new_size).ok();
-
-                                        Ok(messages::JoinResponse {
-                                            error_message: None,
-                                            cluster_size: Some(new_size),
-                                            current_term: None, // TODO: Get from consensus
-                                            responder_id: node_id.clone(),
-                                            success: true,
-                                            current_leader: Some(node_id),
-                                        })
-                                    }
-                                    Err(e) => {
-                                        Ok(messages::JoinResponse {
-                                            error_message: Some(e.to_string()),
-                                            cluster_size: Some(cluster_size),
-                                            current_term: None,
-                                            responder_id: node_id.clone(),
-                                            success: false,
-                                            current_leader: Some(node_id),
-                                        })
-                                    }
-                                }
-                            }
-                            _ => {
-                                Ok(messages::JoinResponse {
-                                    error_message: Some("Cluster not in active state".to_string()),
-                                    cluster_size: None,
-                                    current_term: None,
-                                    responder_id: node_id,
-                                    success: false,
-                                    current_leader: None,
-                                })
-                            }
+                        messages::JoinResponse {
+                            error_message: None,
+                            cluster_size: Some(new_size),
+                            current_term: None, // TODO: Get from consensus
+                            responder_id: node_id.clone(),
+                            success: true,
+                            current_leader: Some(node_id),
                         }
                     }
-                },
-            )
-            .await
-            .map_err(|e| ClusterError::Internal(e.to_string()))?;
-
-        info!("Join request handler registered");
-        Ok(())
+                    Err(e) => messages::JoinResponse {
+                        error_message: Some(e.to_string()),
+                        cluster_size: Some(cluster_size),
+                        current_term: None,
+                        responder_id: node_id.clone(),
+                        success: false,
+                        current_leader: Some(node_id),
+                    },
+                }
+            }
+            _ => messages::JoinResponse {
+                error_message: Some("Cluster not in active state".to_string()),
+                cluster_size: None,
+                current_term: None,
+                responder_id: node_id,
+                success: false,
+                current_leader: None,
+            },
+        }
     }
 
     /// Join an existing cluster
@@ -522,39 +493,66 @@ where
         let retry_delay = std::time::Duration::from_millis(500);
 
         let join_response = loop {
+            let message = messages::ClusterServiceMessage::GlobalJoin {
+                requester_id: join_request.requester_id.clone(),
+                requester_node: join_request.requester_node.clone(),
+            };
+
             let response = network
-                .request_namespaced::<messages::JoinRequest, messages::JoinResponse>(
-                    messages::CLUSTER_NAMESPACE,
+                .request_service(
                     target_node.clone(),
-                    join_request.clone(),
+                    message,
                     std::time::Duration::from_secs(5),
                 )
                 .await
                 .map_err(|e| ClusterError::Network(e.to_string()))?;
 
-            if response.success {
-                break response;
-            }
+            match response {
+                messages::ClusterServiceResponse::GlobalJoin {
+                    success,
+                    error_message,
+                    cluster_size,
+                    current_term,
+                    responder_id,
+                    current_leader,
+                } => {
+                    let join_resp = messages::JoinResponse {
+                        success,
+                        error_message: error_message.clone(),
+                        cluster_size,
+                        current_term,
+                        responder_id,
+                        current_leader,
+                    };
 
-            // Check if we should retry
-            if let Some(ref error_msg) = response.error_message
-                && error_msg.contains("formation in progress")
-                && retry_count < max_retries
-            {
-                retry_count += 1;
-                info!(
-                    "Cluster formation in progress, retrying join ({}/{})",
-                    retry_count, max_retries
-                );
-                tokio::time::sleep(retry_delay).await;
-                continue;
-            }
+                    if success {
+                        break join_resp;
+                    }
 
-            return Err(ClusterError::JoinRejected(
-                response
-                    .error_message
-                    .unwrap_or_else(|| "Unknown error".to_string()),
-            ));
+                    // Check if we should retry
+                    if let Some(ref error_msg) = error_message
+                        && error_msg.contains("formation in progress")
+                        && retry_count < max_retries
+                    {
+                        retry_count += 1;
+                        info!(
+                            "Cluster formation in progress, retrying join ({}/{})",
+                            retry_count, max_retries
+                        );
+                        tokio::time::sleep(retry_delay).await;
+                        continue;
+                    }
+
+                    return Err(ClusterError::JoinRejected(
+                        error_message.unwrap_or_else(|| "Unknown error".to_string()),
+                    ));
+                }
+                _ => {
+                    return Err(ClusterError::Network(
+                        "Unexpected response type".to_string(),
+                    ));
+                }
+            }
         };
 
         // Mark as active
@@ -811,6 +809,97 @@ where
                 }
             }
         })
+    }
+
+    /// Register service handlers for message forwarding
+    async fn register_service_handlers(&self) -> ClusterResult<()> {
+        // Only register if we have a discovery manager and network access
+        let discovery_manager = match &self.discovery_manager {
+            Some(dm) => dm.clone(),
+            None => {
+                info!("No discovery manager configured, skipping service handler registration");
+                return Ok(());
+            }
+        };
+
+        let network = discovery_manager.network.clone();
+        let node_id = self.node_id.clone();
+        let state_manager = self.state_manager.clone();
+        let membership_manager = self.membership_manager.clone();
+
+        // Register handler for ClusterServiceMessage
+        network
+            .register_service::<messages::ClusterServiceMessage, _>(move |sender, message| {
+                let discovery_manager = discovery_manager.clone();
+                let node_id = node_id.clone();
+                let state_manager = state_manager.clone();
+                let membership_manager = membership_manager.clone();
+
+                Box::pin(async move {
+                    let response = match message {
+                        messages::ClusterServiceMessage::Discovery { requester_id } => {
+                            // Forward to discovery manager
+                            discovery_manager
+                                .handle_discovery_request(sender, requester_id)
+                                .await
+                        }
+                        messages::ClusterServiceMessage::GlobalJoin {
+                            requester_id,
+                            requester_node,
+                        } => {
+                            // Handle join request
+                            let request = messages::JoinRequest {
+                                requester_id,
+                                requester_node,
+                            };
+                            let response = Self::handle_join_request(
+                                node_id,
+                                state_manager,
+                                membership_manager,
+                                sender,
+                                request,
+                            )
+                            .await;
+                            messages::ClusterServiceResponse::GlobalJoin {
+                                success: response.success,
+                                error_message: response.error_message,
+                                cluster_size: response.cluster_size,
+                                current_term: response.current_term,
+                                responder_id: response.responder_id,
+                                current_leader: response.current_leader,
+                            }
+                        }
+                        messages::ClusterServiceMessage::GroupJoin {
+                            address: _,
+                            capabilities: _,
+                            node_id: _,
+                        } => {
+                            // TODO: Implement consensus group join request handling
+                            messages::ClusterServiceResponse::GroupJoin {
+                                accepted: false,
+                                assigned_groups: vec![],
+                                reason: Some("Not implemented yet".to_string()),
+                            }
+                        }
+                        messages::ClusterServiceMessage::Heartbeat {
+                            node_id: _,
+                            state_hash: _,
+                            timestamp: _,
+                        } => {
+                            // TODO: Implement heartbeat handling
+                            messages::ClusterServiceResponse::HeartbeatAck
+                        }
+                    };
+                    Ok(response)
+                })
+            })
+            .await
+            .map_err(|e| {
+                ClusterError::Internal(format!("Failed to register service handler: {e}"))
+            })?;
+
+        info!("Successfully registered cluster service handlers");
+        Ok(())
     }
 }
 

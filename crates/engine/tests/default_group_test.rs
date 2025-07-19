@@ -34,7 +34,7 @@ async fn test_default_group_creation() {
 
     // For now, just create a stream to see what happens
     // The stream config doesn't directly specify a group
-    use proven_engine::stream::StreamConfig;
+    use proven_engine::StreamConfig;
     let stream_config = StreamConfig::default();
 
     // This should work if the default group was created

@@ -17,9 +17,6 @@ use super::snapshot::{GroupSnapshot, GroupSnapshotBuilder};
 use super::state::GroupState;
 use super::types::{GroupRequest, GroupResponse, StreamOperation};
 use crate::foundation::traits::OperationHandler;
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::{Event, EventPublisher};
-use proven_topology::NodeId;
 
 /// Raft state machine - handles applying committed entries
 #[derive(Clone)]
@@ -32,12 +29,6 @@ pub struct GroupStateMachine {
     applied: Arc<RwLock<Option<LogId<GroupTypeConfig>>>>,
     /// Current membership
     membership: Arc<RwLock<StoredMembership<GroupTypeConfig>>>,
-    /// Event publisher for consensus events
-    event_publisher: Arc<RwLock<Option<EventPublisher>>>,
-    /// Node ID for event source
-    node_id: Arc<RwLock<Option<NodeId>>>,
-    /// Group ID for this state machine
-    group_id: Arc<RwLock<Option<ConsensusGroupId>>>,
 }
 
 impl GroupStateMachine {
@@ -50,32 +41,12 @@ impl GroupStateMachine {
             handler,
             applied: Arc::new(RwLock::new(None)),
             membership: Arc::new(RwLock::new(StoredMembership::default())),
-            event_publisher: Arc::new(RwLock::new(None)),
-            node_id: Arc::new(RwLock::new(None)),
-            group_id: Arc::new(RwLock::new(None)),
         }
-    }
-
-    /// Set the event publisher and identifiers
-    pub async fn set_event_context(
-        &self,
-        publisher: EventPublisher,
-        node_id: NodeId,
-        group_id: ConsensusGroupId,
-    ) {
-        *self.event_publisher.write().await = Some(publisher);
-        *self.node_id.write().await = Some(node_id);
-        *self.group_id.write().await = Some(group_id);
     }
 
     /// Get the state reference
     pub fn state(&self) -> &Arc<GroupState> {
         &self.state
-    }
-
-    /// Get the event publisher if set
-    pub async fn event_publisher(&self) -> Option<EventPublisher> {
-        self.event_publisher.read().await.clone()
     }
 }
 
@@ -118,75 +89,7 @@ impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
                     let operation = GroupOperation::new(req.clone());
 
                     match self.handler.handle(operation.clone()).await {
-                        Ok(response) => {
-                            // Publish event based on response
-                            let publisher = self.event_publisher.read().await;
-                            let node_id = self.node_id.read().await;
-                            let group_id = self.group_id.read().await;
-
-                            if let (Some(publisher), Some(node_id), Some(group_id)) =
-                                (publisher.as_ref(), node_id.as_ref(), group_id.as_ref())
-                            {
-                                // Generate events based on the response type
-                                let event = match &response {
-                                    GroupResponse::Appended { stream, sequence } => {
-                                        // Extract message data from the original request
-                                        if let GroupRequest::Stream(StreamOperation::Append {
-                                            message,
-                                            ..
-                                        }) = &operation.request
-                                        {
-                                            Some(Event::StreamMessageAppended {
-                                                stream: stream.clone(),
-                                                group_id: *group_id,
-                                                sequence: *sequence,
-                                                message: message.clone(),
-                                                timestamp: operation.timestamp,
-                                                term: log_id.leader_id.term,
-                                            })
-                                        } else {
-                                            None
-                                        }
-                                    }
-                                    GroupResponse::Trimmed {
-                                        stream,
-                                        new_start_seq,
-                                    } => Some(Event::StreamTrimmed {
-                                        stream: stream.clone(),
-                                        group_id: *group_id,
-                                        new_start_seq: *new_start_seq,
-                                    }),
-                                    GroupResponse::Deleted { stream, sequence } => {
-                                        Some(Event::StreamMessageDeleted {
-                                            stream: stream.clone(),
-                                            group_id: *group_id,
-                                            sequence: *sequence,
-                                            timestamp: std::time::SystemTime::now()
-                                                .duration_since(std::time::UNIX_EPOCH)
-                                                .unwrap()
-                                                .as_secs(),
-                                        })
-                                    }
-                                    _ => None,
-                                };
-
-                                if let Some(event) = event {
-                                    // Fire and forget - we don't want to block consensus on event publishing
-                                    let publisher = publisher.clone();
-                                    let source = format!("group-consensus-{group_id}-{node_id}");
-                                    tokio::spawn(async move {
-                                        if let Err(e) = publisher.publish(event, source).await {
-                                            tracing::warn!(
-                                                "Failed to publish consensus event: {}",
-                                                e
-                                            );
-                                        }
-                                    });
-                                }
-                            }
-
-                            responses.push(response)
-                        }
+                        Ok(response) => responses.push(response),
                         Err(e) => responses.push(GroupResponse::Error {
                             message: e.to_string(),
                         }),
@@ -196,31 +99,6 @@ impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
                     // Update membership
                     *self.membership.write().await =
                         StoredMembership::new(Some(log_id), membership.clone());
-
-                    // Publish membership change event
-                    let publisher = self.event_publisher.read().await;
-                    let node_id = self.node_id.read().await;
-                    let group_id = self.group_id.read().await;
-
-                    if let (Some(publisher), Some(node_id), Some(group_id)) =
-                        (publisher.as_ref(), node_id.as_ref(), group_id.as_ref())
-                    {
-                        let event = Event::MembershipChanged {
-                            new_members: membership
-                                .nodes()
-                                .map(|(node_id, _)| node_id.clone())
-                                .collect(),
-                            removed_members: vec![], // Would need to track previous membership
-                        };
-
-                        let publisher = publisher.clone();
-                        let source = format!("group-consensus-{group_id}-{node_id}");
-                        tokio::spawn(async move {
-                            if let Err(e) = publisher.publish(event, source).await {
-                                tracing::warn!("Failed to publish membership event: {}", e);
-                            }
-                        });
-                    }
 
                     // OpenRaft expects a response for every entry
                     responses.push(GroupResponse::Success);

@@ -8,8 +8,6 @@ use proven_topology::NodeId;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
-use crate::namespace::MessageType;
-
 /// Base trait for all network messages
 pub trait NetworkMessage: Send + Sync + Any + Debug + 'static {
     /// Get as Any for downcasting
@@ -28,17 +26,26 @@ pub trait HandledMessage: NetworkMessage {
     type Response: NetworkMessage;
 }
 
-// Blanket implementation for types that implement MessageType + Serialize
+/// Trait for service message enums that can be dispatched
+pub trait ServiceMessage: Serialize + DeserializeOwned + Send + Sync + Debug + 'static {
+    /// The type returned by the handler
+    type Response: Serialize + DeserializeOwned + Send + Sync + Debug + 'static;
+
+    /// Get a unique identifier for this service
+    fn service_id() -> &'static str;
+}
+
+// Default implementation for types that implement Serialize
 impl<T> NetworkMessage for T
 where
-    T: MessageType + Serialize + DeserializeOwned + Send + Sync + Any + Debug + 'static,
+    T: Serialize + DeserializeOwned + Send + Sync + Any + Debug + 'static,
 {
     fn as_any(&self) -> &dyn Any {
         self
     }
 
     fn message_type(&self) -> &'static str {
-        MessageType::message_type(self)
+        std::any::type_name::<T>()
     }
 
     fn serialize(&self) -> Result<Bytes, crate::error::NetworkError> {

@@ -13,9 +13,11 @@ use proven_storage::{LogStorageWithDelete, StorageNamespace};
 use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
 use crate::foundation::traits::{HealthStatus, ServiceHealth, ServiceLifecycle, SubsystemHealth};
 use crate::services::event::{Event, EventEnvelope, EventFilter, EventService, EventType};
-use crate::stream::config::RetentionPolicy;
-use crate::stream::storage::{StreamStorageImpl, StreamStorageReader, StreamStorageWriter};
-use crate::stream::{PersistenceType, StreamConfig, StreamName};
+use crate::services::stream::config::RetentionPolicy;
+use crate::services::stream::storage::{
+    StreamStorageImpl, StreamStorageReader, StreamStorageWriter,
+};
+use crate::services::stream::{PersistenceType, StreamConfig, StreamName};
 
 /// Type alias for stream storage map
 type StreamStorageMap<L> = HashMap<StreamName, Arc<StreamStorageImpl<L>>>;
@@ -75,7 +77,7 @@ pub struct StreamService<L: LogStorageWithDelete> {
     stream_metadata: Arc<RwLock<HashMap<StreamName, StreamMetadata>>>,
 
     /// Storage backend for persistent streams
-    storage: Arc<L>,
+    storage: L,
 
     /// Event service reference
     event_service: Arc<RwLock<Option<Arc<EventService>>>>,
@@ -92,7 +94,7 @@ pub struct StreamService<L: LogStorageWithDelete> {
 
 impl<L: LogStorageWithDelete> StreamService<L> {
     /// Create a new stream service
-    pub fn new(config: StreamServiceConfig, storage: Arc<L>) -> Self {
+    pub fn new(config: StreamServiceConfig, storage: L) -> Self {
         Self {
             config,
             streams: Arc::new(RwLock::new(HashMap::new())),
@@ -154,7 +156,7 @@ impl<L: LogStorageWithDelete> StreamService<L> {
     }
 
     /// Get or create stream storage
-    async fn get_or_create_storage(
+    pub async fn get_or_create_storage(
         &self,
         stream_name: &StreamName,
         group_id: &str,
@@ -282,27 +284,10 @@ impl<L: LogStorageWithDelete> StreamService<L> {
                     .get_or_create_storage(stream, &group_id.to_string())
                     .await;
 
-                // Delete the message from storage
-                let storage_namespace = StorageNamespace::new(format!("stream_{stream}"));
-                match self
-                    .storage
-                    .delete_entry(&storage_namespace, *sequence)
-                    .await
-                {
+                // Use the delete method which handles metadata updates
+                match self.delete_message_from_storage(stream, *sequence).await {
                     Ok(deleted) => {
-                        if deleted {
-                            // Update metadata - decrement message count
-                            if let Some(metadata) =
-                                self.stream_metadata.write().await.get_mut(stream)
-                                && metadata.message_count > 0
-                            {
-                                metadata.message_count -= 1;
-                            }
-                            info!(
-                                "Deleted message {} from stream {} in group {}",
-                                sequence, stream, group_id
-                            );
-                        } else {
+                        if !deleted {
                             debug!(
                                 "Message {} not found in stream {} storage",
                                 sequence, stream
@@ -391,7 +376,7 @@ impl<L: LogStorageWithDelete> StreamService<L> {
         stream_name: &str,
         start_sequence: u64,
         count: u64,
-    ) -> ConsensusResult<Vec<crate::stream::StoredMessage>> {
+    ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         let stream_name = StreamName::new(stream_name);
 
         // Get the stream storage
@@ -428,6 +413,65 @@ impl<L: LogStorageWithDelete> StreamService<L> {
             .values()
             .cloned()
             .collect()
+    }
+
+    /// Get the underlying storage
+    pub fn storage(&self) -> L {
+        self.storage.clone()
+    }
+
+    /// Delete a message from storage immediately (for consensus operations)
+    pub async fn delete_message_from_storage(
+        &self,
+        stream_name: &StreamName,
+        sequence: u64,
+    ) -> ConsensusResult<bool> {
+        let storage_namespace = StorageNamespace::new(format!("stream_{stream_name}"));
+        match self
+            .storage
+            .delete_entry(&storage_namespace, sequence)
+            .await
+        {
+            Ok(deleted) => {
+                if deleted {
+                    // Update metadata
+                    if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream_name)
+                        && metadata.message_count > 0
+                    {
+                        metadata.message_count -= 1;
+                    }
+                    info!(
+                        "Deleted message {} from stream {} storage",
+                        sequence, stream_name
+                    );
+                }
+                Ok(deleted)
+            }
+            Err(e) => {
+                error!(
+                    "Failed to delete message {} from stream {}: {}",
+                    sequence, stream_name, e
+                );
+                Err(ConsensusError::with_context(
+                    ErrorKind::Storage,
+                    format!("Failed to delete message: {e}"),
+                ))
+            }
+        }
+    }
+
+    /// Update stream metadata after appending a message (for consensus operations)
+    pub async fn update_stream_metadata_for_append(
+        &self,
+        stream_name: &StreamName,
+        timestamp: u64,
+        message_size: u64,
+    ) {
+        if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream_name) {
+            metadata.last_message_at = Some(timestamp);
+            metadata.message_count += 1;
+            metadata.total_bytes += message_size;
+        }
     }
 }
 
@@ -503,6 +547,11 @@ impl<L: LogStorageWithDelete + 'static> ServiceLifecycle for StreamService<L> {
                 warn!("Error waiting for background task: {}", e);
             }
         }
+
+        // Clear all stream storage instances to release storage references
+        self.streams.write().await.clear();
+        self.stream_configs.write().await.clear();
+        self.stream_metadata.write().await.clear();
 
         // Mark as not running
         *self.is_running.write().await = false;
@@ -631,9 +680,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_service_lifecycle() {
-        let storage = Arc::new(DummyStorage);
         let config = StreamServiceConfig::default();
-        let service = StreamService::new(config, storage);
+        let service = StreamService::new(config, DummyStorage);
 
         // Should not be running initially
         assert!(!service.is_running().await);
@@ -659,9 +707,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_operations() {
-        let storage = Arc::new(DummyStorage);
         let config = StreamServiceConfig::default();
-        let service = StreamService::new(config, storage);
+        let service = StreamService::new(config, DummyStorage);
 
         let stream_name = StreamName::new("test-stream");
         let stream_config = StreamConfig {

@@ -9,3 +9,4 @@ pub mod monitoring;
 pub mod network;
 pub mod pubsub;
 pub mod routing;
+pub mod stream;

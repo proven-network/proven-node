@@ -185,6 +185,7 @@ mod tests {
                 source: "test".to_string(),
                 correlation_id: None,
                 tags: vec!["test".to_string()],
+                synchronous: false,
             },
             event: Event::Custom {
                 event_type: "test".to_string(),

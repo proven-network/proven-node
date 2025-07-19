@@ -5,13 +5,12 @@ use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::foundation::ConsensusGroupId;
 use crate::services::migration::MigrationStatus;
-use crate::stream::StreamConfig;
-use crate::stream::StreamName;
+use crate::services::stream::StreamConfig;
+use crate::services::stream::StreamName;
 use proven_topology::NodeId;
 
 /// Result type for event operations
@@ -121,7 +120,7 @@ pub enum Event {
         /// Assigned sequence number
         sequence: u64,
         /// Message data
-        message: crate::stream::MessageData,
+        message: crate::services::stream::StreamMessage,
         /// Timestamp when appended
         timestamp: u64,
         /// Consensus term when appended
@@ -268,16 +267,6 @@ pub enum Event {
         term: u64,
     },
 
-    /// Group consensus initialized
-    GroupConsensusInitialized {
-        /// Group ID
-        group_id: ConsensusGroupId,
-        /// Node ID
-        node_id: NodeId,
-        /// Initial members
-        members: Vec<NodeId>,
-    },
-
     /// Group consensus leader changed
     GroupLeaderChanged {
         /// Group ID
@@ -361,7 +350,7 @@ pub enum EventPriority {
 }
 
 /// Event metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct EventMetadata {
     /// Event ID
     pub id: EventId,
@@ -377,6 +366,72 @@ pub struct EventMetadata {
     pub correlation_id: Option<EventId>,
     /// Additional tags
     pub tags: Vec<String>,
+    /// Whether this event requires synchronous processing
+    pub synchronous: bool,
+}
+
+impl Clone for EventMetadata {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            timestamp: self.timestamp,
+            event_type: self.event_type,
+            priority: self.priority,
+            source: self.source.clone(),
+            correlation_id: self.correlation_id,
+            tags: self.tags.clone(),
+            synchronous: self.synchronous,
+        }
+    }
+}
+
+// Implement custom Serialize/Deserialize to skip response_channel
+impl Serialize for EventMetadata {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("EventMetadata", 8)?;
+        state.serialize_field("id", &self.id)?;
+        state.serialize_field("timestamp", &self.timestamp)?;
+        state.serialize_field("event_type", &self.event_type)?;
+        state.serialize_field("priority", &self.priority)?;
+        state.serialize_field("source", &self.source)?;
+        state.serialize_field("correlation_id", &self.correlation_id)?;
+        state.serialize_field("tags", &self.tags)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for EventMetadata {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            id: EventId,
+            timestamp: EventTimestamp,
+            event_type: EventType,
+            priority: EventPriority,
+            source: String,
+            correlation_id: Option<EventId>,
+            tags: Vec<String>,
+        }
+
+        let helper = Helper::deserialize(deserializer)?;
+        Ok(EventMetadata {
+            id: helper.id,
+            timestamp: helper.timestamp,
+            event_type: helper.event_type,
+            priority: helper.priority,
+            source: helper.source,
+            correlation_id: helper.correlation_id,
+            tags: helper.tags,
+            synchronous: false,
+        })
+    }
 }
 
 /// Event envelope containing event and metadata
@@ -399,51 +454,6 @@ pub enum EventResult {
     Pending(EventId),
     /// Operation was ignored
     Ignored,
-}
-
-/// Reply channel for events
-#[derive(Debug)]
-pub struct ReplyChannel {
-    inner: Arc<oneshot::Sender<EventResult>>,
-}
-
-impl ReplyChannel {
-    /// Create a new reply channel
-    pub fn new(sender: oneshot::Sender<EventResult>) -> Self {
-        Self {
-            inner: Arc::new(sender),
-        }
-    }
-
-    /// Send a reply
-    pub fn reply(self, result: EventResult) -> Result<(), EventResult> {
-        Arc::try_unwrap(self.inner)
-            .map_err(|_| result.clone())
-            .and_then(|sender| sender.send(result))
-    }
-}
-
-/// Event reply wrapper
-pub struct EventReply {
-    /// Reply channel
-    pub channel: ReplyChannel,
-    /// Timeout for reply
-    pub timeout: Duration,
-}
-
-impl EventReply {
-    /// Create a new event reply
-    pub fn new(channel: ReplyChannel, timeout: Duration) -> Self {
-        Self { channel, timeout }
-    }
-
-    /// Create a reply pair
-    pub fn create_pair(timeout: Duration) -> (Self, oneshot::Receiver<EventResult>) {
-        let (tx, rx) = oneshot::channel();
-        let channel = ReplyChannel::new(tx);
-        let reply = Self::new(channel, timeout);
-        (reply, rx)
-    }
 }
 
 /// Event configuration
@@ -518,7 +528,6 @@ impl Event {
             Event::GlobalConsensusInitialized { .. }
             | Event::RequestDefaultGroupCreation { .. }
             | Event::GlobalLeaderChanged { .. }
-            | Event::GroupConsensusInitialized { .. }
             | Event::GroupLeaderChanged { .. }
             | Event::GlobalConsensusStateChanged { .. }
             | Event::GroupConsensusStateChanged { .. } => EventType::Consensus,
@@ -548,8 +557,7 @@ impl Event {
             | Event::GroupCreated { .. }
             | Event::GroupDeleted { .. }
             | Event::GlobalConsensusInitialized { .. }
-            | Event::RequestDefaultGroupCreation { .. }
-            | Event::GroupConsensusInitialized { .. } => EventPriority::Normal,
+            | Event::RequestDefaultGroupCreation { .. } => EventPriority::Normal,
 
             _ => EventPriority::Low,
         }

@@ -1,77 +1,106 @@
 //! PubSub-specific message types
 
 use bytes::Bytes;
-use proven_network::message::HandledMessage;
-use proven_network::namespace::MessageType;
+use proven_network::ServiceMessage;
 use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-/// PubSub message that can be sent over the network
+/// PubSub service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PubSubNetworkMessage {
-    /// Unique message ID
-    pub id: Uuid,
-    /// Subject the message was published to
-    pub subject: String,
-    /// Message payload
-    pub payload: Bytes,
-    /// Optional headers
-    pub headers: Vec<(String, String)>,
-    /// Timestamp when created
-    pub timestamp: SystemTime,
-    /// Source node
-    pub source: NodeId,
-    /// Message type
-    pub msg_type: PubSubMessageType,
-    /// Optional reply subject for request-response
-    pub reply_to: Option<String>,
-    /// Optional correlation ID
-    pub correlation_id: Option<Uuid>,
-}
-
-/// Type of PubSub message
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PubSubMessageType {
+pub enum PubSubServiceMessage {
     /// Regular publish message
-    Publish,
+    Publish {
+        /// Unique message ID
+        id: Uuid,
+        /// Subject the message was published to
+        subject: String,
+        /// Message payload
+        payload: Bytes,
+        /// Optional headers
+        headers: Vec<(String, String)>,
+        /// Timestamp when created
+        timestamp: SystemTime,
+        /// Source node
+        source: NodeId,
+        /// Optional reply subject for request-response
+        reply_to: Option<String>,
+        /// Optional correlation ID
+        correlation_id: Option<Uuid>,
+    },
     /// Request expecting a response
-    Request,
+    Request {
+        /// Unique message ID
+        id: Uuid,
+        /// Subject the message was published to
+        subject: String,
+        /// Message payload
+        payload: Bytes,
+        /// Optional headers
+        headers: Vec<(String, String)>,
+        /// Timestamp when created
+        timestamp: SystemTime,
+        /// Source node
+        source: NodeId,
+        /// Reply subject for response
+        reply_to: String,
+        /// Correlation ID
+        correlation_id: Uuid,
+    },
     /// Response to a request
-    Response,
-    /// System control message
-    Control,
+    Response {
+        /// Unique message ID
+        id: Uuid,
+        /// Original subject
+        subject: String,
+        /// Message payload
+        payload: Bytes,
+        /// Optional headers
+        headers: Vec<(String, String)>,
+        /// Timestamp when created
+        timestamp: SystemTime,
+        /// Source node
+        source: NodeId,
+        /// Correlation ID from request
+        correlation_id: Uuid,
+    },
+    /// Interest update message for peer coordination
+    InterestUpdate {
+        /// Node ID
+        node_id: NodeId,
+        /// Subject patterns this node is interested in
+        interests: Vec<String>,
+        /// Timestamp
+        timestamp: SystemTime,
+    },
 }
 
-/// Interest update message for peer coordination
+/// PubSub service response
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct InterestUpdateMessage {
-    /// Node ID
-    pub node_id: NodeId,
-    /// Subject patterns this node is interested in
-    pub interests: Vec<String>,
-    /// Timestamp
-    pub timestamp: SystemTime,
+pub enum PubSubServiceResponse {
+    /// Acknowledgment of publish
+    PublishAck {
+        /// Message ID that was published
+        message_id: Uuid,
+        /// Number of subscribers who received it
+        subscriber_count: usize,
+    },
+    /// Response data
+    Response {
+        /// Response payload
+        payload: Bytes,
+        /// Optional headers
+        headers: Vec<(String, String)>,
+    },
+    /// Interest update acknowledgment
+    InterestUpdateAck,
 }
 
-// Implement MessageType for PubSub types
-impl MessageType for PubSubNetworkMessage {
-    fn message_type(&self) -> &'static str {
-        match self.msg_type {
-            PubSubMessageType::Publish => "pubsub_publish",
-            PubSubMessageType::Request => "pubsub_request",
-            PubSubMessageType::Response => "pubsub_response",
-            PubSubMessageType::Control => "pubsub_control",
-        }
+impl ServiceMessage for PubSubServiceMessage {
+    type Response = PubSubServiceResponse;
+
+    fn service_id() -> &'static str {
+        "pubsub"
     }
 }
-
-impl MessageType for InterestUpdateMessage {
-    fn message_type(&self) -> &'static str {
-        "pubsub_interest_update"
-    }
-}
-
-// Note: We could add HandledMessage implementations if we want request/response patterns
-// For now, PubSub messages are fire-and-forget or use their own correlation

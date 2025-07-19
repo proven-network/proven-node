@@ -1,9 +1,10 @@
 //! Main event service implementation
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{RwLock, mpsc, oneshot};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
@@ -39,6 +40,18 @@ pub struct EventService {
 
     /// Service state
     state: Arc<RwLock<ServiceState>>,
+
+    /// Pending synchronous responses
+    sync_responses: Arc<RwLock<std::collections::HashMap<EventId, oneshot::Sender<EventResult>>>>,
+
+    /// Event processing metrics
+    metrics: Arc<EventMetrics>,
+}
+
+/// Event processing metrics
+struct EventMetrics {
+    events_processed: AtomicU64,
+    events_failed: AtomicU64,
 }
 
 /// Service state
@@ -80,6 +93,11 @@ impl EventService {
             background_tasks: Arc::new(RwLock::new(Vec::new())),
             shutdown_signal: Arc::new(tokio::sync::Notify::new()),
             state: Arc::new(RwLock::new(ServiceState::NotStarted)),
+            sync_responses: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            metrics: Arc::new(EventMetrics {
+                events_processed: AtomicU64::new(0),
+                events_failed: AtomicU64::new(0),
+            }),
         }
     }
 
@@ -164,6 +182,7 @@ impl EventService {
                 source,
                 correlation_id: None,
                 tags: Vec::new(),
+                synchronous: false,
             },
             event,
         };
@@ -213,7 +232,10 @@ impl EventService {
 
     /// Create a publisher handle
     pub fn create_publisher(&self) -> EventPublisher {
-        EventPublisher::new(self.event_channel.0.clone())
+        EventPublisher::with_sync_responses(
+            self.event_channel.0.clone(),
+            self.sync_responses.clone(),
+        )
     }
 
     /// Register an event handler
@@ -279,6 +301,8 @@ impl EventService {
         let router = self.router.clone();
         let store = self.store.clone();
         let shutdown = self.shutdown_signal.clone();
+        let sync_responses = self.sync_responses.clone();
+        let metrics = self.metrics.clone();
 
         // Take the receiver from the channel pair without creating a new channel
         let mut event_receiver = {
@@ -294,32 +318,99 @@ impl EventService {
                 tokio::select! {
                     Some(envelope) = event_receiver.recv() => {
                         let start = std::time::Instant::now();
+                        let event_id = envelope.metadata.id;
+                        let is_synchronous = envelope.metadata.synchronous;
 
-                        // Publish to bus
-                        if let Err(e) = bus.publish(envelope.clone()).await {
+                        debug!(
+                            "Processing event {} of type {:?} (synchronous: {})",
+                            event_id, envelope.metadata.event_type, is_synchronous
+                        );
+
+                        // Handle synchronous vs asynchronous events
+                        if is_synchronous {
+                            // For synchronous events, route to ALL handlers and wait
+                            let result = match router.route_to_all_handlers(envelope.clone()).await {
+                                Ok(results) => {
+                                    // Check if all handlers succeeded
+                                    let failed_count = results.iter()
+                                        .filter(|r| matches!(r, EventResult::Failed(_)))
+                                        .count();
+
+                                    if failed_count == 0 {
+                                        debug!("All {} handlers succeeded for synchronous event {}",
+                                               results.len(), event_id);
+                                        EventResult::Success
+                                    } else {
+                                        let failures: Vec<_> = results.iter()
+                                            .filter_map(|r| match r {
+                                                EventResult::Failed(msg) => Some(msg.as_str()),
+                                                _ => None
+                                            })
+                                            .collect();
+                                        error!("Synchronous event {} had {} failures: {}",
+                                               event_id, failed_count, failures.join(", "));
+                                        EventResult::Failed(format!("{}/{} handlers failed",
+                                                                   failed_count, results.len()))
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("Failed to route synchronous event {}: {}", event_id, e);
+                                    EventResult::Failed(e.to_string())
+                                }
+                            };
+
+                            // Send response to waiting caller
+                            if let Some(tx) = sync_responses.write().await.remove(&event_id)
+                                && let Err(_) = tx.send(result.clone()) {
+                                    debug!("Failed to send synchronous response for {} - receiver dropped", event_id);
+                                }
+
+                            // Store the result
+                            if let Some(store) = &store {
+                                let processing_time = start.elapsed();
+                                if let Err(e) = store.store_with_timing(
+                                    envelope.clone(),
+                                    result,
+                                    processing_time,
+                                ).await {
+                                    error!("Failed to store synchronous event: {}", e);
+                                }
+                            }
+                        } else {
+                            // For async events, route to first matching handler
+                            let result = match router.route(envelope.clone()).await {
+                                Ok(result) => {
+                                    debug!("Event {} routed successfully with result: {:?}",
+                                           event_id, result);
+                                    result
+                                }
+                                Err(e) => {
+                                    error!("Failed to route event {}: {}", event_id, e);
+                                    metrics.events_failed.fetch_add(1, Ordering::Relaxed);
+                                    EventResult::Failed(e.to_string())
+                                }
+                            };
+
+                            // Store if enabled
+                            if let Some(store) = &store {
+                                let processing_time = start.elapsed();
+                                if let Err(e) = store.store_with_timing(
+                                    envelope.clone(),
+                                    result,
+                                    processing_time,
+                                ).await {
+                                    error!("Failed to store event: {}", e);
+                                }
+                            }
+                        }
+
+                        // Always publish to bus for subscribers (async)
+                        if let Err(e) = bus.publish(envelope).await {
                             error!("Failed to publish event to bus: {}", e);
                         }
 
-                        // Route to handlers
-                        let result = match router.route(envelope.clone()).await {
-                            Ok(result) => result,
-                            Err(e) => {
-                                error!("Failed to route event: {}", e);
-                                EventResult::Failed(e.to_string())
-                            }
-                        };
-
-                        // Store if enabled
-                        if let Some(store) = &store {
-                            let processing_time = start.elapsed();
-                            if let Err(e) = store.store_with_timing(
-                                envelope,
-                                result,
-                                processing_time,
-                            ).await {
-                                error!("Failed to store event: {}", e);
-                            }
-                        }
+                        // Update metrics
+                        metrics.events_processed.fetch_add(1, Ordering::Relaxed);
                     }
                     _ = shutdown.notified() => {
                         debug!("Event processor shutting down");

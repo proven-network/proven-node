@@ -137,7 +137,10 @@ impl ConsumerHandler<TestEvent, serde_cbor::Error, serde_cbor::Error> for TestCo
 /// Helper to create a test engine client
 async fn create_test_engine()
 -> proven_engine::Client<MemoryTransport, MockTopologyAdaptor, MemoryStorage> {
-    let node_id = NodeId::from_seed(1);
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static NODE_COUNTER: AtomicU8 = AtomicU8::new(1);
+
+    let node_id = NodeId::from_seed(NODE_COUNTER.fetch_add(1, Ordering::SeqCst));
 
     // Create memory transport
     let transport = Arc::new(MemoryTransport::new(node_id.clone()));

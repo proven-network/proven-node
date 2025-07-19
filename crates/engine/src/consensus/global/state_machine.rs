@@ -17,7 +17,7 @@ use super::snapshot::{GlobalSnapshot, GlobalSnapshotBuilder};
 use super::state::GlobalState;
 use super::types::{GlobalRequest, GlobalResponse};
 use crate::foundation::traits::OperationHandler;
-use crate::services::event::{Event, EventPublisher};
+use crate::services::event::{Event, EventPublisher, EventResult};
 use proven_topology::NodeId;
 
 /// Raft state machine - handles applying committed entries
@@ -145,17 +145,54 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
                                 };
 
                                 if let Some(event) = event {
-                                    // Fire and forget - we don't want to block consensus on event publishing
                                     let publisher = publisher.clone();
                                     let source = format!("global-consensus-{node_id}");
-                                    tokio::spawn(async move {
-                                        if let Err(e) = publisher.publish(event, source).await {
-                                            tracing::warn!(
-                                                "Failed to publish consensus event: {}",
-                                                e
-                                            );
+
+                                    // For critical events that affect routing, use synchronous handling
+                                    match &event {
+                                        Event::StreamCreated { .. }
+                                        | Event::GroupCreated { .. } => {
+                                            // Wait for routing service to update before continuing
+                                            match publisher.request(event, source).await {
+                                                Ok(EventResult::Success) => {
+                                                    tracing::debug!("Routing updated successfully");
+                                                }
+                                                Ok(EventResult::Failed(msg)) => {
+                                                    tracing::error!(
+                                                        "Failed to update routing: {}",
+                                                        msg
+                                                    );
+                                                    // Note: We log but don't fail the consensus operation
+                                                    // as routing is eventually consistent
+                                                }
+                                                Ok(result) => {
+                                                    tracing::debug!(
+                                                        "Routing handler returned: {:?}",
+                                                        result
+                                                    );
+                                                }
+                                                Err(e) => {
+                                                    tracing::error!(
+                                                        "Failed to notify routing service: {}",
+                                                        e
+                                                    );
+                                                }
+                                            }
                                         }
-                                    });
+                                        _ => {
+                                            // Other events can be async
+                                            tokio::spawn(async move {
+                                                if let Err(e) =
+                                                    publisher.publish(event, source).await
+                                                {
+                                                    tracing::warn!(
+                                                        "Failed to publish consensus event: {}",
+                                                        e
+                                                    );
+                                                }
+                                            });
+                                        }
+                                    }
                                 }
                             }
 

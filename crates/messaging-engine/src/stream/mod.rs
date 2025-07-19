@@ -12,7 +12,7 @@ use proven_engine::consensus::GroupResponse;
 use tokio::sync::RwLock;
 use tracing::{info, warn};
 
-use proven_engine::{Client as EngineClient, stream::StreamConfig};
+use proven_engine::{Client as EngineClient, StreamConfig};
 use proven_messaging::client::Client;
 use proven_messaging::consumer::Consumer;
 use proven_messaging::service::Service;
@@ -312,7 +312,8 @@ where
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
 
         match response {
-            proven_engine::consensus::group::GroupResponse::Deleted { .. } => {
+            proven_engine::consensus::group::GroupResponse::Deleted { .. }
+            | proven_engine::consensus::group::GroupResponse::Success => {
                 // Also remove from local cache
                 self.cache.write().await.remove(&seq);
                 info!("Deleted message {} from stream '{}'", seq, self.name);
@@ -333,20 +334,13 @@ where
 
     /// Gets a message by sequence number.
     async fn get(&self, seq: u64) -> Result<Option<T>, Self::Error> {
-        // First check local cache
-        {
-            let cache = self.cache.read().await;
-            if let Some(message) = cache.get(&seq) {
-                return Ok(Some(message.clone()));
-            }
-        }
-
-        // Query from engine storage
+        // Query from engine storage first to ensure we get the latest state
         let messages = self
             .client
             .read_stream(self.name.clone(), seq, 1)
             .await
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
+
         if let Some(stored_msg) = messages.first() {
             let bytes = stored_msg.data.payload.clone();
             match T::try_from(bytes) {
@@ -361,6 +355,8 @@ where
                 }
             }
         } else {
+            // Message not found in storage - ensure it's not in cache either
+            self.cache.write().await.remove(&seq);
             Ok(None)
         }
     }

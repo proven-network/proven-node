@@ -141,11 +141,7 @@ async fn test_dynamic_node_addition() {
         "Failed to wait for cluster formation"
     );
 
-    // Wait for the default group to be created on all nodes
-    cluster
-        .wait_for_default_group(&engines, Duration::from_secs(10))
-        .await
-        .expect("Failed to wait for default group formation");
+    // Engine start() now ensures default group exists
 
     println!("Initial 3-node cluster has stabilized");
 
@@ -334,12 +330,8 @@ async fn test_single_node_cluster_expansion() {
 
     let single_node_cluster_id = cluster_info.cluster_id.clone();
 
-    // Wait for the default group to be created
-    println!("Waiting for default group formation on single node...");
-    cluster
-        .wait_for_default_group(&engines[..1], Duration::from_secs(10))
-        .await
-        .expect("Failed to wait for default group formation");
+    // Engine start() now ensures default group exists
+    println!("Default group should already exist from engine startup");
 
     println!("=== Phase 2: Adding second node to single-node cluster ===");
 

@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::stream::{StreamName, StreamState};
+use crate::services::stream::{StreamName, StreamState};
 
 use super::types::*;
 use crate::error::ConsensusResult;

@@ -1,6 +1,6 @@
 //! Messages for group consensus service
 
-use proven_network::{HandledMessage, namespace::MessageType};
+use proven_network::ServiceMessage;
 use serde::{Deserialize, Serialize};
 
 use openraft::raft::{
@@ -11,131 +11,61 @@ use openraft::raft::{
 use crate::consensus::group::{GroupRequest, GroupResponse, GroupTypeConfig};
 use crate::foundation::types::ConsensusGroupId;
 
-/// Group consensus namespace
-pub const GROUP_CONSENSUS_NAMESPACE: &str = "group_consensus";
+/// Group consensus service message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum GroupConsensusMessage {
+    /// Vote request from Raft
+    Vote {
+        group_id: ConsensusGroupId,
+        request: VoteRequest<GroupTypeConfig>,
+    },
+    /// Append entries request from Raft
+    AppendEntries {
+        group_id: ConsensusGroupId,
+        request: AppendEntriesRequest<GroupTypeConfig>,
+    },
+    /// Install snapshot request from Raft
+    InstallSnapshot {
+        group_id: ConsensusGroupId,
+        request: InstallSnapshotRequest<GroupTypeConfig>,
+    },
+    /// Application-level consensus request
+    Consensus {
+        group_id: ConsensusGroupId,
+        request: GroupRequest,
+    },
+}
 
-// Group consensus message types
-
-/// Group vote request
+/// Group consensus service response
+#[allow(clippy::large_enum_variant)] // TODO: Box the large enum variants
 #[derive(Debug, Serialize, Deserialize)]
-pub struct GroupVoteRequest {
-    pub group_id: ConsensusGroupId,
-    pub request: VoteRequest<GroupTypeConfig>,
+pub enum GroupConsensusServiceResponse {
+    /// Vote response
+    Vote {
+        group_id: ConsensusGroupId,
+        response: VoteResponse<GroupTypeConfig>,
+    },
+    /// Append entries response
+    AppendEntries {
+        group_id: ConsensusGroupId,
+        response: AppendEntriesResponse<GroupTypeConfig>,
+    },
+    /// Install snapshot response  
+    InstallSnapshot {
+        group_id: ConsensusGroupId,
+        response: InstallSnapshotResponse<GroupTypeConfig>,
+    },
+    /// Application-level consensus response
+    Consensus {
+        group_id: ConsensusGroupId,
+        response: GroupResponse,
+    },
 }
 
-/// Group vote response
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GroupVoteResponse {
-    pub group_id: ConsensusGroupId,
-    pub response: VoteResponse<GroupTypeConfig>,
-}
+impl ServiceMessage for GroupConsensusMessage {
+    type Response = GroupConsensusServiceResponse;
 
-/// Group append entries request
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GroupAppendEntriesRequest {
-    pub group_id: ConsensusGroupId,
-    pub request: AppendEntriesRequest<GroupTypeConfig>,
-}
-
-/// Group append entries response
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GroupAppendEntriesResponse {
-    pub group_id: ConsensusGroupId,
-    pub response: AppendEntriesResponse<GroupTypeConfig>,
-}
-
-/// Group install snapshot request
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GroupInstallSnapshotRequest {
-    pub group_id: ConsensusGroupId,
-    pub request: InstallSnapshotRequest<GroupTypeConfig>,
-}
-
-/// Group install snapshot response
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GroupInstallSnapshotResponse {
-    pub group_id: ConsensusGroupId,
-    pub response: InstallSnapshotResponse<GroupTypeConfig>,
-}
-
-/// Group consensus application request
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GroupConsensusRequest {
-    pub group_id: ConsensusGroupId,
-    pub request: GroupRequest,
-}
-
-/// Group consensus application response
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GroupConsensusResponse {
-    pub group_id: ConsensusGroupId,
-    pub response: GroupResponse,
-}
-
-// Implement MessageType for all message types
-
-impl MessageType for GroupVoteRequest {
-    fn message_type(&self) -> &'static str {
-        "vote_request"
+    fn service_id() -> &'static str {
+        "group_consensus"
     }
-}
-
-impl MessageType for GroupVoteResponse {
-    fn message_type(&self) -> &'static str {
-        "vote_response"
-    }
-}
-
-impl MessageType for GroupAppendEntriesRequest {
-    fn message_type(&self) -> &'static str {
-        "append_entries_request"
-    }
-}
-
-impl MessageType for GroupAppendEntriesResponse {
-    fn message_type(&self) -> &'static str {
-        "append_entries_response"
-    }
-}
-
-impl MessageType for GroupInstallSnapshotRequest {
-    fn message_type(&self) -> &'static str {
-        "install_snapshot_request"
-    }
-}
-
-impl MessageType for GroupInstallSnapshotResponse {
-    fn message_type(&self) -> &'static str {
-        "install_snapshot_response"
-    }
-}
-
-impl MessageType for GroupConsensusRequest {
-    fn message_type(&self) -> &'static str {
-        "consensus_request"
-    }
-}
-
-impl MessageType for GroupConsensusResponse {
-    fn message_type(&self) -> &'static str {
-        "consensus_response"
-    }
-}
-
-// Implement HandledMessage for request types
-
-impl HandledMessage for GroupVoteRequest {
-    type Response = GroupVoteResponse;
-}
-
-impl HandledMessage for GroupAppendEntriesRequest {
-    type Response = GroupAppendEntriesResponse;
-}
-
-impl HandledMessage for GroupInstallSnapshotRequest {
-    type Response = GroupInstallSnapshotResponse;
-}
-
-impl HandledMessage for GroupConsensusRequest {
-    type Response = GroupConsensusResponse;
 }

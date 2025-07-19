@@ -40,16 +40,14 @@ pub mod foundation;
 /// Services
 pub(crate) mod services;
 
-/// Stream subsystem
-pub mod stream;
-
 pub use {
-    builder::EngineBuilder, client::Client, config::EngineConfig, engine::Engine,
+    builder::EngineBuilder,
+    client::Client,
+    config::EngineConfig,
+    engine::Engine,
     engine::EngineState,
+    services::cluster::{ClusterInfo, ClusterState, NodeRole},
+    services::stream::{
+        MessageData, PersistenceType, RetentionPolicy, StoredMessage, StreamConfig, StreamName,
+    },
 };
-
-// Re-export cluster types for the public API
-pub use services::cluster::{ClusterInfo, ClusterState, NodeRole};
-
-// Re-export client types for the public API
-pub use services::client::StreamInfo;

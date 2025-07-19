@@ -48,9 +48,8 @@ pub use discovery::{DiscoveryConfig, DiscoveryManager, DiscoveryOutcome, Discove
 pub use formation::{FormationManager, FormationRequest, FormationResult};
 pub use membership::{JoinRequest, LeaveRequest, MembershipManager};
 pub use messages::{
-    CLUSTER_NAMESPACE, ClusterHeartbeat, ConsensusGroupJoinRequest, ConsensusGroupJoinResponse,
-    DiscoveryRequest, DiscoveryResponse, DiscoveryRound, JoinRequest as ClusterJoinRequest,
-    JoinResponse as ClusterJoinResponse,
+    ClusterServiceMessage, ClusterServiceResponse, DiscoveryRound,
+    JoinRequest as ClusterJoinRequest, JoinResponse as ClusterJoinResponse,
 };
 pub use service::{ClusterConfig, ClusterFormationCallback, ClusterFormationEvent, ClusterService};
 pub use state::{ClusterState as ClusterStateInfo, StateManager, StateTransition, TransitionGuard};

@@ -17,7 +17,7 @@ use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
-use super::messages::*;
+use super::messages::{GroupConsensusMessage, GroupConsensusServiceResponse};
 use crate::consensus::group::GroupTypeConfig;
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::network::NetworkStats;
@@ -101,20 +101,15 @@ where
         let timeout = option.hard_ttl();
 
         // Create the request message
-        let message = GroupAppendEntriesRequest {
+        let message = GroupConsensusMessage::AppendEntries {
             group_id: self.group_id,
             request: rpc,
         };
 
         // Send request and wait for response
-        let response: GroupAppendEntriesResponse = self
+        let response = self
             .network_manager
-            .request_namespaced(
-                super::messages::GROUP_CONSENSUS_NAMESPACE,
-                self.target_node_id.clone(),
-                message,
-                timeout,
-            )
+            .request_service(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
 
@@ -125,13 +120,20 @@ where
             stats.messages_received += 1;
         }
 
-        // Verify group ID and extract the inner response
-        if response.group_id == self.group_id {
-            Ok(response.response)
-        } else {
-            Err(RPCError::Network(openraft::error::NetworkError::new(
-                &std::io::Error::new(std::io::ErrorKind::InvalidData, "Group ID mismatch"),
-            )))
+        // Extract the response
+        match response {
+            GroupConsensusServiceResponse::AppendEntries { group_id, response } => {
+                if group_id == self.group_id {
+                    Ok(response)
+                } else {
+                    Err(RPCError::Network(openraft::error::NetworkError::new(
+                        &std::io::Error::new(std::io::ErrorKind::InvalidData, "Group ID mismatch"),
+                    )))
+                }
+            }
+            _ => Err(RPCError::Network(openraft::error::NetworkError::new(
+                &std::io::Error::new(std::io::ErrorKind::InvalidData, "Unexpected response type"),
+            ))),
         }
     }
 
@@ -146,20 +148,15 @@ where
         let timeout = option.hard_ttl();
 
         // Create the request message
-        let message = GroupInstallSnapshotRequest {
+        let message = GroupConsensusMessage::InstallSnapshot {
             group_id: self.group_id,
             request: rpc,
         };
 
         // Send request and wait for response
-        let response: GroupInstallSnapshotResponse = self
+        let response = self
             .network_manager
-            .request_namespaced(
-                super::messages::GROUP_CONSENSUS_NAMESPACE,
-                self.target_node_id.clone(),
-                message,
-                timeout,
-            )
+            .request_service(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
 
@@ -170,13 +167,20 @@ where
             stats.messages_received += 1;
         }
 
-        // Verify group ID and extract the inner response
-        if response.group_id == self.group_id {
-            Ok(response.response)
-        } else {
-            Err(RPCError::Network(openraft::error::NetworkError::new(
-                &std::io::Error::new(std::io::ErrorKind::InvalidData, "Group ID mismatch"),
-            )))
+        // Extract the response
+        match response {
+            GroupConsensusServiceResponse::InstallSnapshot { group_id, response } => {
+                if group_id == self.group_id {
+                    Ok(response)
+                } else {
+                    Err(RPCError::Network(openraft::error::NetworkError::new(
+                        &std::io::Error::new(std::io::ErrorKind::InvalidData, "Group ID mismatch"),
+                    )))
+                }
+            }
+            _ => Err(RPCError::Network(openraft::error::NetworkError::new(
+                &std::io::Error::new(std::io::ErrorKind::InvalidData, "Unexpected response type"),
+            ))),
         }
     }
 
@@ -189,37 +193,82 @@ where
         let timeout = option.hard_ttl();
 
         // Create the request message
-        let message = GroupVoteRequest {
+        let message = GroupConsensusMessage::Vote {
             group_id: self.group_id,
             request: rpc,
         };
 
-        // Send request and wait for response
-        let response: GroupVoteResponse = self
-            .network_manager
-            .request_namespaced(
-                super::messages::GROUP_CONSENSUS_NAMESPACE,
-                self.target_node_id.clone(),
-                message,
-                timeout,
-            )
-            .await
-            .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
+        // Implement exponential backoff for transient network failures
+        let mut attempt = 0;
+        let max_attempts = 3;
+        let mut backoff = tokio::time::Duration::from_millis(100);
 
-        // Update stats
-        {
-            let mut stats = self.stats.write().await;
-            stats.messages_sent += 1;
-            stats.messages_received += 1;
-        }
+        loop {
+            match self
+                .network_manager
+                .request_service(self.target_node_id.clone(), message.clone(), timeout)
+                .await
+            {
+                Ok(response) => {
+                    // Update stats
+                    {
+                        let mut stats = self.stats.write().await;
+                        stats.messages_sent += 1;
+                        stats.messages_received += 1;
+                    }
 
-        // Verify group ID and extract the inner response
-        if response.group_id == self.group_id {
-            Ok(response.response)
-        } else {
-            Err(RPCError::Network(openraft::error::NetworkError::new(
-                &std::io::Error::new(std::io::ErrorKind::InvalidData, "Group ID mismatch"),
-            )))
+                    // Extract the response
+                    match response {
+                        GroupConsensusServiceResponse::Vote { group_id, response } => {
+                            if group_id == self.group_id {
+                                return Ok(response);
+                            } else {
+                                return Err(RPCError::Network(openraft::error::NetworkError::new(
+                                    &std::io::Error::new(
+                                        std::io::ErrorKind::InvalidData,
+                                        "Group ID mismatch",
+                                    ),
+                                )));
+                            }
+                        }
+                        _ => {
+                            return Err(RPCError::Network(openraft::error::NetworkError::new(
+                                &std::io::Error::new(
+                                    std::io::ErrorKind::InvalidData,
+                                    "Unexpected response type",
+                                ),
+                            )));
+                        }
+                    }
+                }
+                Err(e) => {
+                    attempt += 1;
+                    if attempt >= max_attempts {
+                        return Err(RPCError::Network(openraft::error::NetworkError::new(&e)));
+                    }
+
+                    // Check if this is a "no handler" error that might be transient
+                    let error_str = e.to_string();
+                    if error_str.contains("No pending request found")
+                        || error_str.contains("Handler not found")
+                        || error_str.contains("not initialized")
+                    {
+                        tracing::debug!(
+                            "Group vote request to {} for group {:?} failed (attempt {}/{}), retrying with backoff: {}",
+                            self.target_node_id,
+                            self.group_id,
+                            attempt,
+                            max_attempts,
+                            error_str
+                        );
+                        tokio::time::sleep(backoff).await;
+                        backoff *= 2; // Exponential backoff
+                    } else {
+                        // Non-transient error, fail immediately
+                        return Err(RPCError::Network(openraft::error::NetworkError::new(&e)));
+                    }
+                }
+            }
         }
     }
 }

@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use crate::stream::StreamStorageReader;
+use crate::services::stream::StreamStorageReader;
 use proven_topology::NodeId;
 use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{debug, info};
@@ -64,7 +64,7 @@ where
     routing_service: OptionalServiceRef<RoutingService>,
 
     /// Stream service (set after construction, for direct reads)
-    stream_service: OptionalServiceRef<crate::stream::StreamService<L>>,
+    stream_service: OptionalServiceRef<crate::services::stream::StreamService<L>>,
 
     /// Event service (set after construction)
     event_service: Arc<RwLock<Option<Arc<crate::services::event::EventService>>>>,
@@ -125,7 +125,10 @@ where
     }
 
     /// Set the stream service reference
-    pub async fn set_stream_service(&self, service: Arc<crate::stream::StreamService<L>>) {
+    pub async fn set_stream_service(
+        &self,
+        service: Arc<crate::services::stream::StreamService<L>>,
+    ) {
         *self.stream_service.write().await = Some(service);
     }
 
@@ -370,7 +373,7 @@ where
         stream_name: &str,
         start_sequence: u64,
         count: u64,
-    ) -> ConsensusResult<Vec<crate::stream::StoredMessage>> {
+    ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         // Get routing service to check where stream is located
         let routing_service = self.routing_service.read().await;
         let routing_service = routing_service.as_ref().ok_or_else(|| {
@@ -580,7 +583,7 @@ where
                                                         );
                                                         // Create forward request
                                                         let forward_request =
-                                                            super::ForwardGlobalRequest {
+                                                            super::messages::ClientServiceMessage::ForwardGlobalRequest {
                                                                 requester_id: node_id.clone(),
                                                                 request: request.clone(),
                                                             };
@@ -588,15 +591,14 @@ where
                                                         let network = network_manager.read().await;
                                                         if let Some(network) = network.as_ref() {
                                                             match network
-                                                                .request_namespaced::<super::ForwardGlobalRequest, super::ForwardGlobalResponse>(
-                                                                    super::CLIENT_NAMESPACE,
+                                                                .request_service(
                                                                     leader_id.clone(),
                                                                     forward_request,
                                                                     std::time::Duration::from_secs(30),
                                                                 )
                                                                 .await
                                                             {
-                                                                Ok(super::ForwardGlobalResponse { response }) => {
+                                                                Ok(super::messages::ClientServiceResponse::ForwardGlobalResponse { response }) => {
                                                                     // Check if the forwarded response is an error variant
                                                                     match &response {
                                                                         GlobalResponse::Error { message } => {
@@ -609,6 +611,14 @@ where
                                                                             let _ = response_tx.send(Ok(response));
                                                                         }
                                                                     }
+                                                                }
+                                                                Ok(super::messages::ClientServiceResponse::ForwardGroupResponse { .. }) => {
+                                                                    let _ = response_tx.send(Err(
+                                                                        ConsensusError::with_context(
+                                                                            crate::error::ErrorKind::Internal,
+                                                                            "Unexpected response type: expected ForwardGlobalResponse",
+                                                                        ),
+                                                                    ));
                                                                 }
                                                                 Err(e) => {
                                                                     let _ = response_tx.send(Err(
@@ -721,12 +731,12 @@ where
                                                     name: stream_name.clone(),
                                                     config: route.config.unwrap_or({
                                                         // Fallback config if not stored in route
-                                                        crate::stream::StreamConfig {
+                                                        crate::services::stream::StreamConfig {
                                                             max_message_size: 1024 * 1024,
                                                             retention:
-                                                                crate::stream::config::RetentionPolicy::Forever,
+                                                                crate::services::stream::config::RetentionPolicy::Forever,
                                                             persistence_type:
-                                                                crate::stream::PersistenceType::Persistent,
+                                                                crate::services::stream::config::PersistenceType::Persistent,
                                                             allow_auto_create: false,
                                                         }
                                                     }),
@@ -975,7 +985,7 @@ where
             })?;
 
         // Create the forward request
-        let forward_request = super::ForwardGroupRequest {
+        let forward_request = super::messages::ClientServiceMessage::ForwardGroupRequest {
             requester_id: self.node_id.clone(),
             group_id,
             request,
@@ -983,8 +993,7 @@ where
 
         // Send the request and wait for response
         let response = network
-            .request_namespaced::<super::ForwardGroupRequest, super::ForwardGroupResponse>(
-                super::CLIENT_NAMESPACE,
+            .request_service(
                 target_node.clone(),
                 forward_request,
                 std::time::Duration::from_secs(30),
@@ -997,7 +1006,15 @@ where
                 )
             })?;
 
-        Ok(response.response)
+        match response {
+            super::messages::ClientServiceResponse::ForwardGroupResponse { response } => {
+                Ok(response)
+            }
+            _ => Err(ConsensusError::with_context(
+                crate::error::ErrorKind::Internal,
+                "Unexpected response type",
+            )),
+        }
     }
 
     /// Register network handlers for forwarded requests
@@ -1007,90 +1024,84 @@ where
     ) -> ConsensusResult<()> {
         info!("Registering client service network handlers");
 
-        // Register namespace
-        network.register_namespace(super::CLIENT_NAMESPACE).await?;
-
         // Clone references for handlers
         let node_id = self.node_id.clone();
         let group_consensus = self.group_consensus.clone();
+        let global_consensus = self.global_consensus.clone();
 
-        // Register handler for forwarded group requests
+        // Register service handler
         network
-            .register_namespaced_request_handler::<super::ForwardGroupRequest, super::ForwardGroupResponse, _, _>(
-                super::CLIENT_NAMESPACE,
-                "forward_group_request",
-                move |sender, request| {
-                    let _node_id = node_id.clone();
-                    let group_consensus = group_consensus.clone();
+            .register_service::<super::messages::ClientServiceMessage, _>(move |sender, message| {
+                let _node_id = node_id.clone();
+                let group_consensus = group_consensus.clone();
+                let global_consensus = global_consensus.clone();
 
-                    async move {
-                        tracing::info!(
-                            "Received forwarded group request from {} for group {:?}",
-                            sender,
-                            request.group_id
-                        );
+                Box::pin(async move {
+                    match message {
+                        super::messages::ClientServiceMessage::ForwardGroupRequest {
+                            requester_id: _,
+                            group_id,
+                            request,
+                        } => {
+                            tracing::info!(
+                                "Received forwarded group request from {} for group {:?}",
+                                sender,
+                                group_id
+                            );
 
-                        // Get group consensus service
-                        let service = group_consensus.read().await;
-                        let service = service.as_ref().ok_or_else(|| {
-                            proven_network::NetworkError::Internal(
-                                "Group consensus service not available".to_string()
-                            )
-                        })?;
-
-                        // Submit the request locally
-                        let response = service
-                            .submit_to_group(request.group_id, request.request)
-                            .await
-                            .map_err(|e| {
-                                proven_network::NetworkError::Internal(format!(
-                                    "Failed to submit to group: {e}"
-                                ))
+                            // Get group consensus service
+                            let service = group_consensus.read().await;
+                            let service = service.as_ref().ok_or_else(|| {
+                                proven_network::NetworkError::Internal(
+                                    "Group consensus service not available".to_string(),
+                                )
                             })?;
 
-                        Ok(super::ForwardGroupResponse { response })
-                    }
-                },
-            )
-            .await?;
+                            // Submit the request locally
+                            let response = service
+                                .submit_to_group(group_id, request)
+                                .await
+                                .map_err(|e| {
+                                    proven_network::NetworkError::Internal(format!(
+                                        "Failed to submit to group: {e}"
+                                    ))
+                                })?;
 
-        // Register handler for forwarded global requests
-        let node_id = self.node_id.clone();
-        let global_consensus = self.global_consensus.clone();
-        network
-            .register_namespaced_request_handler::<super::ForwardGlobalRequest, super::ForwardGlobalResponse, _, _>(
-                super::CLIENT_NAMESPACE,
-                "forward_global_request",
-                move |sender, request| {
-                    let _node_id = node_id.clone();
-                    let global_consensus = global_consensus.clone();
-
-                    async move {
-                        tracing::info!(
-                            "Received forwarded global request from {}",
-                            sender
-                        );
-
-                        // Get global consensus service
-                        let service = global_consensus.read().await;
-                        let service = service.as_ref().ok_or_else(|| {
-                            proven_network::NetworkError::Internal(
-                                "Global consensus service not available".to_string()
+                            Ok(
+                                super::messages::ClientServiceResponse::ForwardGroupResponse {
+                                    response,
+                                },
                             )
-                        })?;
+                        }
+                        super::messages::ClientServiceMessage::ForwardGlobalRequest {
+                            requester_id: _,
+                            request,
+                        } => {
+                            tracing::info!("Received forwarded global request from {}", sender);
 
-                        // Submit the request locally
-                        let response = service
-                            .submit_request(request.request)
-                            .await
-                            .map_err(|e| {
+                            // Get global consensus service
+                            let service = global_consensus.read().await;
+                            let service = service.as_ref().ok_or_else(|| {
+                                proven_network::NetworkError::Internal(
+                                    "Global consensus service not available".to_string(),
+                                )
+                            })?;
+
+                            // Submit the request locally
+                            let response = service.submit_request(request).await.map_err(|e| {
                                 proven_network::NetworkError::Internal(format!(
                                     "Failed to submit to global consensus: {e}"
                                 ))
                             })?;
-                        Ok(super::ForwardGlobalResponse { response })
+                            Ok(
+                                super::messages::ClientServiceResponse::ForwardGlobalResponse {
+                                    response,
+                                },
+                            )
+                        }
                     }
                 })
+            })
             .await?;
 
         info!("Client service network handlers registered successfully");

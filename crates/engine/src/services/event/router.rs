@@ -184,6 +184,65 @@ impl EventRouter {
     pub async fn get_routes(&self) -> Vec<EventRoute> {
         self.routes.read().await.clone()
     }
+
+    /// Route an event to ALL matching handlers (for synchronous events)
+    pub async fn route_to_all_handlers(
+        &self,
+        envelope: EventEnvelope,
+    ) -> EventingResult<Vec<EventResult>> {
+        // Find all matching routes
+        let matching_handlers: Vec<String> = {
+            let routes = self.routes.read().await;
+            routes
+                .iter()
+                .filter(|route| self.matches_pattern(&route.pattern, &envelope))
+                .map(|route| route.handler_name.clone())
+                .collect()
+        };
+
+        let mut results = Vec::new();
+
+        // Execute all matching handlers
+        for handler_name in matching_handlers {
+            let handlers = self.handlers.read().await;
+            if let Some(handler) = handlers.get(&handler_name) {
+                let handler = handler.clone();
+                drop(handlers);
+
+                debug!(
+                    "Routing event {} to handler {} (synchronous)",
+                    envelope.metadata.id, handler_name
+                );
+
+                match handler.handle(envelope.clone()).await {
+                    Ok(result) => results.push(result),
+                    Err(e) => results.push(EventResult::Failed(e.to_string())),
+                }
+            }
+        }
+
+        // If no handlers matched, use default handler if available
+        if results.is_empty() {
+            if let Some(handler) = &self.default_handler {
+                debug!(
+                    "Routing event {} to default handler (synchronous)",
+                    envelope.metadata.id
+                );
+                match handler.handle(envelope).await {
+                    Ok(result) => results.push(result),
+                    Err(e) => results.push(EventResult::Failed(e.to_string())),
+                }
+            } else {
+                warn!(
+                    "No handlers found for synchronous event {:?}",
+                    envelope.metadata.event_type
+                );
+                results.push(EventResult::Ignored);
+            }
+        }
+
+        Ok(results)
+    }
 }
 
 /// Default event handler that logs events
@@ -280,6 +339,7 @@ mod tests {
                 source: "test".to_string(),
                 correlation_id: None,
                 tags: vec![],
+                synchronous: false,
             },
             event: Event::Custom {
                 event_type: "test".to_string(),
