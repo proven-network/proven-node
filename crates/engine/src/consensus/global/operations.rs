@@ -71,7 +71,7 @@ impl OperationHandler for GlobalOperationHandler {
                 }
 
                 // Check if group exists
-                if self.state.get_group(group_id).await.is_none() {
+                if self.state.get_group(&group_id).await.is_none() {
                     return Ok(GlobalResponse::Error {
                         message: format!("Group {group_id:?} does not exist"),
                     });
@@ -112,7 +112,7 @@ impl OperationHandler for GlobalOperationHandler {
 
             GlobalRequest::CreateGroup { info } => {
                 // Check if group already exists
-                if self.state.get_group(info.id).await.is_some() {
+                if self.state.get_group(&info.id).await.is_some() {
                     return Ok(GlobalResponse::Error {
                         message: format!("Group {:?} already exists", info.id),
                     });
@@ -173,7 +173,7 @@ impl OperationHandler for GlobalOperationHandler {
 
             GlobalRequest::ReassignStream { name, to_group } => {
                 // Check if target group exists
-                if self.state.get_group(to_group).await.is_none() {
+                if self.state.get_group(&to_group).await.is_none() {
                     return Ok(GlobalResponse::Error {
                         message: format!("Target group {to_group:?} does not exist"),
                     });

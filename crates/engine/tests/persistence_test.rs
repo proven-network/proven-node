@@ -38,6 +38,10 @@ async fn test_cluster_persistence_across_restarts() {
         .await
         .expect("Failed to form groups");
 
+    // Give time for default group creation to complete
+    info!("Waiting for default group to be fully established");
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
     // Create a stream on the first node
     info!("Creating test stream");
     let stream_name = "test_persistent_stream";
@@ -95,7 +99,7 @@ async fn test_cluster_persistence_across_restarts() {
         engine
             .start()
             .await
-            .unwrap_or_else(|_| panic!("Failed to restart engine {i}"));
+            .unwrap_or_else(|e| panic!("Failed to restart engine {i}: {e}"));
     }
 
     info!(

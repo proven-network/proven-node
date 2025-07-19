@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use proven_network::NetworkManager;
 use proven_storage::{ConsensusStorage, LogStorage, StorageAdaptor, StorageManager};
@@ -47,6 +49,10 @@ where
     event_publisher: Option<EventPublisher>,
     /// Track if handlers have been registered
     handlers_registered: Arc<RwLock<bool>>,
+    /// Task tracker for background tasks
+    task_tracker: Arc<RwLock<Option<TaskTracker>>>,
+    /// Cancellation token for graceful shutdown
+    cancellation_token: Arc<RwLock<Option<CancellationToken>>>,
 }
 
 impl<T, G, S> GlobalConsensusService<T, G, S>
@@ -72,6 +78,8 @@ where
             topology_manager: None,
             event_publisher: None,
             handlers_registered: Arc::new(RwLock::new(false)),
+            task_tracker: Arc::new(RwLock::new(None)),
+            cancellation_token: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -102,8 +110,20 @@ where
             }
         }
 
-        // Don't register handlers here - they will be registered after consensus layer is created
-        // self.register_message_handlers().await?;
+        // Create new task tracker and cancellation token
+        let task_tracker = TaskTracker::new();
+        let cancellation_token = CancellationToken::new();
+
+        {
+            let mut tracker_guard = self.task_tracker.write().await;
+            *tracker_guard = Some(task_tracker.clone());
+
+            let mut token_guard = self.cancellation_token.write().await;
+            *token_guard = Some(cancellation_token.clone());
+        }
+
+        // Start the default group checker task
+        self.spawn_default_group_checker(&task_tracker, &cancellation_token);
 
         *state = ServiceState::Running;
         Ok(())
@@ -114,6 +134,42 @@ where
         let mut state = self.state.write().await;
         *state = ServiceState::Stopped;
         drop(state);
+
+        // Signal shutdown and wait for tasks
+        let (task_tracker, cancellation_token) = {
+            let tracker_guard = self.task_tracker.write().await;
+            let token_guard = self.cancellation_token.write().await;
+
+            (tracker_guard.clone(), token_guard.clone())
+        };
+
+        if let Some(token) = cancellation_token {
+            tracing::debug!("Signaling cancellation to background tasks");
+            token.cancel();
+        }
+
+        if let Some(tracker) = task_tracker {
+            tracing::debug!("Waiting for background tasks to complete");
+            tracker.close();
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), tracker.wait()).await {
+                Ok(()) => {
+                    tracing::debug!("All background tasks completed successfully");
+                }
+                Err(_) => {
+                    tracing::warn!("Background tasks did not complete within 5 seconds timeout");
+                }
+            }
+        }
+
+        // Clear the task tracker and cancellation token
+        {
+            let mut tracker_guard = self.task_tracker.write().await;
+            *tracker_guard = None;
+
+            let mut token_guard = self.cancellation_token.write().await;
+            *token_guard = None;
+        }
 
         // First, unregister the service handler from NetworkManager
         // Do this before shutting down Raft to avoid potential deadlocks
@@ -238,7 +294,6 @@ where
                         // Event publisher already set during layer creation
 
                         // Store the layer clone for later use
-                        let layer_clone = layer.clone();
                         let mut consensus_guard = consensus_layer.write().await;
                         *consensus_guard = Some(layer);
                         drop(consensus_guard); // Release the lock before registering handlers
@@ -269,44 +324,6 @@ where
                                 )
                                 .await;
                         }
-
-                        // Create default group through global consensus
-                        tracing::info!(
-                            "GlobalConsensusService: Creating default group through consensus"
-                        );
-                        // Spawn a task to create the default group after a small delay
-                        // This ensures Raft has time to stabilize after initialization
-                        tokio::spawn(async move {
-                            // Wait a bit for Raft to stabilize
-                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                            // Submit CreateGroup request to global consensus
-                            let create_group_request =
-                                crate::consensus::global::GlobalRequest::CreateGroup {
-                                    info: crate::consensus::global::types::GroupInfo {
-                                        id: crate::foundation::types::ConsensusGroupId::new(1),
-                                        members: members.clone(),
-                                        created_at: std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .unwrap()
-                                            .as_secs(),
-                                        metadata: std::collections::HashMap::new(),
-                                    },
-                                };
-                            // Submit the request to create the default group using the clone
-                            match layer_clone.submit_request(create_group_request).await {
-                                Ok(_) => {
-                                    tracing::info!(
-                                        "Successfully submitted default group creation to consensus"
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::error!(
-                                        "Failed to create default group through consensus: {}",
-                                        e
-                                    );
-                                }
-                            }
-                        });
                     }
                     ClusterFormationEvent::JoinedAsFollower { cluster_id, .. } => {
                         tracing::info!(
@@ -496,5 +513,158 @@ where
     pub async fn is_healthy(&self) -> bool {
         let state = self.state.read().await;
         *state == ServiceState::Running
+    }
+
+    /// Check and create default group if needed
+    pub async fn ensure_default_group(&self, members: Vec<NodeId>) -> ConsensusResult<()> {
+        // Check if consensus layer is initialized
+        let consensus_guard = self.consensus_layer.read().await;
+        let consensus = match consensus_guard.as_ref() {
+            Some(c) => c,
+            None => {
+                tracing::debug!("Global consensus not initialized, skipping default group check");
+                return Ok(());
+            }
+        };
+
+        // Check if we're the leader
+        let metrics = consensus.metrics();
+        let is_leader = metrics.borrow().current_leader.as_ref() == Some(&self.node_id);
+
+        if !is_leader {
+            tracing::debug!("Not the global consensus leader, skipping default group creation");
+            return Ok(());
+        }
+
+        // Check if default group already exists
+        let state = consensus.state();
+        let default_group_id = crate::foundation::types::ConsensusGroupId::new(1);
+
+        if state.get_group(&default_group_id).await.is_some() {
+            tracing::debug!("Default group already exists");
+            return Ok(());
+        }
+
+        tracing::info!("Creating default group as it doesn't exist");
+
+        // Create the default group
+        let create_group_request = crate::consensus::global::GlobalRequest::CreateGroup {
+            info: crate::consensus::global::types::GroupInfo {
+                id: default_group_id,
+                members,
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                metadata: std::collections::HashMap::new(),
+            },
+        };
+
+        // Submit the request to create the default group
+        match consensus.submit_request(create_group_request).await {
+            Ok(_) => {
+                tracing::info!("Successfully created default group through consensus");
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!("Failed to create default group: {}", e);
+                Err(ConsensusError::with_context(
+                    ErrorKind::Consensus,
+                    format!("Failed to create default group: {e}"),
+                ))
+            }
+        }
+    }
+
+    /// Spawn the default group checker background task
+    fn spawn_default_group_checker(
+        &self,
+        task_tracker: &TaskTracker,
+        cancellation_token: &CancellationToken,
+    ) {
+        let consensus_layer = self.consensus_layer.clone();
+        let node_id = self.node_id.clone();
+        let topology_manager = self.topology_manager.clone();
+        let token = cancellation_token.clone();
+
+        task_tracker.spawn(async move {
+            // Wait a bit for system to stabilize
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+            // Periodically check and create default group if needed
+            let mut check_interval = tokio::time::interval(std::time::Duration::from_secs(5));
+
+            loop {
+                tokio::select! {
+                    _ = check_interval.tick() => {
+                        // Check if we have a consensus layer
+                        let consensus_guard = consensus_layer.read().await;
+                        if let Some(consensus) = consensus_guard.as_ref() {
+                            // Check if default group exists first (regardless of leadership)
+                            let state = consensus.state();
+                            let default_group_id = crate::foundation::types::ConsensusGroupId::new(1);
+
+                            if state.get_group(&default_group_id).await.is_some() {
+                                tracing::debug!("Default group exists, exiting default group checker task");
+                                return; // Group exists, exit the task
+                            }
+
+                            // Check if we're the leader
+                            let metrics = consensus.metrics();
+                            let is_leader = metrics.borrow().current_leader.as_ref() == Some(&node_id);
+
+                            if is_leader {
+                                tracing::info!("Default group not found, creating it");
+
+                                // Get current cluster members from topology
+                                let members = if let Some(tm) = &topology_manager {
+                                    match tm.provider().get_topology().await {
+                                        Ok(nodes) => nodes.into_iter().map(|n| n.node_id).collect(),
+                                        Err(e) => {
+                                            tracing::error!("Failed to get topology for default group: {}", e);
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    // If no topology manager, just use ourselves
+                                    vec![node_id.clone()]
+                                };
+
+                                // Create the default group
+                                let create_group_request = crate::consensus::global::GlobalRequest::CreateGroup {
+                                    info: crate::consensus::global::types::GroupInfo {
+                                        id: default_group_id,
+                                        members,
+                                        created_at: std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .unwrap()
+                                            .as_secs(),
+                                        metadata: std::collections::HashMap::new(),
+                                    },
+                                };
+
+                                match consensus.submit_request(create_group_request).await {
+                                    Ok(_) => {
+                                        tracing::info!("Successfully created default group through consensus");
+                                        // Don't exit immediately - wait for next tick to confirm it exists
+                                    }
+                                    Err(e) => {
+                                        tracing::error!("Failed to create default group: {}", e);
+                                    }
+                                }
+                            } else {
+                                tracing::debug!("Not the leader, waiting for default group to be created");
+                            }
+                        } else {
+                            tracing::debug!("Consensus layer not initialized yet");
+                        }
+                    }
+                    _ = token.cancelled() => {
+                        tracing::debug!("Default group creation task cancelled");
+                        return;
+                    }
+                }
+            }
+        });
     }
 }

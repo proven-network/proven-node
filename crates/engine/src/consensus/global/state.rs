@@ -151,9 +151,9 @@ impl GlobalState {
     }
 
     /// Get group info
-    pub async fn get_group(&self, id: ConsensusGroupId) -> Option<GroupInfo> {
+    pub async fn get_group(&self, id: &ConsensusGroupId) -> Option<GroupInfo> {
         let groups = self.groups.read().await;
-        groups.get(&id).cloned()
+        groups.get(id).cloned()
     }
 
     /// List all groups

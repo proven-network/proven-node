@@ -7,6 +7,8 @@ use std::time::{Duration, SystemTime};
 
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 use tracing::{debug, error, info, warn};
 
 use proven_network::NetworkManager;
@@ -71,11 +73,11 @@ where
     /// State manager
     state_manager: Arc<StateManager>,
 
-    /// Background tasks
-    background_tasks: Arc<RwLock<Vec<JoinHandle<()>>>>,
+    /// Task tracker for background tasks
+    task_tracker: Arc<RwLock<Option<TaskTracker>>>,
 
-    /// Shutdown signal
-    shutdown_signal: Arc<tokio::sync::Notify>,
+    /// Cancellation token for graceful shutdown
+    cancellation_token: Arc<RwLock<Option<CancellationToken>>>,
 
     /// Service state
     service_state: Arc<RwLock<ServiceState>>,
@@ -123,8 +125,8 @@ where
             formation_manager,
             membership_manager,
             state_manager,
-            background_tasks: Arc::new(RwLock::new(Vec::new())),
-            shutdown_signal: Arc::new(tokio::sync::Notify::new()),
+            task_tracker: Arc::new(RwLock::new(None)),
+            cancellation_token: Arc::new(RwLock::new(None)),
             service_state: Arc::new(RwLock::new(ServiceState::NotStarted)),
             formation_callback: None,
         }
@@ -183,16 +185,26 @@ where
 
         info!("Starting cluster service for node {}", self.node_id);
 
+        // Create new task tracker and cancellation token
+        let task_tracker = TaskTracker::new();
+        let cancellation_token = CancellationToken::new();
+
+        {
+            let mut tracker_guard = self.task_tracker.write().await;
+            *tracker_guard = Some(task_tracker.clone());
+
+            let mut token_guard = self.cancellation_token.write().await;
+            *token_guard = Some(cancellation_token.clone());
+        }
+
         // Register service handlers for message forwarding
         self.register_service_handlers().await?;
 
-        let mut tasks = self.background_tasks.write().await;
-
         // Start health check task
-        tasks.push(self.spawn_health_check_task());
+        self.spawn_health_check_task(&task_tracker, &cancellation_token);
 
         // Start membership monitor
-        tasks.push(self.spawn_membership_monitor());
+        self.spawn_membership_monitor(&task_tracker, &cancellation_token);
 
         Ok(())
     }
@@ -211,18 +223,47 @@ where
 
         // Leave cluster if active
         if self.state_manager.is_active() {
+            tracing::debug!("Attempting to leave cluster before shutdown");
             let _ = self.leave_cluster("Service stopping".to_string()).await;
+            tracing::debug!("Left cluster successfully");
+        } else {
+            tracing::debug!("Not active in cluster, skipping leave");
         }
 
-        // Signal shutdown
-        self.shutdown_signal.notify_waiters();
+        // Signal shutdown and wait for tasks
+        let (task_tracker, cancellation_token) = {
+            let tracker_guard = self.task_tracker.write().await;
+            let token_guard = self.cancellation_token.write().await;
 
-        // Wait for tasks
-        let mut tasks = self.background_tasks.write().await;
-        for task in tasks.drain(..) {
-            if let Err(e) = task.await {
-                warn!("Error stopping cluster task: {}", e);
+            (tracker_guard.clone(), token_guard.clone())
+        };
+
+        if let Some(token) = cancellation_token {
+            tracing::debug!("Signaling cancellation to background tasks");
+            token.cancel();
+        }
+
+        if let Some(tracker) = task_tracker {
+            tracing::debug!("Waiting for background tasks to complete");
+            tracker.close();
+
+            match tokio::time::timeout(std::time::Duration::from_secs(5), tracker.wait()).await {
+                Ok(()) => {
+                    tracing::debug!("All background tasks completed successfully");
+                }
+                Err(_) => {
+                    warn!("Background tasks did not complete within 5 seconds timeout");
+                }
             }
+        }
+
+        // Clear the task tracker and cancellation token
+        {
+            let mut tracker_guard = self.task_tracker.write().await;
+            *tracker_guard = None;
+
+            let mut token_guard = self.cancellation_token.write().await;
+            *token_guard = None;
         }
 
         // Skip unregistering the service handler from NetworkManager
@@ -641,10 +682,10 @@ where
 
     /// Leave the cluster
     pub async fn leave_cluster(&self, reason: String) -> ClusterResult<()> {
-        self.ensure_running().await?;
-
+        // Don't check ensure_running here since we might be stopping
+        // Just check if we're active in a cluster
         if !self.state_manager.is_active() {
-            return Err(ClusterError::NotMember);
+            return Ok(()); // Not an error, just nothing to do
         }
 
         // Start leaving
@@ -771,12 +812,16 @@ where
     }
 
     /// Spawn health check task
-    fn spawn_health_check_task(&self) -> JoinHandle<()> {
+    fn spawn_health_check_task(
+        &self,
+        task_tracker: &TaskTracker,
+        cancellation_token: &CancellationToken,
+    ) {
         let membership = self.membership_manager.clone();
         let interval = self.config.health.check_interval;
-        let shutdown = self.shutdown_signal.clone();
+        let token = cancellation_token.clone();
 
-        tokio::spawn(async move {
+        task_tracker.spawn(async move {
             let mut interval_timer = tokio::time::interval(interval);
             interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -791,35 +836,41 @@ where
                             }
                         }
                     }
-                    _ = shutdown.notified() => {
+                    _ = token.cancelled() => {
                         debug!("Health check task shutting down");
                         break;
                     }
                 }
             }
-        })
+        });
     }
 
     /// Spawn membership monitor task
-    fn spawn_membership_monitor(&self) -> JoinHandle<()> {
+    fn spawn_membership_monitor(
+        &self,
+        task_tracker: &TaskTracker,
+        cancellation_token: &CancellationToken,
+    ) {
         let _membership = self.membership_manager.clone();
         let interval = self.config.membership.heartbeat_interval;
-        let shutdown = self.shutdown_signal.clone();
+        let token = cancellation_token.clone();
 
-        tokio::spawn(async move {
+        task_tracker.spawn(async move {
             let mut interval_timer = tokio::time::interval(interval);
             interval_timer.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
             loop {
                 tokio::select! {
-                    _ = interval_timer.tick() => {}
-                    _ = shutdown.notified() => {
+                    _ = interval_timer.tick() => {
+                        // Membership monitoring logic would go here
+                    }
+                    _ = token.cancelled() => {
                         debug!("Membership monitor shutting down");
                         break;
                     }
                 }
             }
-        })
+        });
     }
 
     /// Register service handlers for message forwarding
@@ -927,8 +978,12 @@ where
     G: TopologyAdaptor,
 {
     fn drop(&mut self) {
-        // Ensure shutdown on drop
-        self.shutdown_signal.notify_waiters();
+        // Cancel any running tasks on drop
+        if let Ok(token_guard) = self.cancellation_token.try_read()
+            && let Some(token) = token_guard.as_ref()
+        {
+            token.cancel();
+        }
     }
 }
 

@@ -129,7 +129,7 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
                                         None // TODO: Include group_id in response
                                     }
                                     GlobalResponse::GroupCreated { id } => {
-                                        if let Some(group_info) = self.state.get_group(*id).await {
+                                        if let Some(group_info) = self.state.get_group(id).await {
                                             Some(Event::GroupCreated {
                                                 group_id: *id,
                                                 members: group_info.members.clone(),

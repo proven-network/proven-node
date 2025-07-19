@@ -23,8 +23,8 @@ pub struct EventService {
     /// Event bus
     bus: Arc<EventBus>,
 
-    /// Event router
-    router: Arc<EventRouter>,
+    /// Event router (recreated on each start)
+    router: Arc<RwLock<Option<Arc<EventRouter>>>>,
 
     /// Event store (optional)
     store: Option<Arc<EventStore>>,
@@ -71,7 +71,6 @@ impl EventService {
     /// Create a new event service
     pub fn new(config: EventConfig) -> Self {
         let bus = Arc::new(EventBus::new(config.clone()));
-        let router = Arc::new(EventRouter::new());
 
         let store = if config.enable_persistence {
             Some(Arc::new(EventStore::new(
@@ -87,7 +86,7 @@ impl EventService {
         Self {
             config,
             bus,
-            router,
+            router: Arc::new(RwLock::new(None)),
             store,
             event_channel,
             background_tasks: Arc::new(RwLock::new(Vec::new())),
@@ -118,6 +117,9 @@ impl EventService {
         drop(state);
 
         info!("Starting event service");
+
+        // Create a fresh router for this start
+        *self.router.write().await = Some(Arc::new(EventRouter::new()));
 
         // Start event processor
         let processor_task = self.spawn_event_processor();
@@ -166,6 +168,9 @@ impl EventService {
                 error!("Error stopping event task: {}", e);
             }
         }
+
+        // Clear the router to drop all handlers
+        *self.router.write().await = None;
 
         let mut state = self.state.write().await;
         *state = ServiceState::Stopped;
@@ -248,12 +253,16 @@ impl EventService {
         name: String,
         handler: Arc<dyn crate::services::event::EventHandler>,
     ) -> EventingResult<()> {
-        self.router.register_handler(name, handler).await
+        let router_lock = self.router.read().await;
+        let router = router_lock.as_ref().ok_or_else(|| EventError::NotStarted)?;
+        router.register_handler(name, handler).await
     }
 
     /// Add an event route
     pub async fn add_route(&self, route: crate::services::event::EventRoute) -> EventingResult<()> {
-        self.router.add_route(route).await
+        let router_lock = self.router.read().await;
+        let router = router_lock.as_ref().ok_or_else(|| EventError::NotStarted)?;
+        router.add_route(route).await
     }
 
     /// Query event history
@@ -273,7 +282,11 @@ impl EventService {
     /// Get event service statistics
     pub async fn get_stats(&self) -> EventingResult<EventServiceStats> {
         let subscriber_count = self.bus.subscriber_count().await;
-        let handler_count = self.router.get_handlers().await.len();
+        let handler_count = if let Some(router) = self.router.read().await.as_ref() {
+            router.get_handlers().await.len()
+        } else {
+            0
+        };
 
         let store_stats = if let Some(store) = &self.store {
             Some(store.get_stats().await?)
@@ -330,10 +343,13 @@ impl EventService {
                             event_id, envelope.metadata.event_type, is_synchronous
                         );
 
-                        // Handle synchronous vs asynchronous events
-                        if is_synchronous {
-                            // For synchronous events, route to ALL handlers and wait
-                            let result = match router.route_to_all_handlers(envelope.clone()).await {
+                        // Get the router if available
+                        let router_opt = router.read().await;
+                        if let Some(router_ref) = router_opt.as_ref() {
+                            // Handle synchronous vs asynchronous events
+                            if is_synchronous {
+                                // For synchronous events, route to ALL handlers and wait
+                                let result = match router_ref.route_to_all_handlers(envelope.clone()).await {
                                 Ok(results) => {
                                     // Check if all handlers succeeded
                                     let failed_count = results.iter()
@@ -380,41 +396,46 @@ impl EventService {
                                     error!("Failed to store synchronous event: {}", e);
                                 }
                             }
-                        } else {
-                            // For async events, route to first matching handler
-                            let result = match router.route(envelope.clone()).await {
-                                Ok(result) => {
-                                    debug!("Event {} routed successfully with result: {:?}",
-                                           event_id, result);
-                                    result
-                                }
-                                Err(e) => {
-                                    error!("Failed to route event {}: {}", event_id, e);
-                                    metrics.events_failed.fetch_add(1, Ordering::Relaxed);
-                                    EventResult::Failed(e.to_string())
-                                }
-                            };
+                            } else {
+                                // For async events, route to first matching handler
+                                let result = match router_ref.route(envelope.clone()).await {
+                                    Ok(result) => {
+                                        debug!("Event {} routed successfully with result: {:?}",
+                                               event_id, result);
+                                        result
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to route event {}: {}", event_id, e);
+                                        metrics.events_failed.fetch_add(1, Ordering::Relaxed);
+                                        EventResult::Failed(e.to_string())
+                                    }
+                                };
 
-                            // Store if enabled
-                            if let Some(store) = &store {
-                                let processing_time = start.elapsed();
-                                if let Err(e) = store.store_with_timing(
-                                    envelope.clone(),
-                                    result,
-                                    processing_time,
-                                ).await {
-                                    error!("Failed to store event: {}", e);
+                                // Store if enabled
+                                if let Some(store) = &store {
+                                    let processing_time = start.elapsed();
+                                    if let Err(e) = store.store_with_timing(
+                                        envelope.clone(),
+                                        result,
+                                        processing_time,
+                                    ).await {
+                                        error!("Failed to store event: {}", e);
+                                    }
                                 }
                             }
-                        }
 
-                        // Always publish to bus for subscribers (async)
-                        if let Err(e) = bus.publish(envelope).await {
-                            error!("Failed to publish event to bus: {}", e);
-                        }
+                            // Always publish to bus for subscribers (async)
+                            if let Err(e) = bus.publish(envelope).await {
+                                error!("Failed to publish event to bus: {}", e);
+                            }
 
-                        // Update metrics
-                        metrics.events_processed.fetch_add(1, Ordering::Relaxed);
+                            // Update metrics
+                            metrics.events_processed.fetch_add(1, Ordering::Relaxed);
+                        } else {
+                            // Router not available, drop the event
+                            debug!("Event {} dropped - router not available", event_id);
+                            metrics.events_failed.fetch_add(1, Ordering::Relaxed);
+                        }
                     }
                     _ = shutdown.notified() => {
                         debug!("Event processor shutting down");
@@ -473,7 +494,11 @@ impl EventService {
                 tokio::select! {
                     _ = interval_timer.tick() => {
                         let subscriber_count = bus.subscriber_count().await;
-                        let handler_count = router.get_handlers().await.len();
+                        let handler_count = if let Some(router_ref) = router.read().await.as_ref() {
+                            router_ref.get_handlers().await.len()
+                        } else {
+                            0
+                        };
 
                         debug!(
                             "Event service metrics - subscribers: {}, handlers: {}",
