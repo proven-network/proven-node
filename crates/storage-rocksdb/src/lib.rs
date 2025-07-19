@@ -4,7 +4,7 @@ pub mod config;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_storage::{LogStorage, StorageError, StorageNamespace, StorageResult};
+use proven_storage::{LogStorage, StorageAdaptor, StorageError, StorageNamespace, StorageResult};
 use rocksdb::{
     BoundColumnFamily, ColumnFamilyDescriptor, DBWithThreadMode, MultiThreaded, Options, WriteBatch,
 };
@@ -323,6 +323,50 @@ impl std::fmt::Debug for RocksDbStorage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "RocksDbStorage")
     }
+}
+
+impl Drop for RocksDbStorage {
+    fn drop(&mut self) {
+        // Check if this is the last reference to the database
+        // Arc::strong_count is 1 when this is the last reference being dropped
+        if Arc::strong_count(&self.db) == 1 {
+            tracing::debug!("RocksDbStorage being dropped - this is the last reference");
+            // RocksDB will automatically flush and close when the Arc<DB> is dropped
+            // This serves as a safety net to ensure proper cleanup
+        }
+    }
+}
+
+// Implement StorageAdaptor for RocksDbStorage
+// Since RocksDbStorage already implements LogStorage + LogStorageWithDelete,
+// we just need to implement the trait with any additional methods
+#[async_trait]
+impl StorageAdaptor for RocksDbStorage {
+    async fn shutdown(&self) -> StorageResult<()> {
+        tracing::info!(
+            "Shutting down RocksDB storage, current Arc strong count: {}",
+            Arc::strong_count(&self.db)
+        );
+
+        // Flush the database to ensure all data is persisted
+        self.db
+            .flush()
+            .map_err(|e| StorageError::Backend(format!("Failed to flush database: {e}")))?;
+
+        // Clear the log bounds cache to release any references
+        self.log_bounds.write().await.clear();
+
+        tracing::info!(
+            "RocksDB storage shutdown complete, Arc strong count: {}",
+            Arc::strong_count(&self.db)
+        );
+        Ok(())
+    }
+
+    // We could implement delete_all here if needed
+    // async fn delete_all(&self) -> StorageResult<()> {
+    //     // Implementation to clear all data
+    // }
 }
 
 #[cfg(test)]

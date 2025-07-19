@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use proven_network::NetworkManager;
-use proven_storage::LogStorage;
+use proven_storage::{ConsensusStorage, StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
@@ -21,12 +21,19 @@ use crate::{
 };
 use async_trait::async_trait;
 
+/// Type alias for the consensus layers
+type ConsensusLayers<S> = Arc<
+    RwLock<
+        std::collections::HashMap<ConsensusGroupId, Arc<GroupConsensusLayer<ConsensusStorage<S>>>>,
+    >,
+>;
+
 /// Group consensus service
-pub struct GroupConsensusService<T, G, L>
+pub struct GroupConsensusService<T, G, S>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorage,
+    S: StorageAdaptor,
 {
     /// Configuration
     config: GroupConsensusConfig,
@@ -34,34 +41,34 @@ where
     node_id: NodeId,
     /// Network manager
     network_manager: Arc<NetworkManager<T, G>>,
-    /// Consensus log storage
-    log_storage: L,
+    /// Storage manager
+    storage_manager: Arc<StorageManager<S>>,
     /// Group consensus layers
-    groups: Arc<RwLock<std::collections::HashMap<ConsensusGroupId, Arc<GroupConsensusLayer<L>>>>>,
+    groups: ConsensusLayers<S>,
     /// Event publisher
     event_publisher: Option<EventPublisher>,
     /// Event service reference
     event_service: Arc<RwLock<Option<Arc<EventService>>>>,
 }
 
-impl<T, G, L> GroupConsensusService<T, G, L>
+impl<T, G, S> GroupConsensusService<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    S: StorageAdaptor + 'static,
 {
     /// Create new group consensus service
     pub fn new(
         config: GroupConsensusConfig,
         node_id: NodeId,
         network_manager: Arc<NetworkManager<T, G>>,
-        log_storage: L,
+        storage_manager: Arc<StorageManager<S>>,
     ) -> Self {
         Self {
             config,
             node_id,
             network_manager,
-            log_storage,
+            storage_manager,
             groups: Arc::new(RwLock::new(std::collections::HashMap::new())),
             event_publisher: None,
             event_service: Arc::new(RwLock::new(None)),
@@ -92,16 +99,44 @@ where
 
     /// Stop the service
     pub async fn stop(&self) -> ConsensusResult<()> {
+        // First, unregister the service handler from NetworkManager
+        // Do this before shutting down Raft to avoid potential deadlocks
+        use super::messages::GroupConsensusMessage;
+        tracing::debug!("Unregistering group consensus service handler");
+        if let Err(e) = self
+            .network_manager
+            .unregister_service::<GroupConsensusMessage>()
+            .await
+        {
+            tracing::warn!("Failed to unregister group consensus service: {}", e);
+        } else {
+            tracing::debug!("Group consensus service handler unregistered");
+        }
+
         // Shutdown all Raft instances in groups
         let mut groups = self.groups.write().await;
         for (group_id, layer) in groups.iter() {
-            // Shutdown the Raft instance to release all resources
-            if let Err(e) = layer.shutdown().await {
-                tracing::error!(
-                    "Failed to shutdown Raft instance for group {:?}: {}",
-                    group_id,
-                    e
-                );
+            // Shutdown the Raft instance to release all resources with timeout
+            match tokio::time::timeout(std::time::Duration::from_secs(5), layer.shutdown()).await {
+                Ok(Ok(())) => {
+                    tracing::debug!(
+                        "Raft instance for group {:?} shut down successfully",
+                        group_id
+                    );
+                }
+                Ok(Err(e)) => {
+                    tracing::error!(
+                        "Failed to shutdown Raft instance for group {:?}: {}",
+                        group_id,
+                        e
+                    );
+                }
+                Err(_) => {
+                    tracing::error!(
+                        "Timeout while shutting down Raft instance for group {:?}",
+                        group_id
+                    );
+                }
             }
         }
 
@@ -143,7 +178,7 @@ where
                 group_id,
                 raft_config,
                 network_factory,
-                self.log_storage.clone(),
+                self.storage_manager.consensus_storage(),
             )
             .await?,
         );
@@ -542,18 +577,18 @@ where
 }
 
 // Implement Clone for the service
-impl<T, G, L> Clone for GroupConsensusService<T, G, L>
+impl<T, G, S> Clone for GroupConsensusService<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    S: StorageAdaptor + 'static,
 {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
             node_id: self.node_id.clone(),
             network_manager: self.network_manager.clone(),
-            log_storage: self.log_storage.clone(),
+            storage_manager: self.storage_manager.clone(),
             groups: self.groups.clone(),
             event_publisher: self.event_publisher.clone(),
             event_service: self.event_service.clone(),
@@ -562,32 +597,32 @@ where
 }
 
 /// Event handler for group consensus service
-pub struct GroupConsensusEventHandler<T, G, L>
+pub struct GroupConsensusEventHandler<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    S: StorageAdaptor + 'static,
 {
-    service: GroupConsensusService<T, G, L>,
+    service: GroupConsensusService<T, G, S>,
 }
 
-impl<T, G, L> GroupConsensusEventHandler<T, G, L>
+impl<T, G, S> GroupConsensusEventHandler<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    S: StorageAdaptor + 'static,
 {
-    pub fn new(service: GroupConsensusService<T, G, L>) -> Self {
+    pub fn new(service: GroupConsensusService<T, G, S>) -> Self {
         Self { service }
     }
 }
 
 #[async_trait::async_trait]
-impl<T, G, L> EventHandler for GroupConsensusEventHandler<T, G, L>
+impl<T, G, S> EventHandler for GroupConsensusEventHandler<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    S: StorageAdaptor + 'static,
 {
     async fn handle(&self, envelope: EventEnvelope) -> EventingResult<EventResult> {
         tracing::debug!(

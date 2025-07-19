@@ -149,13 +149,17 @@ impl LifecycleService {
     /// Start the lifecycle service
     pub async fn start(&self) -> LifecycleResult<()> {
         let mut state = self.state.write().await;
-        if *state != ServiceState::NotStarted {
-            return Err(LifecycleError::AlreadyRunning(
-                "Lifecycle service".to_string(),
-            ));
+        match *state {
+            ServiceState::NotStarted | ServiceState::Stopped => {
+                *state = ServiceState::Running;
+            }
+            _ => {
+                return Err(LifecycleError::AlreadyRunning(format!(
+                    "Service cannot be started from {:?} state",
+                    *state
+                )));
+            }
         }
-
-        *state = ServiceState::Running;
         drop(state);
 
         info!("Starting lifecycle service");

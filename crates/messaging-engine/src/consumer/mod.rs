@@ -40,11 +40,11 @@ impl ConsumerError for EngineMessagingConsumerError {}
 
 /// An engine messaging consumer.
 #[allow(dead_code)]
-pub struct EngineMessagingConsumer<Tr, G, L, X, T, D, S>
+pub struct EngineMessagingConsumer<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -57,7 +57,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedEngineStream<Tr, G, L, T, D, S>,
+    stream: InitializedEngineStream<Tr, G, St, T, D, S>,
     options: EngineMessagingConsumerOptions,
     handler: X,
     last_processed_seq: u64,
@@ -69,11 +69,11 @@ where
     task_tracker: TaskTracker,
 }
 
-impl<Tr, G, L, X, T, D, S> Debug for EngineMessagingConsumer<Tr, G, L, X, T, D, S>
+impl<Tr, G, St, X, T, D, S> Debug for EngineMessagingConsumer<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -96,11 +96,11 @@ where
     }
 }
 
-impl<Tr, G, L, X, T, D, S> Clone for EngineMessagingConsumer<Tr, G, L, X, T, D, S>
+impl<Tr, G, St, X, T, D, S> Clone for EngineMessagingConsumer<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ConsumerHandler<T, D, S> + Clone,
     T: Clone
         + Debug
@@ -127,11 +127,11 @@ where
 }
 
 #[async_trait]
-impl<Tr, G, L, X, T, D, S> Consumer<X, T, D, S> for EngineMessagingConsumer<Tr, G, L, X, T, D, S>
+impl<Tr, G, St, X, T, D, S> Consumer<X, T, D, S> for EngineMessagingConsumer<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -145,7 +145,7 @@ where
 {
     type Error = EngineMessagingConsumerError;
     type Options = EngineMessagingConsumerOptions;
-    type StreamType = InitializedEngineStream<Tr, G, L, T, D, S>;
+    type StreamType = InitializedEngineStream<Tr, G, St, T, D, S>;
 
     async fn new(
         name: String,
@@ -170,11 +170,11 @@ where
     }
 }
 
-impl<Tr, G, L, X, T, D, S> EngineMessagingConsumer<Tr, G, L, X, T, D, S>
+impl<Tr, G, St, X, T, D, S> EngineMessagingConsumer<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug
@@ -190,7 +190,7 @@ where
     #[allow(clippy::cognitive_complexity)]
     #[allow(clippy::too_many_lines)]
     async fn process_messages(
-        stream: InitializedEngineStream<Tr, G, L, T, D, S>,
+        stream: InitializedEngineStream<Tr, G, St, T, D, S>,
         handler: X,
         current_seq: Arc<Mutex<u64>>,
         start_sequence: u64,
@@ -309,11 +309,11 @@ where
 }
 
 #[async_trait]
-impl<Tr, G, L, X, T, D, S> Bootable for EngineMessagingConsumer<Tr, G, L, X, T, D, S>
+impl<Tr, G, St, X, T, D, S> Bootable for EngineMessagingConsumer<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ConsumerHandler<T, D, S>,
     T: Clone
         + Debug

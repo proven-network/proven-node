@@ -18,11 +18,11 @@ use crate::stream::InitializedEngineStream;
 
 /// An engine messaging service responder.
 #[derive(Clone)]
-pub struct EngineMessagingServiceResponder<Tr, G, L, T, D, S, R, RD, RS>
+pub struct EngineMessagingServiceResponder<Tr, G, St, T, D, S, R, RD, RS>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -43,7 +43,7 @@ where
     RS: Debug + Send + StdError + Sync + 'static,
 {
     /// Stream to send responses to (request stream type)
-    stream: InitializedEngineStream<Tr, G, L, T, D, S>,
+    stream: InitializedEngineStream<Tr, G, St, T, D, S>,
     /// Response stream name where responses should be sent
     response_stream_name: String,
     /// Request ID for correlation
@@ -54,12 +54,12 @@ where
     _marker: PhantomData<(R, RD, RS)>,
 }
 
-impl<Tr, G, L, T, D, S, R, RD, RS> Debug
-    for EngineMessagingServiceResponder<Tr, G, L, T, D, S, R, RD, RS>
+impl<Tr, G, St, T, D, S, R, RD, RS> Debug
+    for EngineMessagingServiceResponder<Tr, G, St, T, D, S, R, RD, RS>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -89,11 +89,11 @@ where
     }
 }
 
-impl<Tr, G, L, T, D, S, R, RD, RS> EngineMessagingServiceResponder<Tr, G, L, T, D, S, R, RD, RS>
+impl<Tr, G, St, T, D, S, R, RD, RS> EngineMessagingServiceResponder<Tr, G, St, T, D, S, R, RD, RS>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -116,7 +116,7 @@ where
     /// Create a new engine messaging service responder.
     #[must_use]
     pub const fn new(
-        stream: InitializedEngineStream<Tr, G, L, T, D, S>,
+        stream: InitializedEngineStream<Tr, G, St, T, D, S>,
         response_stream_name: String,
         request_id: String,
         stream_sequence: u64,
@@ -171,12 +171,12 @@ pub struct EngineMessagingUsedResponder;
 impl UsedServiceResponder for EngineMessagingUsedResponder {}
 
 #[async_trait]
-impl<Tr, G, L, T, TD, TS, R, RD, RS> ServiceResponder<T, TD, TS, R, RD, RS>
-    for EngineMessagingServiceResponder<Tr, G, L, T, TD, TS, R, RD, RS>
+impl<Tr, G, St, T, TD, TS, R, RD, RS> ServiceResponder<T, TD, TS, R, RD, RS>
+    for EngineMessagingServiceResponder<Tr, G, St, T, TD, TS, R, RD, RS>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send

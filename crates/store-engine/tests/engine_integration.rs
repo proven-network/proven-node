@@ -12,6 +12,7 @@
 
 use proven_engine::{EngineBuilder, EngineConfig};
 use proven_network::NetworkManager;
+use proven_storage::manager::StorageManager;
 use proven_storage_memory::MemoryStorage;
 use proven_store::Store;
 use proven_store_engine::EngineStore;
@@ -63,7 +64,7 @@ async fn test_store_with_engine() {
     ));
 
     // Create storage
-    let storage = MemoryStorage::new();
+    let storage_manager = Arc::new(StorageManager::new(MemoryStorage::new()));
 
     // Configure engine for testing
     let mut config = EngineConfig::default();
@@ -76,7 +77,7 @@ async fn test_store_with_engine() {
         .with_config(config)
         .with_network(network_manager)
         .with_topology(topology_manager)
-        .with_storage(storage)
+        .with_storage(storage_manager)
         .build()
         .await
         .expect("Failed to build engine");
@@ -175,14 +176,14 @@ async fn test_scoped_stores_with_engine() {
     ));
 
     // Create storage and engine
-    let storage = MemoryStorage::new();
+    let storage_manager = Arc::new(StorageManager::new(MemoryStorage::new()));
     let config = EngineConfig::default();
 
     let mut engine = EngineBuilder::new(node_id.clone())
         .with_config(config)
         .with_network(network_manager)
         .with_topology(topology_manager)
-        .with_storage(storage)
+        .with_storage(storage_manager)
         .build()
         .await
         .expect("Failed to build engine");
@@ -250,7 +251,7 @@ async fn test_store_persistence_across_recreations() {
     ));
 
     // Create storage
-    let storage = MemoryStorage::new();
+    let storage_manager = Arc::new(StorageManager::new(MemoryStorage::new()));
 
     // Configure engine for testing
     let mut config = EngineConfig::default();
@@ -263,7 +264,7 @@ async fn test_store_persistence_across_recreations() {
         .with_config(config)
         .with_network(network_manager)
         .with_topology(topology_manager)
-        .with_storage(storage)
+        .with_storage(storage_manager)
         .build()
         .await
         .expect("Failed to build engine");
@@ -444,7 +445,7 @@ async fn test_store_handles_existing_streams() {
     ));
 
     // Create storage
-    let storage = MemoryStorage::new();
+    let storage_manager = Arc::new(StorageManager::new(MemoryStorage::new()));
 
     // Configure engine for testing
     let mut config = EngineConfig::default();
@@ -457,7 +458,7 @@ async fn test_store_handles_existing_streams() {
         .with_config(config)
         .with_network(network_manager)
         .with_topology(topology_manager)
-        .with_storage(storage)
+        .with_storage(storage_manager)
         .build()
         .await
         .expect("Failed to build engine");

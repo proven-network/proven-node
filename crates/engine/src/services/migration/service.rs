@@ -108,13 +108,17 @@ impl MigrationService {
     /// Start the migration service
     pub async fn start(&self) -> MigrationResult<()> {
         let mut state = self.state.write().await;
-        if *state != ServiceState::NotStarted {
-            return Err(MigrationError::InvalidState(
-                "Service already started or stopped".to_string(),
-            ));
+        match *state {
+            ServiceState::NotStarted | ServiceState::Stopped => {
+                *state = ServiceState::Running;
+            }
+            _ => {
+                return Err(MigrationError::InvalidState(format!(
+                    "Service cannot be started from {:?} state",
+                    *state
+                )));
+            }
         }
-
-        *state = ServiceState::Running;
         drop(state);
 
         info!("Starting migration service");

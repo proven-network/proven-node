@@ -27,23 +27,23 @@ use crate::service::EngineMessagingService;
 use crate::subject::EngineMessagingSubject;
 
 /// Options for the engine stream.
-pub struct EngineStreamOptions<T, G, L>
+pub struct EngineStreamOptions<T, G, St>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     /// Optional stream configuration
     pub stream_config: Option<StreamConfig>,
     /// Engine client
-    pub client: EngineClient<T, G, L>,
+    pub client: EngineClient<T, G, St>,
 }
 
-impl<T, G, L> Clone for EngineStreamOptions<T, G, L>
+impl<T, G, St> Clone for EngineStreamOptions<T, G, St>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -53,26 +53,26 @@ where
     }
 }
 
-impl<T, G, L> Default for EngineStreamOptions<T, G, L>
+impl<T, G, St> Default for EngineStreamOptions<T, G, St>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     fn default() -> Self {
         panic!("EngineStreamOptions requires a client to be provided")
     }
 }
 
-impl<T, G, L> EngineStreamOptions<T, G, L>
+impl<T, G, St> EngineStreamOptions<T, G, St>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     /// Create new engine stream options with an engine client
     #[must_use]
-    pub const fn new(client: EngineClient<T, G, L>, stream_config: Option<StreamConfig>) -> Self {
+    pub const fn new(client: EngineClient<T, G, St>, stream_config: Option<StreamConfig>) -> Self {
         Self {
             stream_config,
             client,
@@ -80,11 +80,11 @@ where
     }
 }
 
-impl<T, G, L> Debug for EngineStreamOptions<T, G, L>
+impl<T, G, St> Debug for EngineStreamOptions<T, G, St>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EngineStreamOptions")
@@ -94,20 +94,20 @@ where
     }
 }
 
-impl<T, G, L> StreamOptions for EngineStreamOptions<T, G, L>
+impl<T, G, St> StreamOptions for EngineStreamOptions<T, G, St>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
 }
 
 /// An initialized engine stream.
-pub struct InitializedEngineStream<Tr, G, L, T, D, S>
+pub struct InitializedEngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -122,10 +122,10 @@ where
     name: String,
 
     /// Engine client.
-    client: EngineClient<Tr, G, L>,
+    client: EngineClient<Tr, G, St>,
 
     /// Stream options.
-    options: EngineStreamOptions<Tr, G, L>,
+    options: EngineStreamOptions<Tr, G, St>,
 
     /// Local cache of stream data.
     cache: Arc<RwLock<HashMap<u64, T>>>,
@@ -134,11 +134,11 @@ where
     _marker: PhantomData<(T, D, S)>,
 }
 
-impl<Tr, G, L, T, D, S> Debug for InitializedEngineStream<Tr, G, L, T, D, S>
+impl<Tr, G, St, T, D, S> Debug for InitializedEngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -159,11 +159,11 @@ where
     }
 }
 
-impl<Tr, G, L, T, D, S> Clone for InitializedEngineStream<Tr, G, L, T, D, S>
+impl<Tr, G, St, T, D, S> Clone for InitializedEngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -186,11 +186,11 @@ where
 }
 
 #[async_trait]
-impl<Tr, G, L, T, D, S> InitializedStream<T, D, S> for InitializedEngineStream<Tr, G, L, T, D, S>
+impl<Tr, G, St, T, D, S> InitializedStream<T, D, S> for InitializedEngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -202,21 +202,21 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     type Error = MessagingEngineError;
-    type Options = EngineStreamOptions<Tr, G, L>;
-    type Subject = EngineMessagingSubject<Tr, G, L, T, D, S>;
+    type Options = EngineStreamOptions<Tr, G, St>;
+    type Subject = EngineMessagingSubject<Tr, G, St, T, D, S>;
 
     type Client<X>
-        = EngineMessagingClient<Tr, G, L, X, T, D, S>
+        = EngineMessagingClient<Tr, G, St, X, T, D, S>
     where
         X: proven_messaging::service_handler::ServiceHandler<T, D, S>;
 
     type Consumer<X>
-        = EngineMessagingConsumer<Tr, G, L, X, T, D, S>
+        = EngineMessagingConsumer<Tr, G, St, X, T, D, S>
     where
         X: proven_messaging::consumer_handler::ConsumerHandler<T, D, S>;
 
     type Service<X>
-        = EngineMessagingService<Tr, G, L, X, T, D, S>
+        = EngineMessagingService<Tr, G, St, X, T, D, S>
     where
         X: proven_messaging::service_handler::ServiceHandler<T, D, S>;
 
@@ -486,11 +486,11 @@ where
     }
 }
 
-impl<Tr, G, L, T, D, S> InitializedEngineStream<Tr, G, L, T, D, S>
+impl<Tr, G, St, T, D, S> InitializedEngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -540,11 +540,11 @@ where
 }
 
 /// An engine-backed stream.
-pub struct EngineStream<Tr, G, L, T, D, S>
+pub struct EngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -556,15 +556,15 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    options: EngineStreamOptions<Tr, G, L>,
+    options: EngineStreamOptions<Tr, G, St>,
     _marker: PhantomData<(T, D, S)>,
 }
 
-impl<Tr, G, L, T, D, S> Debug for EngineStream<Tr, G, L, T, D, S>
+impl<Tr, G, St, T, D, S> Debug for EngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -583,11 +583,11 @@ where
     }
 }
 
-impl<Tr, G, L, T, D, S> Clone for EngineStream<Tr, G, L, T, D, S>
+impl<Tr, G, St, T, D, S> Clone for EngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -608,11 +608,11 @@ where
 }
 
 #[async_trait]
-impl<Tr, G, L, T, D, S> Stream<T, D, S> for EngineStream<Tr, G, L, T, D, S>
+impl<Tr, G, St, T, D, S> Stream<T, D, S> for EngineStream<Tr, G, St, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     T: Clone
         + Debug
         + Send
@@ -623,9 +623,9 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    type Options = EngineStreamOptions<Tr, G, L>;
-    type Initialized = InitializedEngineStream<Tr, G, L, T, D, S>;
-    type Subject = EngineMessagingSubject<Tr, G, L, T, D, S>;
+    type Options = EngineStreamOptions<Tr, G, St>;
+    type Initialized = InitializedEngineStream<Tr, G, St, T, D, S>;
+    type Subject = EngineMessagingSubject<Tr, G, St, T, D, S>;
 
     fn new<K>(stream_name: K, options: Self::Options) -> Self
     where
@@ -688,11 +688,11 @@ macro_rules! impl_scoped_stream {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            pub struct [< EngineStream $index >]<Tr, G, L, T, D, S>
+            pub struct [< EngineStream $index >]<Tr, G, St, T, D, S>
             where
                 Tr: proven_transport::Transport + 'static,
                 G: proven_topology::TopologyAdaptor + 'static,
-                L: proven_storage::LogStorageWithDelete + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -704,15 +704,15 @@ macro_rules! impl_scoped_stream {
                 S: Debug + Send + StdError + Sync + 'static,
             {
                 name: String,
-                options: EngineStreamOptions<Tr, G, L>,
+                options: EngineStreamOptions<Tr, G, St>,
                 _marker: PhantomData<(T, D, S)>,
             }
 
-            impl<Tr, G, L, T, D, S> [< EngineStream $index >]<Tr, G, L, T, D, S>
+            impl<Tr, G, St, T, D, S> [< EngineStream $index >]<Tr, G, St, T, D, S>
             where
                 Tr: proven_transport::Transport + 'static,
                 G: proven_topology::TopologyAdaptor + 'static,
-                L: proven_storage::LogStorageWithDelete + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -725,7 +725,7 @@ macro_rules! impl_scoped_stream {
             {
                 /// Create a new engine stream.
                 #[must_use]
-                pub const fn new(name: String, options: EngineStreamOptions<Tr, G, L>) -> Self {
+                pub const fn new(name: String, options: EngineStreamOptions<Tr, G, St>) -> Self {
                     Self {
                         name,
                         options,
@@ -734,11 +734,11 @@ macro_rules! impl_scoped_stream {
                 }
             }
 
-            impl<Tr, G, L, T, D, S> Debug for [< EngineStream $index >]<Tr, G, L, T, D, S>
+            impl<Tr, G, St, T, D, S> Debug for [< EngineStream $index >]<Tr, G, St, T, D, S>
             where
                 Tr: proven_transport::Transport + 'static,
                 G: proven_topology::TopologyAdaptor + 'static,
-                L: proven_storage::LogStorageWithDelete + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -757,11 +757,11 @@ macro_rules! impl_scoped_stream {
                 }
             }
 
-            impl<Tr, G, L, T, D, S> Clone for [< EngineStream $index >]<Tr, G, L, T, D, S>
+            impl<Tr, G, St, T, D, S> Clone for [< EngineStream $index >]<Tr, G, St, T, D, S>
             where
                 Tr: proven_transport::Transport + 'static,
                 G: proven_topology::TopologyAdaptor + 'static,
-                L: proven_storage::LogStorageWithDelete + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -783,11 +783,11 @@ macro_rules! impl_scoped_stream {
 
 
             #[async_trait]
-            impl<Tr, G, L, T, D, S> [< Stream $index >]<T, D, S> for [< EngineStream $index >]<Tr, G, L, T, D, S>
+            impl<Tr, G, St, T, D, S> [< Stream $index >]<T, D, S> for [< EngineStream $index >]<Tr, G, St, T, D, S>
             where
                 Tr: proven_transport::Transport + 'static,
                 G: proven_topology::TopologyAdaptor + 'static,
-                L: proven_storage::LogStorageWithDelete + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
                 T: Clone
                     + Debug
                     + Send
@@ -798,14 +798,14 @@ macro_rules! impl_scoped_stream {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
-                type Options = EngineStreamOptions<Tr, G, L>;
-                type Scoped = $parent<Tr, G, L, T, D, S>;
+                type Options = EngineStreamOptions<Tr, G, St>;
+                type Scoped = $parent<Tr, G, St, T, D, S>;
 
-                fn scope<K>(&self, scope: K) -> $parent<Tr, G, L, T, D, S>
+                fn scope<K>(&self, scope: K) -> $parent<Tr, G, St, T, D, S>
                 where
                     K: AsRef<str> + Send,
                 {
-                    $parent::<Tr, G, L, T, D, S> {
+                    $parent::<Tr, G, St, T, D, S> {
                         name: format!("{}_{}", self.name, scope.as_ref()),
                         options: self.options.clone(),
                         _marker: PhantomData,

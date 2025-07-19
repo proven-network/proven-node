@@ -84,13 +84,17 @@ impl MonitoringService {
     /// Start the monitoring service
     pub async fn start(&self) -> MonitoringResult<()> {
         let mut state = self.state.write().await;
-        if *state != ServiceState::NotStarted {
-            return Err(MonitoringError::Internal(
-                "Service already started or stopped".to_string(),
-            ));
+        match *state {
+            ServiceState::NotStarted | ServiceState::Stopped => {
+                *state = ServiceState::Running;
+            }
+            _ => {
+                return Err(MonitoringError::Internal(format!(
+                    "Service cannot be started from {:?} state",
+                    *state
+                )));
+            }
         }
-
-        *state = ServiceState::Running;
         drop(state);
 
         if !self.config.enabled {

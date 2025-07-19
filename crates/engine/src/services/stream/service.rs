@@ -8,7 +8,9 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, oneshot};
 use tracing::{debug, error, info, warn};
 
-use proven_storage::{LogStorageWithDelete, StorageNamespace};
+use proven_storage::{
+    LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace, StreamStorage,
+};
 
 use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
 use crate::foundation::traits::{HealthStatus, ServiceHealth, ServiceLifecycle, SubsystemHealth};
@@ -20,7 +22,7 @@ use crate::services::stream::storage::{
 use crate::services::stream::{PersistenceType, StreamConfig, StreamName};
 
 /// Type alias for stream storage map
-type StreamStorageMap<L> = HashMap<StreamName, Arc<StreamStorageImpl<L>>>;
+type StreamStorageMap<S> = HashMap<StreamName, Arc<StreamStorageImpl<StreamStorage<S>>>>;
 
 /// Stream metadata
 #[derive(Debug, Clone)]
@@ -63,12 +65,12 @@ impl Default for StreamServiceConfig {
 }
 
 /// Stream service for managing stream storage and operations
-pub struct StreamService<L: LogStorageWithDelete> {
+pub struct StreamService<S: StorageAdaptor> {
     /// Service configuration
     config: StreamServiceConfig,
 
     /// Stream storage instances by stream name
-    streams: Arc<RwLock<StreamStorageMap<L>>>,
+    streams: Arc<RwLock<StreamStorageMap<S>>>,
 
     /// Stream configurations
     stream_configs: Arc<RwLock<HashMap<StreamName, StreamConfig>>>,
@@ -76,8 +78,8 @@ pub struct StreamService<L: LogStorageWithDelete> {
     /// Stream metadata
     stream_metadata: Arc<RwLock<HashMap<StreamName, StreamMetadata>>>,
 
-    /// Storage backend for persistent streams
-    storage: L,
+    /// Storage manager for persistent streams
+    storage_manager: Arc<StorageManager<S>>,
 
     /// Event service reference
     event_service: Arc<RwLock<Option<Arc<EventService>>>>,
@@ -92,15 +94,15 @@ pub struct StreamService<L: LogStorageWithDelete> {
     background_tasks: Arc<RwLock<Vec<tokio::task::JoinHandle<()>>>>,
 }
 
-impl<L: LogStorageWithDelete> StreamService<L> {
+impl<S: StorageAdaptor> StreamService<S> {
     /// Create a new stream service
-    pub fn new(config: StreamServiceConfig, storage: L) -> Self {
+    pub fn new(config: StreamServiceConfig, storage_manager: Arc<StorageManager<S>>) -> Self {
         Self {
             config,
             streams: Arc::new(RwLock::new(HashMap::new())),
             stream_configs: Arc::new(RwLock::new(HashMap::new())),
             stream_metadata: Arc::new(RwLock::new(HashMap::new())),
-            storage,
+            storage_manager,
             event_service: Arc::new(RwLock::new(None)),
             is_running: Arc::new(RwLock::new(false)),
             shutdown: Arc::new(RwLock::new(None)),
@@ -135,7 +137,7 @@ impl<L: LogStorageWithDelete> StreamService<L> {
             let namespace = proven_storage::StorageNamespace::new(format!("stream_{name}"));
             let storage = Arc::new(StreamStorageImpl::persistent(
                 name.clone(),
-                self.storage.clone(),
+                self.storage_manager.stream_storage(),
                 namespace,
             ));
 
@@ -160,7 +162,7 @@ impl<L: LogStorageWithDelete> StreamService<L> {
         &self,
         stream_name: &StreamName,
         group_id: &str,
-    ) -> Arc<StreamStorageImpl<L>> {
+    ) -> Arc<StreamStorageImpl<StreamStorage<S>>> {
         let mut streams = self.streams.write().await;
 
         if let Some(storage) = streams.get(stream_name) {
@@ -182,7 +184,7 @@ impl<L: LogStorageWithDelete> StreamService<L> {
                 ));
                 Arc::new(StreamStorageImpl::persistent(
                     stream_name.clone(),
-                    self.storage.clone(),
+                    self.storage_manager.stream_storage(),
                     namespace,
                 ))
             }
@@ -361,7 +363,10 @@ impl<L: LogStorageWithDelete> StreamService<L> {
     }
 
     /// Get stream storage for reading
-    pub async fn get_stream(&self, stream_name: &StreamName) -> Option<Arc<StreamStorageImpl<L>>> {
+    pub async fn get_stream(
+        &self,
+        stream_name: &StreamName,
+    ) -> Option<Arc<StreamStorageImpl<StreamStorage<S>>>> {
         self.streams.read().await.get(stream_name).cloned()
     }
 
@@ -415,9 +420,9 @@ impl<L: LogStorageWithDelete> StreamService<L> {
             .collect()
     }
 
-    /// Get the underlying storage
-    pub fn storage(&self) -> L {
-        self.storage.clone()
+    /// Get the underlying storage manager
+    pub fn storage_manager(&self) -> Arc<StorageManager<S>> {
+        self.storage_manager.clone()
     }
 
     /// Delete a message from storage immediately (for consensus operations)
@@ -427,8 +432,8 @@ impl<L: LogStorageWithDelete> StreamService<L> {
         sequence: u64,
     ) -> ConsensusResult<bool> {
         let storage_namespace = StorageNamespace::new(format!("stream_{stream_name}"));
-        match self
-            .storage
+        let stream_storage = self.storage_manager.stream_storage();
+        match stream_storage
             .delete_entry(&storage_namespace, sequence)
             .await
         {
@@ -476,14 +481,14 @@ impl<L: LogStorageWithDelete> StreamService<L> {
 }
 
 // Implement Clone for StreamService to match other services
-impl<L: LogStorageWithDelete> Clone for StreamService<L> {
+impl<S: StorageAdaptor> Clone for StreamService<S> {
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
             streams: self.streams.clone(),
             stream_configs: self.stream_configs.clone(),
             stream_metadata: self.stream_metadata.clone(),
-            storage: self.storage.clone(),
+            storage_manager: self.storage_manager.clone(),
             event_service: self.event_service.clone(),
             is_running: self.is_running.clone(),
             shutdown: self.shutdown.clone(),
@@ -493,7 +498,7 @@ impl<L: LogStorageWithDelete> Clone for StreamService<L> {
 }
 
 #[async_trait::async_trait]
-impl<L: LogStorageWithDelete + 'static> ServiceLifecycle for StreamService<L> {
+impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
     async fn start(&self) -> ConsensusResult<()> {
         info!("Starting StreamService");
 
@@ -624,7 +629,7 @@ mod tests {
     use proven_storage::{LogStorage, StorageNamespace, StorageResult};
 
     // Create a dummy storage implementation for testing
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct DummyStorage;
 
     #[async_trait::async_trait]
@@ -678,10 +683,13 @@ mod tests {
         }
     }
 
+    impl StorageAdaptor for DummyStorage {}
+
     #[tokio::test]
     async fn test_stream_service_lifecycle() {
         let config = StreamServiceConfig::default();
-        let service = StreamService::new(config, DummyStorage);
+        let storage_manager = Arc::new(StorageManager::new(DummyStorage));
+        let service = StreamService::new(config, storage_manager);
 
         // Should not be running initially
         assert!(!service.is_running().await);
@@ -708,7 +716,8 @@ mod tests {
     #[tokio::test]
     async fn test_stream_operations() {
         let config = StreamServiceConfig::default();
-        let service = StreamService::new(config, DummyStorage);
+        let storage_manager = Arc::new(StorageManager::new(DummyStorage));
+        let service = StreamService::new(config, storage_manager);
 
         let stream_name = StreamName::new("test-stream");
         let stream_config = StreamConfig {

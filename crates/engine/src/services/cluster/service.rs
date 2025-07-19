@@ -168,13 +168,17 @@ where
     /// Start the cluster service
     pub async fn start(&self) -> ClusterResult<()> {
         let mut state = self.service_state.write().await;
-        if *state != ServiceState::NotStarted {
-            return Err(ClusterError::Internal(
-                "Service already started or stopped".to_string(),
-            ));
+        match *state {
+            ServiceState::NotStarted | ServiceState::Stopped => {
+                *state = ServiceState::Running;
+            }
+            _ => {
+                return Err(ClusterError::Internal(format!(
+                    "Service cannot be started from {:?} state",
+                    *state
+                )));
+            }
         }
-
-        *state = ServiceState::Running;
         drop(state);
 
         info!("Starting cluster service for node {}", self.node_id);
@@ -220,6 +224,13 @@ where
                 warn!("Error stopping cluster task: {}", e);
             }
         }
+
+        // Skip unregistering the service handler from NetworkManager
+        // The handlers are mostly stateless and can safely remain registered
+        // Unregistering was causing hangs, possibly due to Arc reference cycles
+        tracing::debug!(
+            "Skipping cluster service handler unregistration to avoid potential deadlock"
+        );
 
         let mut state = self.service_state.write().await;
         *state = ServiceState::Stopped;
@@ -821,6 +832,13 @@ where
                 return Ok(());
             }
         };
+
+        // First, try to unregister any existing handler (in case of restart)
+        use super::messages::ClusterServiceMessage;
+        let _ = discovery_manager
+            .network
+            .unregister_service::<ClusterServiceMessage>()
+            .await;
 
         let network = discovery_manager.network.clone();
         let node_id = self.node_id.clone();

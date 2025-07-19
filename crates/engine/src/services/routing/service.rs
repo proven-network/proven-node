@@ -101,13 +101,17 @@ impl RoutingService {
     /// Start the routing service internally
     async fn start_internal(&self) -> RoutingResult<()> {
         let mut state = self.state.write().await;
-        if *state != ServiceState::NotStarted {
-            return Err(RoutingError::Internal(
-                "Service already started or stopped".to_string(),
-            ));
+        match *state {
+            ServiceState::NotStarted | ServiceState::Stopped => {
+                *state = ServiceState::Running;
+            }
+            _ => {
+                return Err(RoutingError::Internal(format!(
+                    "Service cannot be started from {:?} state",
+                    *state
+                )));
+            }
         }
-
-        *state = ServiceState::Running;
         drop(state);
 
         info!("Starting routing service internal");

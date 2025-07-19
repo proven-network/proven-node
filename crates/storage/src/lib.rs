@@ -3,12 +3,13 @@
 //! This crate provides a minimal log storage interface without imposing
 //! implementation details on storage backends.
 
+pub mod adaptor;
 pub mod log;
+pub mod manager;
 
 // Re-export the essential types
+pub use adaptor::StorageAdaptor;
 pub use log::{
     LogStorage, LogStorageWithDelete, StorageError, StorageKey, StorageNamespace, StorageResult,
 };
-
-// Version information
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub use manager::{ConsensusStorage, StorageManager, StreamStorage};

@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use proven_storage::LogStorageWithDelete;
+use proven_storage::StorageAdaptor;
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
@@ -28,26 +28,26 @@ use crate::{
 /// - Stream operations (create, delete, publish)
 /// - Group operations (create, delete, query)
 /// - Cluster operations (query status)
-pub struct Client<T, G, L>
+pub struct Client<T, G, S>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorageWithDelete,
+    S: StorageAdaptor,
 {
     /// Reference to the client service
-    client_service: Arc<ClientService<T, G, L>>,
+    client_service: Arc<ClientService<T, G, S>>,
     /// Node ID for reference
     node_id: NodeId,
 }
 
-impl<T, G, L> Client<T, G, L>
+impl<T, G, S> Client<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorageWithDelete + 'static,
+    S: StorageAdaptor + 'static,
 {
     /// Create a new client
-    pub(crate) fn new(client_service: Arc<ClientService<T, G, L>>, node_id: NodeId) -> Self {
+    pub(crate) fn new(client_service: Arc<ClientService<T, G, S>>, node_id: NodeId) -> Self {
         Self {
             client_service,
             node_id,
@@ -222,11 +222,11 @@ where
     }
 }
 
-impl<T, G, L> Clone for Client<T, G, L>
+impl<T, G, S> Clone for Client<T, G, S>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorageWithDelete,
+    S: StorageAdaptor,
 {
     fn clone(&self) -> Self {
         Self {

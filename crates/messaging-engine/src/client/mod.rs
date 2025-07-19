@@ -58,11 +58,11 @@ pub enum EngineMessagingClientError {
 impl ClientError for EngineMessagingClientError {}
 
 /// An engine messaging client.
-pub struct EngineMessagingClient<Tr, G, L, X, T, D, S>
+pub struct EngineMessagingClient<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -75,7 +75,7 @@ where
     S: Debug + Send + StdError + Sync + 'static,
 {
     name: String,
-    stream: InitializedEngineStream<Tr, G, L, T, D, S>,
+    stream: InitializedEngineStream<Tr, G, St, T, D, S>,
     options: EngineMessagingClientOptions,
     /// Counter for generating unique request IDs
     request_id_counter: Arc<AtomicUsize>,
@@ -83,14 +83,14 @@ where
     response_map: Arc<TokioMutex<ResponseMap<X::ResponseType>>>,
     /// Response stream name for this client
     response_stream_name: String,
-    _marker: PhantomData<(Tr, G, L, X)>,
+    _marker: PhantomData<(Tr, G, St, X)>,
 }
 
-impl<Tr, G, L, X, T, D, S> Debug for EngineMessagingClient<Tr, G, L, X, T, D, S>
+impl<Tr, G, St, X, T, D, S> Debug for EngineMessagingClient<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -113,11 +113,11 @@ where
     }
 }
 
-impl<Tr, G, L, X, T, D, S> Clone for EngineMessagingClient<Tr, G, L, X, T, D, S>
+impl<Tr, G, St, X, T, D, S> Clone for EngineMessagingClient<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -143,11 +143,11 @@ where
 }
 
 #[async_trait]
-impl<Tr, G, L, X, T, D, S> Client<X, T, D, S> for EngineMessagingClient<Tr, G, L, X, T, D, S>
+impl<Tr, G, St, X, T, D, S> Client<X, T, D, S> for EngineMessagingClient<Tr, G, St, X, T, D, S>
 where
     Tr: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
     X: ServiceHandler<T, D, S>,
     T: Clone
         + Debug
@@ -162,7 +162,7 @@ where
     type Error = EngineMessagingClientError;
     type Options = EngineMessagingClientOptions;
     type ResponseType = X::ResponseType;
-    type StreamType = InitializedEngineStream<Tr, G, L, T, D, S>;
+    type StreamType = InitializedEngineStream<Tr, G, St, T, D, S>;
 
     async fn new(
         name: String,

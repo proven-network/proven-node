@@ -296,6 +296,25 @@ where
         Ok(())
     }
 
+    /// Unregister a service handler
+    pub async fn unregister_service<M>(&self) -> NetworkResult<()>
+    where
+        M: ServiceMessage,
+    {
+        let service_id = M::service_id();
+
+        if self.service_handlers.remove(service_id).is_some() {
+            info!("Unregistered service handler for '{}'", service_id);
+            Ok(())
+        } else {
+            warn!(
+                "Attempted to unregister non-existent service '{}'",
+                service_id
+            );
+            Ok(()) // Don't error on double-unregister
+        }
+    }
+
     /// Send a typed request to a service and wait for response
     pub async fn request_service<M>(
         &self,

@@ -104,13 +104,17 @@ impl EventService {
     /// Start the event service
     pub async fn start(&mut self) -> EventingResult<()> {
         let mut state = self.state.write().await;
-        if *state != ServiceState::NotStarted {
-            return Err(EventError::Internal(
-                "Service already started or stopped".to_string(),
-            ));
+        match *state {
+            ServiceState::NotStarted | ServiceState::Stopped => {
+                *state = ServiceState::Running;
+            }
+            _ => {
+                return Err(EventError::Internal(format!(
+                    "Service cannot be started from {:?} state",
+                    *state
+                )));
+            }
         }
-
-        *state = ServiceState::Running;
         drop(state);
 
         info!("Starting event service");

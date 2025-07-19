@@ -16,6 +16,7 @@ use proven_messaging_engine::client::EngineMessagingClientOptions;
 use proven_messaging_engine::service::EngineMessagingServiceOptions;
 use proven_messaging_engine::stream::{EngineStream, EngineStreamOptions};
 use proven_network::NetworkManager;
+use proven_storage::manager::StorageManager;
 use proven_storage_memory::MemoryStorage;
 use proven_topology::{Node as TopologyNode, NodeId, TopologyManager};
 use proven_topology_mock::MockTopologyAdaptor;
@@ -190,7 +191,7 @@ async fn create_test_engine()
     ));
 
     // Create storage
-    let storage = MemoryStorage::new();
+    let storage_manager = Arc::new(StorageManager::new(MemoryStorage::new()));
 
     // Configure engine
     let mut config = EngineConfig::default();
@@ -203,7 +204,7 @@ async fn create_test_engine()
         .with_config(config)
         .with_network(network_manager)
         .with_topology(topology_manager)
-        .with_storage(storage)
+        .with_storage(storage_manager)
         .build()
         .await
         .expect("Failed to build engine");

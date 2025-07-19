@@ -140,3 +140,44 @@ pub trait LogStorageWithDelete: LogStorage {
     /// Returns true if the entry existed and was deleted, false if it didn't exist
     async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool>;
 }
+
+/// Implement LogStorage for Arc<T> where T: LogStorage
+#[async_trait]
+impl<T: LogStorage> LogStorage for std::sync::Arc<T> {
+    async fn append(
+        &self,
+        namespace: &StorageNamespace,
+        entries: Vec<(u64, Bytes)>,
+    ) -> StorageResult<()> {
+        (**self).append(namespace, entries).await
+    }
+
+    async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+        (**self).bounds(namespace).await
+    }
+
+    async fn compact_before(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+        (**self).compact_before(namespace, index).await
+    }
+
+    async fn read_range(
+        &self,
+        namespace: &StorageNamespace,
+        start: u64,
+        end: u64,
+    ) -> StorageResult<Vec<(u64, Bytes)>> {
+        (**self).read_range(namespace, start, end).await
+    }
+
+    async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+        (**self).truncate_after(namespace, index).await
+    }
+}
+
+/// Implement LogStorageWithDelete for Arc<T> where T: LogStorageWithDelete
+#[async_trait]
+impl<T: LogStorageWithDelete> LogStorageWithDelete for std::sync::Arc<T> {
+    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+        (**self).delete_entry(namespace, index).await
+    }
+}

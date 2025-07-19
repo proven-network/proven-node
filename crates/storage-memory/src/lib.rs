@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_storage::{StorageNamespace, StorageResult};
+use proven_storage::{StorageAdaptor, StorageNamespace, StorageResult};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -181,6 +181,14 @@ impl proven_storage::LogStorage for MemoryStorage {
             Ok(None)
         }
     }
+}
+
+// Implement StorageAdaptor for MemoryStorage
+// Since MemoryStorage already implements LogStorage + LogStorageWithDelete,
+// we just need to implement the trait with any additional methods
+impl StorageAdaptor for MemoryStorage {
+    // Use default implementations
+    // shutdown() uses default implementation since memory storage doesn't need cleanup
 }
 
 // Implement LogStorageWithDelete for MemoryStorage

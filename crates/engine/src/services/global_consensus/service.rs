@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use proven_network::NetworkManager;
-use proven_storage::LogStorage;
+use proven_storage::{ConsensusStorage, LogStorage, StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
@@ -19,12 +19,15 @@ use crate::{
     },
 };
 
+/// Type alias for the consensus layer storage
+type ConsensusLayer<S> = Arc<RwLock<Option<Arc<GlobalConsensusLayer<ConsensusStorage<S>>>>>>;
+
 /// Global consensus service
-pub struct GlobalConsensusService<T, G, L>
+pub struct GlobalConsensusService<T, G, S>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorage,
+    S: StorageAdaptor,
 {
     /// Configuration
     config: GlobalConsensusConfig,
@@ -32,10 +35,10 @@ where
     node_id: NodeId,
     /// Network manager
     network_manager: Arc<NetworkManager<T, G>>,
-    /// Storage
-    storage: L,
+    /// Storage manager
+    storage_manager: Arc<StorageManager<S>>,
     /// Consensus layer (initialized after cluster formation)
-    consensus_layer: Arc<RwLock<Option<Arc<GlobalConsensusLayer<L>>>>>,
+    consensus_layer: ConsensusLayer<S>,
     /// Service state
     state: Arc<RwLock<ServiceState>>,
     /// Topology manager
@@ -46,24 +49,24 @@ where
     handlers_registered: Arc<RwLock<bool>>,
 }
 
-impl<T, G, L> GlobalConsensusService<T, G, L>
+impl<T, G, S> GlobalConsensusService<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorage + 'static,
+    S: StorageAdaptor + 'static,
 {
     /// Create new global consensus service
     pub fn new(
         config: GlobalConsensusConfig,
         node_id: NodeId,
         network_manager: Arc<NetworkManager<T, G>>,
-        storage: L,
+        storage_manager: Arc<StorageManager<S>>,
     ) -> Self {
         Self {
             config,
             node_id,
             network_manager,
-            storage,
+            storage_manager,
             consensus_layer: Arc::new(RwLock::new(None)),
             state: Arc::new(RwLock::new(ServiceState::NotInitialized)),
             topology_manager: None,
@@ -87,13 +90,17 @@ where
     /// Start the service
     pub async fn start(&self) -> ConsensusResult<()> {
         let mut state = self.state.write().await;
-        if *state != ServiceState::NotInitialized {
-            return Err(ConsensusError::with_context(
-                ErrorKind::InvalidState,
-                "Service already started",
-            ));
+        match *state {
+            ServiceState::NotInitialized | ServiceState::Stopped => {
+                *state = ServiceState::Initializing;
+            }
+            _ => {
+                return Err(ConsensusError::with_context(
+                    ErrorKind::InvalidState,
+                    "Service already started",
+                ));
+            }
         }
-        *state = ServiceState::Initializing;
 
         // Don't register handlers here - they will be registered after consensus layer is created
         // self.register_message_handlers().await?;
@@ -108,19 +115,43 @@ where
         *state = ServiceState::Stopped;
         drop(state);
 
+        // First, unregister the service handler from NetworkManager
+        // Do this before shutting down Raft to avoid potential deadlocks
+        use super::messages::GlobalConsensusMessage;
+        tracing::debug!("Unregistering global consensus service handler");
+        if let Err(e) = self
+            .network_manager
+            .unregister_service::<GlobalConsensusMessage>()
+            .await
+        {
+            tracing::warn!("Failed to unregister global consensus service: {}", e);
+        } else {
+            tracing::debug!("Global consensus service handler unregistered");
+        }
+
         // Shutdown the Raft instance if it exists
         let mut consensus_layer = self.consensus_layer.write().await;
         if let Some(layer) = consensus_layer.as_ref() {
-            // Shutdown the Raft instance to release all resources
-            if let Err(e) = layer.shutdown().await {
-                tracing::error!("Failed to shutdown global Raft instance: {}", e);
+            // Shutdown the Raft instance to release all resources with timeout
+            match tokio::time::timeout(std::time::Duration::from_secs(5), layer.shutdown()).await {
+                Ok(Ok(())) => {
+                    tracing::debug!("Global Raft instance shut down successfully");
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("Failed to shutdown global Raft instance: {}", e);
+                }
+                Err(_) => {
+                    tracing::error!("Timeout while shutting down global Raft instance");
+                }
             }
         }
 
         // Clear the consensus layer to release all references
         *consensus_layer = None;
         drop(consensus_layer);
+        tracing::debug!("Consensus layer cleared and lock released");
 
+        tracing::debug!("GlobalConsensusService stop completed");
         Ok(())
     }
 
@@ -130,7 +161,7 @@ where
         let config = self.config.clone();
         let node_id = self.node_id.clone();
         let network_manager = self.network_manager.clone();
-        let storage = self.storage.clone();
+        let storage_manager = self.storage_manager.clone();
         let topology_manager = self.topology_manager.clone();
         let event_publisher = self.event_publisher.clone();
 
@@ -139,7 +170,7 @@ where
             let config = config.clone();
             let node_id = node_id.clone();
             let network_manager = network_manager.clone();
-            let storage = storage.clone();
+            let storage_manager = storage_manager.clone();
             let topology_manager = topology_manager.clone();
             let event_publisher = event_publisher.clone();
 
@@ -155,11 +186,13 @@ where
                         );
 
                         // Create and initialize consensus layer
+                        // Get consensus storage view for global consensus
+                        let consensus_storage = storage_manager.consensus_storage();
                         let layer = match Self::create_consensus_layer(
                             &config,
                             node_id.clone(),
                             network_manager.clone(),
-                            storage,
+                            consensus_storage,
                             event_publisher.clone(),
                         )
                         .await
@@ -282,11 +315,13 @@ where
                         );
 
                         // Create consensus layer as follower
+                        // Get consensus storage view for global consensus
+                        let consensus_storage = storage_manager.consensus_storage();
                         let layer = match Self::create_consensus_layer(
                             &config,
                             node_id.clone(),
                             network_manager.clone(),
-                            storage,
+                            consensus_storage,
                             event_publisher.clone(),
                         )
                         .await
@@ -343,13 +378,16 @@ where
     }
 
     /// Create consensus layer
-    async fn create_consensus_layer(
+    async fn create_consensus_layer<L>(
         config: &GlobalConsensusConfig,
         node_id: NodeId,
         network_manager: Arc<NetworkManager<T, G>>,
         storage: L,
         event_publisher: Option<EventPublisher>,
-    ) -> ConsensusResult<Arc<GlobalConsensusLayer<L>>> {
+    ) -> ConsensusResult<Arc<GlobalConsensusLayer<L>>>
+    where
+        L: LogStorage + 'static,
+    {
         use super::adaptor::GlobalNetworkFactory;
         use openraft::Config;
 
@@ -380,7 +418,7 @@ where
 
     /// Register message handlers
     async fn register_message_handlers_static(
-        consensus_layer: Arc<RwLock<Option<Arc<GlobalConsensusLayer<L>>>>>,
+        consensus_layer: ConsensusLayer<S>,
         network_manager: Arc<NetworkManager<T, G>>,
     ) -> ConsensusResult<()> {
         use super::messages::{GlobalConsensusMessage, GlobalConsensusResponse};

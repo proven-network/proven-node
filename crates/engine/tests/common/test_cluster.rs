@@ -2,7 +2,7 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -11,6 +11,7 @@ use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
 use proven_engine::{Engine, EngineBuilder, EngineConfig};
 use proven_network::NetworkManager;
+use proven_storage::{StorageAdaptor, StorageManager};
 use proven_storage_memory::MemoryStorage;
 use proven_storage_rocksdb::RocksDbStorage;
 use proven_topology::{Node as TopologyNode, TopologyAdaptor, Version};
@@ -57,6 +58,9 @@ pub struct TestCluster {
     cluster_id: String,
     /// Temp directories to keep alive
     temp_dirs: Vec<TempDir>,
+    /// Storage managers for RocksDB nodes (kept alive across restarts)
+    rocksdb_storage_managers:
+        std::sync::Mutex<HashMap<String, Arc<StorageManager<RocksDbStorage>>>>,
 }
 
 impl TestCluster {
@@ -95,6 +99,7 @@ impl TestCluster {
             versions,
             cluster_id,
             temp_dirs: Vec::new(),
+            rocksdb_storage_managers: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -286,8 +291,9 @@ impl TestCluster {
             topology_manager.clone(),
         ));
 
-        // Create storage
+        // Create storage manager
         let storage = MemoryStorage::new();
+        let storage_manager = Arc::new(StorageManager::new(storage));
 
         // Create engine
         let config = self.create_test_config();
@@ -295,7 +301,7 @@ impl TestCluster {
             .with_config(config)
             .with_network(network_manager.clone())
             .with_topology(topology_manager.clone())
-            .with_storage(storage.clone())
+            .with_storage(storage_manager)
             .build()
             .await
             .expect("Failed to build engine");
@@ -412,15 +418,15 @@ impl TestCluster {
     }
 
     /// Wait for all nodes to have joined consensus groups
-    pub async fn wait_for_group_formation<T, G, L>(
+    pub async fn wait_for_group_formation<T, G, S>(
         &self,
-        engines: &[Engine<T, G, L>],
+        engines: &[Engine<T, G, S>],
         timeout: Duration,
     ) -> Result<(), String>
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
-        L: proven_storage::LogStorageWithDelete,
+        S: StorageAdaptor,
     {
         let start = Instant::now();
 
@@ -473,9 +479,9 @@ impl TestCluster {
     }
 
     /// Wait for a specific group to be formed on all expected nodes
-    pub async fn wait_for_specific_group<T, G, L>(
+    pub async fn wait_for_specific_group<T, G, S>(
         &self,
-        engines: &[Engine<T, G, L>],
+        engines: &[Engine<T, G, S>],
         group_id: proven_engine::foundation::types::ConsensusGroupId,
         expected_members: usize,
         timeout: Duration,
@@ -483,7 +489,7 @@ impl TestCluster {
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
-        L: proven_storage::LogStorageWithDelete,
+        S: StorageAdaptor,
     {
         let start = Instant::now();
 
@@ -587,21 +593,26 @@ impl TestCluster {
         // This ensures all nodes are in governance before any network/engine starts
         for i in 0..count {
             // Use existing node info if provided (for restarts), otherwise generate new
-            let (signing_key, node_id) = if let Some(ref existing) = existing_node_infos {
-                let info = &existing[i];
-                (info.signing_key.clone(), info.node_id.clone())
-            } else {
-                let signing_key = SigningKey::generate(&mut OsRng);
-                let node_id = NodeId::from(signing_key.verifying_key());
-                (signing_key, node_id)
-            };
+            let (signing_key, node_id, existing_port) =
+                if let Some(ref existing) = existing_node_infos {
+                    let info = &existing[i];
+                    (
+                        info.signing_key.clone(),
+                        info.node_id.clone(),
+                        Some(info.port),
+                    )
+                } else {
+                    let signing_key = SigningKey::generate(&mut OsRng);
+                    let node_id = NodeId::from(signing_key.verifying_key());
+                    (signing_key, node_id, None)
+                };
 
             // Use cluster ID and node ID in path to ensure consistency across restarts
             let path = temp_dir_path
                 .join(&self.cluster_id)
                 .join(format!("node_{node_id}"));
             let (engine, info, network_manager, transport, topology_manager) = self
-                .create_tcp_node_without_starting_with_rocksdb(path, signing_key)
+                .create_tcp_node_without_starting_with_rocksdb(path, signing_key, existing_port)
                 .await;
             engines.push(engine);
             node_infos.push(info);
@@ -690,6 +701,7 @@ impl TestCluster {
         &mut self,
         path: std::path::PathBuf,
         signing_key: SigningKey,
+        existing_port: Option<u16>,
     ) -> (
         Engine<
             TcpTransport<MockTopologyAdaptor, MockAttestor>,
@@ -703,13 +715,20 @@ impl TestCluster {
     ) {
         // Use the provided signing key
         let node_id = NodeId::from(signing_key.verifying_key());
-        let port = allocate_port();
+        let port = existing_port.unwrap_or_else(allocate_port);
 
         info!("Creating TCP node {} on port {}", node_id, port);
 
-        // Add node to governance
-        self.add_node_to_governance(&signing_key, port).await;
-        info!("Added node {} to governance with port {}", node_id, port);
+        // Only add node to governance if it's not already there (i.e., no existing port)
+        if existing_port.is_none() {
+            self.add_node_to_governance(&signing_key, port).await;
+            info!("Added node {} to governance with port {}", node_id, port);
+        } else {
+            info!(
+                "Node {} already in governance, reusing port {}",
+                node_id, port
+            );
+        }
 
         // Create governance instance for this node
         let governance = self.governance.read().await.clone();
@@ -750,13 +769,34 @@ impl TestCluster {
             topology_manager.clone(),
         ));
 
-        // Ensure the directory exists
-        std::fs::create_dir_all(&path).expect("Failed to create directory for RocksDB");
+        // Check if we already have a storage manager for this node (for restarts)
+        let node_key = node_id.to_string();
+        let existing_manager = {
+            let managers = self.rocksdb_storage_managers.lock().unwrap();
+            managers.get(&node_key).cloned()
+        };
 
-        // Create RocksDB storage
-        let storage = RocksDbStorage::new(path)
-            .await
-            .expect("Failed to create RocksDB storage");
+        let storage_manager = if let Some(existing) = existing_manager {
+            info!("Reusing existing storage manager for node {}", node_id);
+            existing
+        } else {
+            // Ensure the directory exists
+            std::fs::create_dir_all(&path).expect("Failed to create directory for RocksDB");
+
+            // Create RocksDB storage and storage manager
+            let storage = RocksDbStorage::new(path)
+                .await
+                .expect("Failed to create RocksDB storage");
+            let storage_manager = Arc::new(StorageManager::new(storage));
+
+            // Store it for future reuse
+            {
+                let mut managers = self.rocksdb_storage_managers.lock().unwrap();
+                managers.insert(node_key.clone(), storage_manager.clone());
+            }
+            info!("Created new storage manager for node {}", node_id);
+            storage_manager
+        };
 
         // Create engine
         let config = self.create_test_config();
@@ -764,7 +804,7 @@ impl TestCluster {
             .with_config(config)
             .with_network(network_manager.clone())
             .with_topology(topology_manager.clone())
-            .with_storage(storage.clone())
+            .with_storage(storage_manager)
             .build()
             .await
             .expect("Failed to build engine");
@@ -786,5 +826,103 @@ impl TestCluster {
             transport,
             topology_manager,
         )
+    }
+
+    /// Stop a specific engine by index
+    pub async fn stop_engine<T, G, L>(
+        &self,
+        engines: &mut [Engine<T, G, L>],
+        index: usize,
+    ) -> Result<(), proven_engine::error::ConsensusError>
+    where
+        T: proven_transport::Transport,
+        G: proven_topology::TopologyAdaptor,
+        L: proven_storage::StorageAdaptor,
+    {
+        if index >= engines.len() {
+            return Err(proven_engine::error::ConsensusError::with_context(
+                proven_engine::error::ErrorKind::InvalidState,
+                format!("Engine index {index} out of bounds"),
+            ));
+        }
+
+        info!("Stopping engine at index {}", index);
+        engines[index].stop().await?;
+        info!("Engine at index {} stopped successfully", index);
+        Ok(())
+    }
+
+    /// Start a specific engine by index
+    pub async fn start_engine<T, G, L>(
+        &self,
+        engines: &mut [Engine<T, G, L>],
+        index: usize,
+    ) -> Result<(), proven_engine::error::ConsensusError>
+    where
+        T: proven_transport::Transport,
+        G: proven_topology::TopologyAdaptor,
+        L: proven_storage::StorageAdaptor,
+    {
+        if index >= engines.len() {
+            return Err(proven_engine::error::ConsensusError::with_context(
+                proven_engine::error::ErrorKind::InvalidState,
+                format!("Engine index {index} out of bounds"),
+            ));
+        }
+
+        info!("Starting engine at index {}", index);
+        engines[index].start().await?;
+        info!("Engine at index {} started successfully", index);
+        Ok(())
+    }
+
+    /// Stop all engines
+    pub async fn stop_all_engines<T, G, L>(
+        &self,
+        engines: &mut [Engine<T, G, L>],
+    ) -> Result<(), proven_engine::error::ConsensusError>
+    where
+        T: proven_transport::Transport,
+        G: proven_topology::TopologyAdaptor,
+        L: proven_storage::StorageAdaptor,
+    {
+        info!("Stopping all {} engines", engines.len());
+        for (i, engine) in engines.iter_mut().enumerate() {
+            info!("Stopping engine {}", i);
+            engine.stop().await?;
+        }
+        info!("All engines stopped successfully");
+        Ok(())
+    }
+
+    /// Start all engines
+    pub async fn start_all_engines<T, G, L>(
+        &self,
+        engines: &mut [Engine<T, G, L>],
+    ) -> Result<(), proven_engine::error::ConsensusError>
+    where
+        T: proven_transport::Transport,
+        G: proven_topology::TopologyAdaptor,
+        L: proven_storage::StorageAdaptor,
+    {
+        info!("Starting all {} engines", engines.len());
+        let mut start_futures = Vec::new();
+        for (i, engine) in engines.iter_mut().enumerate() {
+            info!("Preparing to start engine {}", i);
+            start_futures.push(engine.start());
+        }
+
+        // Wait for all engines to start
+        let results = futures::future::join_all(start_futures).await;
+        for (i, result) in results.into_iter().enumerate() {
+            result.map_err(|e| {
+                proven_engine::error::ConsensusError::with_context(
+                    proven_engine::error::ErrorKind::InvalidState,
+                    format!("Failed to start engine {i}: {e:?}"),
+                )
+            })?;
+        }
+        info!("All engines started successfully");
+        Ok(())
     }
 }

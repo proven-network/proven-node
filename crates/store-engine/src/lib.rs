@@ -183,20 +183,20 @@ trait ClientWrapper: Debug + Send + Sync + 'static {
 }
 
 /// Wrapper implementation for the engine client
-struct ClientWrapperImpl<T, G, L>
+struct ClientWrapperImpl<T, G, St>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
-    inner: Client<T, G, L>,
+    inner: Client<T, G, St>,
 }
 
-impl<T, G, L> Debug for ClientWrapperImpl<T, G, L>
+impl<T, G, St> Debug for ClientWrapperImpl<T, G, St>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ClientWrapperImpl").finish()
@@ -204,11 +204,11 @@ where
 }
 
 #[async_trait]
-impl<T, G, L> ClientWrapper for ClientWrapperImpl<T, G, L>
+impl<T, G, St> ClientWrapper for ClientWrapperImpl<T, G, St>
 where
     T: proven_transport::Transport + Debug + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + Debug + 'static,
+    St: proven_storage::StorageAdaptor + Debug + 'static,
 {
     async fn create_stream_auto(&self, name: String, config: StreamConfig) -> Result<(), Error> {
         self.inner
@@ -266,11 +266,11 @@ where
 {
     /// Create a new engine store with automatic group assignment
     #[must_use]
-    pub fn new<Tr, G, L>(client: Client<Tr, G, L>) -> Self
+    pub fn new<Tr, G, St>(client: Client<Tr, G, St>) -> Self
     where
         Tr: proven_transport::Transport + Debug + 'static,
         G: proven_topology::TopologyAdaptor + 'static,
-        L: proven_storage::LogStorageWithDelete + Debug + 'static,
+        St: proven_storage::StorageAdaptor + Debug + 'static,
     {
         Self {
             client: Arc::new(ClientWrapperImpl { inner: client }),
@@ -802,13 +802,13 @@ macro_rules! impl_scoped_store {
                 S: Debug + Send + StdError + Sync + 'static,
             {
                 /// Create a new scoped engine store with automatic group assignment
-                #[must_use] pub fn new<Tr, G, L>(
-                    client: Client<Tr, G, L>,
+                #[must_use] pub fn new<Tr, G, St>(
+                    client: Client<Tr, G, St>,
                 ) -> Self
                 where
                     Tr: proven_transport::Transport + Debug + 'static,
                     G: proven_topology::TopologyAdaptor + 'static,
-                    L: proven_storage::LogStorageWithDelete + Debug + 'static,
+                    St: proven_storage::StorageAdaptor + Debug + 'static,
                 {
                     Self {
                         client: Arc::new(ClientWrapperImpl { inner: client }),

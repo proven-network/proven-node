@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::services::stream::StreamStorageReader;
+use proven_storage::{StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{debug, info};
@@ -36,11 +37,11 @@ type OptionalServiceRef<T> = Arc<RwLock<Option<Arc<T>>>>;
 type OptionalNetworkManager<T, G> = Arc<RwLock<Option<Arc<proven_network::NetworkManager<T, G>>>>>;
 
 /// Client service for handling client requests
-pub struct ClientService<T, G, L>
+pub struct ClientService<T, G, S>
 where
     T: proven_transport::Transport,
     G: proven_topology::TopologyAdaptor,
-    L: proven_storage::LogStorageWithDelete,
+    S: StorageAdaptor,
 {
     /// Service name
     name: String,
@@ -55,16 +56,16 @@ where
     request_tx: mpsc::Sender<ClientRequest>,
 
     /// Global consensus service (set after construction)
-    global_consensus: OptionalServiceRef<GlobalConsensusService<T, G, L>>,
+    global_consensus: OptionalServiceRef<GlobalConsensusService<T, G, S>>,
 
     /// Group consensus service (set after construction)
-    group_consensus: OptionalServiceRef<GroupConsensusService<T, G, L>>,
+    group_consensus: OptionalServiceRef<GroupConsensusService<T, G, S>>,
 
     /// Routing service (set after construction)
     routing_service: OptionalServiceRef<RoutingService>,
 
     /// Stream service (set after construction, for direct reads)
-    stream_service: OptionalServiceRef<crate::services::stream::StreamService<L>>,
+    stream_service: OptionalServiceRef<crate::services::stream::StreamService<S>>,
 
     /// Event service (set after construction)
     event_service: Arc<RwLock<Option<Arc<crate::services::event::EventService>>>>,
@@ -79,14 +80,14 @@ where
     shutdown: Arc<RwLock<Option<oneshot::Sender<()>>>>,
 
     /// Type markers
-    _phantom: std::marker::PhantomData<(T, G, L)>,
+    _phantom: std::marker::PhantomData<(T, G, S)>,
 }
 
-impl<T, G, L> ClientService<T, G, L>
+impl<T, G, S> ClientService<T, G, S>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    S: StorageAdaptor + 'static,
 {
     /// Create a new client service
     pub fn new(node_id: NodeId) -> Self {
@@ -110,12 +111,12 @@ where
     }
 
     /// Set the global consensus service reference
-    pub async fn set_global_consensus(&self, service: Arc<GlobalConsensusService<T, G, L>>) {
+    pub async fn set_global_consensus(&self, service: Arc<GlobalConsensusService<T, G, S>>) {
         *self.global_consensus.write().await = Some(service);
     }
 
     /// Set the group consensus service reference
-    pub async fn set_group_consensus(&self, service: Arc<GroupConsensusService<T, G, L>>) {
+    pub async fn set_group_consensus(&self, service: Arc<GroupConsensusService<T, G, S>>) {
         *self.group_consensus.write().await = Some(service);
     }
 
@@ -127,7 +128,7 @@ where
     /// Set the stream service reference
     pub async fn set_stream_service(
         &self,
-        service: Arc<crate::services::stream::StreamService<L>>,
+        service: Arc<crate::services::stream::StreamService<S>>,
     ) {
         *self.stream_service.write().await = Some(service);
     }
@@ -442,12 +443,14 @@ where
 
     /// Process incoming client requests
     async fn process_requests(&self) {
-        let mut request_rx = self
-            .request_rx
-            .write()
-            .await
-            .take()
-            .expect("Request receiver already taken");
+        let mut request_rx = match self.request_rx.write().await.take() {
+            Some(rx) => rx,
+            None => {
+                // Receiver already taken - this can happen if service was restarted
+                tracing::warn!("Request receiver already taken, process_requests returning early");
+                return;
+            }
+        };
         let global_consensus = self.global_consensus.clone();
         let group_consensus = self.group_consensus.clone();
         let routing_service = self.routing_service.clone();
@@ -1110,11 +1113,11 @@ where
 }
 
 #[async_trait::async_trait]
-impl<T, G, L> ServiceLifecycle for ClientService<T, G, L>
+impl<T, G, S> ServiceLifecycle for ClientService<T, G, S>
 where
     T: proven_transport::Transport + 'static,
     G: proven_topology::TopologyAdaptor + 'static,
-    L: proven_storage::LogStorageWithDelete + 'static,
+    S: StorageAdaptor + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         info!("Starting ClientService");
@@ -1167,6 +1170,20 @@ where
         // Signal shutdown
         if let Some(shutdown_tx) = self.shutdown.write().await.take() {
             let _ = shutdown_tx.send(());
+        }
+
+        // Unregister the service handler from NetworkManager first
+        use super::messages::ClientServiceMessage;
+        if let Some(network_manager) = self.network_manager.read().await.as_ref() {
+            tracing::debug!("Unregistering client service handler");
+            if let Err(e) = network_manager
+                .unregister_service::<ClientServiceMessage>()
+                .await
+            {
+                tracing::warn!("Failed to unregister client service: {}", e);
+            } else {
+                tracing::debug!("Client service handler unregistered");
+            }
         }
 
         // Drop the request receiver to stop processing

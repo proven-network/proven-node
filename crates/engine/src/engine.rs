@@ -10,7 +10,7 @@ use tokio::time::Duration;
 use tracing::{error, info, warn};
 
 use proven_network::NetworkManager;
-use proven_storage::LogStorageWithDelete;
+use proven_storage::{StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
@@ -38,11 +38,11 @@ use super::config::EngineConfig;
 use super::coordinator::ServiceCoordinator;
 
 /// Consensus engine
-pub struct Engine<T, G, L>
+pub struct Engine<T, G, S>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorageWithDelete,
+    S: StorageAdaptor,
 {
     /// Node ID
     node_id: NodeId,
@@ -62,16 +62,16 @@ where
     migration_service: Arc<MigrationService>,
     lifecycle_service: Arc<LifecycleService>,
     pubsub_service: Arc<PubSubService<T, G>>,
-    client_service: Arc<ClientService<T, G, L>>,
-    stream_service: Arc<StreamService<L>>,
+    client_service: Arc<ClientService<T, G, S>>,
+    stream_service: Arc<StreamService<S>>,
 
     /// Consensus services
-    global_consensus_service: Option<Arc<GlobalConsensusService<T, G, L>>>,
-    group_consensus_service: Option<Arc<GroupConsensusService<T, G, L>>>,
+    global_consensus_service: Option<Arc<GlobalConsensusService<T, G, S>>>,
+    group_consensus_service: Option<Arc<GroupConsensusService<T, G, S>>>,
 
     /// Dependencies
     network_manager: Arc<NetworkManager<T, G>>,
-    storage: L,
+    storage_manager: Arc<StorageManager<S>>,
 
     /// Topology manager for node information
     topology_manager: Option<Arc<proven_topology::TopologyManager<G>>>,
@@ -95,11 +95,11 @@ pub enum EngineState {
     Stopped,
 }
 
-impl<T, G, L> Engine<T, G, L>
+impl<T, G, S> Engine<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorageWithDelete + 'static,
+    S: StorageAdaptor + 'static,
 {
     /// Create a new engine (use EngineBuilder instead)
     #[allow(clippy::too_many_arguments)]
@@ -115,10 +115,10 @@ where
         migration_service: Arc<MigrationService>,
         lifecycle_service: Arc<LifecycleService>,
         pubsub_service: Arc<PubSubService<T, G>>,
-        client_service: Arc<ClientService<T, G, L>>,
-        stream_service: Arc<StreamService<L>>,
+        client_service: Arc<ClientService<T, G, S>>,
+        stream_service: Arc<StreamService<S>>,
         network_manager: Arc<NetworkManager<T, G>>,
-        storage: L,
+        storage_manager: Arc<StorageManager<S>>,
     ) -> Self {
         Self {
             node_id,
@@ -137,7 +137,7 @@ where
             global_consensus_service: None,
             group_consensus_service: None,
             network_manager,
-            storage,
+            storage_manager,
             state: Arc::new(tokio::sync::RwLock::new(EngineState::NotInitialized)),
             topology_manager: None,
         }
@@ -146,8 +146,8 @@ where
     /// Set the consensus services
     pub(super) fn set_consensus_services(
         &mut self,
-        global: Arc<GlobalConsensusService<T, G, L>>,
-        group: Arc<GroupConsensusService<T, G, L>>,
+        global: Arc<GlobalConsensusService<T, G, S>>,
+        group: Arc<GroupConsensusService<T, G, S>>,
     ) {
         self.global_consensus_service = Some(global);
         self.group_consensus_service = Some(group);
@@ -166,13 +166,17 @@ where
         // Check state
         {
             let mut state = self.state.write().await;
-            if *state != EngineState::NotInitialized {
-                return Err(ConsensusError::with_context(
-                    ErrorKind::InvalidState,
-                    "Engine already started or stopped",
-                ));
+            match *state {
+                EngineState::NotInitialized | EngineState::Stopped => {
+                    *state = EngineState::Initializing;
+                }
+                _ => {
+                    return Err(ConsensusError::with_context(
+                        ErrorKind::InvalidState,
+                        format!("Engine cannot be started from {:?} state", *state),
+                    ));
+                }
             }
-            *state = EngineState::Initializing;
         }
 
         info!("Starting consensus engine for node {}", self.node_id);
@@ -216,6 +220,11 @@ where
         if let Err(e) = self.coordinator.stop_all().await {
             error!("Error stopping services: {}", e);
         }
+
+        // Note: We intentionally do NOT shut down the storage manager here
+        // This allows the engine to be restarted without releasing storage locks
+        // The storage will be properly shut down when the storage manager is dropped
+        info!("Engine services stopped, storage remains available for restart");
 
         // Update state
         {
@@ -318,7 +327,7 @@ where
     }
 
     /// Get a client for interacting with the consensus engine
-    pub fn client(&self) -> crate::client::Client<T, G, L> {
+    pub fn client(&self) -> crate::client::Client<T, G, S> {
         crate::client::Client::new(self.client_service.clone(), self.node_id.clone())
     }
 
@@ -385,23 +394,23 @@ pub struct EngineHealth {
 }
 
 /// Engine handle wrapper for network service
-pub struct EngineHandleWrapper<T, G, L>
+pub struct EngineHandleWrapper<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorageWithDelete + 'static,
+    S: StorageAdaptor + 'static,
 {
-    engine: Arc<tokio::sync::Mutex<Engine<T, G, L>>>,
+    engine: Arc<tokio::sync::Mutex<Engine<T, G, S>>>,
 }
 
-impl<T, G, L> EngineHandleWrapper<T, G, L>
+impl<T, G, S> EngineHandleWrapper<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorageWithDelete + 'static,
+    S: StorageAdaptor + 'static,
 {
     /// Create a new engine handle wrapper
-    pub fn new(engine: Arc<tokio::sync::Mutex<Engine<T, G, L>>>) -> Self {
+    pub fn new(engine: Arc<tokio::sync::Mutex<Engine<T, G, S>>>) -> Self {
         Self { engine }
     }
 }

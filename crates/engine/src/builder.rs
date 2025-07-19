@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use proven_network::NetworkManager;
-use proven_storage::{LogStorage, LogStorageWithDelete};
+use proven_storage::{LogStorage, LogStorageWithDelete, StorageAdaptor, StorageManager};
 use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
@@ -22,11 +22,11 @@ use super::coordinator::ServiceCoordinator;
 use super::engine::Engine;
 
 /// Engine builder
-pub struct EngineBuilder<T, G, L>
+pub struct EngineBuilder<T, G, S>
 where
     T: Transport,
     G: TopologyAdaptor,
-    L: LogStorageWithDelete,
+    S: StorageAdaptor,
 {
     /// Node ID
     node_id: NodeId,
@@ -40,15 +40,15 @@ where
     /// Topology manager
     topology_manager: Option<Arc<TopologyManager<G>>>,
 
-    /// Storage
-    storage: Option<L>,
+    /// Storage manager
+    storage_manager: Option<Arc<StorageManager<S>>>,
 }
 
-impl<T, G, L> EngineBuilder<T, G, L>
+impl<T, G, S> EngineBuilder<T, G, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
-    L: LogStorageWithDelete + 'static,
+    S: StorageAdaptor + 'static,
 {
     /// Create a new engine builder
     pub fn new(node_id: NodeId) -> Self {
@@ -57,7 +57,7 @@ where
             config: None,
             network_manager: None,
             topology_manager: None,
-            storage: None,
+            storage_manager: None,
         }
     }
 
@@ -79,14 +79,14 @@ where
         self
     }
 
-    /// Set storage
-    pub fn with_storage(mut self, storage: L) -> Self {
-        self.storage = Some(storage);
+    /// Set storage manager
+    pub fn with_storage(mut self, storage_manager: Arc<StorageManager<S>>) -> Self {
+        self.storage_manager = Some(storage_manager);
         self
     }
 
     /// Build the engine
-    pub async fn build(self) -> ConsensusResult<Engine<T, G, L>> {
+    pub async fn build(self) -> ConsensusResult<Engine<T, G, S>> {
         // Validate required fields
         let config = self.config.ok_or_else(|| {
             ConsensusError::with_context(ErrorKind::Configuration, "Config not set")
@@ -100,8 +100,8 @@ where
             ConsensusError::with_context(ErrorKind::Configuration, "Topology manager not set")
         })?;
 
-        let storage = self.storage.ok_or_else(|| {
-            ConsensusError::with_context(ErrorKind::Configuration, "Storage not set")
+        let storage_manager = self.storage_manager.ok_or_else(|| {
+            ConsensusError::with_context(ErrorKind::Configuration, "Storage manager not set")
         })?;
 
         // Create service coordinator
@@ -136,7 +136,7 @@ where
                 global_consensus_config,
                 self.node_id.clone(),
                 network_manager.clone(),
-                storage.clone(),
+                storage_manager.clone(),
             )
             .with_topology(topology_manager.clone())
             .with_event_publisher(event_service.create_publisher()),
@@ -155,7 +155,7 @@ where
                 group_consensus_config,
                 self.node_id.clone(),
                 network_manager.clone(),
-                storage.clone(), // Used for consensus logs
+                storage_manager.clone(),
             )
             .with_event_publisher(event_service.create_publisher()),
         );
@@ -196,13 +196,13 @@ where
             self.node_id.clone(),
         ));
 
-        // Create ClientService
+        // Create ClientService with StorageManager (which implements LogStorageWithDelete)
         let client_service = Arc::new(ClientService::new(self.node_id.clone()));
 
-        // Create StreamService
+        // Create StreamService with storage manager
         use crate::services::stream::{StreamService, StreamServiceConfig};
         let stream_config = StreamServiceConfig::default();
-        let stream_service = Arc::new(StreamService::new(stream_config, storage.clone()));
+        let stream_service = Arc::new(StreamService::new(stream_config, storage_manager.clone()));
 
         // Create service wrappers that implement ServiceLifecycle
         let network_service = Arc::new(network_service);
@@ -339,7 +339,7 @@ where
             client_service,
             stream_service,
             network_manager,
-            storage,
+            storage_manager,
         );
 
         // Set consensus services
@@ -611,12 +611,12 @@ where
 
 // Implement for GlobalConsensusService
 #[async_trait]
-impl<T, G, L> ServiceLifecycle
-    for ServiceWrapper<crate::services::global_consensus::GlobalConsensusService<T, G, L>>
+impl<T, G, S> ServiceLifecycle
+    for ServiceWrapper<crate::services::global_consensus::GlobalConsensusService<T, G, S>>
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    L: LogStorage + Send + Sync + 'static,
+    S: StorageAdaptor + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
@@ -646,12 +646,12 @@ where
 
 // Implement for GroupConsensusService
 #[async_trait]
-impl<T, G, L> ServiceLifecycle
-    for ServiceWrapper<crate::services::group_consensus::GroupConsensusService<T, G, L>>
+impl<T, G, S> ServiceLifecycle
+    for ServiceWrapper<crate::services::group_consensus::GroupConsensusService<T, G, S>>
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    L: LogStorage + Send + Sync + 'static,
+    S: StorageAdaptor + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
@@ -681,11 +681,11 @@ where
 
 // Implement for ClientService
 #[async_trait]
-impl<T, G, L> ServiceLifecycle for ServiceWrapper<crate::services::client::ClientService<T, G, L>>
+impl<T, G, S> ServiceLifecycle for ServiceWrapper<crate::services::client::ClientService<T, G, S>>
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    L: LogStorageWithDelete + Send + Sync + 'static,
+    S: StorageAdaptor + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
@@ -706,9 +706,9 @@ where
 
 // Implement for StreamService
 #[async_trait]
-impl<L> ServiceLifecycle for ServiceWrapper<crate::services::stream::StreamService<L>>
+impl<S> ServiceLifecycle for ServiceWrapper<crate::services::stream::StreamService<S>>
 where
-    L: LogStorageWithDelete + Send + Sync + 'static,
+    S: StorageAdaptor + Send + Sync + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await

@@ -30,6 +30,7 @@ use proven_engine::{
 };
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::NetworkManager;
+use proven_storage::StorageManager;
 use proven_storage_rocksdb::RocksDbStorage;
 use proven_topology::{NodeId, TopologyManager};
 use proven_topology::{TopologyAdaptor, Version};
@@ -143,9 +144,11 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     };
 
     // Create RocksDB storage
-    let storage = RocksDbStorage::new(&bootstrap.config.rocksdb_store_dir)
+    let storage_adaptor = RocksDbStorage::new(&bootstrap.config.rocksdb_store_dir)
         .await
         .map_err(|e| Error::Storage(format!("Failed to create RocksDB storage: {e}")))?;
+
+    let storage_manager = Arc::new(StorageManager::new(storage_adaptor));
 
     // Create HTTP server and Core first, before starting the engine
     let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));
@@ -175,7 +178,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         .with_config(engine_config)
         .with_network(network_manager.clone())
         .with_topology(topology_manager.clone())
-        .with_storage(storage)
+        .with_storage(storage_manager)
         .build()
         .await
         .map_err(|e| Error::Consensus(format!("failed to build engine: {e}")))?;
