@@ -100,7 +100,8 @@ pub struct GroupRoute {
     pub group_id: ConsensusGroupId,
     /// Group members
     pub members: Vec<NodeId>,
-    /// Group leader
+    /// Group leader (only known for local groups, None for remote groups)
+    /// Note: Not used for routing decisions - we route to any member
     pub leader: Option<NodeId>,
     /// Number of streams (used for load balancing new stream creation)
     pub stream_count: usize,
@@ -134,8 +135,6 @@ pub struct GroupLocationInfo {
     pub is_local: bool,
     /// Nodes that have this group
     pub nodes: Vec<NodeId>,
-    /// Current leader of the group
-    pub leader: Option<NodeId>,
 }
 
 /// Group health status

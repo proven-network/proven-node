@@ -14,7 +14,7 @@ use proven_topology::NodeId;
 use super::balancer::LoadBalancer;
 use super::router::{OperationRouter, RouteDecision};
 use super::table::RoutingTable;
-use super::types::*;
+use super::types::{GroupLocation, *};
 
 /// Routing service for consensus operations
 pub struct RoutingService {
@@ -151,12 +151,8 @@ impl RoutingService {
     async fn start_event_subscription(&self, event_service: Arc<EventService>) {
         use crate::services::event::{EventFilter, EventType};
 
-        // Subscribe to events we care about
-        let filter = EventFilter::ByType(vec![
-            EventType::Stream,
-            EventType::Group,
-            EventType::Consensus,
-        ]);
+        // Subscribe only to consensus events for leadership changes
+        let filter = EventFilter::ByType(vec![EventType::Consensus]);
 
         match event_service
             .subscribe("routing_service".to_string(), filter)
@@ -164,14 +160,10 @@ impl RoutingService {
         {
             Ok(mut subscriber) => {
                 let routing_table = self.routing_table.clone();
-                let local_node_id = self.local_node_id.clone();
 
                 tokio::spawn(async move {
                     while let Some(envelope) = subscriber.recv().await {
-                        if let Err(e) =
-                            Self::handle_event_static(envelope, &routing_table, &local_node_id)
-                                .await
-                        {
+                        if let Err(e) = Self::handle_event_static(envelope, &routing_table).await {
                             error!("Failed to handle routing event: {}", e);
                         }
                     }
@@ -186,77 +178,43 @@ impl RoutingService {
         }
     }
 
-    /// Static event handler
+    /// Static event handler - only handles leadership changes not covered by callbacks
     async fn handle_event_static(
         envelope: crate::services::event::EventEnvelope,
         routing_table: &Arc<RoutingTable>,
-        local_node_id: &NodeId,
     ) -> RoutingResult<()> {
         use crate::services::event::Event;
 
         match envelope.event {
-            Event::StreamCreated {
-                name,
-                group_id,
-                config,
-            } => {
-                let route = StreamRoute {
-                    stream_name: name.to_string(),
-                    group_id,
-                    assigned_at: SystemTime::now(),
-                    strategy: RoutingStrategy::Sticky,
-                    is_active: true,
-                    config: Some(config),
-                };
-                routing_table
-                    .update_stream_route(name.to_string(), route)
-                    .await?;
-                info!(
-                    "Updated routing for new stream: {} -> group {:?}",
-                    name, group_id
-                );
-            }
-            Event::StreamDeleted { name, .. } => {
-                routing_table.remove_stream_route(&name.to_string()).await?;
-                info!("Removed routing for deleted stream: {}", name);
-            }
-            Event::GroupCreated { group_id, members } => {
-                let is_local = members.contains(local_node_id);
-                let route = GroupRoute {
-                    group_id,
-                    members,
-                    leader: None,
-                    stream_count: 0,
-                    health: GroupHealth::Healthy,
-                    last_updated: SystemTime::now(),
-                    location: if is_local {
-                        GroupLocation::Local
-                    } else {
-                        GroupLocation::Remote
-                    },
-                };
-                routing_table.update_group_route(group_id, route).await?;
-                info!(
-                    "Updated routing for new group: {:?} (local: {})",
-                    group_id, is_local
-                );
-            }
             Event::GroupLeaderChanged {
                 group_id,
                 new_leader,
                 ..
             } => {
-                if let Ok(Some(mut route)) = routing_table.get_group_route(group_id).await {
-                    route.leader = Some(new_leader);
+                // Only track leader for local groups (where we participate in consensus)
+                if let Ok(Some(mut route)) = routing_table.get_group_route(group_id).await
+                    && (route.location == GroupLocation::Local
+                        || route.location == GroupLocation::Distributed)
+                {
+                    route.leader = Some(new_leader.clone());
                     route.last_updated = SystemTime::now();
                     routing_table.update_group_route(group_id, route).await?;
+                    info!(
+                        "Updated leader for local group {:?} to {}",
+                        group_id, new_leader
+                    );
                 }
+                // For remote groups, we don't track the leader as we don't participate in their consensus
             }
             Event::GlobalLeaderChanged { new_leader, .. } => {
-                routing_table.update_global_leader(Some(new_leader)).await;
+                // Global leader changes need to be handled here
+                routing_table
+                    .update_global_leader(Some(new_leader.clone()))
+                    .await;
+                info!("Updated global leader to {}", new_leader);
             }
             _ => {
-                // Other events don't affect routing
+                // All other routing updates come through callbacks
             }
         }
 
@@ -518,7 +476,6 @@ impl RoutingService {
                 location: route.location,
                 is_local,
                 nodes: nodes_with_group,
-                leader: route.leader.clone(),
             })
         } else {
             Err(RoutingError::GroupNotFound(group_id))
@@ -536,11 +493,66 @@ impl RoutingService {
             // If local, no need to forward
             Ok(None)
         } else {
-            // Prefer the leader if available, otherwise pick the first node
-            Ok(location_info
-                .leader
-                .or_else(|| location_info.nodes.first().cloned()))
+            // Pick any member - they will forward to leader if needed
+            // For now, just pick the first node. In the future, we could
+            // implement round-robin or random selection for better distribution
+            Ok(location_info.nodes.first().cloned())
         }
+    }
+
+    /// Increment the stream count for a group
+    pub async fn increment_stream_count(&self, group_id: ConsensusGroupId) -> RoutingResult<()> {
+        self.ensure_running().await?;
+
+        if let Ok(Some(mut route)) = self.routing_table.get_group_route(group_id).await {
+            route.stream_count += 1;
+            route.last_updated = SystemTime::now();
+            self.routing_table
+                .update_group_route(group_id, route.clone())
+                .await?;
+            debug!(
+                "Incremented stream count for group {:?} to {}",
+                group_id, route.stream_count
+            );
+        } else {
+            warn!(
+                "Attempted to increment stream count for non-existent group {:?}",
+                group_id
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Decrement the stream count for a group
+    pub async fn decrement_stream_count(&self, group_id: ConsensusGroupId) -> RoutingResult<()> {
+        self.ensure_running().await?;
+
+        if let Ok(Some(mut route)) = self.routing_table.get_group_route(group_id).await {
+            if route.stream_count > 0 {
+                route.stream_count -= 1;
+                route.last_updated = SystemTime::now();
+                self.routing_table
+                    .update_group_route(group_id, route.clone())
+                    .await?;
+                debug!(
+                    "Decremented stream count for group {:?} to {}",
+                    group_id, route.stream_count
+                );
+            } else {
+                warn!(
+                    "Attempted to decrement stream count below 0 for group {:?}",
+                    group_id
+                );
+            }
+        } else {
+            warn!(
+                "Attempted to decrement stream count for non-existent group {:?}",
+                group_id
+            );
+        }
+
+        Ok(())
     }
 
     // Private helper methods

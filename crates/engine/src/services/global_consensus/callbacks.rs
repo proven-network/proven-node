@@ -220,23 +220,63 @@ where
         group_id: ConsensusGroupId,
     ) -> ConsensusResult<()> {
         // Update routing service immediately
-        if let Some(ref routing) = self.routing_service
-            && let Err(e) = routing
+        if let Some(ref routing) = self.routing_service {
+            // Update stream assignment
+            if let Err(e) = routing
                 .update_stream_assignment(stream_name.to_string(), group_id)
                 .await
-        {
-            tracing::error!(
-                "Failed to update routing for stream {} -> group {:?}: {}",
-                stream_name,
-                group_id,
-                e
-            );
+            {
+                tracing::error!(
+                    "Failed to update routing for stream {} -> group {:?}: {}",
+                    stream_name,
+                    group_id,
+                    e
+                );
+            }
+
+            // Increment stream count for the group
+            if let Err(e) = routing.increment_stream_count(group_id).await {
+                tracing::error!(
+                    "Failed to increment stream count for group {:?}: {}",
+                    group_id,
+                    e
+                );
+            }
         }
         Ok(())
     }
 
     async fn on_stream_deleted(&self, stream_name: &StreamName) -> ConsensusResult<()> {
-        // TODO: Handle stream deletion
+        // Update routing service
+        if let Some(ref routing) = self.routing_service {
+            // First get the stream's group to decrement its count
+            if let Ok(Some(stream_route)) = routing
+                .get_stream_routing_info(&stream_name.to_string())
+                .await
+            {
+                // Decrement stream count for the group
+                if let Err(e) = routing.decrement_stream_count(stream_route.group_id).await {
+                    tracing::error!(
+                        "Failed to decrement stream count for group {:?}: {}",
+                        stream_route.group_id,
+                        e
+                    );
+                }
+            }
+
+            // Remove the stream assignment
+            if let Err(e) = routing
+                .remove_stream_assignment(&stream_name.to_string())
+                .await
+            {
+                tracing::error!(
+                    "Failed to remove routing for deleted stream {}: {}",
+                    stream_name,
+                    e
+                );
+            }
+        }
+
         tracing::info!("Stream deleted: {}", stream_name);
         Ok(())
     }

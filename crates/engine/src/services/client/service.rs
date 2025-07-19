@@ -502,64 +502,10 @@ where
                     } => {
                         debug!("Processing global request: {:?}", request);
 
-                        // Check if this is a request we can handle directly
+                        // All global requests should go through global consensus
                         match &request {
-                            GlobalRequest::CreateGroup { info } => {
-                                // For group creation, bypass global consensus and create directly
-                                let group = group_consensus.read().await;
-                                if let Some(service) = group.as_ref() {
-                                    // Create the group
-                                    match service.create_group(info.id, info.members.clone()).await
-                                    {
-                                        Ok(_) => {
-                                            // Update routing service with group info
-                                            let routing = routing_service.read().await;
-                                            if let Some(routing_service) = routing.as_ref() {
-                                                // Determine if this node is part of the group
-                                                let location = if info.members.contains(&node_id) {
-                                                    crate::services::routing::GroupLocation::Local
-                                                } else {
-                                                    crate::services::routing::GroupLocation::Remote
-                                                };
-                                                let group_route = crate::services::routing::GroupRoute {
-                                                    group_id: info.id,
-                                                    members: info.members.clone(),
-                                                    leader: info.members.first().cloned(),
-                                                    stream_count: 0, // Will be updated as streams are created
-                                                    health: crate::services::routing::GroupHealth::Healthy,
-                                                    last_updated: std::time::SystemTime::now(),
-                                                    location,
-                                                };
-                                                if let Err(e) = routing_service
-                                                    .update_group_info(info.id, group_route)
-                                                    .await
-                                                {
-                                                    tracing::warn!(
-                                                        "Failed to update routing for group {}: {}",
-                                                        info.id,
-                                                        e
-                                                    );
-                                                }
-                                            }
-
-                                            let global_response = GlobalResponse::GroupCreated {
-                                                id: info.id,
-                                                group_info: info.clone(),
-                                            };
-                                            let _ = response_tx.send(Ok(global_response));
-                                        }
-                                        Err(e) => {
-                                            let _ = response_tx.send(Err(e));
-                                        }
-                                    }
-                                } else {
-                                    let _ = response_tx.send(Err(Error::with_context(
-                                        crate::error::ErrorKind::Service,
-                                        "Group consensus service not available",
-                                    )));
-                                }
-                            }
-                            GlobalRequest::CreateStream { .. } => {
+                            GlobalRequest::CreateGroup { .. }
+                            | GlobalRequest::CreateStream { .. } => {
                                 // Stream creation goes through global consensus
                                 let global = global_consensus.read().await;
                                 if let Some(service) = global.as_ref() {
