@@ -2,7 +2,8 @@
 name = "proven-radix-gateway-sdk"
 edition = "2024"
 version.workspace = true
-build = "build.rs"
+# TODO: Uncomment this when fixed over-generation of types
+# build = "build.rs"
 
 [lib]
 doctest = false
