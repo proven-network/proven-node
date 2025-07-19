@@ -171,20 +171,6 @@ where
             *token_guard = None;
         }
 
-        // First, unregister the service handler from NetworkManager
-        // Do this before shutting down Raft to avoid potential deadlocks
-        use super::messages::GlobalConsensusMessage;
-        tracing::debug!("Unregistering global consensus service handler");
-        if let Err(e) = self
-            .network_manager
-            .unregister_service::<GlobalConsensusMessage>()
-            .await
-        {
-            tracing::warn!("Failed to unregister global consensus service: {}", e);
-        } else {
-            tracing::debug!("Global consensus service handler unregistered");
-        }
-
         // Shutdown the Raft instance if it exists
         let mut consensus_layer = self.consensus_layer.write().await;
         if let Some(layer) = consensus_layer.as_ref() {
@@ -206,6 +192,18 @@ where
         *consensus_layer = None;
         drop(consensus_layer);
         tracing::debug!("Consensus layer cleared and lock released");
+
+        use super::messages::GlobalConsensusMessage;
+        tracing::debug!("Unregistering global consensus service handler");
+        if let Err(e) = self
+            .network_manager
+            .unregister_service::<GlobalConsensusMessage>()
+            .await
+        {
+            tracing::warn!("Failed to unregister global consensus service: {}", e);
+        } else {
+            tracing::debug!("Global consensus service handler unregistered");
+        }
 
         tracing::debug!("GlobalConsensusService stop completed");
         Ok(())

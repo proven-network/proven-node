@@ -19,7 +19,7 @@ use proven_transport::Transport;
 use super::discovery::{DiscoveryConfig, DiscoveryManager, DiscoveryOutcome};
 use super::formation::{FormationManager, FormationRequest, FormationResult};
 use super::membership::{JoinRequest, LeaveRequest, MembershipManager};
-use super::messages;
+use super::messages::{self, JoinResponse};
 use super::state::{StateManager, StateTransition};
 use super::types::*;
 use crate::services::event::EventPublisher;
@@ -582,17 +582,33 @@ where
                     }
 
                     // Check if we should retry
-                    if let Some(ref error_msg) = error_message
-                        && error_msg.contains("formation in progress")
-                        && retry_count < max_retries
-                    {
-                        retry_count += 1;
-                        info!(
-                            "Cluster formation in progress, retrying join ({}/{})",
-                            retry_count, max_retries
-                        );
-                        tokio::time::sleep(retry_delay).await;
-                        continue;
+                    if let Some(ref error_msg) = error_message {
+                        if error_msg.contains("formation in progress") && retry_count < max_retries
+                        {
+                            retry_count += 1;
+                            info!(
+                                "Cluster formation in progress, retrying join ({}/{})",
+                                retry_count, max_retries
+                            );
+                            tokio::time::sleep(retry_delay).await;
+                            continue;
+                        }
+
+                        // Handle "Already a cluster member" as success
+                        if error_msg.contains("Already a cluster member") {
+                            info!(
+                                "Node is already a member of the cluster, treating as successful join"
+                            );
+                            // Create a dummy successful response
+                            break JoinResponse {
+                                success: true,
+                                error_message: None,
+                                current_term: None,
+                                current_leader: Some(target_node.clone()),
+                                cluster_size: None,
+                                responder_id: target_node.clone(),
+                            };
+                        }
                     }
 
                     return Err(ClusterError::JoinRejected(

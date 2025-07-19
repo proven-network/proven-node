@@ -99,20 +99,6 @@ where
 
     /// Stop the service
     pub async fn stop(&self) -> ConsensusResult<()> {
-        // First, unregister the service handler from NetworkManager
-        // Do this before shutting down Raft to avoid potential deadlocks
-        use super::messages::GroupConsensusMessage;
-        tracing::debug!("Unregistering group consensus service handler");
-        if let Err(e) = self
-            .network_manager
-            .unregister_service::<GroupConsensusMessage>()
-            .await
-        {
-            tracing::warn!("Failed to unregister group consensus service: {}", e);
-        } else {
-            tracing::debug!("Group consensus service handler unregistered");
-        }
-
         // Shutdown all Raft instances in groups
         let mut groups = self.groups.write().await;
         for (group_id, layer) in groups.iter() {
@@ -143,6 +129,17 @@ where
         // Clear all groups to release storage references
         groups.clear();
         drop(groups);
+
+        use super::messages::GroupConsensusMessage;
+        if let Err(e) = self
+            .network_manager
+            .unregister_service::<GroupConsensusMessage>()
+            .await
+        {
+            tracing::warn!("Failed to unregister group consensus service: {}", e);
+        } else {
+            tracing::debug!("Group consensus service handler unregistered");
+        }
 
         Ok(())
     }
