@@ -11,6 +11,8 @@ use openraft::{
 };
 use tokio::sync::RwLock;
 
+use super::callbacks::GlobalConsensusCallbacks;
+use super::dispatcher::GlobalCallbackDispatcher;
 use super::operations::{GlobalOperation, GlobalOperationHandler};
 use super::raft::GlobalTypeConfig;
 use super::snapshot::{GlobalSnapshot, GlobalSnapshotBuilder};
@@ -19,15 +21,6 @@ use super::types::{GlobalRequest, GlobalResponse};
 use crate::foundation::traits::OperationHandler;
 use proven_topology::NodeId;
 
-/// Callback for state machine events
-pub trait StateChangeCallback: Send + Sync {
-    /// Called when a response is processed
-    fn on_response_processed(&self, response: &GlobalResponse);
-
-    /// Called when membership changes
-    fn on_membership_changed(&self, new_members: &[NodeId], removed_members: &[NodeId]);
-}
-
 /// Raft state machine - handles applying committed entries
 #[derive(Clone)]
 pub struct GlobalStateMachine {
@@ -35,22 +28,34 @@ pub struct GlobalStateMachine {
     state: Arc<GlobalState>,
     /// Handler for processing operations
     handler: Arc<GlobalOperationHandler>,
+    /// Callback dispatcher
+    callback_dispatcher: Arc<GlobalCallbackDispatcher>,
     /// Last applied log index
     applied: Arc<RwLock<Option<LogId<GlobalTypeConfig>>>>,
     /// Current membership
     membership: Arc<RwLock<StoredMembership<GlobalTypeConfig>>>,
+    /// Last log index that was persisted before this instance started
+    replay_boundary: Option<u64>,
+    /// Whether we've fired the state sync callback
+    state_synced: Arc<RwLock<bool>>,
 }
 
 impl GlobalStateMachine {
-    /// Create new state machine
-    pub fn new(state: Arc<GlobalState>) -> Self {
-        let handler = Arc::new(GlobalOperationHandler::new(state.clone()));
-
+    /// Create new state machine with handler and dispatcher
+    pub fn new(
+        state: Arc<GlobalState>,
+        handler: Arc<GlobalOperationHandler>,
+        callback_dispatcher: Arc<GlobalCallbackDispatcher>,
+        replay_boundary: Option<u64>,
+    ) -> Self {
         Self {
             state,
             handler,
+            callback_dispatcher,
             applied: Arc::new(RwLock::new(None)),
             membership: Arc::new(RwLock::new(StoredMembership::default())),
+            replay_boundary,
+            state_synced: Arc::new(RwLock::new(false)),
         }
     }
 
@@ -59,11 +64,20 @@ impl GlobalStateMachine {
         &self.state
     }
 
+    /// Get the operation handler reference
+    pub fn handler(&self) -> &Arc<GlobalOperationHandler> {
+        &self.handler
+    }
+
+    /// Get the callback dispatcher reference
+    pub fn callback_dispatcher(&self) -> &Arc<GlobalCallbackDispatcher> {
+        &self.callback_dispatcher
+    }
+
     /// Apply entries with optional callback
     pub async fn apply_entries<I>(
         &self,
         entries: I,
-        callback: Option<&dyn StateChangeCallback>,
     ) -> Result<Vec<GlobalResponse>, StorageError<GlobalTypeConfig>>
     where
         I: IntoIterator<Item = Entry<GlobalTypeConfig>> + Send,
@@ -76,24 +90,51 @@ impl GlobalStateMachine {
             let log_id = entry.log_id.clone();
             *self.applied.write().await = Some(log_id.clone());
 
+            // Check if we've crossed the replay boundary
+            if let Some(boundary) = self.replay_boundary
+                && log_id.index > boundary
+                && !*self.state_synced.read().await
+            {
+                // We've crossed into current operations - fire state sync callback
+                *self.state_synced.write().await = true;
+
+                // Dispatch state sync callback
+                self.callback_dispatcher
+                    .dispatch_state_sync(&self.state)
+                    .await;
+            }
+
             match &entry.payload {
                 EntryPayload::Normal(req) => {
                     // Process the business logic
                     let operation = GlobalOperation::new(req.clone());
-                    match self.handler.handle(operation).await {
-                        Ok(response) => {
-                            // Notify callback if provided
-                            if let Some(cb) = callback {
-                                cb.on_response_processed(&response);
-                            }
-                            responses.push(response);
-                        }
-                        Err(e) => responses.push(GlobalResponse::Error {
+                    // Check if this is a replay operation
+                    let is_replay = self
+                        .replay_boundary
+                        .map(|boundary| log_id.index <= boundary)
+                        .unwrap_or(false);
+
+                    let response = match self.handler.handle(operation.clone(), is_replay).await {
+                        Ok(resp) => resp,
+                        Err(e) => GlobalResponse::Error {
                             message: e.to_string(),
-                        }),
-                    }
+                        },
+                    };
+
+                    // Dispatch callbacks based on operation result
+                    self.callback_dispatcher
+                        .dispatch_operation(&operation.request, &response, is_replay)
+                        .await;
+
+                    responses.push(response);
                 }
                 EntryPayload::Membership(membership) => {
+                    // Check if this is a replay operation
+                    let is_replay = self
+                        .replay_boundary
+                        .map(|boundary| log_id.index <= boundary)
+                        .unwrap_or(false);
+
                     // Update membership
                     let old_membership = self.membership.read().await.clone();
                     *self.membership.write().await =
@@ -120,10 +161,11 @@ impl GlobalStateMachine {
                         .cloned()
                         .collect();
 
-                    if (!added_members.is_empty() || !removed_members.is_empty())
-                        && let Some(cb) = callback
-                    {
-                        cb.on_membership_changed(&added_members, &removed_members);
+                    if (!added_members.is_empty() || !removed_members.is_empty()) && !is_replay {
+                        // Dispatch membership change callbacks for current operations
+                        self.callback_dispatcher
+                            .dispatch_membership_changed(&added_members, &removed_members)
+                            .await;
                     }
 
                     // OpenRaft expects a response for every entry
@@ -167,7 +209,7 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
         I::IntoIter: Send,
     {
         // Apply entries without callback (trait requirement)
-        self.apply_entries(entries, None).await
+        self.apply_entries(entries).await
     }
 
     async fn begin_receiving_snapshot(

@@ -5,18 +5,18 @@ use thiserror::Error;
 use tokio::task::JoinError;
 
 /// Result type for consensus operations
-pub type ConsensusResult<T> = Result<T, ConsensusError>;
+pub type ConsensusResult<T> = Result<T, Error>;
 
 /// Main error type for consensus system
 #[derive(Debug, Error)]
-pub struct ConsensusError {
+pub struct Error {
     /// Error kind
     kind: ErrorKind,
     /// Error context
     context: ErrorContext,
 }
 
-impl ConsensusError {
+impl Error {
     /// Create a new error
     pub fn new(kind: ErrorKind, context: ErrorContext) -> Self {
         Self { kind, context }
@@ -71,7 +71,7 @@ impl ConsensusError {
     }
 }
 
-impl fmt::Display for ConsensusError {
+impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.context {
             ErrorContext::Message(msg) => write!(f, "{}: {}", self.kind, msg),
@@ -146,7 +146,7 @@ pub enum ErrorContext {
 
 // Conversion implementations for common error types
 
-impl From<std::io::Error> for ConsensusError {
+impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
         Self {
             kind: ErrorKind::Storage,
@@ -158,7 +158,7 @@ impl From<std::io::Error> for ConsensusError {
     }
 }
 
-impl From<serde_json::Error> for ConsensusError {
+impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
         Self {
             kind: ErrorKind::Internal,
@@ -170,7 +170,7 @@ impl From<serde_json::Error> for ConsensusError {
     }
 }
 
-impl From<tokio::task::JoinError> for ConsensusError {
+impl From<tokio::task::JoinError> for Error {
     fn from(err: tokio::task::JoinError) -> Self {
         Self {
             kind: ErrorKind::Internal,
@@ -183,55 +183,55 @@ impl From<tokio::task::JoinError> for ConsensusError {
 }
 
 // Allow services to convert their errors to consensus errors
-impl From<crate::services::cluster::ClusterError> for ConsensusError {
+impl From<crate::services::cluster::ClusterError> for Error {
     fn from(err: crate::services::cluster::ClusterError) -> Self {
         Self::with_context(ErrorKind::Service, format!("Cluster error: {err}"))
     }
 }
 
-impl From<crate::services::event::EventError> for ConsensusError {
+impl From<crate::services::event::EventError> for Error {
     fn from(err: crate::services::event::EventError) -> Self {
         Self::with_context(ErrorKind::Service, format!("Event error: {err}"))
     }
 }
 
-impl From<crate::services::monitoring::MonitoringError> for ConsensusError {
+impl From<crate::services::monitoring::MonitoringError> for Error {
     fn from(err: crate::services::monitoring::MonitoringError) -> Self {
         Self::with_context(ErrorKind::Service, format!("Monitoring error: {err}"))
     }
 }
 
-impl From<crate::services::routing::RoutingError> for ConsensusError {
+impl From<crate::services::routing::RoutingError> for Error {
     fn from(err: crate::services::routing::RoutingError) -> Self {
         Self::with_context(ErrorKind::Service, format!("Routing error: {err}"))
     }
 }
 
-impl From<crate::services::migration::MigrationError> for ConsensusError {
+impl From<crate::services::migration::MigrationError> for Error {
     fn from(err: crate::services::migration::MigrationError) -> Self {
         Self::with_context(ErrorKind::Service, format!("Migration error: {err}"))
     }
 }
 
-impl From<crate::services::lifecycle::LifecycleError> for ConsensusError {
+impl From<crate::services::lifecycle::LifecycleError> for Error {
     fn from(err: crate::services::lifecycle::LifecycleError) -> Self {
         Self::with_context(ErrorKind::Service, format!("Lifecycle error: {err}"))
     }
 }
 
-impl From<crate::services::pubsub::PubSubError> for ConsensusError {
+impl From<crate::services::pubsub::PubSubError> for Error {
     fn from(err: crate::services::pubsub::PubSubError) -> Self {
         Self::with_context(ErrorKind::Service, format!("PubSub error: {err}"))
     }
 }
 
-impl From<crate::services::network::NetworkError> for ConsensusError {
+impl From<crate::services::network::NetworkError> for Error {
     fn from(err: crate::services::network::NetworkError) -> Self {
         Self::with_context(ErrorKind::Network, format!("Network service error: {err}"))
     }
 }
 
-impl From<proven_network::NetworkError> for ConsensusError {
+impl From<proven_network::NetworkError> for Error {
     fn from(err: proven_network::NetworkError) -> Self {
         Self::with_context(ErrorKind::Network, format!("Network error: {err}"))
     }

@@ -1,6 +1,7 @@
 //! Group consensus service module
 
 mod adaptor;
+mod callbacks;
 mod config;
 mod messages;
 mod service;

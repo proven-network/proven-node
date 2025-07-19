@@ -102,7 +102,7 @@ pub struct GroupRoute {
     pub members: Vec<NodeId>,
     /// Group leader
     pub leader: Option<NodeId>,
-    /// Number of streams
+    /// Number of streams (used for load balancing new stream creation)
     pub stream_count: usize,
     /// Group health
     pub health: GroupHealth,

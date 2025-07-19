@@ -10,7 +10,7 @@ use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
-use crate::error::ConsensusError;
+use crate::error::Error;
 use crate::{
     consensus::{
         global::{GlobalRequest, GlobalResponse},
@@ -95,7 +95,7 @@ where
             .get_stream_info(&stream)
             .await?
             .ok_or_else(|| {
-                crate::error::ConsensusError::not_found(format!("Stream '{stream}' not found"))
+                crate::error::Error::not_found(format!("Stream '{stream}' not found"))
             })?;
 
         // Create message data
@@ -204,7 +204,7 @@ where
     ) -> ConsensusResult<GroupResponse> {
         // Get stream info to find which group owns it
         let stream_info = self.get_stream_info(&stream_name).await?.ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::NotFound,
                 format!("Stream '{stream_name}' not found"),
             )

@@ -8,7 +8,7 @@ use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
 
-use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
+use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::ServiceLifecycle;
 use crate::services::{
     client::ClientService, cluster::ClusterService, event::EventService,
@@ -88,20 +88,20 @@ where
     /// Build the engine
     pub async fn build(self) -> ConsensusResult<Engine<T, G, S>> {
         // Validate required fields
-        let config = self.config.ok_or_else(|| {
-            ConsensusError::with_context(ErrorKind::Configuration, "Config not set")
-        })?;
+        let config = self
+            .config
+            .ok_or_else(|| Error::with_context(ErrorKind::Configuration, "Config not set"))?;
 
         let network_manager = self.network_manager.ok_or_else(|| {
-            ConsensusError::with_context(ErrorKind::Configuration, "Network manager not set")
+            Error::with_context(ErrorKind::Configuration, "Network manager not set")
         })?;
 
         let topology_manager = self.topology_manager.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(ErrorKind::Configuration, "Topology manager not set")
+            Error::with_context(ErrorKind::Configuration, "Topology manager not set")
         })?;
 
         let storage_manager = self.storage_manager.ok_or_else(|| {
-            ConsensusError::with_context(ErrorKind::Configuration, "Storage manager not set")
+            Error::with_context(ErrorKind::Configuration, "Storage manager not set")
         })?;
 
         // Create service coordinator
@@ -300,6 +300,14 @@ where
             .set_event_service(event_service.clone())
             .await;
 
+        // Wire up GlobalConsensusService dependencies
+        global_consensus_service
+            .set_group_consensus_service(group_consensus_service.clone())
+            .await;
+        global_consensus_service
+            .set_routing_service(routing_service.clone())
+            .await;
+
         // Wire up RoutingService dependencies
         routing_service
             .set_event_service(event_service.clone())
@@ -397,11 +405,7 @@ where
     }
 
     async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        let health = self
-            .service
-            .get_health()
-            .await
-            .map_err(ConsensusError::from)?;
+        let health = self.service.get_health().await.map_err(Error::from)?;
 
         Ok(ServiceHealth {
             name: self.name.clone(),

@@ -12,7 +12,7 @@ use proven_storage::{
     LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace, StreamStorage,
 };
 
-use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
+use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::{HealthStatus, ServiceHealth, ServiceLifecycle, SubsystemHealth};
 use crate::services::event::{Event, EventEnvelope, EventFilter, EventService, EventType};
 use crate::services::stream::config::RetentionPolicy;
@@ -124,7 +124,7 @@ impl<S: StorageAdaptor> StreamService<S> {
         let mut configs = self.stream_configs.write().await;
 
         if configs.contains_key(&name) {
-            return Err(ConsensusError::with_context(
+            return Err(Error::with_context(
                 ErrorKind::InvalidState,
                 format!("Stream {name} already exists"),
             ));
@@ -249,7 +249,7 @@ impl<S: StorageAdaptor> StreamService<S> {
                 stream_storage
                     .append(*sequence, message.clone(), *timestamp, *term)
                     .await
-                    .map_err(|e| ConsensusError::with_context(ErrorKind::Storage, e.to_string()))?;
+                    .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))?;
 
                 // Update metadata
                 if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream) {
@@ -386,7 +386,7 @@ impl<S: StorageAdaptor> StreamService<S> {
 
         // Get the stream storage
         let stream_storage = self.get_stream(&stream_name).await.ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::NotFound,
                 format!("Stream {stream_name} not found"),
             )
@@ -397,7 +397,7 @@ impl<S: StorageAdaptor> StreamService<S> {
         stream_storage
             .read_range(start_sequence, end_sequence)
             .await
-            .map_err(|e| ConsensusError::with_context(ErrorKind::Storage, e.to_string()))
+            .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))
     }
 
     /// List all streams
@@ -457,7 +457,7 @@ impl<S: StorageAdaptor> StreamService<S> {
                     "Failed to delete message {} from stream {}: {}",
                     sequence, stream_name, e
                 );
-                Err(ConsensusError::with_context(
+                Err(Error::with_context(
                     ErrorKind::Storage,
                     format!("Failed to delete message: {e}"),
                 ))
@@ -504,7 +504,7 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
 
         // Check if already running
         if *self.is_running.read().await {
-            return Err(ConsensusError::with_context(
+            return Err(Error::with_context(
                 ErrorKind::InvalidState,
                 "StreamService is already running",
             ));
@@ -512,7 +512,7 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
 
         // Check that event service is set
         if self.event_service.read().await.is_none() {
-            return Err(ConsensusError::with_context(
+            return Err(Error::with_context(
                 ErrorKind::Configuration,
                 "Event service not set",
             ));

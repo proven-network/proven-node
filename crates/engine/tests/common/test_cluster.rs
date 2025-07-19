@@ -833,14 +833,14 @@ impl TestCluster {
         &self,
         engines: &mut [Engine<T, G, L>],
         index: usize,
-    ) -> Result<(), proven_engine::error::ConsensusError>
+    ) -> Result<(), proven_engine::error::Error>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
         L: proven_storage::StorageAdaptor,
     {
         if index >= engines.len() {
-            return Err(proven_engine::error::ConsensusError::with_context(
+            return Err(proven_engine::error::Error::with_context(
                 proven_engine::error::ErrorKind::InvalidState,
                 format!("Engine index {index} out of bounds"),
             ));
@@ -857,14 +857,14 @@ impl TestCluster {
         &self,
         engines: &mut [Engine<T, G, L>],
         index: usize,
-    ) -> Result<(), proven_engine::error::ConsensusError>
+    ) -> Result<(), proven_engine::error::Error>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
         L: proven_storage::StorageAdaptor,
     {
         if index >= engines.len() {
-            return Err(proven_engine::error::ConsensusError::with_context(
+            return Err(proven_engine::error::Error::with_context(
                 proven_engine::error::ErrorKind::InvalidState,
                 format!("Engine index {index} out of bounds"),
             ));
@@ -880,7 +880,7 @@ impl TestCluster {
     pub async fn stop_all_engines<T, G, L>(
         &self,
         engines: &mut [Engine<T, G, L>],
-    ) -> Result<(), proven_engine::error::ConsensusError>
+    ) -> Result<(), proven_engine::error::Error>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
@@ -899,7 +899,7 @@ impl TestCluster {
     pub async fn start_all_engines<T, G, L>(
         &self,
         engines: &mut [Engine<T, G, L>],
-    ) -> Result<(), proven_engine::error::ConsensusError>
+    ) -> Result<(), proven_engine::error::Error>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
@@ -916,7 +916,7 @@ impl TestCluster {
         let results = futures::future::join_all(start_futures).await;
         for (i, result) in results.into_iter().enumerate() {
             result.map_err(|e| {
-                proven_engine::error::ConsensusError::with_context(
+                proven_engine::error::Error::with_context(
                     proven_engine::error::ErrorKind::InvalidState,
                     format!("Failed to start engine {i}: {e:?}"),
                 )

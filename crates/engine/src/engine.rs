@@ -15,7 +15,7 @@ use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
-use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
+use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
     traits::ServiceCoordinator as ServiceCoordinatorTrait, types::ConsensusGroupId,
 };
@@ -171,7 +171,7 @@ where
                     *state = EngineState::Initializing;
                 }
                 _ => {
-                    return Err(ConsensusError::with_context(
+                    return Err(Error::with_context(
                         ErrorKind::InvalidState,
                         format!("Engine cannot be started from {:?} state", *state),
                     ));
@@ -240,7 +240,7 @@ where
     async fn ensure_running(&self) -> ConsensusResult<()> {
         let state = self.state.read().await;
         if *state != EngineState::Running {
-            return Err(ConsensusError::with_context(
+            return Err(Error::with_context(
                 ErrorKind::InvalidState,
                 "Engine not running",
             ));
@@ -287,7 +287,7 @@ where
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
 
-            Err(ConsensusError::with_context(
+            Err(Error::with_context(
                 ErrorKind::Timeout,
                 format!("Timeout waiting for default group after {timeout:?}"),
             ))
@@ -297,7 +297,7 @@ where
         match result {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(e),
-            Err(_) => Err(ConsensusError::with_context(
+            Err(_) => Err(Error::with_context(
                 ErrorKind::Timeout,
                 format!("Timeout waiting for default group after {timeout:?}"),
             )),
@@ -334,7 +334,7 @@ where
     /// Get current cluster state information
     pub async fn cluster_state(&self) -> ConsensusResult<ClusterInfo> {
         self.cluster_service.get_cluster_info().await.map_err(|e| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::Internal,
                 format!("Failed to get cluster state: {e}"),
             )
@@ -344,14 +344,14 @@ where
     /// Get all group IDs this node is a member of
     pub async fn node_groups(&self) -> ConsensusResult<Vec<ConsensusGroupId>> {
         let group_consensus = self.group_consensus_service.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::InvalidState,
                 "Group consensus service not initialized",
             )
         })?;
 
         group_consensus.get_node_groups().await.map_err(|e| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::Internal,
                 format!("Failed to get node groups: {e}"),
             )
@@ -364,7 +364,7 @@ where
         group_id: ConsensusGroupId,
     ) -> ConsensusResult<crate::services::group_consensus::GroupStateInfo> {
         let group_consensus = self.group_consensus_service.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::InvalidState,
                 "Group consensus service not initialized",
             )
@@ -374,7 +374,7 @@ where
             .get_group_state_info(group_id)
             .await
             .map_err(|e| {
-                ConsensusError::with_context(
+                Error::with_context(
                     ErrorKind::Internal,
                     format!("Failed to get group state: {e}"),
                 )

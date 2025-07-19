@@ -18,14 +18,14 @@ use crate::{
 #[serde(tag = "type", content = "data")]
 pub enum ClientServiceMessage {
     /// Forward a global consensus request to another node
-    GlobalRequest {
+    Global {
         /// Original requester node
         requester_id: NodeId,
         /// The global request to forward
         request: GlobalRequest,
     },
     /// Forward a group consensus request to another node
-    GroupRequest {
+    Group {
         /// Original requester node
         requester_id: NodeId,
         /// Target group ID
@@ -34,7 +34,7 @@ pub enum ClientServiceMessage {
         request: GroupRequest,
     },
     /// Forward a stream read request to another node
-    ReadRequest {
+    Read {
         /// Original requester node
         requester_id: NodeId,
         /// Stream name
@@ -51,18 +51,17 @@ pub enum ClientServiceMessage {
 #[serde(tag = "type", content = "data")]
 pub enum ClientServiceResponse {
     /// Response to a forwarded global request
-    GlobalResponse {
+    Global {
         /// The global response
         response: GlobalResponse,
     },
     /// Response to a forwarded group request
-    GroupResponse {
+    Group {
         /// The group response
         response: GroupResponse,
     },
-
     /// Response to a forwarded read request
-    ReadResponse {
+    Read {
         /// The messages read
         messages: Vec<crate::services::stream::StoredMessage>,
     },

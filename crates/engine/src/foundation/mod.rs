@@ -5,6 +5,7 @@
 
 pub mod traits;
 pub mod types;
+pub mod validations;
 
 // Re-export commonly used types
 pub use types::{ConsensusGroupId, GroupState, NodeState, OperationId};

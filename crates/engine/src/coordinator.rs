@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 use tracing::{error, info, warn};
 
-use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
+use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::{
     HealthStatus, ServiceCoordinator as ServiceCoordinatorTrait, ServiceHealth, ServiceLifecycle,
 };
@@ -59,7 +59,7 @@ impl ServiceCoordinatorTrait for ServiceCoordinator {
         let mut services = self.services.write().await;
 
         if services.contains_key(&name) {
-            return Err(ConsensusError::with_context(
+            return Err(Error::with_context(
                 ErrorKind::Service,
                 format!("Service {name} already registered"),
             ));
@@ -94,7 +94,7 @@ impl ServiceCoordinatorTrait for ServiceCoordinator {
                         // Stop already started services
                         self.stop_started_services(&order, name).await;
 
-                        return Err(ConsensusError::with_context(
+                        return Err(Error::with_context(
                             ErrorKind::Service,
                             format!("Failed to start service {name}: {e}"),
                         ));
@@ -135,7 +135,7 @@ impl ServiceCoordinatorTrait for ServiceCoordinator {
             info!("All services stopped successfully");
             Ok(())
         } else {
-            Err(ConsensusError::with_context(
+            Err(Error::with_context(
                 ErrorKind::Service,
                 format!("Failed to stop services: {}", errors.join(", ")),
             ))

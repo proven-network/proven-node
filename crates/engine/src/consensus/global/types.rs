@@ -96,6 +96,8 @@ pub enum GlobalResponse {
     GroupCreated {
         /// Group ID
         id: ConsensusGroupId,
+        /// Group info
+        group_info: GroupInfo,
     },
     /// Group dissolved
     GroupDissolved {
@@ -117,4 +119,18 @@ pub enum GlobalResponse {
         /// Error message
         message: String,
     },
+}
+
+impl GlobalResponse {
+    /// Create an error response
+    pub fn error(message: impl Into<String>) -> Self {
+        Self::Error {
+            message: message.into(),
+        }
+    }
+
+    /// Create a success response
+    pub fn success() -> Self {
+        Self::Success
+    }
 }

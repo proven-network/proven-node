@@ -6,23 +6,36 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use proven_network::NetworkManager;
+use proven_storage::StorageNamespace;
 use proven_storage::{ConsensusStorage, LogStorage, StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
-use super::config::{GlobalConsensusConfig, ServiceState};
+use super::{
+    callbacks::GlobalConsensusCallbacksImpl,
+    config::{GlobalConsensusConfig, ServiceState},
+};
 use crate::{
-    consensus::global::{GlobalConsensusLayer, raft::GlobalRaftMessageHandler},
-    error::{ConsensusError, ConsensusResult, ErrorKind},
+    consensus::global::{
+        GlobalConsensusCallbacks, GlobalConsensusLayer, raft::GlobalRaftMessageHandler,
+        types::GroupInfo,
+    },
+    error::{ConsensusResult, Error, ErrorKind},
+    foundation::types::ConsensusGroupId,
+    services::stream::StreamName,
     services::{
         cluster::{ClusterFormationCallback, ClusterFormationEvent},
         event::{Event, EventPublisher},
+        group_consensus::GroupConsensusService,
     },
 };
 
 /// Type alias for the consensus layer storage
 type ConsensusLayer<S> = Arc<RwLock<Option<Arc<GlobalConsensusLayer<ConsensusStorage<S>>>>>>;
+
+/// Type alias for the group consensus service
+type GroupConsensusServiceRef<T, G, S> = Arc<RwLock<Option<Arc<GroupConsensusService<T, G, S>>>>>;
 
 /// Global consensus service
 pub struct GlobalConsensusService<T, G, S>
@@ -55,6 +68,8 @@ where
     cancellation_token: Arc<RwLock<Option<CancellationToken>>>,
     /// Routing service for immediate consistency updates
     routing_service: Arc<RwLock<Option<Arc<crate::services::routing::RoutingService>>>>,
+    /// Group consensus service for direct group creation
+    group_consensus_service: GroupConsensusServiceRef<T, G, S>,
 }
 
 impl<T, G, S> GlobalConsensusService<T, G, S>
@@ -83,6 +98,7 @@ where
             task_tracker: Arc::new(RwLock::new(None)),
             cancellation_token: Arc::new(RwLock::new(None)),
             routing_service: Arc::new(RwLock::new(None)),
+            group_consensus_service: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -106,6 +122,14 @@ where
         *self.routing_service.write().await = Some(routing_service);
     }
 
+    /// Set group consensus service for direct group creation
+    pub async fn set_group_consensus_service(
+        &self,
+        group_consensus_service: Arc<GroupConsensusService<T, G, S>>,
+    ) {
+        *self.group_consensus_service.write().await = Some(group_consensus_service);
+    }
+
     /// Start the service
     pub async fn start(&self) -> ConsensusResult<()> {
         let mut state = self.state.write().await;
@@ -114,7 +138,7 @@ where
                 *state = ServiceState::Initializing;
             }
             _ => {
-                return Err(ConsensusError::with_context(
+                return Err(Error::with_context(
                     ErrorKind::InvalidState,
                     "Service already started",
                 ));
@@ -229,6 +253,8 @@ where
         let storage_manager = self.storage_manager.clone();
         let topology_manager = self.topology_manager.clone();
         let event_publisher = self.event_publisher.clone();
+        let routing_service = self.routing_service.clone();
+        let group_consensus_service = self.group_consensus_service.clone();
 
         Arc::new(move |event| {
             let consensus_layer = consensus_layer.clone();
@@ -238,6 +264,8 @@ where
             let storage_manager = storage_manager.clone();
             let topology_manager = topology_manager.clone();
             let event_publisher = event_publisher.clone();
+            let routing_service = routing_service.clone();
+            let group_consensus_service = group_consensus_service.clone();
 
             Box::pin(async move {
                 match event {
@@ -253,11 +281,25 @@ where
                         // Create and initialize consensus layer
                         // Get consensus storage view for global consensus
                         let consensus_storage = storage_manager.consensus_storage();
+
+                        // Create callbacks with all wired services
+                        // Extract the actual service references from the RwLock<Option<Arc<...>>>
+                        let routing_ref = routing_service.read().await.clone();
+                        let group_consensus_ref = group_consensus_service.read().await.clone();
+
+                        let callbacks = Arc::new(GlobalConsensusCallbacksImpl::new(
+                            node_id.clone(),
+                            event_publisher.clone(),
+                            routing_ref,
+                            group_consensus_ref,
+                        ));
+
                         let layer = match Self::create_consensus_layer(
                             &config,
                             node_id.clone(),
                             network_manager.clone(),
                             consensus_storage,
+                            callbacks,
                         )
                         .await
                         {
@@ -339,6 +381,26 @@ where
                                 )
                                 .await;
                         }
+
+                        tracing::info!("Global consensus initialized as leader");
+
+                        // Schedule callback setup after a short delay to ensure services are ready
+                        let consensus_layer_clone = consensus_layer.clone();
+
+                        tokio::spawn(async move {
+                            // Wait for services to be wired up
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                            // Try to setup callback
+                            if let Some(_consensus) = consensus_layer_clone.read().await.as_ref() {
+                                // Check if we have the required services set
+                                // This is a temporary workaround - ideally the callback would be set
+                                // by the engine after all services are wired
+                                tracing::debug!(
+                                    "Attempting to setup state machine callback for leader"
+                                );
+                            }
+                        });
                     }
                     ClusterFormationEvent::JoinedAsFollower { cluster_id, .. } => {
                         tracing::info!(
@@ -349,11 +411,25 @@ where
                         // Create consensus layer as follower
                         // Get consensus storage view for global consensus
                         let consensus_storage = storage_manager.consensus_storage();
+
+                        // Create callbacks with all wired services
+                        // Extract the actual service references from the RwLock<Option<Arc<...>>>
+                        let routing_ref = routing_service.read().await.clone();
+                        let group_consensus_ref = group_consensus_service.read().await.clone();
+
+                        let callbacks = Arc::new(GlobalConsensusCallbacksImpl::new(
+                            node_id.clone(),
+                            event_publisher.clone(),
+                            routing_ref,
+                            group_consensus_ref,
+                        ));
+
                         let layer = match Self::create_consensus_layer(
                             &config,
                             node_id.clone(),
                             network_manager.clone(),
                             consensus_storage,
+                            callbacks,
                         )
                         .await
                         {
@@ -414,6 +490,7 @@ where
         node_id: NodeId,
         network_manager: Arc<NetworkManager<T, G>>,
         storage: L,
+        callbacks: Arc<dyn GlobalConsensusCallbacks>,
     ) -> ConsensusResult<Arc<GlobalConsensusLayer<L>>>
     where
         L: LogStorage + 'static,
@@ -434,9 +511,14 @@ where
         let network_stats = Arc::new(RwLock::new(Default::default()));
         let network_factory = GlobalNetworkFactory::new(network_manager, network_stats);
 
-        let layer =
-            GlobalConsensusLayer::new(node_id.clone(), raft_config, network_factory, storage)
-                .await?;
+        let layer = GlobalConsensusLayer::new(
+            node_id.clone(),
+            raft_config,
+            network_factory,
+            storage,
+            callbacks,
+        )
+        .await?;
 
         Ok(Arc::new(layer))
     }
@@ -494,7 +576,7 @@ where
                 })
             })
             .await
-            .map_err(|e| ConsensusError::with_context(ErrorKind::Network, e.to_string()))?;
+            .map_err(|e| Error::with_context(ErrorKind::Network, e.to_string()))?;
 
         Ok(())
     }
@@ -507,10 +589,7 @@ where
         // Check if consensus layer is initialized
         let consensus_guard = self.consensus_layer.read().await;
         let consensus = consensus_guard.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
-                ErrorKind::InvalidState,
-                "Global consensus not initialized",
-            )
+            Error::with_context(ErrorKind::InvalidState, "Global consensus not initialized")
         })?;
 
         // Submit to consensus
@@ -562,47 +641,68 @@ where
                     }
                 }
             }
-            GlobalResponse::GroupCreated { id } => {
-                // Get group info from state to get members
-                if let Some(consensus) = self.consensus_layer.read().await.as_ref()
-                    && let Some(group_info) = consensus.state().get_group(id).await
-                {
-                    // Update routing service immediately
-                    if let Some(routing) = self.routing_service.read().await.as_ref() {
-                        let group_route = crate::services::routing::GroupRoute {
-                            group_id: *id,
-                            members: group_info.members.clone(),
-                            leader: None,    // Will be updated when leader is elected
-                            stream_count: 0, // Will be updated as streams are added
-                            health: crate::services::routing::GroupHealth::Healthy,
-                            last_updated: std::time::SystemTime::now(),
-                            location: if group_info.members.contains(&self.node_id) {
-                                crate::services::routing::GroupLocation::Local
-                            } else {
-                                crate::services::routing::GroupLocation::Remote
-                            },
-                        };
-                        if let Err(e) = routing.update_group_info(*id, group_route).await {
+            GlobalResponse::GroupCreated { id, group_info } => {
+                // Update routing service immediately
+                if let Some(routing) = self.routing_service.read().await.as_ref() {
+                    let group_route = crate::services::routing::GroupRoute {
+                        group_id: *id,
+                        members: group_info.members.clone(),
+                        leader: None,    // Will be updated when leader is elected
+                        stream_count: 0, // New groups start with 0 streams
+                        health: crate::services::routing::GroupHealth::Healthy,
+                        last_updated: std::time::SystemTime::now(),
+                        location: if group_info.members.contains(&self.node_id) {
+                            crate::services::routing::GroupLocation::Local
+                        } else {
+                            crate::services::routing::GroupLocation::Remote
+                        },
+                    };
+                    if let Err(e) = routing.update_group_info(*id, group_route).await {
+                        tracing::error!("Failed to update routing for new group {:?}: {}", id, e);
+                    } else {
+                        tracing::info!("Updated routing for new group {:?}", id);
+                    }
+                }
+
+                // Check if this node is a member of the group
+                if group_info.members.contains(&self.node_id) {
+                    // Direct service communication for immediate consistency
+                    if let Some(ref group_consensus) = *self.group_consensus_service.read().await {
+                        tracing::info!(
+                            "Creating local group {:?} via direct service communication",
+                            id
+                        );
+                        if let Err(e) = group_consensus
+                            .create_group(*id, group_info.members.clone())
+                            .await
+                        {
                             tracing::error!(
-                                "Failed to update routing for new group {:?}: {}",
+                                "Failed to create local group {:?} directly: {}",
                                 id,
                                 e
                             );
                         } else {
-                            tracing::info!("Updated routing for new group {:?}", id);
+                            tracing::info!(
+                                "Successfully created local group {:?} via direct service call",
+                                id
+                            );
                         }
+                    } else {
+                        tracing::warn!(
+                            "Group consensus service not set, falling back to event-based creation"
+                        );
                     }
+                }
 
-                    // Publish event for eventual consistency
-                    if let Some(ref publisher) = self.event_publisher {
-                        let event = Event::GroupCreated {
-                            group_id: *id,
-                            members: group_info.members.clone(),
-                        };
-                        let source = format!("global-consensus-{}", self.node_id);
-                        if let Err(e) = publisher.publish(event, source).await {
-                            tracing::warn!("Failed to publish GroupCreated event: {}", e);
-                        }
+                // Still publish event for other services and eventual consistency
+                if let Some(ref publisher) = self.event_publisher {
+                    let event = Event::GroupCreated {
+                        group_id: *id,
+                        members: group_info.members.clone(),
+                    };
+                    let source = format!("global-consensus-{}", self.node_id);
+                    if let Err(e) = publisher.publish(event, source).await {
+                        tracing::warn!("Failed to publish GroupCreated event: {}", e);
                     }
                 }
             }
@@ -671,7 +771,7 @@ where
             }
             Err(e) => {
                 tracing::error!("Failed to create default group: {}", e);
-                Err(ConsensusError::with_context(
+                Err(Error::with_context(
                     ErrorKind::Consensus,
                     format!("Failed to create default group: {e}"),
                 ))

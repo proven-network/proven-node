@@ -294,10 +294,10 @@ async fn test_single_node_persistence() {
             assert_eq!(info.message_count, 20, "Should have 20 messages");
         }
         Ok(None) => {
-            panic!("Stream '{}' not found after restart!", stream_name);
+            panic!("Stream '{stream_name}' not found after restart!");
         }
         Err(e) => {
-            panic!("Failed to get stream info: {}", e);
+            panic!("Failed to get stream info: {e}");
         }
     }
 
@@ -315,7 +315,7 @@ async fn test_single_node_persistence() {
             }
         }
         Err(e) => {
-            panic!("Failed to read messages from stream: {}", e);
+            panic!("Failed to read messages from stream: {e}");
         }
     }
 

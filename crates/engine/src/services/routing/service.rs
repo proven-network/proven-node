@@ -119,9 +119,9 @@ impl RoutingService {
             group_id: default_group_id,
             members: vec![], // Will be populated when group is actually created
             leader: None,
+            stream_count: 0,
             health: GroupHealth::Healthy,
             last_updated: SystemTime::now(),
-            stream_count: 0,
             location: GroupLocation::Remote, // Default to remote until we know it's local
         };
         self.routing_table
@@ -634,7 +634,7 @@ impl crate::foundation::traits::ServiceLifecycle for RoutingService {
     async fn start(&self) -> crate::error::ConsensusResult<()> {
         info!("ServiceLifecycle::start called for RoutingService");
         let result = self.start_internal().await.map_err(|e| {
-            crate::error::ConsensusError::with_context(
+            crate::error::Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to start routing service: {e}"),
             )
@@ -647,7 +647,7 @@ impl crate::foundation::traits::ServiceLifecycle for RoutingService {
 
     async fn stop(&self) -> crate::error::ConsensusResult<()> {
         self.stop_internal().await.map_err(|e| {
-            crate::error::ConsensusError::with_context(
+            crate::error::Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to stop routing service: {e}"),
             )
@@ -664,7 +664,7 @@ impl crate::foundation::traits::ServiceLifecycle for RoutingService {
     ) -> crate::error::ConsensusResult<crate::foundation::traits::ServiceHealth> {
         let _is_running = self.is_running().await;
         let health = self.get_health().await.map_err(|e| {
-            crate::error::ConsensusError::with_context(
+            crate::error::Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to get routing health: {e}"),
             )

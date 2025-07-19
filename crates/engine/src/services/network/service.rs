@@ -12,7 +12,7 @@ use proven_transport::Transport;
 use crate::services::cluster::ClusterStateInfo;
 use crate::services::event::{Event, EventPublisher};
 use crate::{
-    error::{ConsensusError, ConsensusResult, ErrorKind},
+    error::{ConsensusResult, Error, ErrorKind},
     foundation::types::ConsensusGroupId,
     services::monitoring::MonitoringServiceMessage,
 };

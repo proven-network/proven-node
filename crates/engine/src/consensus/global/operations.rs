@@ -7,11 +7,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
-use crate::foundation::{traits::OperationHandler, types::OperationId};
+use crate::error::{ConsensusResult, Error, ErrorKind};
+use crate::foundation::{traits::OperationHandler, types::OperationId, validations};
 
 use super::state::GlobalState;
-use super::types::{GlobalRequest, GlobalResponse};
+use super::types::{GlobalRequest, GlobalResponse, GroupInfo};
 
 /// Global consensus operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,25 +56,36 @@ impl OperationHandler for GlobalOperationHandler {
     type Operation = GlobalOperation;
     type Response = GlobalResponse;
 
-    async fn handle(&self, operation: Self::Operation) -> ConsensusResult<Self::Response> {
+    async fn handle(
+        &self,
+        operation: Self::Operation,
+        is_replay: bool,
+    ) -> ConsensusResult<Self::Response> {
+        // Only validate for current operations (skip for replay)
+        if !is_replay {
+            self.validate(&operation).await?;
+        }
         match operation.request {
             GlobalRequest::CreateStream {
                 name,
                 config,
                 group_id,
             } => {
-                // Check if stream already exists
-                if self.state.get_stream(&name).await.is_some() {
-                    return Ok(GlobalResponse::Error {
-                        message: format!("Stream {name} already exists"),
-                    });
-                }
+                // Only validate for current operations (skip for replay)
+                if !is_replay {
+                    // Check if stream already exists
+                    if self.state.get_stream(&name).await.is_some() {
+                        return Ok(GlobalResponse::error(format!(
+                            "Stream {name} already exists"
+                        )));
+                    }
 
-                // Check if group exists
-                if self.state.get_group(&group_id).await.is_none() {
-                    return Ok(GlobalResponse::Error {
-                        message: format!("Group {group_id:?} does not exist"),
-                    });
+                    // Check if group exists
+                    if self.state.get_group(&group_id).await.is_none() {
+                        return Ok(GlobalResponse::error(format!(
+                            "Group {group_id:?} does not exist"
+                        )));
+                    }
                 }
 
                 // Create stream
@@ -94,9 +105,7 @@ impl OperationHandler for GlobalOperationHandler {
                 if self.state.remove_stream(&name).await.is_some() {
                     Ok(GlobalResponse::StreamDeleted { name })
                 } else {
-                    Ok(GlobalResponse::Error {
-                        message: format!("Stream {name} not found"),
-                    })
+                    Ok(GlobalResponse::error(format!("Stream {name} not found")))
                 }
             }
 
@@ -104,23 +113,27 @@ impl OperationHandler for GlobalOperationHandler {
                 if self.state.update_stream_config(&name, config).await {
                     Ok(GlobalResponse::Success)
                 } else {
-                    Ok(GlobalResponse::Error {
-                        message: format!("Stream {name} not found"),
-                    })
+                    Ok(GlobalResponse::error(format!("Stream {name} not found")))
                 }
             }
 
             GlobalRequest::CreateGroup { info } => {
-                // Check if group already exists
-                if self.state.get_group(&info.id).await.is_some() {
-                    return Ok(GlobalResponse::Error {
-                        message: format!("Group {:?} already exists", info.id),
-                    });
+                // Only validate for current operations (skip for replay)
+                if !is_replay {
+                    // Check if group already exists
+                    if self.state.get_group(&info.id).await.is_some() {
+                        return Ok(GlobalResponse::Error {
+                            message: format!("Group {:?} already exists", info.id),
+                        });
+                    }
                 }
 
                 self.state.add_group(info.clone()).await;
 
-                Ok(GlobalResponse::GroupCreated { id: info.id })
+                Ok(GlobalResponse::GroupCreated {
+                    id: info.id,
+                    group_info: info,
+                })
             }
 
             GlobalRequest::DissolveGroup { id } => {
@@ -182,9 +195,7 @@ impl OperationHandler for GlobalOperationHandler {
                 if self.state.reassign_stream(&name, to_group).await {
                     Ok(GlobalResponse::Success)
                 } else {
-                    Ok(GlobalResponse::Error {
-                        message: format!("Stream {name} not found"),
-                    })
+                    Ok(GlobalResponse::error(format!("Stream {name} not found")))
                 }
             }
         }
@@ -194,20 +205,10 @@ impl OperationHandler for GlobalOperationHandler {
         // Basic validation
         match &operation.request {
             GlobalRequest::CreateStream { config, .. } => {
-                if config.max_message_size == 0 {
-                    return Err(ConsensusError::with_context(
-                        ErrorKind::Validation,
-                        "Max message size must be greater than 0",
-                    ));
-                }
+                validations::greater_than_zero(config.max_message_size as u64, "Max message size")?;
             }
             GlobalRequest::CreateGroup { info } => {
-                if info.members.is_empty() {
-                    return Err(ConsensusError::with_context(
-                        ErrorKind::Validation,
-                        "Group must have at least one member",
-                    ));
-                }
+                validations::not_empty(&info.members, "Group members")?;
             }
             _ => {}
         }

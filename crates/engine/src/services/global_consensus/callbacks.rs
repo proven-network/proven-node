@@ -1,0 +1,256 @@
+//! Global consensus callbacks implementation for the service
+
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+use proven_storage::StorageAdaptor;
+use proven_topology::{NodeId, TopologyAdaptor};
+use proven_transport::Transport;
+
+use crate::{
+    consensus::global::{GlobalConsensusCallbacks, types::GroupInfo},
+    error::ConsensusResult,
+    foundation::types::ConsensusGroupId,
+    services::{
+        event::{Event, EventPublisher},
+        group_consensus::GroupConsensusService,
+        stream::StreamName,
+    },
+};
+
+/// GlobalConsensusCallbacks implementation for GlobalConsensusService
+pub struct GlobalConsensusCallbacksImpl<T, G, S>
+where
+    T: Transport,
+    G: TopologyAdaptor,
+    S: StorageAdaptor,
+{
+    node_id: NodeId,
+    event_publisher: Option<EventPublisher>,
+    routing_service: Option<Arc<crate::services::routing::RoutingService>>,
+    group_consensus_service: Option<Arc<GroupConsensusService<T, G, S>>>,
+}
+
+impl<T, G, S> GlobalConsensusCallbacksImpl<T, G, S>
+where
+    T: Transport,
+    G: TopologyAdaptor,
+    S: StorageAdaptor,
+{
+    /// Create new callbacks implementation
+    pub fn new(
+        node_id: NodeId,
+        event_publisher: Option<EventPublisher>,
+        routing_service: Option<Arc<crate::services::routing::RoutingService>>,
+        group_consensus_service: Option<Arc<GroupConsensusService<T, G, S>>>,
+    ) -> Self {
+        Self {
+            node_id,
+            event_publisher,
+            routing_service,
+            group_consensus_service,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<T, G, S> GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl<T, G, S>
+where
+    T: Transport + 'static,
+    G: TopologyAdaptor + 'static,
+    S: StorageAdaptor + 'static,
+{
+    async fn on_state_synchronized(
+        &self,
+        state: &crate::consensus::global::state::GlobalState,
+    ) -> ConsensusResult<()> {
+        tracing::info!("Global state synchronized - performing initial sync");
+
+        // Update routing table with all groups and stream assignments
+        if let Some(ref routing) = self.routing_service {
+            let all_groups = state.get_all_groups().await;
+            let all_streams = state.get_all_streams().await;
+
+            // Count streams per group for load balancing
+            let mut stream_counts: std::collections::HashMap<ConsensusGroupId, usize> =
+                std::collections::HashMap::new();
+            for stream_info in &all_streams {
+                *stream_counts.entry(stream_info.group_id).or_insert(0) += 1;
+            }
+
+            // Update routing table with all groups
+            for group_info in &all_groups {
+                let stream_count = stream_counts.get(&group_info.id).copied().unwrap_or(0);
+
+                let group_route = crate::services::routing::GroupRoute {
+                    group_id: group_info.id,
+                    members: group_info.members.clone(),
+                    leader: None,
+                    stream_count,
+                    health: crate::services::routing::GroupHealth::Healthy,
+                    last_updated: std::time::SystemTime::now(),
+                    location: if group_info.members.contains(&self.node_id) {
+                        crate::services::routing::GroupLocation::Local
+                    } else {
+                        crate::services::routing::GroupLocation::Remote
+                    },
+                };
+
+                if let Err(e) = routing.update_group_info(group_info.id, group_route).await {
+                    tracing::error!(
+                        "Failed to update routing for group {:?}: {}",
+                        group_info.id,
+                        e
+                    );
+                }
+            }
+
+            // Then update routing table with all stream assignments
+            for stream_info in all_streams {
+                if let Err(e) = routing
+                    .update_stream_assignment(stream_info.name.to_string(), stream_info.group_id)
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to update routing for stream {} -> group {:?}: {}",
+                        stream_info.name,
+                        stream_info.group_id,
+                        e
+                    );
+                }
+            }
+        }
+
+        // Create local group instances for groups where this node is a member
+        let groups = state.get_all_groups().await;
+        let my_groups: Vec<_> = groups
+            .into_iter()
+            .filter(|g| g.members.contains(&self.node_id))
+            .collect();
+
+        if let Some(ref group_consensus) = self.group_consensus_service {
+            for group_info in my_groups {
+                tracing::info!("Synchronizing local group {:?}", group_info.id);
+                if let Err(e) = group_consensus
+                    .create_group(group_info.id, group_info.members.clone())
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to synchronize local group {:?}: {}",
+                        group_info.id,
+                        e
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn on_group_created(
+        &self,
+        group_id: ConsensusGroupId,
+        group_info: &GroupInfo,
+    ) -> ConsensusResult<()> {
+        // Update routing for the new group
+        if let Some(ref routing) = self.routing_service {
+            let group_route = crate::services::routing::GroupRoute {
+                group_id,
+                members: group_info.members.clone(),
+                leader: None,
+                stream_count: 0, // New groups start with 0 streams
+                health: crate::services::routing::GroupHealth::Healthy,
+                last_updated: std::time::SystemTime::now(),
+                location: if group_info.members.contains(&self.node_id) {
+                    crate::services::routing::GroupLocation::Local
+                } else {
+                    crate::services::routing::GroupLocation::Remote
+                },
+            };
+            if let Err(e) = routing.update_group_info(group_id, group_route).await {
+                tracing::error!("Failed to update routing for group {:?}: {}", group_id, e);
+            }
+        }
+
+        // Check if this node is a member of the group
+        if group_info.members.contains(&self.node_id) {
+            // Direct service communication for immediate consistency
+            if let Some(ref group_consensus) = self.group_consensus_service {
+                tracing::info!(
+                    "Creating local group {:?} via direct service communication",
+                    group_id
+                );
+                if let Err(e) = group_consensus
+                    .create_group(group_id, group_info.members.clone())
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to create local group {:?} directly: {}",
+                        group_id,
+                        e
+                    );
+                }
+            }
+        }
+
+        // Publish event for other services
+        if let Some(ref publisher) = self.event_publisher {
+            let event = Event::GroupCreated {
+                group_id,
+                members: group_info.members.clone(),
+            };
+            let source = format!("global-consensus-{}", self.node_id);
+            if let Err(e) = publisher.publish(event, source).await {
+                tracing::warn!("Failed to publish GroupCreated event: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn on_group_dissolved(&self, group_id: ConsensusGroupId) -> ConsensusResult<()> {
+        // TODO: Handle group dissolution
+        tracing::info!("Group dissolved: {:?}", group_id);
+        Ok(())
+    }
+
+    async fn on_stream_created(
+        &self,
+        stream_name: &StreamName,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<()> {
+        // Update routing service immediately
+        if let Some(ref routing) = self.routing_service
+            && let Err(e) = routing
+                .update_stream_assignment(stream_name.to_string(), group_id)
+                .await
+        {
+            tracing::error!(
+                "Failed to update routing for stream {} -> group {:?}: {}",
+                stream_name,
+                group_id,
+                e
+            );
+        }
+        Ok(())
+    }
+
+    async fn on_stream_deleted(&self, stream_name: &StreamName) -> ConsensusResult<()> {
+        // TODO: Handle stream deletion
+        tracing::info!("Stream deleted: {}", stream_name);
+        Ok(())
+    }
+
+    async fn on_membership_changed(
+        &self,
+        added_members: &[NodeId],
+        removed_members: &[NodeId],
+    ) -> ConsensusResult<()> {
+        tracing::info!(
+            "Global consensus membership changed: added {:?}, removed {:?}",
+            added_members,
+            removed_members
+        );
+        Ok(())
+    }
+}

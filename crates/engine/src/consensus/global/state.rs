@@ -94,6 +94,11 @@ impl GlobalState {
         streams.values().cloned().collect()
     }
 
+    /// Get all streams (alias for list_streams for consistency)
+    pub async fn get_all_streams(&self) -> Vec<StreamInfo> {
+        self.list_streams().await
+    }
+
     /// Update stream config
     pub async fn update_stream_config(&self, name: &StreamName, config: StreamConfig) -> bool {
         let mut streams = self.streams.write().await;
@@ -160,6 +165,11 @@ impl GlobalState {
     pub async fn list_groups(&self) -> Vec<GroupInfo> {
         let groups = self.groups.read().await;
         groups.values().cloned().collect()
+    }
+
+    /// Get all groups (alias for list_groups)
+    pub async fn get_all_groups(&self) -> Vec<GroupInfo> {
+        self.list_groups().await
     }
 
     /// Add member to group

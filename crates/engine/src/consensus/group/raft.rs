@@ -12,15 +12,17 @@ use openraft::{
         InstallSnapshotResponse, VoteRequest, VoteResponse,
     },
 };
-use proven_storage::LogStorage;
+use proven_storage::{LogStorage, StorageNamespace};
 use proven_topology::NodeId;
 
-use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
+use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
     traits::ConsensusLayer,
     types::{ConsensusGroupId, ConsensusRole, OperationId, Term},
 };
 
+use super::callbacks::GroupConsensusCallbacks;
+use super::dispatcher::GroupCallbackDispatcher;
 use super::operations::{GroupOperation, GroupOperationHandler};
 use super::snapshot::GroupSnapshot;
 use super::state::GroupState;
@@ -91,7 +93,7 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
     /// Shutdown the Raft instance
     pub async fn shutdown(&self) -> ConsensusResult<()> {
         self.raft.shutdown().await.map_err(|e| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::Consensus,
                 format!("Failed to shutdown Raft: {e}"),
             )
@@ -105,21 +107,45 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
         config: Config,
         network_factory: NF,
         log_storage: L,
+        callbacks: Arc<dyn GroupConsensusCallbacks>,
     ) -> ConsensusResult<Self>
     where
         NF: RaftNetworkFactory<GroupTypeConfig>,
     {
         let state = Arc::new(GroupState::new());
-        let handler = Arc::new(GroupOperationHandler::new(state.clone()));
+        let handler = Arc::new(GroupOperationHandler::new(group_id, state.clone()));
 
-        // Create separated storage and state machine
+        // Get the last committed log index before starting (from raw storage)
+        let logs_namespace = StorageNamespace::new(format!("group_{}_logs", group_id.value()));
+        let replay_boundary = match log_storage.bounds(&logs_namespace).await {
+            Ok(Some((_, last_index))) => Some(last_index),
+            Ok(None) => None,
+            Err(e) => {
+                return Err(Error::with_context(
+                    ErrorKind::Storage,
+                    format!("Failed to get storage bounds: {e}"),
+                ));
+            }
+        };
+
+        // Create log storage
         let log_storage = Arc::new(GroupRaftLogStorage::new(Arc::new(log_storage), group_id));
-        let state_machine = Arc::new(GroupStateMachine::new(state.clone()));
 
-        let validated_config =
-            Arc::new(config.validate().map_err(|e| {
-                ConsensusError::with_context(ErrorKind::Configuration, e.to_string())
-            })?);
+        // Create callback dispatcher and state machine
+        let callback_dispatcher = Arc::new(GroupCallbackDispatcher::new(callbacks));
+        let state_machine = Arc::new(GroupStateMachine::new(
+            group_id,
+            state.clone(),
+            handler.clone(),
+            callback_dispatcher,
+            replay_boundary,
+        ));
+
+        let validated_config = Arc::new(
+            config
+                .validate()
+                .map_err(|e| Error::with_context(ErrorKind::Configuration, e.to_string()))?,
+        );
 
         // Pass separated storage and state machine to Raft
         let raft = Raft::new(
@@ -130,7 +156,7 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
             state_machine.clone(), // State machine only
         )
         .await
-        .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))?;
+        .map_err(|e| Error::with_context(ErrorKind::Consensus, e.to_string()))?;
 
         Ok(Self {
             node_id,
@@ -282,7 +308,7 @@ impl<L: LogStorage> GroupRaftMessageHandler for GroupConsensusLayer<L> {
         self.raft
             .vote(req)
             .await
-            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))
+            .map_err(|e| Error::with_context(ErrorKind::Consensus, e.to_string()))
     }
 
     async fn handle_append_entries(
@@ -292,7 +318,7 @@ impl<L: LogStorage> GroupRaftMessageHandler for GroupConsensusLayer<L> {
         self.raft
             .append_entries(req)
             .await
-            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))
+            .map_err(|e| Error::with_context(ErrorKind::Consensus, e.to_string()))
     }
 
     async fn handle_install_snapshot(
@@ -302,7 +328,7 @@ impl<L: LogStorage> GroupRaftMessageHandler for GroupConsensusLayer<L> {
         self.raft
             .install_snapshot(req)
             .await
-            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))
+            .map_err(|e| Error::with_context(ErrorKind::Consensus, e.to_string()))
     }
 
     async fn initialize_cluster(
@@ -312,6 +338,6 @@ impl<L: LogStorage> GroupRaftMessageHandler for GroupConsensusLayer<L> {
         self.raft
             .initialize(members)
             .await
-            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))
+            .map_err(|e| Error::with_context(ErrorKind::Consensus, e.to_string()))
     }
 }

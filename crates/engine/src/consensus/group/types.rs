@@ -90,6 +90,20 @@ pub enum GroupResponse {
     },
 }
 
+impl GroupResponse {
+    /// Create an error response
+    pub fn error(message: impl Into<String>) -> Self {
+        Self::Error {
+            message: message.into(),
+        }
+    }
+
+    /// Create a success response
+    pub fn success() -> Self {
+        Self::Success
+    }
+}
+
 /// Stored message with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredMessage {

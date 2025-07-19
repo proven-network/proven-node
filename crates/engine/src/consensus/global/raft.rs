@@ -12,10 +12,10 @@ use openraft::{
         InstallSnapshotResponse, VoteRequest, VoteResponse,
     },
 };
-use proven_storage::LogStorage;
+use proven_storage::{LogStorage, StorageNamespace};
 use proven_topology::NodeId;
 
-use crate::error::{ConsensusError, ConsensusResult, ErrorKind};
+use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
     traits::ConsensusLayer,
     types::{ConsensusRole, OperationId, Term},
@@ -49,6 +49,8 @@ pub trait GlobalRaftMessageHandler: Send + Sync {
     ) -> ConsensusResult<()>;
 }
 
+use super::callbacks::GlobalConsensusCallbacks;
+use super::dispatcher::GlobalCallbackDispatcher;
 use super::operations::{GlobalOperation, GlobalOperationHandler};
 use super::snapshot::GlobalSnapshot;
 use super::state::GlobalState;
@@ -91,9 +93,10 @@ impl<L: LogStorage> GlobalRaftMessageHandler for GlobalConsensusLayer<L> {
         &self,
         req: VoteRequest<GlobalTypeConfig>,
     ) -> ConsensusResult<VoteResponse<GlobalTypeConfig>> {
-        self.raft.vote(req).await.map_err(|e| {
-            ConsensusError::with_context(ErrorKind::Consensus, format!("Vote failed: {e}"))
-        })
+        self.raft
+            .vote(req)
+            .await
+            .map_err(|e| Error::with_context(ErrorKind::Consensus, format!("Vote failed: {e}")))
     }
 
     async fn handle_append_entries(
@@ -101,10 +104,7 @@ impl<L: LogStorage> GlobalRaftMessageHandler for GlobalConsensusLayer<L> {
         req: AppendEntriesRequest<GlobalTypeConfig>,
     ) -> ConsensusResult<AppendEntriesResponse<GlobalTypeConfig>> {
         self.raft.append_entries(req).await.map_err(|e| {
-            ConsensusError::with_context(
-                ErrorKind::Consensus,
-                format!("Append entries failed: {e}"),
-            )
+            Error::with_context(ErrorKind::Consensus, format!("Append entries failed: {e}"))
         })
     }
 
@@ -113,7 +113,7 @@ impl<L: LogStorage> GlobalRaftMessageHandler for GlobalConsensusLayer<L> {
         req: InstallSnapshotRequest<GlobalTypeConfig>,
     ) -> ConsensusResult<InstallSnapshotResponse<GlobalTypeConfig>> {
         self.raft.install_snapshot(req).await.map_err(|e| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::Consensus,
                 format!("Install snapshot failed: {e}"),
             )
@@ -125,7 +125,7 @@ impl<L: LogStorage> GlobalRaftMessageHandler for GlobalConsensusLayer<L> {
         members: std::collections::BTreeMap<NodeId, proven_topology::Node>,
     ) -> ConsensusResult<()> {
         self.raft.initialize(members).await.map_err(|e| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::Consensus,
                 format!("Failed to initialize Raft: {e}"),
             )
@@ -137,7 +137,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
     /// Shutdown the Raft instance
     pub async fn shutdown(&self) -> ConsensusResult<()> {
         self.raft.shutdown().await.map_err(|e| {
-            ConsensusError::with_context(
+            Error::with_context(
                 ErrorKind::Consensus,
                 format!("Failed to shutdown Raft: {e}"),
             )
@@ -150,6 +150,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         config: Config,
         network_factory: NF,
         storage: L,
+        callbacks: Arc<dyn GlobalConsensusCallbacks>,
     ) -> ConsensusResult<Self>
     where
         NF: RaftNetworkFactory<GlobalTypeConfig>,
@@ -157,14 +158,36 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         let state = Arc::new(GlobalState::new());
         let handler = Arc::new(GlobalOperationHandler::new(state.clone()));
 
-        // Create separated storage and state machine
-        let log_storage = Arc::new(GlobalRaftLogStorage::new(Arc::new(storage)));
-        let state_machine = Arc::new(GlobalStateMachine::new(state.clone()));
+        // Get the last committed log index before starting (from raw storage)
+        let logs_namespace = StorageNamespace::new("global_logs");
+        let replay_boundary = match storage.bounds(&logs_namespace).await {
+            Ok(Some((_, last_index))) => Some(last_index),
+            Ok(None) => None,
+            Err(e) => {
+                return Err(Error::with_context(
+                    ErrorKind::Storage,
+                    format!("Failed to get storage bounds: {e}"),
+                ));
+            }
+        };
 
-        let validated_config =
-            Arc::new(config.validate().map_err(|e| {
-                ConsensusError::with_context(ErrorKind::Configuration, e.to_string())
-            })?);
+        // Create log storage
+        let log_storage = Arc::new(GlobalRaftLogStorage::new(Arc::new(storage)));
+
+        // Create callback dispatcher and state machine
+        let callback_dispatcher = Arc::new(GlobalCallbackDispatcher::new(callbacks));
+        let state_machine = Arc::new(GlobalStateMachine::new(
+            state.clone(),
+            handler.clone(),
+            callback_dispatcher,
+            replay_boundary,
+        ));
+
+        let validated_config = Arc::new(
+            config
+                .validate()
+                .map_err(|e| Error::with_context(ErrorKind::Configuration, e.to_string()))?,
+        );
 
         // Pass separated storage and state machine to Raft
         let raft = Raft::new(
@@ -175,7 +198,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
             state_machine.clone(), // State machine only
         )
         .await
-        .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))?;
+        .map_err(|e| Error::with_context(ErrorKind::Consensus, e.to_string()))?;
 
         Ok(Self {
             node_id,
@@ -203,7 +226,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
             .raft
             .client_write(request)
             .await
-            .map_err(|e| ConsensusError::with_context(ErrorKind::Consensus, e.to_string()))?
+            .map_err(|e| Error::with_context(ErrorKind::Consensus, e.to_string()))?
             .data;
 
         Ok(response)

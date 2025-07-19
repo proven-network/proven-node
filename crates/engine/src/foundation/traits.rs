@@ -64,7 +64,11 @@ pub trait OperationHandler: Send + Sync {
     type Response: Send + Sync;
 
     /// Handle an operation
-    async fn handle(&self, operation: Self::Operation) -> ConsensusResult<Self::Response>;
+    async fn handle(
+        &self,
+        operation: Self::Operation,
+        is_replay: bool,
+    ) -> ConsensusResult<Self::Response>;
 
     /// Validate an operation before processing
     async fn validate(&self, operation: &Self::Operation) -> ConsensusResult<()>;

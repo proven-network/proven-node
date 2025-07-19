@@ -9,10 +9,10 @@ use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
-use super::config::GroupConsensusConfig;
+use super::{callbacks, config::GroupConsensusConfig};
 use crate::{
     consensus::group::GroupConsensusLayer,
-    error::{ConsensusError, ConsensusResult, ErrorKind},
+    error::{ConsensusResult, Error, ErrorKind},
     foundation::types::ConsensusGroupId,
     services::event::{Event, EventEnvelope, EventPublisher, EventService},
 };
@@ -199,6 +199,13 @@ where
         let network_factory =
             GroupNetworkFactory::new(self.network_manager.clone(), group_id, network_stats);
 
+        // Create callbacks for this group
+        let callbacks = Arc::new(callbacks::GroupConsensusCallbacksImpl::new(
+            group_id,
+            self.node_id.clone(),
+            self.event_publisher.clone(),
+        ));
+
         let layer = Arc::new(
             GroupConsensusLayer::new(
                 self.node_id.clone(),
@@ -206,6 +213,7 @@ where
                 raft_config,
                 network_factory,
                 self.storage_manager.consensus_storage(),
+                callbacks,
             )
             .await?,
         );
@@ -255,7 +263,7 @@ where
                     group_id,
                     e
                 );
-                return Err(ConsensusError::with_context(
+                return Err(Error::with_context(
                     ErrorKind::Consensus,
                     format!("Failed to initialize group Raft: {e}"),
                 ));
@@ -355,7 +363,7 @@ where
                 })
             })
             .await
-            .map_err(|e| ConsensusError::with_context(ErrorKind::Network, e.to_string()))?;
+            .map_err(|e| Error::with_context(ErrorKind::Network, e.to_string()))?;
 
         Ok(())
     }
@@ -373,7 +381,7 @@ where
     ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
         let groups = self.groups.read().await;
         let layer = groups.get(&group_id).ok_or_else(|| {
-            ConsensusError::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
+            Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
         })?;
 
         let response = layer.submit_request(request.clone()).await?;
@@ -473,7 +481,7 @@ where
     ) -> ConsensusResult<Option<crate::consensus::group::state::StreamState>> {
         let groups = self.groups.read().await;
         let layer = groups.get(&group_id).ok_or_else(|| {
-            ConsensusError::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
+            Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
         })?;
 
         let state = layer.state();
@@ -498,7 +506,7 @@ where
 
         let groups = self.groups.read().await;
         let layer = groups.get(&group_id).ok_or_else(|| {
-            ConsensusError::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
+            Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
         })?;
 
         // Get state from the layer

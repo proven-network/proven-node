@@ -11,51 +11,55 @@ use openraft::{
 };
 use tokio::sync::RwLock;
 
+use super::callbacks::GroupConsensusCallbacks;
+use super::dispatcher::GroupCallbackDispatcher;
 use super::operations::{GroupOperation, GroupOperationHandler};
 use super::raft::GroupTypeConfig;
 use super::snapshot::{GroupSnapshot, GroupSnapshotBuilder};
 use super::state::GroupState;
 use super::types::{GroupRequest, GroupResponse, StreamOperation};
-use crate::foundation::traits::OperationHandler;
+use crate::foundation::{traits::OperationHandler, types::ConsensusGroupId};
 use proven_topology::NodeId;
-
-/// Callback for state machine events
-pub trait StateChangeCallback: Send + Sync {
-    /// Called when a stream operation is processed
-    fn on_stream_operation(
-        &self,
-        stream_name: &str,
-        operation: &StreamOperation,
-        response: &GroupResponse,
-    );
-
-    /// Called when membership changes
-    fn on_membership_changed(&self, new_members: &[NodeId], removed_members: &[NodeId]);
-}
 
 /// Raft state machine - handles applying committed entries
 #[derive(Clone)]
 pub struct GroupStateMachine {
+    /// Group ID
+    group_id: ConsensusGroupId,
     /// Group state that gets modified by applied entries
     state: Arc<GroupState>,
     /// Handler for processing operations
     handler: Arc<GroupOperationHandler>,
+    /// Callback dispatcher
+    callback_dispatcher: Arc<GroupCallbackDispatcher>,
     /// Last applied log index
     applied: Arc<RwLock<Option<LogId<GroupTypeConfig>>>>,
     /// Current membership
     membership: Arc<RwLock<StoredMembership<GroupTypeConfig>>>,
+    /// Last log index that was persisted before this instance started
+    replay_boundary: Option<u64>,
+    /// Whether we've fired the state sync callback
+    state_synced: Arc<RwLock<bool>>,
 }
 
 impl GroupStateMachine {
-    /// Create new state machine
-    pub fn new(state: Arc<GroupState>) -> Self {
-        let handler = Arc::new(GroupOperationHandler::new(state.clone()));
-
+    /// Create new state machine with handler and dispatcher
+    pub fn new(
+        group_id: ConsensusGroupId,
+        state: Arc<GroupState>,
+        handler: Arc<GroupOperationHandler>,
+        callback_dispatcher: Arc<GroupCallbackDispatcher>,
+        replay_boundary: Option<u64>,
+    ) -> Self {
         Self {
+            group_id,
             state,
             handler,
+            callback_dispatcher,
             applied: Arc::new(RwLock::new(None)),
             membership: Arc::new(RwLock::new(StoredMembership::default())),
+            replay_boundary,
+            state_synced: Arc::new(RwLock::new(false)),
         }
     }
 
@@ -64,11 +68,20 @@ impl GroupStateMachine {
         &self.state
     }
 
-    /// Apply entries with optional callback
+    /// Get the operation handler reference
+    pub fn handler(&self) -> &Arc<GroupOperationHandler> {
+        &self.handler
+    }
+
+    /// Get the callback dispatcher reference
+    pub fn callback_dispatcher(&self) -> &Arc<GroupCallbackDispatcher> {
+        &self.callback_dispatcher
+    }
+
+    /// Apply entries
     pub async fn apply_entries<I>(
         &self,
         entries: I,
-        callback: Option<&dyn StateChangeCallback>,
     ) -> Result<Vec<GroupResponse>, StorageError<GroupTypeConfig>>
     where
         I: IntoIterator<Item = Entry<GroupTypeConfig>> + Send,
@@ -81,27 +94,43 @@ impl GroupStateMachine {
             let log_id = entry.log_id.clone();
             *self.applied.write().await = Some(log_id.clone());
 
+            // Check if we've crossed the replay boundary
+            if let Some(boundary) = self.replay_boundary
+                && log_id.index > boundary
+                && !*self.state_synced.read().await
+            {
+                // We've crossed into current operations - fire state sync callback
+                *self.state_synced.write().await = true;
+
+                // Dispatch state sync callback
+                self.callback_dispatcher
+                    .dispatch_state_sync(self.group_id, &self.state)
+                    .await;
+            }
+
+            // Check if this is a replay operation
+            let is_replay = self
+                .replay_boundary
+                .map(|boundary| log_id.index <= boundary)
+                .unwrap_or(false);
+
             match &entry.payload {
                 EntryPayload::Normal(req) => {
                     // Process the business logic
                     let operation = GroupOperation::new(req.clone());
-                    match self.handler.handle(operation).await {
-                        Ok(response) => {
-                            // Notify callback if provided
-                            if let (Some(cb), GroupRequest::Stream(stream_op)) = (callback, req) {
-                                let stream_name = match stream_op {
-                                    StreamOperation::Append { stream, .. } => stream.to_string(),
-                                    StreamOperation::Trim { stream, .. } => stream.to_string(),
-                                    StreamOperation::Delete { stream, .. } => stream.to_string(),
-                                };
-                                cb.on_stream_operation(&stream_name, stream_op, &response);
-                            }
-                            responses.push(response);
-                        }
-                        Err(e) => responses.push(GroupResponse::Error {
+                    let response = match self.handler.handle(operation.clone(), is_replay).await {
+                        Ok(resp) => resp,
+                        Err(e) => GroupResponse::Error {
                             message: e.to_string(),
-                        }),
-                    }
+                        },
+                    };
+
+                    // Dispatch callbacks based on operation result
+                    self.callback_dispatcher
+                        .dispatch_operation(self.group_id, &operation.request, &response, is_replay)
+                        .await;
+
+                    responses.push(response);
                 }
                 EntryPayload::Membership(membership) => {
                     // Update membership
@@ -130,10 +159,15 @@ impl GroupStateMachine {
                         .cloned()
                         .collect();
 
-                    if (!added_members.is_empty() || !removed_members.is_empty())
-                        && let Some(cb) = callback
-                    {
-                        cb.on_membership_changed(&added_members, &removed_members);
+                    if (!added_members.is_empty() || !removed_members.is_empty()) && !is_replay {
+                        // Dispatch membership change callbacks for current operations
+                        self.callback_dispatcher
+                            .dispatch_membership_changed(
+                                self.group_id,
+                                &added_members,
+                                &removed_members,
+                            )
+                            .await;
                     }
 
                     // OpenRaft expects a response for every entry
@@ -176,8 +210,8 @@ impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
         I: IntoIterator<Item = Entry<GroupTypeConfig>> + Send,
         I::IntoIter: Send,
     {
-        // Apply entries without callback (trait requirement)
-        self.apply_entries(entries, None).await
+        // Apply entries
+        self.apply_entries(entries).await
     }
 
     async fn begin_receiving_snapshot(

@@ -17,7 +17,7 @@ use crate::{
         global::{GlobalRequest, GlobalResponse},
         group::{GroupRequest, GroupResponse, types::AdminOperation},
     },
-    error::{ConsensusError, ConsensusResult},
+    error::{ConsensusResult, Error},
     foundation::{
         traits::{ServiceHealth, ServiceLifecycle},
         types::ConsensusGroupId,
@@ -162,17 +162,14 @@ where
             })
             .await
             .map_err(|_| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Service,
                     "Client service not accepting requests",
                 )
             })?;
 
         response_rx.await.map_err(|_| {
-            ConsensusError::with_context(
-                crate::error::ErrorKind::Internal,
-                "Response channel closed",
-            )
+            Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
         })?
     }
 
@@ -192,17 +189,14 @@ where
             })
             .await
             .map_err(|_| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Service,
                     "Client service not accepting requests",
                 )
             })?;
 
         response_rx.await.map_err(|_| {
-            ConsensusError::with_context(
-                crate::error::ErrorKind::Internal,
-                "Response channel closed",
-            )
+            Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
         })?
     }
 
@@ -217,17 +211,14 @@ where
             })
             .await
             .map_err(|_| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Service,
                     "Client service not accepting requests",
                 )
             })?;
 
         response_rx.await.map_err(|_| {
-            ConsensusError::with_context(
-                crate::error::ErrorKind::Internal,
-                "Response channel closed",
-            )
+            Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
         })?
     }
 
@@ -245,17 +236,14 @@ where
             })
             .await
             .map_err(|_| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Service,
                     "Client service not accepting requests",
                 )
             })?;
 
         response_rx.await.map_err(|_| {
-            ConsensusError::with_context(
-                crate::error::ErrorKind::Internal,
-                "Response channel closed",
-            )
+            Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
         })?
     }
 
@@ -275,17 +263,14 @@ where
             })
             .await
             .map_err(|_| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Service,
                     "Client service not accepting requests",
                 )
             })?;
 
         response_rx.await.map_err(|_| {
-            ConsensusError::with_context(
-                crate::error::ErrorKind::Internal,
-                "Response channel closed",
-            )
+            Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
         })?
     }
 
@@ -300,7 +285,7 @@ where
         // Get routing service to check group membership
         let routing_service = self.routing_service.read().await;
         let routing_service = routing_service.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::Service,
                 "Routing service not available",
             )
@@ -308,7 +293,7 @@ where
 
         // Get all routing info
         let routing_info = routing_service.get_routing_info().await.map_err(|e| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
             )
@@ -334,7 +319,7 @@ where
                 })
                 .collect();
             if remote_groups.is_empty() {
-                return Err(ConsensusError::with_context(
+                return Err(Error::with_context(
                     crate::error::ErrorKind::InvalidState,
                     "No consensus groups available",
                 ));
@@ -404,7 +389,7 @@ where
         // Get routing service to check where stream is located
         let routing_service = self.routing_service.read().await;
         let routing_service = routing_service.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::Service,
                 "Routing service not available",
             )
@@ -415,13 +400,13 @@ where
             .get_stream_routing_info(stream_name)
             .await
             .map_err(|e| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Service,
                     format!("Failed to get routing info: {e}"),
                 )
             })?
             .ok_or_else(|| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::NotFound,
                     format!("Stream '{stream_name}' not found"),
                 )
@@ -429,7 +414,7 @@ where
 
         // Check if stream is on this node
         let routing_info = routing_service.get_routing_info().await.map_err(|e| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
             )
@@ -440,7 +425,7 @@ where
                 // Stream is local - directly call StreamService
                 let stream_service = self.stream_service.read().await;
                 let stream_service = stream_service.as_ref().ok_or_else(|| {
-                    ConsensusError::with_context(
+                    Error::with_context(
                         crate::error::ErrorKind::Service,
                         "Stream service not available",
                     )
@@ -467,7 +452,7 @@ where
                 .await
             }
         } else {
-            Err(ConsensusError::with_context(
+            Err(Error::with_context(
                 crate::error::ErrorKind::NotFound,
                 format!("Group {:?} not found", route_info.group_id),
             ))
@@ -540,7 +525,7 @@ where
                                                     group_id: info.id,
                                                     members: info.members.clone(),
                                                     leader: info.members.first().cloned(),
-                                                    stream_count: 0,
+                                                    stream_count: 0, // Will be updated as streams are created
                                                     health: crate::services::routing::GroupHealth::Healthy,
                                                     last_updated: std::time::SystemTime::now(),
                                                     location,
@@ -557,8 +542,10 @@ where
                                                 }
                                             }
 
-                                            let global_response =
-                                                GlobalResponse::GroupCreated { id: info.id };
+                                            let global_response = GlobalResponse::GroupCreated {
+                                                id: info.id,
+                                                group_info: info.clone(),
+                                            };
                                             let _ = response_tx.send(Ok(global_response));
                                         }
                                         Err(e) => {
@@ -566,7 +553,7 @@ where
                                         }
                                     }
                                 } else {
-                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                    let _ = response_tx.send(Err(Error::with_context(
                                         crate::error::ErrorKind::Service,
                                         "Group consensus service not available",
                                     )));
@@ -582,8 +569,7 @@ where
                                             match &response {
                                                 GlobalResponse::Error { message } => {
                                                     let _ =
-                                                        response_tx
-                                                            .send(Err(ConsensusError::with_context(
+                                                        response_tx.send(Err(Error::with_context(
                                                             crate::error::ErrorKind::InvalidState,
                                                             message.clone(),
                                                         )));
@@ -619,7 +605,7 @@ where
                                                         );
                                                         // Create forward request
                                                         let forward_request =
-                                                            super::messages::ClientServiceMessage::GlobalRequest {
+                                                            super::messages::ClientServiceMessage::Global {
                                                                 requester_id: node_id.clone(),
                                                                 request: request.clone(),
                                                             };
@@ -634,11 +620,11 @@ where
                                                                 )
                                                                 .await
                                                             {
-                                                                Ok(super::messages::ClientServiceResponse::GlobalResponse { response }) => {
+                                                                Ok(super::messages::ClientServiceResponse::Global { response }) => {
                                                                     // Check if the forwarded response is an error variant
                                                                     match &response {
                                                                         GlobalResponse::Error { message } => {
-                                                                            let _ = response_tx.send(Err(ConsensusError::with_context(
+                                                                            let _ = response_tx.send(Err(Error::with_context(
                                                                                 crate::error::ErrorKind::InvalidState,
                                                                                 message.clone(),
                                                                             )));
@@ -648,17 +634,17 @@ where
                                                                         }
                                                                     }
                                                                 }
-                                                                Ok(super::messages::ClientServiceResponse::GroupResponse { .. }) => {
+                                                                Ok(super::messages::ClientServiceResponse::Group { .. }) => {
                                                                     let _ = response_tx.send(Err(
-                                                                        ConsensusError::with_context(
+                                                                        Error::with_context(
                                                                             crate::error::ErrorKind::Internal,
                                                                             "Unexpected response type: expected ForwardGlobalResponse",
                                                                         ),
                                                                     ));
                                                                 }
-                                                                Ok(super::messages::ClientServiceResponse::ReadResponse { .. }) => {
+                                                                Ok(super::messages::ClientServiceResponse::Read { .. }) => {
                                                                     let _ = response_tx.send(Err(
-                                                                        ConsensusError::with_context(
+                                                                        Error::with_context(
                                                                             crate::error::ErrorKind::Internal,
                                                                             "Unexpected response type: expected ForwardGlobalResponse",
                                                                         ),
@@ -666,7 +652,7 @@ where
                                                                 }
                                                                 Err(e) => {
                                                                     let _ = response_tx.send(Err(
-                                                                        ConsensusError::with_context(
+                                                                        Error::with_context(
                                                                             crate::error::ErrorKind::Network,
                                                                             format!("Failed to forward request: {e}"),
                                                                         ),
@@ -675,7 +661,7 @@ where
                                                             }
                                                         } else {
                                                             let _ = response_tx.send(Err(
-                                                                ConsensusError::with_context(
+                                                                Error::with_context(
                                                                     crate::error::ErrorKind::Service,
                                                                     "Network manager not available",
                                                                 ),
@@ -695,7 +681,7 @@ where
                                         }
                                     }
                                 } else {
-                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                    let _ = response_tx.send(Err(Error::with_context(
                                         crate::error::ErrorKind::Service,
                                         "Global consensus service not available",
                                     )));
@@ -705,12 +691,12 @@ where
                                 // Other global requests still not implemented
                                 let global = global_consensus.read().await;
                                 if let Some(_service) = global.as_ref() {
-                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                    let _ = response_tx.send(Err(Error::with_context(
                                         crate::error::ErrorKind::Internal,
                                         "Global consensus operation submission not yet implemented",
                                     )));
                                 } else {
-                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                    let _ = response_tx.send(Err(Error::with_context(
                                         crate::error::ErrorKind::Service,
                                         "Global consensus service not available",
                                     )));
@@ -742,7 +728,7 @@ where
                                 }
                             }
                         } else {
-                            let _ = response_tx.send(Err(ConsensusError::with_context(
+                            let _ = response_tx.send(Err(Error::with_context(
                                 crate::error::ErrorKind::Service,
                                 "Group consensus service not available",
                             )));
@@ -799,11 +785,10 @@ where
                                             }
                                         }
                                     } else {
-                                        let _ =
-                                            response_tx.send(Err(ConsensusError::with_context(
-                                                crate::error::ErrorKind::Service,
-                                                "Group consensus service not available",
-                                            )));
+                                        let _ = response_tx.send(Err(Error::with_context(
+                                            crate::error::ErrorKind::Service,
+                                            "Group consensus service not available",
+                                        )));
                                     }
                                 }
                                 Ok(None) => {
@@ -811,14 +796,14 @@ where
                                     let _ = response_tx.send(Ok(None));
                                 }
                                 Err(e) => {
-                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                    let _ = response_tx.send(Err(Error::with_context(
                                         crate::error::ErrorKind::Service,
                                         format!("Failed to query routing info: {e}"),
                                     )));
                                 }
                             }
                         } else {
-                            let _ = response_tx.send(Err(ConsensusError::with_context(
+                            let _ = response_tx.send(Err(Error::with_context(
                                 crate::error::ErrorKind::Service,
                                 "Routing service not available",
                             )));
@@ -843,12 +828,12 @@ where
                             //         let _ = response_tx.send(Err(e));
                             //     }
                             // }
-                            let _ = response_tx.send(Err(ConsensusError::with_context(
+                            let _ = response_tx.send(Err(Error::with_context(
                                 crate::error::ErrorKind::Internal,
                                 "Group info query not yet implemented",
                             )));
                         } else {
-                            let _ = response_tx.send(Err(ConsensusError::with_context(
+                            let _ = response_tx.send(Err(Error::with_context(
                                 crate::error::ErrorKind::Service,
                                 "Global consensus service not available",
                             )));
@@ -897,12 +882,10 @@ where
                                                     }
                                                 }
                                             } else {
-                                                let _ = response_tx.send(Err(
-                                                    ConsensusError::with_context(
-                                                        crate::error::ErrorKind::Service,
-                                                        "Group consensus service not available",
-                                                    ),
-                                                ));
+                                                let _ = response_tx.send(Err(Error::with_context(
+                                                    crate::error::ErrorKind::Service,
+                                                    "Group consensus service not available",
+                                                )));
                                             }
                                         }
                                         Ok(false) => {
@@ -930,19 +913,17 @@ where
                                                     }
                                                 }
                                             } else {
-                                                let _ = response_tx.send(Err(
-                                                    ConsensusError::with_context(
-                                                        crate::error::ErrorKind::InvalidState,
-                                                        format!(
-                                                            "No routing info for group {group_id:?}"
-                                                        ),
+                                                let _ = response_tx.send(Err(Error::with_context(
+                                                    crate::error::ErrorKind::InvalidState,
+                                                    format!(
+                                                        "No routing info for group {group_id:?}"
                                                     ),
-                                                ));
+                                                )));
                                             }
                                         }
                                         Err(e) => {
                                             let _ =
-                                                response_tx.send(Err(ConsensusError::with_context(
+                                                response_tx.send(Err(Error::with_context(
                                                     crate::error::ErrorKind::NotFound,
                                                     format!(
                                                         "Group {group_id:?} not found in routing table: {e}"
@@ -952,26 +933,26 @@ where
                                     }
                                 }
                                 Ok(crate::services::routing::RouteDecision::Reject(reason)) => {
-                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                    let _ = response_tx.send(Err(Error::with_context(
                                         crate::error::ErrorKind::Validation,
                                         format!("Operation rejected: {reason}"),
                                     )));
                                 }
                                 Ok(decision) => {
-                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                    let _ = response_tx.send(Err(Error::with_context(
                                         crate::error::ErrorKind::Internal,
                                         format!("Unexpected routing decision: {decision:?}"),
                                     )));
                                 }
                                 Err(e) => {
-                                    let _ = response_tx.send(Err(ConsensusError::with_context(
+                                    let _ = response_tx.send(Err(Error::with_context(
                                         crate::error::ErrorKind::Service,
                                         format!("Routing failed: {e}"),
                                     )));
                                 }
                             }
                         } else {
-                            let _ = response_tx.send(Err(ConsensusError::with_context(
+                            let _ = response_tx.send(Err(Error::with_context(
                                 crate::error::ErrorKind::Service,
                                 "Routing service not available",
                             )));
@@ -993,7 +974,7 @@ where
     ) -> ConsensusResult<GroupResponse> {
         let network = self.network_manager.read().await;
         let network = network.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::Configuration,
                 "Network manager not available for forwarding",
             )
@@ -1002,7 +983,7 @@ where
         // Get routing service to find the best node
         let routing_service = self.routing_service.read().await;
         let routing_service = routing_service.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::Service,
                 "Routing service not available",
             )
@@ -1013,7 +994,7 @@ where
             .get_best_node_for_group(group_id)
             .await
             .map_err(|e| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Service,
                     format!("Failed to get target node for group {group_id:?}: {e}"),
                 )
@@ -1022,14 +1003,14 @@ where
         let target_node = target_node
             .or_else(|| members.first().cloned())
             .ok_or_else(|| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::InvalidState,
                     format!("No target node available for group {group_id:?}"),
                 )
             })?;
 
         // Create the forward request
-        let forward_request = super::messages::ClientServiceMessage::GroupRequest {
+        let forward_request = super::messages::ClientServiceMessage::Group {
             requester_id: self.node_id.clone(),
             group_id,
             request,
@@ -1044,15 +1025,15 @@ where
             )
             .await
             .map_err(|e| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Network,
                     format!("Failed to forward request to {target_node}: {e}"),
                 )
             })?;
 
         match response {
-            super::messages::ClientServiceResponse::GroupResponse { response } => Ok(response),
-            _ => Err(ConsensusError::with_context(
+            super::messages::ClientServiceResponse::Group { response } => Ok(response),
+            _ => Err(Error::with_context(
                 crate::error::ErrorKind::Internal,
                 "Unexpected response type",
             )),
@@ -1070,7 +1051,7 @@ where
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         let network = self.network_manager.read().await;
         let network = network.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::Configuration,
                 "Network manager not available for forwarding",
             )
@@ -1079,7 +1060,7 @@ where
         // Get routing service to find the best node
         let routing_service = self.routing_service.read().await;
         let routing_service = routing_service.as_ref().ok_or_else(|| {
-            ConsensusError::with_context(
+            Error::with_context(
                 crate::error::ErrorKind::Service,
                 "Routing service not available",
             )
@@ -1090,7 +1071,7 @@ where
             .get_best_node_for_group(group_id)
             .await
             .map_err(|e| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Service,
                     format!("Failed to get target node for group {group_id:?}: {e}"),
                 )
@@ -1099,14 +1080,14 @@ where
         let target_node = target_node
             .or_else(|| members.first().cloned())
             .ok_or_else(|| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::InvalidState,
                     format!("No target node available for group {group_id:?}"),
                 )
             })?;
 
         // Create the forward request
-        let forward_request = super::messages::ClientServiceMessage::ReadRequest {
+        let forward_request = super::messages::ClientServiceMessage::Read {
             requester_id: self.node_id.clone(),
             stream_name: stream_name.to_string(),
             start_sequence,
@@ -1122,15 +1103,15 @@ where
             )
             .await
             .map_err(|e| {
-                ConsensusError::with_context(
+                Error::with_context(
                     crate::error::ErrorKind::Network,
                     format!("Failed to forward read request to {target_node}: {e}"),
                 )
             })?;
 
         match response {
-            super::messages::ClientServiceResponse::ReadResponse { messages } => Ok(messages),
-            _ => Err(ConsensusError::with_context(
+            super::messages::ClientServiceResponse::Read { messages } => Ok(messages),
+            _ => Err(Error::with_context(
                 crate::error::ErrorKind::Internal,
                 "Unexpected response type for read request",
             )),
@@ -1160,7 +1141,7 @@ where
 
                 Box::pin(async move {
                     match message {
-                        super::messages::ClientServiceMessage::GroupRequest {
+                        super::messages::ClientServiceMessage::Group {
                             requester_id: _,
                             group_id,
                             request,
@@ -1189,9 +1170,9 @@ where
                                     ))
                                 })?;
 
-                            Ok(super::messages::ClientServiceResponse::GroupResponse { response })
+                            Ok(super::messages::ClientServiceResponse::Group { response })
                         }
-                        super::messages::ClientServiceMessage::GlobalRequest {
+                        super::messages::ClientServiceMessage::Global {
                             requester_id: _,
                             request,
                         } => {
@@ -1211,9 +1192,9 @@ where
                                     "Failed to submit to global consensus: {e}"
                                 ))
                             })?;
-                            Ok(super::messages::ClientServiceResponse::GlobalResponse { response })
+                            Ok(super::messages::ClientServiceResponse::Global { response })
                         }
-                        super::messages::ClientServiceMessage::ReadRequest {
+                        super::messages::ClientServiceMessage::Read {
                             requester_id: _,
                             stream_name,
                             start_sequence,
@@ -1243,7 +1224,7 @@ where
                                     ))
                                 })?;
 
-                            Ok(super::messages::ClientServiceResponse::ReadResponse { messages })
+                            Ok(super::messages::ClientServiceResponse::Read { messages })
                         }
                     }
                 })
@@ -1267,19 +1248,19 @@ where
 
         // Check that required services are set
         if self.global_consensus.read().await.is_none() {
-            return Err(ConsensusError::with_context(
+            return Err(Error::with_context(
                 crate::error::ErrorKind::Configuration,
                 "Global consensus service not set",
             ));
         }
         if self.group_consensus.read().await.is_none() {
-            return Err(ConsensusError::with_context(
+            return Err(Error::with_context(
                 crate::error::ErrorKind::Configuration,
                 "Group consensus service not set",
             ));
         }
         if self.routing_service.read().await.is_none() {
-            return Err(ConsensusError::with_context(
+            return Err(Error::with_context(
                 crate::error::ErrorKind::Configuration,
                 "Routing service not set",
             ));
