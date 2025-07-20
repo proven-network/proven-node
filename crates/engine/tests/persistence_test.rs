@@ -4,18 +4,20 @@ mod common;
 
 use common::test_cluster::TestCluster;
 use proven_engine::foundation::types::ConsensusGroupId;
+use std::num::NonZero;
 use std::time::Duration;
 use tracing::{Level, info};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_cluster_persistence_across_restarts() {
-    // Initialize logging
+    // Initialize logging with reduced OpenRaft verbosity
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::from_default_env()
                 .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap()),
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap()),
         )
         .try_init();
 
@@ -53,6 +55,10 @@ async fn test_cluster_persistence_across_restarts() {
         .await
         .expect("Failed to create stream");
 
+    // Give time for stream initialization to propagate through group consensus
+    info!("Waiting for stream to be initialized in group consensus");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
     // Append some messages to the stream
     info!("Appending messages to stream");
     for i in 1..=10 {
@@ -77,12 +83,12 @@ async fn test_cluster_persistence_across_restarts() {
         info!("Node {} group state: {:?}", i, state);
     }
 
-    // Stop all engines gracefully
-    info!("Stopping engines");
-    for (i, engine) in engines.iter_mut().enumerate() {
-        info!("Stopping engine {}", i);
-        engine.stop().await.expect("Failed to stop engine");
-    }
+    // Stop all engines gracefully using TestCluster's method
+    info!("Stopping all engines using TestCluster");
+    cluster
+        .stop_all_engines(&mut engines)
+        .await
+        .expect("Failed to stop all engines");
 
     info!("All engines shut down successfully");
 
@@ -92,15 +98,15 @@ async fn test_cluster_persistence_across_restarts() {
     // Phase 2: Restart cluster with same storage and verify data persistence
     info!("=== Phase 2: Restarting cluster with persisted data ===");
 
-    // Simply restart the engines - they already have their storage managers
-    info!("Restarting engines...");
-    for (i, engine) in engines.iter_mut().enumerate() {
-        info!("Restarting engine {}", i);
-        engine
-            .start()
-            .await
-            .unwrap_or_else(|e| panic!("Failed to restart engine {i}: {e}"));
-    }
+    // Start all engines using TestCluster's method
+    // This ensures they all start together for proper consensus formation
+    info!("Starting all engines using TestCluster");
+    cluster
+        .start_all_engines(&mut engines)
+        .await
+        .expect("Failed to start all engines");
+
+    info!("All engines started successfully");
 
     info!(
         "Restarted nodes: {}, {}, {}",
@@ -191,12 +197,13 @@ async fn test_cluster_persistence_across_restarts() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_single_node_persistence() {
-    // Initialize logging
+    // Initialize logging with reduced OpenRaft verbosity
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::from_default_env()
                 .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap()),
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap()),
         )
         .try_init();
 
@@ -284,6 +291,9 @@ async fn test_single_node_persistence() {
 
     let client = engines[0].client();
 
+    // Give the stream service a moment to fully sync
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
     // First check if the stream exists
     match client.get_stream_info(stream_name).await {
         Ok(Some(info)) => {
@@ -302,7 +312,14 @@ async fn test_single_node_persistence() {
     }
 
     // Now try to read the messages
-    match client.read_stream(stream_name.to_string(), 0, 20).await {
+    match client
+        .read_stream(
+            stream_name.to_string(),
+            NonZero::new(1).unwrap(),
+            NonZero::new(20).unwrap(),
+        )
+        .await
+    {
         Ok(messages) => {
             info!("Successfully read {} messages from stream", messages.len());
             assert_eq!(messages.len(), 20, "Should have read 20 messages");

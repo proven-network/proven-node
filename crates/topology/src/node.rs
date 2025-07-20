@@ -1,6 +1,10 @@
 //! Node type for topology management
 
-use std::{collections::HashSet, net::SocketAddr};
+use std::{
+    collections::HashSet,
+    hash::{Hash, Hasher},
+    net::SocketAddr,
+};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -8,7 +12,7 @@ use url::Url;
 use crate::{NodeId, NodeSpecialization};
 
 /// A node in the network topology
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     /// The availability zone of the node.
     pub availability_zone: String,
@@ -143,5 +147,22 @@ impl Node {
         // Ensure no double slashes by trimming trailing slash from URL
         let base_url = url.as_str().trim_end_matches('/');
         Ok(format!("{base_url}/consensus/ws"))
+    }
+}
+
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        // Two nodes are equal if they have the same node_id
+        // This allows nodes to change their origin (network address) while maintaining identity
+        self.node_id == other.node_id
+    }
+}
+
+impl Eq for Node {}
+
+impl Hash for Node {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // Hash only the node_id to be consistent with PartialEq
+        self.node_id.hash(state);
     }
 }

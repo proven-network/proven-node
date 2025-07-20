@@ -1,6 +1,6 @@
 //! Request forwarder for remote groups
 
-use std::sync::Arc;
+use std::{num::NonZero, sync::Arc};
 
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
@@ -152,13 +152,57 @@ where
         }
     }
 
+    /// Forward a request directly to a known leader
+    pub async fn forward_to_leader(
+        &self,
+        group_id: ConsensusGroupId,
+        request: GroupRequest,
+        leader: NodeId,
+    ) -> ConsensusResult<GroupResponse> {
+        // Skip if leader is self (shouldn't happen but be defensive)
+        if leader == self.node_id {
+            return Err(Error::with_context(
+                ErrorKind::Internal,
+                "Cannot forward to self",
+            ));
+        }
+
+        // Get network manager
+        let network_guard = self.network_manager.read().await;
+        let network = network_guard.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Service, "Network manager not available")
+        })?;
+
+        // Forward the request to the leader
+        let message = ClientServiceMessage::Group {
+            requester_id: self.node_id.clone(),
+            group_id,
+            request,
+        };
+
+        match network
+            .request_service(leader.clone(), message, std::time::Duration::from_secs(30))
+            .await
+        {
+            Ok(ClientServiceResponse::Group { response }) => Ok(response),
+            Ok(_) => Err(Error::with_context(
+                ErrorKind::Internal,
+                "Unexpected response type",
+            )),
+            Err(e) => Err(Error::with_context(
+                ErrorKind::Network,
+                format!("Failed to forward request to leader {leader}: {e}"),
+            )),
+        }
+    }
+
     /// Forward a read request to a group
     pub async fn forward_read_request(
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
-        start_sequence: u64,
-        count: u64,
+        start_sequence: NonZero<u64>,
+        count: NonZero<u64>,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         // Get routing service to find the best node
         let routing_guard = self.routing_service.read().await;
@@ -232,9 +276,9 @@ where
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
-        start_sequence: u64,
-        end_sequence: Option<u64>,
-        batch_size: u32,
+        start_sequence: NonZero<u64>,
+        end_sequence: Option<NonZero<u64>>,
+        batch_size: NonZero<u64>,
     ) -> ConsensusResult<(
         uuid::Uuid,
         Vec<crate::services::stream::StoredMessage>,
@@ -271,8 +315,8 @@ where
             let message = ClientServiceMessage::StreamStart {
                 requester_id: self.node_id.clone(),
                 stream_name: stream_name.to_string(),
-                start_sequence,
-                end_sequence,
+                start_sequence: start_sequence.get(),
+                end_sequence: end_sequence.map(|e| e.get()),
                 batch_size,
             };
 

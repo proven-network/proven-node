@@ -82,20 +82,32 @@ impl OperationHandler for GroupOperationHandler {
 
     async fn validate(&self, operation: &Self::Operation) -> ConsensusResult<()> {
         match &operation.request {
-            GroupRequest::Stream(StreamOperation::Append { message, .. }) => {
-                // Validate message size (example: 1MB limit)
-                if message.payload.len() > 1024 * 1024 {
+            GroupRequest::Stream(StreamOperation::Append { messages, .. }) => {
+                // Validate batch is not empty
+                if messages.is_empty() {
                     return Err(Error::with_context(
                         ErrorKind::Validation,
-                        "Message exceeds size limit",
+                        "Cannot append empty batch",
                     ));
                 }
+
+                // Validate each message size (example: 1MB limit per message)
+                for message in messages {
+                    if message.payload.len() > 1024 * 1024 {
+                        return Err(Error::with_context(
+                            ErrorKind::Validation,
+                            "Message exceeds size limit",
+                        ));
+                    }
+                }
+
+                // Could also validate total batch size here if needed
 
                 Ok(())
             }
             GroupRequest::Stream(StreamOperation::Trim { .. }) => Ok(()),
-            GroupRequest::Stream(StreamOperation::Delete { sequence, .. }) => {
-                validations::greater_than_zero(*sequence, "Sequence")?;
+            GroupRequest::Stream(StreamOperation::Delete { .. }) => {
+                // NonZero<u64> already guarantees the sequence is greater than zero
                 Ok(())
             }
             GroupRequest::Admin(_) => Ok(()),
@@ -111,15 +123,23 @@ impl GroupOperationHandler {
         _is_replay: bool,
     ) -> ConsensusResult<GroupResponse> {
         match operation {
-            StreamOperation::Append { stream, message } => {
+            StreamOperation::Append { stream, messages } => {
                 // Check if stream exists
                 if self.state.get_stream(&stream).await.is_none() {
                     return Ok(GroupResponse::error(format!("Stream {stream} not found")));
                 }
 
-                // Append message
-                if let Some(sequence) = self.state.append_message(&stream, message.clone()).await {
-                    Ok(GroupResponse::Appended { stream, sequence })
+                // Append messages
+                if let Some(results) = self.state.append_messages(&stream, messages).await {
+                    // Return the last sequence number
+                    // Since we validate that batches are not empty, results.last() should always be Some
+                    let (_, last_seq, _) = results
+                        .last()
+                        .expect("Validated non-empty batch should have results");
+                    Ok(GroupResponse::Appended {
+                        stream,
+                        sequence: *last_seq,
+                    })
                 } else {
                     Ok(GroupResponse::error(format!(
                         "Failed to append to stream {stream}"

@@ -4,6 +4,7 @@
 //! large streams efficiently in batches.
 
 use std::collections::HashMap;
+use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -66,10 +67,10 @@ where
         &self,
         requester_id: proven_topology::NodeId,
         stream_name: String,
-        start_sequence: u64,
-        end_sequence: Option<u64>,
-        batch_size: u32,
-    ) -> ConsensusResult<(Uuid, Vec<StoredMessage>, bool, Option<u64>)> {
+        start_sequence: NonZero<u64>,
+        end_sequence: Option<NonZero<u64>>,
+        batch_size: NonZero<u64>,
+    ) -> ConsensusResult<(Uuid, Vec<StoredMessage>, bool, Option<NonZero<u64>>)> {
         // Get stream service
         let stream_guard = self.stream_service.read().await;
         let stream_service = stream_guard.as_ref().ok_or_else(|| {
@@ -88,10 +89,10 @@ where
         let mut messages = Vec::new();
         let mut next_sequence = None;
 
-        for _ in 0..batch_size {
+        for _ in 0..batch_size.get() {
             match message_stream.next().await {
                 Some(Ok(msg)) => {
-                    next_sequence = Some(msg.sequence + 1);
+                    next_sequence = Some(msg.sequence.saturating_add(1));
                     messages.push(msg);
                 }
                 Some(Err(e)) => {
@@ -147,7 +148,7 @@ where
         &self,
         session_id: Uuid,
         max_messages: u32,
-    ) -> ConsensusResult<(Vec<StoredMessage>, bool, Option<u64>)> {
+    ) -> ConsensusResult<(Vec<StoredMessage>, bool, Option<NonZero<u64>>)> {
         let sessions = self.sessions.read().await;
 
         let session = sessions.get(&session_id).ok_or_else(|| {
@@ -168,7 +169,7 @@ where
         for _ in 0..max_messages {
             match stream.next().await {
                 Some(Ok(msg)) => {
-                    next_sequence = Some(msg.sequence + 1);
+                    next_sequence = Some(msg.sequence.saturating_add(1));
                     messages.push(msg);
                 }
                 Some(Err(e)) => {

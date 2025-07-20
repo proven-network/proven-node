@@ -14,7 +14,10 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    num::NonZero,
+};
 use tokio_stream::Stream;
 
 /// Result type for storage operations
@@ -112,25 +115,51 @@ pub trait LogStorage: Clone + Send + Sync + 'static {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(u64, Bytes)>,
+        entries: Vec<(NonZero<u64>, Bytes)>,
     ) -> StorageResult<()>;
 
     /// Get the current bounds of the log (first_index, last_index)
-    async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>>;
+    async fn bounds(
+        &self,
+        namespace: &StorageNamespace,
+    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>>;
 
     /// Remove all entries up to and including the given index
-    async fn compact_before(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()>;
+    async fn compact_before(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()>;
 
     /// Read a range of entries [start, end)
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: u64,
-    ) -> StorageResult<Vec<(u64, Bytes)>>;
+        start: NonZero<u64>,
+        end: NonZero<u64>,
+    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>>;
 
     /// Remove all entries after the given index
-    async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()>;
+    async fn truncate_after(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()>;
+
+    /// Get metadata value by key
+    async fn get_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+    ) -> StorageResult<Option<Bytes>>;
+
+    /// Set metadata value by key
+    async fn set_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+        value: Bytes,
+    ) -> StorageResult<()>;
 }
 
 /// Extended log storage trait that supports deletion of individual entries
@@ -140,7 +169,11 @@ pub trait LogStorage: Clone + Send + Sync + 'static {
 pub trait LogStorageWithDelete: LogStorage {
     /// Delete or tombstone a specific entry at the given index
     /// Returns true if the entry existed and was deleted, false if it didn't exist
-    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool>;
+    async fn delete_entry(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<bool>;
 }
 
 /// Log storage trait that supports streaming reads
@@ -159,9 +192,9 @@ pub trait LogStorageStreaming: LogStorage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: Option<u64>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>>;
+        start: NonZero<u64>,
+        end: Option<NonZero<u64>>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>;
 }
 
 /// Implement LogStorage for Arc<T> where T: LogStorage
@@ -170,37 +203,69 @@ impl<T: LogStorage> LogStorage for std::sync::Arc<T> {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(u64, Bytes)>,
+        entries: Vec<(NonZero<u64>, Bytes)>,
     ) -> StorageResult<()> {
         (**self).append(namespace, entries).await
     }
 
-    async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+    async fn bounds(
+        &self,
+        namespace: &StorageNamespace,
+    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
         (**self).bounds(namespace).await
     }
 
-    async fn compact_before(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn compact_before(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         (**self).compact_before(namespace, index).await
     }
 
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: u64,
-    ) -> StorageResult<Vec<(u64, Bytes)>> {
+        start: NonZero<u64>,
+        end: NonZero<u64>,
+    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
         (**self).read_range(namespace, start, end).await
     }
 
-    async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn truncate_after(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         (**self).truncate_after(namespace, index).await
+    }
+
+    async fn get_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+    ) -> StorageResult<Option<Bytes>> {
+        (**self).get_metadata(namespace, key).await
+    }
+
+    async fn set_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+        value: Bytes,
+    ) -> StorageResult<()> {
+        (**self).set_metadata(namespace, key, value).await
     }
 }
 
 /// Implement LogStorageWithDelete for Arc<T> where T: LogStorageWithDelete
 #[async_trait]
 impl<T: LogStorageWithDelete> LogStorageWithDelete for std::sync::Arc<T> {
-    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+    async fn delete_entry(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<bool> {
         (**self).delete_entry(namespace, index).await
     }
 }
@@ -211,9 +276,10 @@ impl<T: LogStorageStreaming> LogStorageStreaming for std::sync::Arc<T> {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: Option<u64>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        start: NonZero<u64>,
+        end: Option<NonZero<u64>>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+    {
         (**self).stream_range(namespace, start, end).await
     }
 }

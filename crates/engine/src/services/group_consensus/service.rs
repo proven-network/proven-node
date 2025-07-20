@@ -1,10 +1,13 @@
 //! Group consensus service
 
+use std::num::NonZero;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use proven_network::NetworkManager;
-use proven_storage::{ConsensusStorage, LogStorage, StorageAdaptor, StorageManager};
+use proven_storage::{
+    ConsensusStorage, LogStorage, StorageAdaptor, StorageManager, StorageNamespace,
+};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
@@ -15,6 +18,7 @@ use crate::{
     error::{ConsensusResult, Error, ErrorKind},
     foundation::types::ConsensusGroupId,
     services::event::{Event, EventEnvelope, EventPublisher, EventService},
+    services::stream::StreamService,
 };
 use async_trait::async_trait;
 
@@ -46,6 +50,10 @@ where
     event_publisher: Option<EventPublisher>,
     /// Event service reference
     event_service: Arc<RwLock<Option<Arc<EventService>>>>,
+    /// Topology manager
+    topology_manager: Option<Arc<proven_topology::TopologyManager<G>>>,
+    /// Stream service for message persistence
+    stream_service: Arc<RwLock<Option<Arc<StreamService<S>>>>>,
 }
 
 impl<T, G, S> GroupConsensusService<T, G, S>
@@ -69,6 +77,8 @@ where
             groups: Arc::new(RwLock::new(std::collections::HashMap::new())),
             event_publisher: None,
             event_service: Arc::new(RwLock::new(None)),
+            topology_manager: None,
+            stream_service: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -78,9 +88,20 @@ where
         self
     }
 
+    /// Set topology manager
+    pub fn with_topology(mut self, topology: Arc<proven_topology::TopologyManager<G>>) -> Self {
+        self.topology_manager = Some(topology);
+        self
+    }
+
     /// Set event service
     pub async fn set_event_service(&self, event_service: Arc<EventService>) {
         *self.event_service.write().await = Some(event_service);
+    }
+
+    /// Set stream service
+    pub async fn set_stream_service(&self, stream_service: Arc<StreamService<S>>) {
+        *self.stream_service.write().await = Some(stream_service);
     }
 
     /// Start the service
@@ -93,6 +114,18 @@ where
             self.start_event_subscription(event_service.clone()).await;
         }
 
+        // Restore any existing groups from storage
+        self.restore_persisted_groups().await?;
+
+        Ok(())
+    }
+
+    /// Restore persisted groups from storage
+    async fn restore_persisted_groups(&self) -> ConsensusResult<()> {
+        // For now, we don't have a way to enumerate all persisted groups
+        // This would require storage to keep track of which groups exist
+        // The groups will be restored when the global state sync callback tries to create them
+        tracing::debug!("Checking for persisted groups to restore");
         Ok(())
     }
 
@@ -180,6 +213,25 @@ where
         group_id: ConsensusGroupId,
         members: Vec<NodeId>,
     ) -> ConsensusResult<()> {
+        // Check if this node is a member of the group
+        if !members.contains(&self.node_id) {
+            tracing::debug!(
+                "Node {} is not a member of group {:?}, skipping creation",
+                self.node_id,
+                group_id
+            );
+            return Ok(());
+        }
+
+        // Check if group already exists
+        {
+            let groups = self.groups.read().await;
+            if groups.contains_key(&group_id) {
+                tracing::debug!("Group {:?} already exists, skipping creation", group_id);
+                return Ok(());
+            }
+        }
+
         // Create the group consensus layer
         use super::adaptor::GroupNetworkFactory;
         use crate::consensus::group::GroupConsensusLayer;
@@ -190,8 +242,9 @@ where
             election_timeout_min: self.config.election_timeout_min.as_millis() as u64,
             election_timeout_max: self.config.election_timeout_max.as_millis() as u64,
             heartbeat_interval: self.config.heartbeat_interval.as_millis() as u64,
-            max_payload_entries: self.config.max_entries_per_append,
-            snapshot_policy: openraft::SnapshotPolicy::LogsSinceLast(self.config.snapshot_interval),
+            max_payload_entries: self.config.max_entries_per_append.get(),
+            // TODO: Think about snapshotting
+            snapshot_policy: openraft::SnapshotPolicy::Never,
             ..Default::default()
         };
 
@@ -200,10 +253,12 @@ where
             GroupNetworkFactory::new(self.network_manager.clone(), group_id, network_stats);
 
         // Create callbacks for this group
+        let stream_service = self.stream_service.read().await.clone();
         let callbacks = Arc::new(callbacks::GroupConsensusCallbacksImpl::new(
             group_id,
             self.node_id.clone(),
             self.event_publisher.clone(),
+            stream_service,
         ));
 
         let layer = Arc::new(
@@ -231,48 +286,141 @@ where
             );
         }
 
-        // Initialize the group if we're one of the members
-        if members.contains(&self.node_id) {
-            // Initialize Raft cluster with members
-            // For single-node groups, just use this node
-            // For multi-node groups, we'd need to get full node info from topology
-            let mut raft_members = std::collections::BTreeMap::new();
-            for member_id in &members {
-                // Create a minimal node info for Raft
-                // In production, this should come from topology manager
-                let node = proven_topology::Node::new(
-                    "default-az".to_string(),
-                    "http://127.0.0.1:0".to_string(), // Placeholder - not used for local groups
-                    member_id.clone(),
-                    "default-region".to_string(),
-                    std::collections::HashSet::new(),
-                );
-                raft_members.insert(member_id.clone(), node);
-            }
+        // Initialize the group (we already checked that we're a member)
+        // Check if we have persisted state for this group
+        let has_persisted_state = self.has_persisted_state(group_id).await;
 
+        tracing::info!(
+            "Group {:?} initialization check - has_persisted_state: {}",
+            group_id,
+            has_persisted_state
+        );
+
+        if !has_persisted_state {
+            // Fresh start - only ONE node should initialize to avoid election storms
             tracing::info!(
-                "Initializing group {} Raft cluster with {} members",
-                group_id,
-                raft_members.len()
+                "No persisted state found for group {}, checking if we should initialize",
+                group_id
             );
 
-            // Initialize the Raft cluster
-            if let Err(e) = layer.raft().initialize(raft_members).await {
-                tracing::error!(
-                    "Failed to initialize group {} Raft cluster: {}",
-                    group_id,
-                    e
-                );
-                return Err(Error::with_context(
-                    ErrorKind::Consensus,
-                    format!("Failed to initialize group Raft: {e}"),
-                ));
-            }
+            // Sort members by ID to ensure deterministic selection
+            let mut sorted_members = members.clone();
+            sorted_members.sort();
 
-            tracing::info!("Successfully initialized group {} Raft cluster", group_id);
+            // Only the first member (lowest ID) initializes the cluster
+            if sorted_members.first() == Some(&self.node_id) {
+                tracing::info!(
+                    "This node ({}) has the lowest ID in group {}, initializing cluster",
+                    self.node_id,
+                    group_id
+                );
+
+                // Get member nodes from topology
+                let topology = match &self.topology_manager {
+                    Some(tm) => tm,
+                    None => {
+                        tracing::error!("No topology manager available for group {}", group_id);
+                        return Err(Error::with_context(
+                            ErrorKind::Configuration,
+                            format!("No topology manager available for group {group_id}"),
+                        ));
+                    }
+                };
+
+                let all_nodes = match topology.provider().get_topology().await {
+                    Ok(nodes) => nodes,
+                    Err(e) => {
+                        tracing::error!("Failed to get topology for group {}: {}", group_id, e);
+                        return Err(Error::with_context(
+                            ErrorKind::Network,
+                            format!("Failed to get topology: {e}"),
+                        ));
+                    }
+                };
+
+                let mut raft_members = std::collections::BTreeMap::new();
+                for member_id in &members {
+                    if let Some(node) = all_nodes.iter().find(|n| n.node_id == *member_id) {
+                        raft_members.insert(member_id.clone(), node.clone());
+                    } else {
+                        tracing::error!(
+                            "Member {} not found in topology for group {}",
+                            member_id,
+                            group_id
+                        );
+                        return Err(Error::with_context(
+                            ErrorKind::Configuration,
+                            format!(
+                                "Member {member_id} not found in topology for group {group_id}"
+                            ),
+                        ));
+                    }
+                }
+
+                tracing::info!(
+                    "Initializing group {} Raft cluster with {} members",
+                    group_id,
+                    raft_members.len()
+                );
+
+                // Initialize the Raft cluster
+                if let Err(e) = layer.raft().initialize(raft_members).await {
+                    tracing::error!(
+                        "Failed to initialize group {} Raft cluster: {}",
+                        group_id,
+                        e
+                    );
+                    return Err(Error::with_context(
+                        ErrorKind::Consensus,
+                        format!("Failed to initialize group Raft: {e}"),
+                    ));
+                }
+
+                tracing::info!("Successfully initialized group {} Raft cluster", group_id);
+            } else {
+                tracing::info!(
+                    "This node ({}) is not the initializer for group {}, waiting for leader contact",
+                    self.node_id,
+                    group_id
+                );
+                // Don't initialize - just start up and wait for the leader to contact us
+            }
+        } else {
+            // Resuming from persisted state
+            tracing::info!(
+                "Group {} resuming from persisted state - skipping initialization",
+                group_id
+            );
         }
 
         Ok(())
+    }
+
+    /// Check if we have persisted consensus state for a group
+    async fn has_persisted_state(&self, group_id: ConsensusGroupId) -> bool {
+        // Check if we have a vote or committed index in storage
+        let consensus_storage = self.storage_manager.consensus_storage();
+        let namespace = StorageNamespace::new(format!("group_{}_logs", group_id.value()));
+
+        // Check for vote
+        if let Ok(Some(_)) = consensus_storage.get_metadata(&namespace, "vote").await {
+            return true;
+        }
+
+        // Check for committed
+        if let Ok(Some(_)) = consensus_storage
+            .get_metadata(&namespace, "committed")
+            .await
+        {
+            return true;
+        }
+
+        // Check for log entries
+        if let Ok(Some(_)) = consensus_storage.bounds(&namespace).await {
+            return true;
+        }
+
+        false
     }
 
     /// Register message handlers
@@ -407,7 +555,7 @@ where
 
             match (request, response) {
                 (
-                    GroupRequest::Stream(StreamOperation::Append { stream, message }),
+                    GroupRequest::Stream(StreamOperation::Append { stream, messages }),
                     GroupResponse::Appended { sequence, .. },
                 ) => {
                     // Get current term from consensus layer
@@ -418,20 +566,35 @@ where
                         0
                     };
 
-                    let event = Event::StreamMessageAppended {
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
+
+                    // Prepare messages with sequences for the batch event
+                    // sequence is the last sequence in the batch
+                    let first_sequence = sequence.get().saturating_sub(messages.len() as u64 - 1);
+                    let messages_with_seq: Vec<_> = messages
+                        .iter()
+                        .enumerate()
+                        .map(|(i, msg)| {
+                            (
+                                msg.clone(),
+                                NonZero::new(first_sequence + i as u64).unwrap(),
+                                timestamp,
+                            )
+                        })
+                        .collect();
+
+                    let event = Event::StreamMessagesAppended {
                         stream: stream.clone(),
                         group_id,
-                        sequence: *sequence,
-                        message: message.clone(),
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs(),
+                        messages: messages_with_seq,
                         term,
                     };
 
-                    if let Err(e) = publisher.publish(event, source).await {
-                        tracing::warn!("Failed to publish StreamMessageAppended event: {}", e);
+                    if let Err(e) = publisher.publish(event, source.clone()).await {
+                        tracing::warn!("Failed to publish StreamMessagesAppended event: {}", e);
                     }
                 }
                 (
@@ -514,7 +677,14 @@ where
 
         // Get Raft metrics to find leader and term
         let metrics_rx = layer.metrics();
-        let raft_metrics = metrics_rx.borrow();
+        let (current_leader, current_term) = {
+            let raft_metrics = metrics_rx.borrow();
+            (
+                raft_metrics.current_leader.clone(),
+                raft_metrics.current_term,
+            )
+        };
+        // raft_metrics is now dropped, so we can safely await
 
         // Collect stream information
         let stream_names = state.list_streams().await;
@@ -546,8 +716,8 @@ where
         Ok(super::types::GroupStateInfo {
             group_id,
             members,
-            leader: raft_metrics.current_leader.clone(),
-            term: raft_metrics.current_term,
+            leader: current_leader,
+            term: current_term,
             is_member,
             streams: stream_infos,
             total_messages,
@@ -617,30 +787,9 @@ where
     }
 
     /// Handle events
-    async fn handle_event(&self, envelope: EventEnvelope) -> ConsensusResult<()> {
-        match &envelope.event {
-            Event::RequestDefaultGroupCreation { members } => {
-                tracing::info!(
-                    "Received request to create default group with {} members",
-                    members.len()
-                );
+    async fn handle_event(&self, _envelope: EventEnvelope) -> ConsensusResult<()> {
+        // No events are handled by this service currently
 
-                // Create default group with ID 1
-                let default_group_id = ConsensusGroupId::new(1);
-
-                // Use the existing create_group method
-                if let Err(e) = self.create_group(default_group_id, members.clone()).await {
-                    tracing::error!("Failed to create default group: {}", e);
-                } else {
-                    tracing::info!("Successfully created default group");
-                }
-            }
-            // StreamCreated and GroupCreated events are now handled synchronously via GlobalConsensusCallbacks
-            // No need to handle them via async events anymore
-            _ => {
-                // Ignore other events
-            }
-        }
         Ok(())
     }
 }
@@ -661,6 +810,8 @@ where
             groups: self.groups.clone(),
             event_publisher: self.event_publisher.clone(),
             event_service: self.event_service.clone(),
+            topology_manager: self.topology_manager.clone(),
+            stream_service: self.stream_service.clone(),
         }
     }
 }

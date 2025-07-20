@@ -3,7 +3,7 @@
 //! This module handles applying committed entries to the business state.
 //! It only processes entries that have been committed by Raft consensus.
 
-use std::sync::Arc;
+use std::{num::NonZero, sync::Arc};
 
 use openraft::{
     Entry, EntryPayload, LogId, StorageError, StoredMembership,
@@ -35,7 +35,7 @@ pub struct GlobalStateMachine {
     /// Current membership
     membership: Arc<RwLock<StoredMembership<GlobalTypeConfig>>>,
     /// Last log index that was persisted before this instance started
-    replay_boundary: Option<u64>,
+    replay_boundary: Option<NonZero<u64>>,
     /// Whether we've fired the state sync callback
     state_synced: Arc<RwLock<bool>>,
 }
@@ -46,7 +46,7 @@ impl GlobalStateMachine {
         state: Arc<GlobalState>,
         handler: Arc<GlobalOperationHandler>,
         callback_dispatcher: Arc<GlobalCallbackDispatcher>,
-        replay_boundary: Option<u64>,
+        replay_boundary: Option<NonZero<u64>>,
     ) -> Self {
         Self {
             state,
@@ -92,10 +92,10 @@ impl GlobalStateMachine {
 
             // Check if we've crossed the replay boundary
             if let Some(boundary) = self.replay_boundary
-                && log_id.index > boundary
+                && log_id.index + 1 >= boundary.get()
                 && !*self.state_synced.read().await
             {
-                // We've crossed into current operations - fire state sync callback
+                // We've reached the replay boundary - fire state sync callback
                 *self.state_synced.write().await = true;
 
                 // Dispatch state sync callback
@@ -109,9 +109,10 @@ impl GlobalStateMachine {
                     // Process the business logic
                     let operation = GlobalOperation::new(req.clone());
                     // Check if this is a replay operation
+                    // Convert 0-based log_id.index to 1-based for comparison with boundary
                     let is_replay = self
                         .replay_boundary
-                        .map(|boundary| log_id.index <= boundary)
+                        .map(|boundary| log_id.index + 1 < boundary.get())
                         .unwrap_or(false);
 
                     let response = match self.handler.handle(operation.clone(), is_replay).await {
@@ -130,9 +131,10 @@ impl GlobalStateMachine {
                 }
                 EntryPayload::Membership(membership) => {
                     // Check if this is a replay operation
+                    // Convert 0-based log_id.index to 1-based for comparison with boundary
                     let is_replay = self
                         .replay_boundary
-                        .map(|boundary| log_id.index <= boundary)
+                        .map(|boundary| log_id.index + 1 < boundary.get())
                         .unwrap_or(false);
 
                     // Update membership

@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, num::NonZero};
 
 use crate::foundation::types::ConsensusGroupId;
 use proven_topology::NodeId;
@@ -90,7 +90,7 @@ pub struct StreamStats {
     /// Last committed sequence number
     pub last_seq: u64,
     /// Number of messages
-    pub message_count: u64,
+    pub message_count: NonZero<u64>,
     /// Total size in bytes
     pub total_bytes: u64,
     /// Stream health status
@@ -114,7 +114,7 @@ pub enum StreamHealth {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppendResult {
     /// Assigned sequence number
-    pub sequence: u64,
+    pub sequence: NonZero<u64>,
     /// Timestamp
     pub timestamp: u64,
 }
@@ -125,7 +125,7 @@ pub struct ReadResult {
     /// Messages read
     pub messages: Vec<StoredMessage>,
     /// Next sequence to read
-    pub next_seq: u64,
+    pub next_seq: NonZero<u64>,
     /// Whether more messages are available
     pub has_more: bool,
 }
@@ -134,13 +134,11 @@ pub struct ReadResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoredMessage {
     /// Sequence number
-    pub sequence: u64,
+    pub sequence: NonZero<u64>,
     /// Message data
     pub data: MessageData,
     /// Timestamp
     pub timestamp: u64,
-    /// Group consensus term when written
-    pub term: u64,
 }
 
 /// Serialize a StoredMessage to bytes

@@ -4,6 +4,7 @@
 //! the established service patterns in the consensus engine.
 
 use std::collections::HashMap;
+use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::{RwLock, oneshot};
@@ -11,7 +12,8 @@ use tokio_stream::{Stream, StreamExt};
 use tracing::{debug, error, info, warn};
 
 use proven_storage::{
-    LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace, StreamStorage,
+    LogStorage, LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace,
+    StreamStorage,
 };
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
@@ -188,7 +190,6 @@ impl<S: StorageAdaptor> StreamService<S> {
     pub async fn get_or_create_storage(
         &self,
         stream_name: &StreamName,
-        group_id: &str,
     ) -> Arc<StreamStorageImpl<StreamStorage<S>>> {
         let mut streams = self.streams.write().await;
 
@@ -206,9 +207,8 @@ impl<S: StorageAdaptor> StreamService<S> {
 
         let storage = match persistence_type {
             PersistenceType::Persistent => {
-                let namespace = proven_storage::StorageNamespace::new(format!(
-                    "stream_{group_id}_{stream_name}"
-                ));
+                let namespace =
+                    proven_storage::StorageNamespace::new(format!("stream_{stream_name}"));
                 Arc::new(StreamStorageImpl::persistent(
                     stream_name.clone(),
                     self.storage_manager.stream_storage(),
@@ -228,35 +228,19 @@ impl<S: StorageAdaptor> StreamService<S> {
     async fn handle_event(&self, envelope: EventEnvelope) -> ConsensusResult<()> {
         debug!("StreamService received event: {:?}", envelope.event);
         match &envelope.event {
-            // StreamCreated events are now handled synchronously via GlobalConsensusCallbacks
-            // which calls create_stream directly - no need to handle them via async events
-            Event::StreamMessageAppended {
+            Event::StreamMessagesAppended {
                 stream,
                 group_id,
-                sequence,
-                message,
-                timestamp,
-                term,
+                messages,
+                term: _,
             } => {
-                let stream_storage = self
-                    .get_or_create_storage(stream, &group_id.to_string())
-                    .await;
-
-                stream_storage
-                    .append(*sequence, message.clone(), *timestamp, *term)
-                    .await
-                    .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))?;
-
-                // Update metadata
-                if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream) {
-                    metadata.last_message_at = Some(*timestamp);
-                    metadata.message_count += 1;
-                    metadata.total_bytes += message.payload.len() as u64;
-                }
-
-                info!(
-                    "Stored message {} for stream {} in group {}",
-                    sequence, stream, group_id
+                // Note: With callbacks, messages should already be persisted
+                // This is here as a fallback or for other event consumers
+                debug!(
+                    "Received batch append event for stream {} in group {} with {} messages",
+                    stream,
+                    group_id,
+                    messages.len()
                 );
             }
             Event::StreamTrimmed {
@@ -274,13 +258,11 @@ impl<S: StorageAdaptor> StreamService<S> {
             }
             Event::StreamMessageDeleted {
                 stream,
-                group_id,
+                group_id: _,
                 sequence,
                 timestamp: _,
             } => {
-                let _ = self
-                    .get_or_create_storage(stream, &group_id.to_string())
-                    .await;
+                let _ = self.get_or_create_storage(stream).await;
 
                 // Use the delete method which handles metadata updates
                 match self.delete_message_from_storage(stream, *sequence).await {
@@ -363,7 +345,54 @@ impl<S: StorageAdaptor> StreamService<S> {
         &self,
         stream_name: &StreamName,
     ) -> Option<Arc<StreamStorageImpl<StreamStorage<S>>>> {
-        self.streams.read().await.get(stream_name).cloned()
+        // First check if we have it in memory
+        if let Some(storage) = self.streams.read().await.get(stream_name).cloned() {
+            return Some(storage);
+        }
+
+        // Get stream config to determine persistence type
+        let configs = self.stream_configs.read().await;
+        let config = configs.get(stream_name);
+        let persistence_type = config.map(|c| c.persistence_type);
+        drop(configs);
+
+        // For persistent streams (or if we don't know the type), try to create storage on demand
+        match persistence_type {
+            Some(PersistenceType::Persistent) | None => {
+                // Try to access the storage - if the stream exists in storage, we can read from it
+                let namespace =
+                    proven_storage::StorageNamespace::new(format!("stream_{stream_name}"));
+
+                // Check if there's any data in this namespace
+                let stream_storage = self.storage_manager.stream_storage();
+                match stream_storage.bounds(&namespace).await {
+                    Ok(Some(_)) => {
+                        // Stream exists in storage, create the storage wrapper
+                        let storage = Arc::new(StreamStorageImpl::persistent(
+                            stream_name.clone(),
+                            self.storage_manager.stream_storage(),
+                            namespace,
+                        ));
+
+                        // Store it for future use
+                        self.streams
+                            .write()
+                            .await
+                            .insert(stream_name.clone(), storage.clone());
+
+                        Some(storage)
+                    }
+                    _ => {
+                        // No data found in storage
+                        None
+                    }
+                }
+            }
+            Some(PersistenceType::Ephemeral) => {
+                // Ephemeral streams don't persist, so return None if not in memory
+                None
+            }
+        }
     }
 
     /// Get stream configuration
@@ -375,25 +404,26 @@ impl<S: StorageAdaptor> StreamService<S> {
     pub async fn read_messages(
         &self,
         stream_name: &str,
-        start_sequence: u64,
-        count: u64,
+        start_sequence: NonZero<u64>,
+        count: NonZero<u64>,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         let stream_name = StreamName::new(stream_name);
 
-        // Get the stream storage
-        let stream_storage = self.get_stream(&stream_name).await.ok_or_else(|| {
-            Error::with_context(
-                ErrorKind::NotFound,
-                format!("Stream {stream_name} not found"),
-            )
-        })?;
+        // Try to get the stream storage (which will check persistent storage)
+        if let Some(stream_storage) = self.get_stream(&stream_name).await {
+            // Read the requested range
+            let end_sequence = start_sequence.saturating_add(count.get());
+            return stream_storage
+                .read_range(start_sequence, end_sequence)
+                .await
+                .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()));
+        }
 
-        // Read the requested range
-        let end_sequence = start_sequence.saturating_add(count);
-        stream_storage
-            .read_range(start_sequence, end_sequence)
-            .await
-            .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))
+        // If get_stream returned None, the stream doesn't exist
+        Err(Error::with_context(
+            ErrorKind::NotFound,
+            format!("Stream {stream_name} not found"),
+        ))
     }
 
     /// Stream messages from a stream
@@ -403,24 +433,24 @@ impl<S: StorageAdaptor> StreamService<S> {
     pub async fn stream_messages(
         &self,
         stream_name: &str,
-        start_sequence: u64,
-        end_sequence: Option<u64>,
+        start_sequence: NonZero<u64>,
+        end_sequence: Option<NonZero<u64>>,
     ) -> ConsensusResult<
         Pin<Box<dyn Stream<Item = ConsensusResult<crate::services::stream::StoredMessage>> + Send>>,
     > {
         let stream_name_str = stream_name.to_string();
         let stream_name = StreamName::new(stream_name);
 
-        // Check if the stream exists
-        let stream_config = self.get_stream_config(&stream_name).await.ok_or_else(|| {
-            Error::with_context(
-                ErrorKind::NotFound,
-                format!("Stream {stream_name} not found"),
-            )
-        })?;
+        // Check if the stream exists and get its config
+        let stream_config = self.get_stream_config(&stream_name).await;
+
+        // Default to persistent if we don't have config (for restored streams)
+        let persistence_type = stream_config
+            .map(|c| c.persistence_type)
+            .unwrap_or(PersistenceType::Persistent);
 
         // For persistent streams, use storage streaming
-        if stream_config.persistence_type == PersistenceType::Persistent {
+        if persistence_type == PersistenceType::Persistent {
             // Use proven_storage::LogStorageStreaming if available
             let namespace = StorageNamespace::new(format!("stream_{stream_name_str}"));
             let stream_storage = self.storage_manager.stream_storage();
@@ -450,12 +480,15 @@ impl<S: StorageAdaptor> StreamService<S> {
         }
 
         // Fallback to batch reading for ephemeral streams or if streaming not supported
-        let storage = self.get_stream(&stream_name).await.ok_or_else(|| {
-            Error::with_context(
-                ErrorKind::NotFound,
-                format!("Stream storage {stream_name} not found"),
-            )
-        })?;
+        let storage = match self.get_stream(&stream_name).await {
+            Some(s) => s,
+            None => {
+                return Err(Error::with_context(
+                    ErrorKind::NotFound,
+                    format!("Stream {stream_name} not found"),
+                ));
+            }
+        };
 
         // Create a stream that reads in batches
         let batch_size = 100;
@@ -464,8 +497,8 @@ impl<S: StorageAdaptor> StreamService<S> {
 
             loop {
                 let batch_end = match end_sequence {
-                    Some(end) => std::cmp::min(current_seq + batch_size, end),
-                    None => current_seq + batch_size,
+                    Some(end) => std::cmp::min(current_seq.saturating_add(batch_size), end),
+                    None => current_seq.saturating_add(batch_size),
                 };
 
                 match storage.read_range(current_seq, batch_end).await {
@@ -476,7 +509,7 @@ impl<S: StorageAdaptor> StreamService<S> {
                         }
 
                         for msg in messages {
-                            current_seq = msg.sequence + 1;
+                            current_seq = current_seq.saturating_add(1);
                             yield Ok(msg);
                         }
 
@@ -525,7 +558,7 @@ impl<S: StorageAdaptor> StreamService<S> {
     pub async fn delete_message_from_storage(
         &self,
         stream_name: &StreamName,
-        sequence: u64,
+        sequence: NonZero<u64>,
     ) -> ConsensusResult<bool> {
         let storage_namespace = StorageNamespace::new(format!("stream_{stream_name}"));
         let stream_storage = self.storage_manager.stream_storage();
@@ -733,19 +766,22 @@ mod tests {
         async fn append(
             &self,
             _namespace: &StorageNamespace,
-            _entries: Vec<(u64, Bytes)>,
+            _entries: Vec<(NonZero<u64>, Bytes)>,
         ) -> StorageResult<()> {
             Ok(())
         }
 
-        async fn bounds(&self, _namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+        async fn bounds(
+            &self,
+            _namespace: &StorageNamespace,
+        ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
             Ok(None)
         }
 
         async fn compact_before(
             &self,
             _namespace: &StorageNamespace,
-            _index: u64,
+            _index: NonZero<u64>,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -753,16 +789,33 @@ mod tests {
         async fn read_range(
             &self,
             _namespace: &StorageNamespace,
-            _start: u64,
-            _end: u64,
-        ) -> StorageResult<Vec<(u64, Bytes)>> {
+            _start: NonZero<u64>,
+            _end: NonZero<u64>,
+        ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
             Ok(vec![])
         }
 
         async fn truncate_after(
             &self,
             _namespace: &StorageNamespace,
-            _index: u64,
+            _index: NonZero<u64>,
+        ) -> StorageResult<()> {
+            Ok(())
+        }
+
+        async fn get_metadata(
+            &self,
+            _namespace: &StorageNamespace,
+            _key: &str,
+        ) -> StorageResult<Option<Bytes>> {
+            Ok(None)
+        }
+
+        async fn set_metadata(
+            &self,
+            _namespace: &StorageNamespace,
+            _key: &str,
+            _value: Bytes,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -773,7 +826,7 @@ mod tests {
         async fn delete_entry(
             &self,
             _namespace: &StorageNamespace,
-            _index: u64,
+            _index: NonZero<u64>,
         ) -> StorageResult<bool> {
             Ok(true)
         }
@@ -784,10 +837,14 @@ mod tests {
         async fn stream_range(
             &self,
             _namespace: &StorageNamespace,
-            _start: u64,
-            _end: Option<u64>,
+            _start: NonZero<u64>,
+            _end: Option<NonZero<u64>>,
         ) -> StorageResult<
-            Box<dyn tokio_stream::Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>,
+            Box<
+                dyn tokio_stream::Stream<Item = StorageResult<(NonZero<u64>, Bytes)>>
+                    + Send
+                    + Unpin,
+            >,
         > {
             Ok(Box::new(tokio_stream::empty()))
         }

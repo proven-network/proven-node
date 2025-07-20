@@ -27,7 +27,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Formatter};
-use std::num::NonZeroUsize;
+use std::num::{NonZero, NonZeroUsize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -245,8 +245,13 @@ where
         start_sequence: u64,
         count: u64,
     ) -> Result<Vec<proven_engine::StoredMessage>, Error> {
+        let start = NonZero::new(start_sequence)
+            .ok_or_else(|| Error::Engine("Start sequence must be greater than 0".to_string()))?;
+        let count_nz = NonZero::new(count)
+            .ok_or_else(|| Error::Engine("Count must be greater than 0".to_string()))?;
+
         self.inner
-            .read_stream(stream_name, start_sequence, count)
+            .read_stream(stream_name, start, count_nz)
             .await
             .map_err(|e| Error::Engine(e.to_string()))
     }
@@ -548,8 +553,8 @@ where
                         }
                     }
 
-                    state.last_sequence = msg.sequence;
-                    current_sequence = msg.sequence;
+                    state.last_sequence = msg.sequence.get();
+                    current_sequence = msg.sequence.get();
                 }
                 drop(state);
             }

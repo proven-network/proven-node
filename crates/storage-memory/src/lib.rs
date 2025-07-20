@@ -5,18 +5,26 @@ use bytes::Bytes;
 use proven_storage::{StorageAdaptor, StorageNamespace, StorageResult};
 use std::{
     collections::{BTreeMap, HashMap},
+    num::NonZero,
     sync::Arc,
 };
 use tokio::sync::RwLock;
 use tokio_stream::Stream;
 
+/// Type aliases to reduce type complexity
+type LogStorage = Arc<RwLock<HashMap<StorageNamespace, BTreeMap<NonZero<u64>, Bytes>>>>;
+type LogBoundsCache = Arc<RwLock<HashMap<StorageNamespace, (NonZero<u64>, NonZero<u64>)>>>;
+type MetadataStorage = Arc<RwLock<HashMap<StorageNamespace, HashMap<String, Bytes>>>>;
+
 /// In-memory log storage implementation using BTreeMap for ordering
 #[derive(Clone)]
 pub struct MemoryStorage {
     /// Log storage: namespace -> (index -> bytes)
-    logs: Arc<RwLock<HashMap<StorageNamespace, BTreeMap<u64, Bytes>>>>,
+    logs: LogStorage,
     /// Log bounds cache: namespace -> (first_index, last_index)
-    log_bounds: Arc<RwLock<HashMap<StorageNamespace, (u64, u64)>>>,
+    log_bounds: LogBoundsCache,
+    /// Metadata storage: namespace -> (key -> value)
+    metadata: MetadataStorage,
 }
 
 impl MemoryStorage {
@@ -25,6 +33,7 @@ impl MemoryStorage {
         Self {
             logs: Arc::new(RwLock::new(HashMap::new())),
             log_bounds: Arc::new(RwLock::new(HashMap::new())),
+            metadata: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -41,7 +50,7 @@ impl proven_storage::LogStorage for MemoryStorage {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(u64, Bytes)>,
+        entries: Vec<(NonZero<u64>, Bytes)>,
     ) -> StorageResult<()> {
         if entries.is_empty() {
             return Ok(());
@@ -53,31 +62,33 @@ impl proven_storage::LogStorage for MemoryStorage {
         let btree = logs.entry(namespace.clone()).or_insert_with(BTreeMap::new);
 
         // Get current bounds or initialize
-        let (mut first_index, mut last_index) =
-            bounds.get(namespace).copied().unwrap_or_else(|| {
-                if let Some((&first, _)) = btree.iter().next() {
-                    let last = btree.iter().next_back().map(|(&k, _)| k).unwrap_or(first);
-                    (first, last)
-                } else {
-                    (u64::MAX, 0)
-                }
-            });
+        let existing_bounds = bounds.get(namespace).copied();
 
-        // Insert all entries
+        // Insert all entries and track bounds
+        let mut first_index: Option<NonZero<u64>> = existing_bounds.map(|(first, _)| first);
+        let mut last_index: Option<NonZero<u64>> = existing_bounds.map(|(_, last)| last);
+
         for (index, data) in entries {
             btree.insert(index, data);
 
             // Update bounds
-            if first_index == u64::MAX || index < first_index {
-                first_index = index;
+            match first_index {
+                None => first_index = Some(index),
+                Some(first) if index < first => first_index = Some(index),
+                _ => {}
             }
-            if index > last_index {
-                last_index = index;
+
+            match last_index {
+                None => last_index = Some(index),
+                Some(last) if index > last => last_index = Some(index),
+                _ => {}
             }
         }
 
-        // Update bounds cache
-        bounds.insert(namespace.clone(), (first_index, last_index));
+        // Update bounds cache if we have any entries
+        if let (Some(first), Some(last)) = (first_index, last_index) {
+            bounds.insert(namespace.clone(), (first, last));
+        }
 
         Ok(())
     }
@@ -85,9 +96,9 @@ impl proven_storage::LogStorage for MemoryStorage {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: u64,
-    ) -> StorageResult<Vec<(u64, Bytes)>> {
+        start: NonZero<u64>,
+        end: NonZero<u64>,
+    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
         let logs = self.logs.read().await;
 
         if let Some(btree) = logs.get(namespace) {
@@ -101,13 +112,25 @@ impl proven_storage::LogStorage for MemoryStorage {
         }
     }
 
-    async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn truncate_after(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let mut logs = self.logs.write().await;
         let mut bounds = self.log_bounds.write().await;
 
         if let Some(btree) = logs.get_mut(namespace) {
+            // Create next index for the range
+            let next_index = NonZero::new(index.get() + 1);
+
             // Collect indices to remove
-            let to_remove: Vec<_> = btree.range((index + 1)..).map(|(&idx, _)| idx).collect();
+            let to_remove: Vec<_> = if let Some(next) = next_index {
+                btree.range(next..).map(|(&idx, _)| idx).collect()
+            } else {
+                // If index + 1 overflows, there's nothing to remove
+                Vec::new()
+            };
 
             // Remove entries
             for idx in to_remove {
@@ -127,13 +150,22 @@ impl proven_storage::LogStorage for MemoryStorage {
         Ok(())
     }
 
-    async fn compact_before(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn compact_before(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let mut logs = self.logs.write().await;
         let mut bounds = self.log_bounds.write().await;
 
         if let Some(btree) = logs.get_mut(namespace) {
-            // Collect indices to remove
-            let to_remove: Vec<_> = btree.range(..=index).map(|(&idx, _)| idx).collect();
+            // Collect indices to remove (up to and including index)
+            // We need to use Included bound for NonZero<u64>
+            use std::ops::Bound;
+            let to_remove: Vec<_> = btree
+                .range((Bound::Unbounded, Bound::Included(index)))
+                .map(|(&idx, _)| idx)
+                .collect();
 
             // Remove entries
             for idx in to_remove {
@@ -153,7 +185,10 @@ impl proven_storage::LogStorage for MemoryStorage {
         Ok(())
     }
 
-    async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+    async fn bounds(
+        &self,
+        namespace: &StorageNamespace,
+    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
         // First check cache
         {
             let bounds = self.log_bounds.read().await;
@@ -182,6 +217,33 @@ impl proven_storage::LogStorage for MemoryStorage {
             Ok(None)
         }
     }
+
+    async fn get_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+    ) -> StorageResult<Option<Bytes>> {
+        let metadata = self.metadata.read().await;
+        if let Some(namespace_metadata) = metadata.get(namespace) {
+            Ok(namespace_metadata.get(key).cloned())
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn set_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+        value: Bytes,
+    ) -> StorageResult<()> {
+        let mut metadata = self.metadata.write().await;
+        let namespace_metadata = metadata
+            .entry(namespace.clone())
+            .or_insert_with(HashMap::new);
+        namespace_metadata.insert(key.to_string(), value);
+        Ok(())
+    }
 }
 
 // Implement StorageAdaptor for MemoryStorage
@@ -195,7 +257,11 @@ impl StorageAdaptor for MemoryStorage {
 // Implement LogStorageWithDelete for MemoryStorage
 #[async_trait]
 impl proven_storage::LogStorageWithDelete for MemoryStorage {
-    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+    async fn delete_entry(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<bool> {
         let mut logs = self.logs.write().await;
 
         if let Some(btree) = logs.get_mut(namespace) {
@@ -222,12 +288,13 @@ impl proven_storage::LogStorageStreaming for MemoryStorage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: Option<u64>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        start: NonZero<u64>,
+        end: Option<NonZero<u64>>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+    {
         // Clone the data we need to stream
         let logs_guard = self.logs.read().await;
-        let entries: Vec<(u64, Bytes)> = if let Some(btree) = logs_guard.get(namespace) {
+        let entries: Vec<(NonZero<u64>, Bytes)> = if let Some(btree) = logs_guard.get(namespace) {
             match end {
                 Some(end_idx) => btree
                     .range(start..end_idx)
@@ -255,6 +322,7 @@ impl std::fmt::Debug for MemoryStorage {
         f.debug_struct("MemoryStorage")
             .field("logs", &"<locked>")
             .field("log_bounds", &"<locked>")
+            .field("metadata", &"<locked>")
             .finish()
     }
 }
@@ -266,23 +334,28 @@ mod tests {
     use proven_storage::{LogStorage, LogStorageStreaming, LogStorageWithDelete};
     use tokio_stream::StreamExt;
 
+    // Helper function to create NonZero<u64>
+    fn nz(n: u64) -> NonZero<u64> {
+        NonZero::new(n).expect("test indices should be non-zero")
+    }
+
     #[tokio::test]
     async fn test_log_storage_append_and_get() {
         let storage = MemoryStorage::new();
         let namespace = StorageNamespace::new("test");
 
         // Test single entry append
-        let entries = vec![(1, Bytes::from("test data 1"))];
+        let entries = vec![(nz(1), Bytes::from("test data 1"))];
         storage.append(&namespace, entries).await.unwrap();
 
         // Test read single entry via range
-        let result = storage.read_range(&namespace, 1, 2).await.unwrap();
+        let result = storage.read_range(&namespace, nz(1), nz(2)).await.unwrap();
         assert_eq!(result.len(), 1);
-        assert_eq!(result[0], (1, Bytes::from("test data 1")));
+        assert_eq!(result[0], (nz(1), Bytes::from("test data 1")));
 
         // Test bounds
         let bounds = storage.bounds(&namespace).await.unwrap();
-        assert_eq!(bounds, Some((1, 1)));
+        assert_eq!(bounds, Some((nz(1), nz(1))));
     }
 
     #[tokio::test]
@@ -292,22 +365,22 @@ mod tests {
 
         // Append multiple entries
         let entries = vec![
-            (1, Bytes::from("data 1")),
-            (2, Bytes::from("data 2")),
-            (3, Bytes::from("data 3")),
+            (nz(1), Bytes::from("data 1")),
+            (nz(2), Bytes::from("data 2")),
+            (nz(3), Bytes::from("data 3")),
         ];
         storage.append(&namespace, entries).await.unwrap();
 
         // Test read range
-        let range = storage.read_range(&namespace, 1, 4).await.unwrap();
+        let range = storage.read_range(&namespace, nz(1), nz(4)).await.unwrap();
         assert_eq!(range.len(), 3);
-        assert_eq!(range[0], (1, Bytes::from("data 1")));
-        assert_eq!(range[1], (2, Bytes::from("data 2")));
-        assert_eq!(range[2], (3, Bytes::from("data 3")));
+        assert_eq!(range[0], (nz(1), Bytes::from("data 1")));
+        assert_eq!(range[1], (nz(2), Bytes::from("data 2")));
+        assert_eq!(range[2], (nz(3), Bytes::from("data 3")));
 
         // Test bounds
         let bounds = storage.bounds(&namespace).await.unwrap();
-        assert_eq!(bounds, Some((1, 3)));
+        assert_eq!(bounds, Some((nz(1), nz(3))));
     }
 
     #[tokio::test]
@@ -317,27 +390,27 @@ mod tests {
 
         // Append entries
         let entries = vec![
-            (1, Bytes::from("data 1")),
-            (2, Bytes::from("data 2")),
-            (3, Bytes::from("data 3")),
-            (4, Bytes::from("data 4")),
-            (5, Bytes::from("data 5")),
+            (nz(1), Bytes::from("data 1")),
+            (nz(2), Bytes::from("data 2")),
+            (nz(3), Bytes::from("data 3")),
+            (nz(4), Bytes::from("data 4")),
+            (nz(5), Bytes::from("data 5")),
         ];
         storage.append(&namespace, entries).await.unwrap();
 
         // Truncate after index 3
-        storage.truncate_after(&namespace, 3).await.unwrap();
+        storage.truncate_after(&namespace, nz(3)).await.unwrap();
 
         // Check remaining entries
-        let range = storage.read_range(&namespace, 1, 6).await.unwrap();
+        let range = storage.read_range(&namespace, nz(1), nz(6)).await.unwrap();
         assert_eq!(range.len(), 3);
-        assert_eq!(range[0].0, 1);
-        assert_eq!(range[1].0, 2);
-        assert_eq!(range[2].0, 3);
+        assert_eq!(range[0].0, nz(1));
+        assert_eq!(range[1].0, nz(2));
+        assert_eq!(range[2].0, nz(3));
 
         // Check bounds
         let bounds = storage.bounds(&namespace).await.unwrap();
-        assert_eq!(bounds, Some((1, 3)));
+        assert_eq!(bounds, Some((nz(1), nz(3))));
     }
 
     #[tokio::test]
@@ -347,26 +420,26 @@ mod tests {
 
         // Append entries
         let entries = vec![
-            (1, Bytes::from("data 1")),
-            (2, Bytes::from("data 2")),
-            (3, Bytes::from("data 3")),
-            (4, Bytes::from("data 4")),
-            (5, Bytes::from("data 5")),
+            (nz(1), Bytes::from("data 1")),
+            (nz(2), Bytes::from("data 2")),
+            (nz(3), Bytes::from("data 3")),
+            (nz(4), Bytes::from("data 4")),
+            (nz(5), Bytes::from("data 5")),
         ];
         storage.append(&namespace, entries).await.unwrap();
 
         // Compact before index 3
-        storage.compact_before(&namespace, 3).await.unwrap();
+        storage.compact_before(&namespace, nz(3)).await.unwrap();
 
         // Check remaining entries
-        let range = storage.read_range(&namespace, 1, 6).await.unwrap();
+        let range = storage.read_range(&namespace, nz(1), nz(6)).await.unwrap();
         assert_eq!(range.len(), 2);
-        assert_eq!(range[0].0, 4);
-        assert_eq!(range[1].0, 5);
+        assert_eq!(range[0].0, nz(4));
+        assert_eq!(range[1].0, nz(5));
 
         // Check bounds
         let bounds = storage.bounds(&namespace).await.unwrap();
-        assert_eq!(bounds, Some((4, 5)));
+        assert_eq!(bounds, Some((nz(4), nz(5))));
     }
 
     #[tokio::test]
@@ -376,36 +449,36 @@ mod tests {
 
         // Append entries
         let entries = vec![
-            (1, Bytes::from("data 1")),
-            (2, Bytes::from("data 2")),
-            (3, Bytes::from("data 3")),
-            (4, Bytes::from("data 4")),
-            (5, Bytes::from("data 5")),
+            (nz(1), Bytes::from("data 1")),
+            (nz(2), Bytes::from("data 2")),
+            (nz(3), Bytes::from("data 3")),
+            (nz(4), Bytes::from("data 4")),
+            (nz(5), Bytes::from("data 5")),
         ];
         storage.append(&namespace, entries).await.unwrap();
 
         // Delete entry at index 3
-        let deleted = storage.delete_entry(&namespace, 3).await.unwrap();
+        let deleted = storage.delete_entry(&namespace, nz(3)).await.unwrap();
         assert!(deleted);
 
         // Try to delete the same entry again - should return false
-        let deleted_again = storage.delete_entry(&namespace, 3).await.unwrap();
+        let deleted_again = storage.delete_entry(&namespace, nz(3)).await.unwrap();
         assert!(!deleted_again);
 
         // Check remaining entries
-        let range = storage.read_range(&namespace, 1, 6).await.unwrap();
+        let range = storage.read_range(&namespace, nz(1), nz(6)).await.unwrap();
         assert_eq!(range.len(), 4);
-        assert_eq!(range[0].0, 1);
-        assert_eq!(range[1].0, 2);
-        assert_eq!(range[2].0, 4);
-        assert_eq!(range[3].0, 5);
+        assert_eq!(range[0].0, nz(1));
+        assert_eq!(range[1].0, nz(2));
+        assert_eq!(range[2].0, nz(4));
+        assert_eq!(range[3].0, nz(5));
 
         // Check bounds - should remain unchanged
         let bounds = storage.bounds(&namespace).await.unwrap();
-        assert_eq!(bounds, Some((1, 5)));
+        assert_eq!(bounds, Some((nz(1), nz(5))));
 
         // Delete non-existent entry
-        let deleted_nonexistent = storage.delete_entry(&namespace, 10).await.unwrap();
+        let deleted_nonexistent = storage.delete_entry(&namespace, nz(10)).await.unwrap();
         assert!(!deleted_nonexistent);
     }
 
@@ -416,16 +489,19 @@ mod tests {
 
         // Append entries
         let entries = vec![
-            (1, Bytes::from("data 1")),
-            (2, Bytes::from("data 2")),
-            (3, Bytes::from("data 3")),
-            (4, Bytes::from("data 4")),
-            (5, Bytes::from("data 5")),
+            (nz(1), Bytes::from("data 1")),
+            (nz(2), Bytes::from("data 2")),
+            (nz(3), Bytes::from("data 3")),
+            (nz(4), Bytes::from("data 4")),
+            (nz(5), Bytes::from("data 5")),
         ];
         storage.append(&namespace, entries).await.unwrap();
 
         // Test streaming with end bound
-        let mut stream = storage.stream_range(&namespace, 2, Some(4)).await.unwrap();
+        let mut stream = storage
+            .stream_range(&namespace, nz(2), Some(nz(4)))
+            .await
+            .unwrap();
 
         let mut results = Vec::new();
         while let Some(item) = stream.next().await {
@@ -433,11 +509,11 @@ mod tests {
         }
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0], (2, Bytes::from("data 2")));
-        assert_eq!(results[1], (3, Bytes::from("data 3")));
+        assert_eq!(results[0], (nz(2), Bytes::from("data 2")));
+        assert_eq!(results[1], (nz(3), Bytes::from("data 3")));
 
         // Test streaming without end bound
-        let mut stream = storage.stream_range(&namespace, 3, None).await.unwrap();
+        let mut stream = storage.stream_range(&namespace, nz(3), None).await.unwrap();
 
         let mut results = Vec::new();
         while let Some(item) = stream.next().await {
@@ -445,13 +521,13 @@ mod tests {
         }
 
         assert_eq!(results.len(), 3);
-        assert_eq!(results[0], (3, Bytes::from("data 3")));
-        assert_eq!(results[1], (4, Bytes::from("data 4")));
-        assert_eq!(results[2], (5, Bytes::from("data 5")));
+        assert_eq!(results[0], (nz(3), Bytes::from("data 3")));
+        assert_eq!(results[1], (nz(4), Bytes::from("data 4")));
+        assert_eq!(results[2], (nz(5), Bytes::from("data 5")));
 
         // Test streaming empty namespace
         let empty_ns = StorageNamespace::new("empty");
-        let mut stream = storage.stream_range(&empty_ns, 1, None).await.unwrap();
+        let mut stream = storage.stream_range(&empty_ns, nz(1), None).await.unwrap();
 
         let mut count = 0;
         while (stream.next().await).is_some() {

@@ -1,6 +1,6 @@
 //! Callback dispatcher for group consensus events
 
-use std::sync::Arc;
+use std::{num::NonZero, sync::Arc};
 use tokio::sync::RwLock;
 
 use crate::{error::ConsensusResult, foundation::types::ConsensusGroupId};
@@ -65,21 +65,64 @@ impl GroupCallbackDispatcher {
     ) {
         // Only dispatch callbacks for current operations (not replay)
         if is_replay {
+            tracing::debug!(
+                "Skipping callback dispatch for replayed operation: {:?}",
+                request
+            );
             return;
         }
 
         // Dispatch based on request type and response
         match (request, response) {
             (
-                GroupRequest::Stream(StreamOperation::Append { stream, message }),
-                GroupResponse::Appended { .. },
+                GroupRequest::Stream(StreamOperation::Append { stream, messages }),
+                GroupResponse::Appended {
+                    sequence: last_sequence,
+                    ..
+                },
             ) => {
+                // Compute sequences for all messages in the batch
+                // last_sequence is the sequence of the last message
+                // So the first message has sequence: last_sequence - (messages.len() - 1)
+                let first_sequence = NonZero::new(
+                    last_sequence
+                        .get()
+                        .saturating_sub(messages.len() as u64 - 1),
+                )
+                .unwrap();
+
+                // Get current timestamp
+                let timestamp = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+
+                // Build the messages with sequences and timestamps
+                let messages_with_meta: Vec<(MessageData, NonZero<u64>, u64)> = messages
+                    .iter()
+                    .enumerate()
+                    .map(|(i, msg)| {
+                        let seq = NonZero::new(first_sequence.get() + i as u64).unwrap();
+                        (msg.clone(), seq, timestamp)
+                    })
+                    .collect();
+
+                tracing::info!(
+                    "Dispatching on_messages_appended callback for {} messages to stream {} (sequences: {:?})",
+                    messages_with_meta.len(),
+                    stream,
+                    messages_with_meta
+                        .iter()
+                        .map(|(_, seq, _)| seq)
+                        .collect::<Vec<_>>()
+                );
+
                 if let Err(e) = self
                     .callbacks
-                    .on_message_appended(group_id, stream.as_str(), message)
+                    .on_messages_appended(group_id, stream.as_str(), &messages_with_meta)
                     .await
                 {
-                    tracing::error!("Message append callback failed: {}", e);
+                    tracing::error!("Messages append callback failed: {}", e);
                 }
             }
 

@@ -3,8 +3,8 @@
 //! This module provides a pure storage implementation that only handles
 //! log persistence without any business logic.
 
-use std::ops::RangeBounds;
 use std::sync::Arc;
+use std::{num::NonZero, ops::RangeBounds};
 
 use openraft::{
     Entry, LogId, StorageError,
@@ -19,6 +19,11 @@ use super::raft::GroupTypeConfig;
 use crate::foundation::types::ConsensusGroupId;
 
 /// Raft log storage - only handles log persistence
+///
+/// This implementation bridges between OpenRaft's 0-based indexing and our storage's
+/// 1-based indexing. All conversions happen at the storage boundary:
+/// - When storing: OpenRaft index + 1 = Storage index
+/// - When reading: Storage index - 1 = OpenRaft index (handled by stored LogId)
 #[derive(Clone)]
 pub struct GroupRaftLogStorage<L: LogStorage> {
     /// Log storage backend
@@ -27,30 +32,17 @@ pub struct GroupRaftLogStorage<L: LogStorage> {
     group_id: ConsensusGroupId,
     /// Namespace for logs
     namespace: StorageNamespace,
-    /// Namespace for state
-    state_namespace: StorageNamespace,
-    /// Current log state
-    log_state: Arc<RwLock<LogState<GroupTypeConfig>>>,
-    /// Persisted vote
-    vote: Arc<RwLock<Option<openraft::Vote<GroupTypeConfig>>>>,
-    /// Persisted committed index
-    committed: Arc<RwLock<Option<LogId<GroupTypeConfig>>>>,
 }
 
 impl<L: LogStorage> GroupRaftLogStorage<L> {
     /// Create new log storage with group ID
     pub fn new(log_storage: Arc<L>, group_id: ConsensusGroupId) -> Self {
         let namespace = StorageNamespace::new(format!("group_{}_logs", group_id.value()));
-        let state_namespace = StorageNamespace::new(format!("group_{}_state", group_id.value()));
 
         Self {
             log_storage,
             group_id,
             namespace,
-            state_namespace,
-            log_state: Arc::new(RwLock::new(LogState::default())),
-            vote: Arc::new(RwLock::new(None)),
-            committed: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -63,16 +55,25 @@ impl<L: LogStorage> RaftLogReader<GroupTypeConfig> for Arc<GroupRaftLogStorage<L
     ) -> Result<Vec<Entry<GroupTypeConfig>>, StorageError<GroupTypeConfig>> {
         use std::ops::Bound;
 
+        // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
         let start = match range.start_bound() {
-            Bound::Included(&n) => n,
-            Bound::Excluded(&n) => n + 1,
-            Bound::Unbounded => 0,
+            Bound::Included(&n) => NonZero::new(n + 1).expect("n + 1 should never be 0"),
+            Bound::Excluded(&n) => NonZero::new(n + 2).expect("n + 2 should never be 0"),
+            Bound::Unbounded => NonZero::new(1).unwrap(),
         };
 
         let end = match range.end_bound() {
-            Bound::Included(&n) => n + 1,
-            Bound::Excluded(&n) => n,
-            Bound::Unbounded => u64::MAX,
+            Bound::Included(&n) => NonZero::new(n + 2).expect("n + 2 should never be 0"),
+            Bound::Excluded(&n) => {
+                if n == 0 {
+                    // OpenRaft might query with end=Excluded(0), which means "no entries"
+                    // In our 1-based system, this would be before index 1
+                    NonZero::new(1).unwrap()
+                } else {
+                    NonZero::new(n + 1).expect("n + 1 should never be 0")
+                }
+            }
+            Bound::Unbounded => NonZero::new(u64::MAX).unwrap(),
         };
 
         // Read from storage
@@ -96,9 +97,19 @@ impl<L: LogStorage> RaftLogReader<GroupTypeConfig> for Arc<GroupRaftLogStorage<L
     async fn read_vote(
         &mut self,
     ) -> Result<Option<openraft::Vote<GroupTypeConfig>>, StorageError<GroupTypeConfig>> {
-        // Return the cached vote
-        // In production, this should also verify against persistent storage
-        Ok(self.vote.read().await.clone())
+        // Read directly from storage
+        if let Some(vote_data) = self
+            .log_storage
+            .get_metadata(&self.namespace, "vote")
+            .await
+            .map_err(|e| StorageError::read(&e))?
+        {
+            let vote: openraft::Vote<GroupTypeConfig> =
+                ciborium::from_reader(vote_data.as_ref()).map_err(|e| StorageError::read(&e))?;
+            Ok(Some(vote))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -109,17 +120,13 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
         &mut self,
         vote: &openraft::Vote<GroupTypeConfig>,
     ) -> Result<(), StorageError<GroupTypeConfig>> {
-        // Save vote to memory
-        *self.vote.write().await = Some(vote.clone());
-
-        // Persist to storage backend
+        // Serialize vote
         let mut buffer = Vec::new();
         ciborium::into_writer(vote, &mut buffer).map_err(|e| StorageError::write(&e))?;
 
-        // Use a special key for vote in state namespace
-        let vote_key = 0; // Using index 0 for vote
+        // Save directly to storage
         self.log_storage
-            .append(&self.state_namespace, vec![(vote_key, Bytes::from(buffer))])
+            .set_metadata(&self.namespace, "vote", Bytes::from(buffer))
             .await
             .map_err(|e| StorageError::write(&e))?;
 
@@ -143,13 +150,14 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
 
         // Serialize and prepare entries for storage
         let mut storage_entries = Vec::new();
-        let mut last_log_id = None;
 
         for entry in &entries {
             let mut buffer = Vec::new();
             ciborium::into_writer(entry, &mut buffer).map_err(|e| StorageError::write(&e))?;
-            storage_entries.push((entry.log_id.index, Bytes::from(buffer)));
-            last_log_id = Some(entry.log_id.clone());
+            // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
+            let storage_index = NonZero::new(entry.log_id.index + 1)
+                .expect("entry.log_id.index + 1 should never be 0");
+            storage_entries.push((storage_index, Bytes::from(buffer)));
         }
 
         // Append to storage
@@ -158,11 +166,7 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
             .await
             .map_err(|e| StorageError::write(&e))?;
 
-        // Update log state
-        if let Some(last_id) = last_log_id {
-            let mut log_state = self.log_state.write().await;
-            log_state.last_log_id = Some(last_id);
-        }
+        // Note: log state is computed on demand in get_log_state()
 
         // Notify Raft that IO is complete
         callback.io_completed(Ok(()));
@@ -174,14 +178,15 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
         log_id: LogId<GroupTypeConfig>,
     ) -> Result<(), StorageError<GroupTypeConfig>> {
         // Truncate all entries after the given log_id
+        // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
+        let storage_index =
+            NonZero::new(log_id.index + 1).expect("log_id.index + 1 should never be 0");
         self.log_storage
-            .truncate_after(&self.namespace, log_id.index)
+            .truncate_after(&self.namespace, storage_index)
             .await
             .map_err(|e| StorageError::write(&e))?;
 
-        // Update log state
-        let mut log_state = self.log_state.write().await;
-        log_state.last_log_id = Some(log_id);
+        // Note: log state is computed on demand in get_log_state()
 
         Ok(())
     }
@@ -190,15 +195,23 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
         &mut self,
         log_id: LogId<GroupTypeConfig>,
     ) -> Result<(), StorageError<GroupTypeConfig>> {
-        // Compact all entries before the given log_id
+        // Save the last purged log ID to metadata before compacting
+        let mut buffer = Vec::new();
+        ciborium::into_writer(&log_id, &mut buffer).map_err(|e| StorageError::write(&e))?;
+
         self.log_storage
-            .compact_before(&self.namespace, log_id.index)
+            .set_metadata(&self.namespace, "last_purged", Bytes::from(buffer))
             .await
             .map_err(|e| StorageError::write(&e))?;
 
-        // Update log state
-        let mut log_state = self.log_state.write().await;
-        log_state.last_purged_log_id = Some(log_id);
+        // Compact all entries before the given log_id
+        // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
+        let storage_index =
+            NonZero::new(log_id.index + 1).expect("log_id.index + 1 should never be 0");
+        self.log_storage
+            .compact_before(&self.namespace, storage_index)
+            .await
+            .map_err(|e| StorageError::write(&e))?;
 
         Ok(())
     }
@@ -207,20 +220,13 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
         &mut self,
         committed: Option<LogId<GroupTypeConfig>>,
     ) -> Result<(), StorageError<GroupTypeConfig>> {
-        // Save committed index to memory
-        *self.committed.write().await = committed.clone();
-
-        // Persist to storage
+        // Serialize committed
         let mut buffer = Vec::new();
         ciborium::into_writer(&committed, &mut buffer).map_err(|e| StorageError::write(&e))?;
 
-        // Use a special key for committed in state namespace
-        let committed_key = 1; // Using index 1 for committed
+        // Save directly to storage
         self.log_storage
-            .append(
-                &self.state_namespace,
-                vec![(committed_key, Bytes::from(buffer))],
-            )
+            .set_metadata(&self.namespace, "committed", Bytes::from(buffer))
             .await
             .map_err(|e| StorageError::write(&e))?;
 
@@ -230,9 +236,20 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
     async fn read_committed(
         &mut self,
     ) -> Result<Option<LogId<GroupTypeConfig>>, StorageError<GroupTypeConfig>> {
-        // Return the cached committed index
-        // In production, this should also verify against persistent storage
-        Ok(self.committed.read().await.clone())
+        // Read directly from storage
+        if let Some(committed_data) = self
+            .log_storage
+            .get_metadata(&self.namespace, "committed")
+            .await
+            .map_err(|e| StorageError::read(&e))?
+        {
+            let committed: Option<LogId<GroupTypeConfig>> =
+                ciborium::from_reader(committed_data.as_ref())
+                    .map_err(|e| StorageError::read(&e))?;
+            Ok(committed)
+        } else {
+            Ok(None)
+        }
     }
 
     async fn get_log_reader(&mut self) -> Self::LogReader {
@@ -249,23 +266,36 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
             .await
             .map_err(|e| StorageError::read(&e))?;
 
-        let mut log_state = self.log_state.write().await;
+        let mut log_state = LogState::default();
 
         if let Some((_first, last)) = bounds {
             // Read the last entry to get its full LogId
             let entries = self
                 .log_storage
-                .read_range(&self.namespace, last, last + 1)
+                .read_range(&self.namespace, last, last.saturating_add(1))
                 .await
                 .map_err(|e| StorageError::read(&e))?;
 
             if let Some((_, data)) = entries.first() {
                 let entry: Entry<GroupTypeConfig> =
                     ciborium::from_reader(data.as_ref()).map_err(|e| StorageError::read(&e))?;
-                log_state.last_log_id = Some(entry.log_id);
+                log_state.last_log_id = Some(entry.log_id.clone());
+            }
+
+            // Check if we have purged logs by reading metadata
+            if let Some(purged_data) = self
+                .log_storage
+                .get_metadata(&self.namespace, "last_purged")
+                .await
+                .map_err(|e| StorageError::read(&e))?
+            {
+                let last_purged: LogId<GroupTypeConfig> =
+                    ciborium::from_reader(purged_data.as_ref())
+                        .map_err(|e| StorageError::read(&e))?;
+                log_state.last_purged_log_id = Some(last_purged);
             }
         }
 
-        Ok(log_state.clone())
+        Ok(log_state)
     }
 }

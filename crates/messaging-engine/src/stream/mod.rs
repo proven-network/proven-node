@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
+use std::num::NonZero;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -307,7 +308,7 @@ where
         // Delete from engine
         let response = self
             .client
-            .delete_message(self.name.clone(), seq)
+            .delete_message(self.name.clone(), NonZero::new(seq).unwrap())
             .await
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
 
@@ -337,7 +338,11 @@ where
         // Query from engine storage first to ensure we get the latest state
         let messages = self
             .client
-            .read_stream(self.name.clone(), seq, 1)
+            .read_stream(
+                self.name.clone(),
+                NonZero::new(seq).unwrap(),
+                NonZero::new(1).unwrap(),
+            )
             .await
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
 
@@ -381,7 +386,7 @@ where
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?
         {
             // The StreamInfo has a last_sequence field
-            Ok(info.last_sequence)
+            Ok(info.last_sequence.get())
         } else {
             // Stream doesn't exist or no messages yet
             Ok(0)
@@ -437,13 +442,13 @@ where
         };
 
         // Cache the message locally
-        self.cache.write().await.insert(seq, message);
+        self.cache.write().await.insert(seq.get(), message);
 
         info!(
             "Published message to stream '{}' at sequence {}",
             self.name, seq
         );
-        Ok(seq)
+        Ok(seq.get())
     }
 
     /// Publishes multiple messages as a batch.
@@ -535,7 +540,7 @@ where
             self.name, seq
         );
 
-        Ok(seq)
+        Ok(seq.get())
     }
 }
 

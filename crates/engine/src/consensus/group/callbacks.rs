@@ -1,6 +1,7 @@
 //! Callbacks for group consensus state changes
 
 use async_trait::async_trait;
+use std::num::NonZero;
 
 use crate::{error::ConsensusResult, foundation::types::ConsensusGroupId};
 use proven_topology::NodeId;
@@ -35,12 +36,12 @@ pub trait GroupConsensusCallbacks: Send + Sync {
         stream_name: &str,
     ) -> ConsensusResult<()>;
 
-    /// Called when a message is appended to a stream (not during replay)
-    async fn on_message_appended(
+    /// Called when messages are appended to a stream (not during replay)
+    async fn on_messages_appended(
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
-        message: &MessageData,
+        messages: &[(MessageData, NonZero<u64>, u64)], // (message, sequence, timestamp)
     ) -> ConsensusResult<()>;
 
     /// Called when group consensus membership changes (not during replay)

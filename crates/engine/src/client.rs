@@ -3,6 +3,7 @@
 //! This module provides a clean public API for submitting operations
 //! and querying the consensus system.
 
+use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -113,7 +114,7 @@ where
         // Submit to the group that owns the stream
         let request = GroupRequest::Stream(StreamOperation::Append {
             stream: stream.into(),
-            message,
+            messages: vec![message],
         });
 
         self.client_service
@@ -191,8 +192,8 @@ where
     pub async fn read_stream(
         &self,
         stream_name: String,
-        start_sequence: u64,
-        count: u64,
+        start_sequence: NonZero<u64>,
+        count: NonZero<u64>,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         self.client_service
             .read_stream(&stream_name, start_sequence, count)
@@ -203,7 +204,7 @@ where
     pub async fn delete_message(
         &self,
         stream_name: String,
-        sequence: u64,
+        sequence: NonZero<u64>,
     ) -> ConsensusResult<GroupResponse> {
         // Get stream info to find which group owns it
         let stream_info = self.get_stream_info(&stream_name).await?.ok_or_else(|| {
@@ -231,8 +232,8 @@ where
     pub async fn stream_messages(
         &self,
         stream_name: String,
-        start_sequence: u64,
-        end_sequence: Option<u64>,
+        start_sequence: NonZero<u64>,
+        end_sequence: Option<NonZero<u64>>,
     ) -> ConsensusResult<StreamReader<T, G, S>> {
         StreamReader::new(
             self.client_service.clone(),
@@ -273,11 +274,11 @@ where
     /// Stream name
     stream_name: String,
     /// Current sequence number
-    current_sequence: u64,
+    current_sequence: NonZero<u64>,
     /// End sequence (None means stream to end)
-    end_sequence: Option<u64>,
+    end_sequence: Option<NonZero<u64>>,
     /// Batch size for reading
-    batch_size: u32,
+    batch_size: NonZero<u64>,
     /// Stream session ID (for remote streams)
     session_id: Option<Uuid>,
     /// Whether the stream is local
@@ -298,8 +299,8 @@ where
     async fn new(
         client_service: Arc<ClientService<T, G, S>>,
         stream_name: String,
-        start_sequence: u64,
-        end_sequence: Option<u64>,
+        start_sequence: NonZero<u64>,
+        end_sequence: Option<NonZero<u64>>,
     ) -> ConsensusResult<Self> {
         // Check if stream is local or remote
         let _stream_info = client_service
@@ -323,7 +324,7 @@ where
             stream_name,
             current_sequence: start_sequence,
             end_sequence,
-            batch_size: 100, // Default batch size
+            batch_size: NonZero::new(100).unwrap(), // Default batch size
             session_id: None,
             is_local,
             buffer: Vec::new(),
@@ -332,7 +333,7 @@ where
     }
 
     /// Set the batch size for reading
-    pub fn with_batch_size(mut self, batch_size: u32) -> Self {
+    pub fn with_batch_size(mut self, batch_size: NonZero<u64>) -> Self {
         self.batch_size = batch_size;
         self
     }
@@ -345,7 +346,7 @@ where
 
         if self.is_local {
             // Read directly from local storage
-            let count = self.batch_size as u64;
+            let count = self.batch_size;
             let messages = self
                 .client_service
                 .read_stream(&self.stream_name, self.current_sequence, count)
@@ -362,7 +363,7 @@ where
                         self.is_finished = true;
                         break;
                     }
-                    self.current_sequence = msg.sequence + 1;
+                    self.current_sequence = self.current_sequence.saturating_add(1);
                     self.buffer.push(msg);
                 }
             }

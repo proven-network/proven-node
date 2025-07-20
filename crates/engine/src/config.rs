@@ -1,7 +1,7 @@
 //! Engine configuration
 
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{num::NonZero, time::Duration};
 
 use crate::services::{
     cluster::ClusterConfig, event::EventConfig, lifecycle::LifecycleConfig,
@@ -80,10 +80,10 @@ pub struct GlobalConsensusConfig {
     pub heartbeat_interval: Duration,
 
     /// Snapshot interval
-    pub snapshot_interval: u64,
+    pub snapshot_interval: NonZero<u64>,
 
     /// Max entries per append
-    pub max_entries_per_append: u64,
+    pub max_entries_per_append: NonZero<u64>,
 }
 
 /// Group consensus configuration
@@ -99,10 +99,10 @@ pub struct GroupConsensusConfig {
     pub heartbeat_interval: Duration,
 
     /// Snapshot interval
-    pub snapshot_interval: u64,
+    pub snapshot_interval: NonZero<u64>,
 
     /// Max entries per append
-    pub max_entries_per_append: u64,
+    pub max_entries_per_append: NonZero<u64>,
 }
 
 /// Network configuration
@@ -128,7 +128,7 @@ pub struct StorageConfig {
     pub path: String,
 
     /// Max log size
-    pub max_log_size: u64,
+    pub max_log_size: NonZero<u64>,
 
     /// Compaction interval
     pub compaction_interval: Duration,
@@ -155,8 +155,8 @@ impl Default for GlobalConsensusConfig {
             election_timeout_min: Duration::from_millis(150),
             election_timeout_max: Duration::from_millis(300),
             heartbeat_interval: Duration::from_millis(50),
-            snapshot_interval: 1000,
-            max_entries_per_append: 64,
+            snapshot_interval: NonZero::new(1000).unwrap(),
+            max_entries_per_append: NonZero::new(64).unwrap(),
         }
     }
 }
@@ -167,8 +167,8 @@ impl Default for GroupConsensusConfig {
             election_timeout_min: Duration::from_millis(150),
             election_timeout_max: Duration::from_millis(300),
             heartbeat_interval: Duration::from_millis(50),
-            snapshot_interval: 1000,
-            max_entries_per_append: 64,
+            snapshot_interval: NonZero::new(1000).unwrap(),
+            max_entries_per_append: NonZero::new(64).unwrap(),
         }
     }
 }
@@ -188,8 +188,8 @@ impl Default for StorageConfig {
     fn default() -> Self {
         Self {
             path: "./data".to_string(),
-            max_log_size: 1024 * 1024 * 1024,               // 1GB
-            compaction_interval: Duration::from_secs(3600), // 1 hour
+            max_log_size: NonZero::new(1024 * 1024 * 1024).unwrap(), // 1GB
+            compaction_interval: Duration::from_secs(3600),          // 1 hour
             cache_size: 1000,
         }
     }

@@ -11,9 +11,9 @@ use proven_transport::Transport;
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::ServiceLifecycle;
 use crate::services::{
-    client::ClientService, cluster::ClusterService, event::EventService,
-    lifecycle::LifecycleService, migration::MigrationService, monitoring::MonitoringService,
-    network::NetworkService, pubsub::PubSubService, routing::RoutingService,
+    client::ClientService, event::EventService, lifecycle::LifecycleService,
+    migration::MigrationService, monitoring::MonitoringService, network::NetworkService,
+    pubsub::PubSubService, routing::RoutingService,
 };
 use tracing::{error, info};
 
@@ -157,21 +157,11 @@ where
                 network_manager.clone(),
                 storage_manager.clone(),
             )
-            .with_event_publisher(event_service.create_publisher()),
+            .with_event_publisher(event_service.create_publisher())
+            .with_topology(topology_manager.clone()),
         );
 
-        // Get the formation callback from the global consensus service
-        let formation_callback = global_consensus_service.get_formation_callback();
-
-        let cluster_service = Arc::new(
-            ClusterService::new(config.services.cluster.clone(), self.node_id.clone())
-                .with_discovery(
-                    network_manager.clone(),
-                    topology_manager.clone(),
-                    event_service.create_publisher(),
-                )
-                .with_formation_callback(formation_callback),
-        );
+        // ClusterService has been removed - functionality moved to GlobalConsensusService
 
         // Create system view for monitoring
         let system_view = Arc::new(crate::services::monitoring::SystemView::new());
@@ -207,7 +197,7 @@ where
         // Create service wrappers that implement ServiceLifecycle
         let network_service = Arc::new(network_service);
         let network_wrapper = Arc::new(ServiceWrapper::new("network", network_service.clone()));
-        let cluster_wrapper = Arc::new(ServiceWrapper::new("cluster", cluster_service.clone()));
+        // ClusterService removed - functionality in GlobalConsensusService
         let event_wrapper = Arc::new(ServiceWrapper::new("event", event_service.clone()));
         let monitoring_wrapper = Arc::new(ServiceWrapper::new(
             "monitoring",
@@ -242,9 +232,7 @@ where
         coordinator
             .register("monitoring".to_string(), monitoring_wrapper)
             .await;
-        coordinator
-            .register("cluster".to_string(), cluster_wrapper)
-            .await;
+        // ClusterService removed - functionality in GlobalConsensusService
         coordinator
             .register("routing".to_string(), routing_wrapper)
             .await;
@@ -299,6 +287,9 @@ where
         group_consensus_service
             .set_event_service(event_service.clone())
             .await;
+        group_consensus_service
+            .set_stream_service(stream_service.clone())
+            .await;
 
         // Wire up GlobalConsensusService dependencies
         global_consensus_service
@@ -340,7 +331,6 @@ where
             config,
             coordinator,
             network_service,
-            cluster_service,
             event_service,
             monitoring_service,
             routing_service,
@@ -388,40 +378,7 @@ impl<S> ServiceWrapper<S> {
 use crate::foundation::traits::{HealthStatus, ServiceHealth};
 use async_trait::async_trait;
 
-#[async_trait]
-impl<T, G> ServiceLifecycle for ServiceWrapper<ClusterService<T, G>>
-where
-    T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
-{
-    async fn start(&self) -> ConsensusResult<()> {
-        self.service.start().await.map_err(|e| e.into())
-    }
-
-    async fn stop(&self) -> ConsensusResult<()> {
-        self.service.stop().await.map_err(|e| e.into())
-    }
-
-    async fn is_running(&self) -> bool {
-        // ClusterService would need an is_running method
-        true
-    }
-
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        let health = self.service.get_health().await.map_err(Error::from)?;
-
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: match health.status {
-                crate::services::cluster::HealthStatus::Healthy => HealthStatus::Healthy,
-                crate::services::cluster::HealthStatus::Degraded => HealthStatus::Degraded,
-                crate::services::cluster::HealthStatus::Unhealthy => HealthStatus::Unhealthy,
-            },
-            message: None,
-            subsystems: Vec::new(),
-        })
-    }
-}
+// ClusterService removed - functionality moved to GlobalConsensusService
 
 #[async_trait]
 impl ServiceLifecycle for ServiceWrapper<EventService> {

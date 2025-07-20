@@ -2,7 +2,7 @@
 //!
 //! The ClientService acts as a thin coordinator, delegating requests to specialized handlers.
 
-use std::sync::Arc;
+use std::{num::NonZero, sync::Arc};
 
 use proven_network::NetworkManager;
 use proven_storage::StorageAdaptor;
@@ -251,8 +251,8 @@ where
     pub async fn read_stream(
         &self,
         stream_name: &str,
-        start_sequence: u64,
-        count: u64,
+        start_sequence: NonZero<u64>,
+        count: NonZero<u64>,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         let routing_guard = self.routing_service.read().await;
         let routing = routing_guard.as_ref().ok_or_else(|| {
@@ -543,8 +543,8 @@ where
                                 .start_stream(
                                     sender.clone(),
                                     stream_name,
-                                    start_sequence,
-                                    end_sequence,
+                                    NonZero::new(start_sequence).unwrap(),
+                                    end_sequence.and_then(NonZero::new),
                                     batch_size,
                                 )
                                 .await
@@ -558,7 +558,7 @@ where
                                 session_id,
                                 messages,
                                 has_more,
-                                next_sequence,
+                                next_sequence: next_sequence.map(|n| n.get()),
                             })
                         }
                         super::messages::ClientServiceMessage::StreamContinue {
@@ -592,7 +592,7 @@ where
                                 session_id,
                                 messages,
                                 has_more,
-                                next_sequence,
+                                next_sequence: next_sequence.map(|n| n.get()),
                             })
                         }
                         super::messages::ClientServiceMessage::StreamCancel {
@@ -803,9 +803,9 @@ where
     pub async fn start_streaming_session(
         &self,
         stream_name: &str,
-        start_sequence: u64,
-        end_sequence: Option<u64>,
-        batch_size: u32,
+        start_sequence: NonZero<u64>,
+        end_sequence: Option<NonZero<u64>>,
+        batch_size: NonZero<u64>,
     ) -> ConsensusResult<(
         uuid::Uuid,
         Vec<crate::services::stream::StoredMessage>,
@@ -892,7 +892,7 @@ where
     pub async fn continue_streaming_session(
         &self,
         session_id: uuid::Uuid,
-        max_messages: u32,
+        max_messages: NonZero<u64>,
     ) -> ConsensusResult<(Vec<crate::services::stream::StoredMessage>, bool)> {
         // For continuing a session, we need to know if it's local or remote
         // We'll check if we have a local session first
@@ -904,14 +904,14 @@ where
         if let Some(streaming_handler) = handlers.stream_streaming.as_ref() {
             // Try to continue the local session
             match streaming_handler
-                .continue_stream(session_id, max_messages)
+                .continue_stream(session_id, max_messages.get() as u32)
                 .await
             {
                 Ok((messages, has_more, _next)) => Ok((messages, has_more)),
                 Err(e) if *e.kind() == crate::error::ErrorKind::NotFound => {
                     // Session not found locally, it might be remote
                     self.forwarder
-                        .forward_streaming_continue(session_id, max_messages)
+                        .forward_streaming_continue(session_id, max_messages.get() as u32)
                         .await
                 }
                 Err(e) => Err(e),
@@ -919,7 +919,7 @@ where
         } else {
             // No local streaming handler, must be remote
             self.forwarder
-                .forward_streaming_continue(session_id, max_messages)
+                .forward_streaming_continue(session_id, max_messages.get() as u32)
                 .await
         }
     }

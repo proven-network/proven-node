@@ -11,11 +11,15 @@ use async_trait::async_trait;
 use aws_sdk_s3::{Client as S3Client, primitives::ByteStream};
 use bytes::Bytes;
 use proven_storage::{LogStorage, StorageError, StorageNamespace, StorageResult};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, num::NonZero, sync::Arc};
 use tokio::sync::{RwLock, mpsc};
 use tokio_stream::Stream;
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+/// Type aliases to reduce type complexity
+type LogBoundsCache = Arc<RwLock<HashMap<StorageNamespace, (NonZero<u64>, NonZero<u64>)>>>;
+type PendingWritesMap = Arc<RwLock<HashMap<StorageNamespace, HashMap<NonZero<u64>, Bytes>>>>;
 
 use crate::{
     batching::{BatchManager, LogBatch, UploadManager},
@@ -34,7 +38,7 @@ pub struct S3Storage {
     /// Configuration
     config: Arc<S3StorageConfig>,
     /// Log bounds cache: namespace -> (first_index, last_index)
-    log_bounds: Arc<RwLock<HashMap<StorageNamespace, (u64, u64)>>>,
+    log_bounds: LogBoundsCache,
     /// Batch manager for write optimization
     batch_manager: Arc<BatchManager>,
     /// Read cache
@@ -44,7 +48,7 @@ pub struct S3Storage {
     /// Encryption handler
     encryption: Option<Arc<EncryptionHandler>>,
     /// Pending writes for read-after-write consistency
-    pending_writes: Arc<RwLock<HashMap<StorageNamespace, HashMap<u64, Bytes>>>>,
+    pending_writes: PendingWritesMap,
 }
 
 impl S3Storage {
@@ -116,8 +120,14 @@ impl S3Storage {
                     if !recovered.is_empty() {
                         info!("Recovered {} namespaces from WAL", recovered.len());
                         for (namespace, entries) in recovered {
+                            // Convert u64 entries to NonZero<u64>
+                            let converted_entries: Vec<(NonZero<u64>, Bytes)> = entries
+                                .into_iter()
+                                .filter_map(|(idx, data)| NonZero::new(idx).map(|nz| (nz, data)))
+                                .collect();
+
                             // Re-submit recovered entries
-                            if let Err(e) = storage.append(&namespace, entries).await {
+                            if let Err(e) = storage.append(&namespace, converted_entries).await {
                                 error!("Failed to re-append recovered entries: {}", e);
                             }
                         }
@@ -133,8 +143,8 @@ impl S3Storage {
     }
 
     /// Construct an S3 key for a log entry
-    fn make_key(&self, namespace: &StorageNamespace, index: u64) -> String {
-        let base = format!("{}/{:020}", namespace.as_str(), index);
+    fn make_key(&self, namespace: &StorageNamespace, index: NonZero<u64>) -> String {
+        let base = format!("{}/{:020}", namespace.as_str(), index.get());
         match &self.config.s3.prefix {
             Some(prefix) => format!("{prefix}/{base}"),
             None => base,
@@ -142,10 +152,10 @@ impl S3Storage {
     }
 
     /// Parse an index from an S3 key
-    fn parse_index(&self, key: &str) -> Option<u64> {
+    fn parse_index(&self, key: &str) -> Option<NonZero<u64>> {
         let parts: Vec<&str> = key.split('/').collect();
         if let Some(index_str) = parts.last() {
-            index_str.parse().ok()
+            index_str.parse::<u64>().ok().and_then(NonZero::new)
         } else {
             None
         }
@@ -168,7 +178,7 @@ impl S3Storage {
                 let mut encrypted = Vec::new();
                 for (idx, data) in &batch.entries {
                     match encryption.encrypt_for_wal(data).await {
-                        Ok(enc_data) => encrypted.push((*idx, Bytes::from(enc_data))),
+                        Ok(enc_data) => encrypted.push((idx.get(), Bytes::from(enc_data))),
                         Err(e) => {
                             error!("WAL encryption failed: {}", e);
                             Self::complete_batch_with_error(
@@ -181,7 +191,11 @@ impl S3Storage {
                 }
                 encrypted
             } else {
-                batch.entries.clone()
+                batch
+                    .entries
+                    .iter()
+                    .map(|(idx, data)| (idx.get(), data.clone()))
+                    .collect()
             };
 
             // Write to WAL
@@ -317,21 +331,27 @@ impl S3Storage {
     /// Update bounds after successful batch upload
     async fn update_bounds_for_batch(&self, batch: &LogBatch) {
         let mut bounds = self.log_bounds.write().await;
-        let (mut first_index, mut last_index) = bounds
-            .get(&batch.namespace)
-            .copied()
-            .unwrap_or((u64::MAX, 0));
+        let existing_bounds = bounds.get(&batch.namespace).copied();
+        let mut first_index: Option<NonZero<u64>> = existing_bounds.map(|(first, _)| first);
+        let mut last_index: Option<NonZero<u64>> = existing_bounds.map(|(_, last)| last);
 
         for (index, _) in &batch.entries {
-            if first_index == u64::MAX || *index < first_index {
-                first_index = *index;
+            match first_index {
+                None => first_index = Some(*index),
+                Some(first) if *index < first => first_index = Some(*index),
+                _ => {}
             }
-            if *index > last_index {
-                last_index = *index;
+
+            match last_index {
+                None => last_index = Some(*index),
+                Some(last) if *index > last => last_index = Some(*index),
+                _ => {}
             }
         }
 
-        bounds.insert(batch.namespace.clone(), (first_index, last_index));
+        if let (Some(first), Some(last)) = (first_index, last_index) {
+            bounds.insert(batch.namespace.clone(), (first, last));
+        }
     }
 
     /// Complete batch with success
@@ -354,7 +374,7 @@ impl LogStorage for S3Storage {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(u64, Bytes)>,
+        entries: Vec<(NonZero<u64>, Bytes)>,
     ) -> StorageResult<()> {
         if entries.is_empty() {
             return Ok(());
@@ -377,9 +397,9 @@ impl LogStorage for S3Storage {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: u64,
-    ) -> StorageResult<Vec<(u64, Bytes)>> {
+        start: NonZero<u64>,
+        end: NonZero<u64>,
+    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
         let timer = start_timer("read_range", namespace.as_str());
         let mut entries = Vec::new();
         let mut cache_hits = 0;
@@ -387,7 +407,9 @@ impl LogStorage for S3Storage {
         let mut indices_to_fetch = Vec::new();
 
         // First pass: collect data from pending writes and cache
-        for index in start..end {
+        let mut current = start.get();
+        while current < end.get() {
+            let index = NonZero::new(current).unwrap();
             // Check pending writes first for read-after-write consistency
             let from_pending = {
                 let pending = self.pending_writes.read().await;
@@ -416,6 +438,7 @@ impl LogStorage for S3Storage {
             if self.cache.might_exist(namespace, index).await {
                 indices_to_fetch.push(index);
             }
+            current += 1;
         }
 
         // Batch fetch missing entries from S3
@@ -454,7 +477,11 @@ impl LogStorage for S3Storage {
         Ok(entries)
     }
 
-    async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn truncate_after(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let mut bounds = self.log_bounds.write().await;
 
         // List all objects after the index
@@ -525,7 +552,11 @@ impl LogStorage for S3Storage {
         Ok(())
     }
 
-    async fn compact_before(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn compact_before(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let mut bounds = self.log_bounds.write().await;
 
         // List all objects before and including the index
@@ -586,7 +617,13 @@ impl LogStorage for S3Storage {
         // Update bounds cache
         if let Some((first, last)) = bounds.get_mut(namespace) {
             if index >= *first {
-                *first = index + 1;
+                if let Some(next) = NonZero::new(index.get() + 1) {
+                    *first = next;
+                } else {
+                    // If index + 1 overflows, remove the bounds entirely
+                    bounds.remove(namespace);
+                    return Ok(());
+                }
             }
             if *first > *last {
                 bounds.remove(namespace);
@@ -596,7 +633,10 @@ impl LogStorage for S3Storage {
         Ok(())
     }
 
-    async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+    async fn bounds(
+        &self,
+        namespace: &StorageNamespace,
+    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
         // First check cache
         {
             let bounds = self.log_bounds.read().await;
@@ -613,9 +653,8 @@ impl LogStorage for S3Storage {
         };
 
         let mut continuation_token = None;
-        let mut min_index = u64::MAX;
-        let mut max_index = 0u64;
-        let mut found_any = false;
+        let mut min_index: Option<NonZero<u64>> = None;
+        let mut max_index: Option<NonZero<u64>> = None;
 
         loop {
             let mut request = self
@@ -638,9 +677,16 @@ impl LogStorage for S3Storage {
                     if let Some(key) = obj.key
                         && let Some(index) = self.parse_index(&key)
                     {
-                        found_any = true;
-                        min_index = min_index.min(index);
-                        max_index = max_index.max(index);
+                        match min_index {
+                            None => min_index = Some(index),
+                            Some(min) if index < min => min_index = Some(index),
+                            _ => {}
+                        }
+                        match max_index {
+                            None => max_index = Some(index),
+                            Some(max) if index > max => max_index = Some(index),
+                            _ => {}
+                        }
                     }
                 }
             }
@@ -652,21 +698,140 @@ impl LogStorage for S3Storage {
             }
         }
 
-        if found_any {
+        if let (Some(min), Some(max)) = (min_index, max_index) {
             // Update cache
             let mut bounds = self.log_bounds.write().await;
-            bounds.insert(namespace.clone(), (min_index, max_index));
-            Ok(Some((min_index, max_index)))
+            bounds.insert(namespace.clone(), (min, max));
+            Ok(Some((min, max)))
         } else {
             Ok(None)
         }
+    }
+
+    async fn get_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+    ) -> StorageResult<Option<Bytes>> {
+        let timer = start_timer("get_metadata", namespace.as_str());
+
+        // Construct metadata key
+        let metadata_key = format!("{}/metadata/{}", namespace.as_str(), key);
+        let full_key = match &self.config.s3.prefix {
+            Some(prefix) => format!("{prefix}/{metadata_key}"),
+            None => metadata_key,
+        };
+
+        // Try to get from S3
+        match self
+            .client
+            .get_object()
+            .bucket(&self.config.s3.bucket)
+            .key(&full_key)
+            .send()
+            .await
+        {
+            Ok(output) => {
+                let body = output.body.collect().await.map_err(|e| {
+                    StorageError::Backend(format!("Failed to read metadata body: {e}"))
+                })?;
+
+                timer.record();
+                record_operation("get_metadata", namespace.as_str(), true);
+                Ok(Some(body.into_bytes()))
+            }
+            Err(sdk_err) => {
+                use aws_sdk_s3::error::SdkError;
+                use aws_sdk_s3::operation::get_object::GetObjectError;
+
+                match sdk_err {
+                    SdkError::ServiceError(err) => match err.err() {
+                        GetObjectError::NoSuchKey(_) => {
+                            timer.record();
+                            Ok(None)
+                        }
+                        _ => {
+                            record_operation("get_metadata", namespace.as_str(), false);
+                            Err(StorageError::Backend(format!(
+                                "S3 get metadata failed: {}",
+                                err.err()
+                            )))
+                        }
+                    },
+                    _ => {
+                        record_operation("get_metadata", namespace.as_str(), false);
+                        Err(StorageError::Backend(format!(
+                            "S3 get metadata failed: {sdk_err}"
+                        )))
+                    }
+                }
+            }
+        }
+    }
+
+    async fn set_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+        value: Bytes,
+    ) -> StorageResult<()> {
+        let timer = start_timer("set_metadata", namespace.as_str());
+
+        // If WAL is available, write metadata through WAL for durability and batching
+        if let Some(wal) = &self.wal_client {
+            let wal_timer = record_wal_operation("set_metadata", true);
+
+            // WAL will handle batching of metadata writes
+            wal.set_metadata(namespace, key, value.clone())
+                .await
+                .map_err(|e| StorageError::Backend(format!("WAL metadata write failed: {e}")))?;
+
+            wal_timer.record();
+            timer.record();
+            record_operation("set_metadata", namespace.as_str(), true);
+            return Ok(());
+        }
+
+        // Direct S3 write if no WAL
+        let metadata_key = format!("{}/metadata/{}", namespace.as_str(), key);
+        let full_key = match &self.config.s3.prefix {
+            Some(prefix) => format!("{prefix}/{metadata_key}"),
+            None => metadata_key,
+        };
+
+        // Apply encryption if configured
+        let data_to_write = if let Some(encryption) = &self.encryption {
+            encryption
+                .encrypt_for_s3(&value)
+                .await
+                .map_err(|e| StorageError::Backend(format!("Metadata encryption failed: {e}")))?
+        } else {
+            value
+        };
+
+        self.client
+            .put_object()
+            .bucket(&self.config.s3.bucket)
+            .key(&full_key)
+            .body(ByteStream::from(data_to_write))
+            .send()
+            .await
+            .map_err(|e| StorageError::Backend(format!("S3 put metadata failed: {e}")))?;
+
+        timer.record();
+        record_operation("set_metadata", namespace.as_str(), true);
+        Ok(())
     }
 }
 
 // Implement LogStorageWithDelete for S3Storage
 #[async_trait]
 impl proven_storage::LogStorageWithDelete for S3Storage {
-    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+    async fn delete_entry(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<bool> {
         let timer = start_timer("delete_entry", namespace.as_str());
 
         // Check if the entry exists in pending writes first
@@ -740,9 +905,13 @@ impl proven_storage::LogStorageWithDelete for S3Storage {
 
             // Log the delete operation to WAL for recovery purposes
             // We use a special marker to indicate deletion
-            let delete_marker = Bytes::from(format!("__DELETED__{index}"));
+            let delete_marker = Bytes::from(format!("__DELETED__{}", index.get()));
             if let Err(e) = wal
-                .append_logs(namespace, &[(index, delete_marker)], operation_id.clone())
+                .append_logs(
+                    namespace,
+                    &[(index.get(), delete_marker)],
+                    operation_id.clone(),
+                )
                 .await
             {
                 warn!("Failed to log delete operation to WAL: {}", e);
@@ -766,9 +935,10 @@ impl proven_storage::LogStorageStreaming for S3Storage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: Option<u64>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        start: NonZero<u64>,
+        end: Option<NonZero<u64>>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+    {
         // Clone what we need for the stream
         let client = self.client.clone();
         let bucket = self.config.s3.bucket.clone();
@@ -780,20 +950,20 @@ impl proven_storage::LogStorageStreaming for S3Storage {
 
         // Create a batched streaming implementation
         let stream = async_stream::stream! {
-            let mut index = start;
+            let mut index = start.get();
             let batch_size = 100; // Read ahead in batches
             let namespace_obj = StorageNamespace::new(&namespace_str);
 
             loop {
                 // Check if we've reached the end bound
                 if let Some(end_idx) = end
-                    && index >= end_idx {
+                    && index >= end_idx.get() {
                         break;
                     }
 
                 // Determine batch range
                 let batch_end = if let Some(end_idx) = end {
-                    std::cmp::min(index + batch_size, end_idx)
+                    std::cmp::min(index + batch_size, end_idx.get())
                 } else {
                     index + batch_size
                 };
@@ -804,30 +974,36 @@ impl proven_storage::LogStorageStreaming for S3Storage {
 
                 // Check cache and pending writes for the batch
                 for idx in index..batch_end {
+                    // Convert to NonZero
+                    let idx_nz = match NonZero::new(idx) {
+                        Some(nz) => nz,
+                        None => continue,
+                    };
+
                     // Check pending writes first
                     let from_pending = {
                         let pending = pending_writes.read().await;
                         if let Some(namespace_pending) = pending.get(&namespace_obj) {
-                            namespace_pending.get(&idx).cloned()
+                            namespace_pending.get(&idx_nz).cloned()
                         } else {
                             None
                         }
                     };
 
                     if let Some(data) = from_pending {
-                        cached_entries.push((idx, data));
+                        cached_entries.push((idx_nz, data));
                         continue;
                     }
 
                     // Check cache
-                    if let Some(data) = cache.get(&namespace_obj, idx).await {
-                        cached_entries.push((idx, data));
+                    if let Some(data) = cache.get(&namespace_obj, idx_nz).await {
+                        cached_entries.push((idx_nz, data));
                         continue;
                     }
 
                     // Check bloom filter
-                    if cache.might_exist(&namespace_obj, idx).await {
-                        indices_to_fetch.push(idx);
+                    if cache.might_exist(&namespace_obj, idx_nz).await {
+                        indices_to_fetch.push(idx_nz);
                     }
                 }
 
@@ -839,8 +1015,8 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                 // Batch fetch from S3 if needed
                 if !indices_to_fetch.is_empty() {
                     // Helper to make keys
-                    let make_key = |idx: u64| -> String {
-                        let base_key = format!("{namespace_str}/{idx:020}");
+                    let make_key = |idx: NonZero<u64>| -> String {
+                        let base_key = format!("{namespace_str}/{:020}", idx.get());
                         match &prefix {
                             Some(p) => format!("{p}/{base_key}"),
                             None => base_key,
@@ -954,8 +1130,8 @@ impl S3Storage {
     async fn batch_read_from_s3(
         &self,
         namespace: &StorageNamespace,
-        indices: &[u64],
-    ) -> HashMap<u64, Bytes> {
+        indices: &[NonZero<u64>],
+    ) -> HashMap<NonZero<u64>, Bytes> {
         let mut results = HashMap::new();
 
         // For now, we still read individually but in parallel
@@ -1112,21 +1288,31 @@ mod tests {
 
         // Test append and read
         let entries = vec![
-            (1, Bytes::from("data 1")),
-            (2, Bytes::from("data 2")),
-            (3, Bytes::from("data 3")),
+            (NonZero::new(1).unwrap(), Bytes::from("data 1")),
+            (NonZero::new(2).unwrap(), Bytes::from("data 2")),
+            (NonZero::new(3).unwrap(), Bytes::from("data 3")),
         ];
         storage.append(&namespace, entries).await.unwrap();
 
-        let range = storage.read_range(&namespace, 1, 4).await.unwrap();
+        let range = storage
+            .read_range(
+                &namespace,
+                NonZero::new(1).unwrap(),
+                NonZero::new(4).unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(range.len(), 3);
-        assert_eq!(range[0], (1, Bytes::from("data 1")));
-        assert_eq!(range[1], (2, Bytes::from("data 2")));
-        assert_eq!(range[2], (3, Bytes::from("data 3")));
+        assert_eq!(range[0], (NonZero::new(1).unwrap(), Bytes::from("data 1")));
+        assert_eq!(range[1], (NonZero::new(2).unwrap(), Bytes::from("data 2")));
+        assert_eq!(range[2], (NonZero::new(3).unwrap(), Bytes::from("data 3")));
 
         // Test bounds
         let bounds = storage.bounds(&namespace).await.unwrap();
-        assert_eq!(bounds, Some((1, 3)));
+        assert_eq!(
+            bounds,
+            Some((NonZero::new(1).unwrap(), NonZero::new(3).unwrap()))
+        );
     }
 
     #[tokio::test]
@@ -1148,8 +1334,8 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Test multiple appends that will be batched
-        for i in 0..10 {
-            let entries = vec![(i, Bytes::from(format!("data {i}")))];
+        for i in 1..=10 {
+            let entries = vec![(NonZero::new(i).unwrap(), Bytes::from(format!("data {i}")))];
             storage.append(&namespace, entries).await.unwrap();
         }
 
@@ -1157,7 +1343,14 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         // Verify all entries were written
-        let range = storage.read_range(&namespace, 0, 10).await.unwrap();
+        let range = storage
+            .read_range(
+                &namespace,
+                NonZero::new(1).unwrap(),
+                NonZero::new(11).unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(range.len(), 10);
     }
 }

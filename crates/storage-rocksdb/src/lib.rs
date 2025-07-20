@@ -9,9 +9,12 @@ use rocksdb::{
     BoundColumnFamily, ColumnFamilyDescriptor, DBWithThreadMode, IteratorMode, MultiThreaded,
     Options, WriteBatch,
 };
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{collections::HashMap, num::NonZero, path::Path, sync::Arc};
 use tokio::sync::RwLock;
 use tokio_stream::Stream;
+
+/// Type alias for log bounds cache to reduce type complexity
+type LogBoundsCache = Arc<RwLock<HashMap<StorageNamespace, (NonZero<u64>, NonZero<u64>)>>>;
 
 /// RocksDB log storage implementation
 #[derive(Clone)]
@@ -19,7 +22,7 @@ pub struct RocksDbStorage {
     /// The RocksDB instance
     db: Arc<DBWithThreadMode<MultiThreaded>>,
     /// Log bounds cache: namespace -> (first_index, last_index)
-    log_bounds: Arc<RwLock<HashMap<StorageNamespace, (u64, u64)>>>,
+    log_bounds: LogBoundsCache,
 }
 
 impl RocksDbStorage {
@@ -90,19 +93,48 @@ impl RocksDbStorage {
         })
     }
 
+    /// Get or create a metadata column family for a namespace
+    fn get_or_create_metadata_cf(
+        &self,
+        namespace: &StorageNamespace,
+    ) -> StorageResult<Arc<BoundColumnFamily<'_>>> {
+        let cf_name = format!("{}_meta", namespace.as_str());
+
+        // Try to get existing column family
+        if let Some(cf) = self.db.cf_handle(&cf_name) {
+            return Ok(cf);
+        }
+
+        // Create new column family with optimized settings for metadata
+        let mut opts = Options::default();
+        // Metadata is small and accessed frequently, optimize for point lookups
+        opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
+        opts.optimize_for_point_lookup(64); // 64MB block cache
+
+        self.db.create_cf(&cf_name, &opts).map_err(|e| {
+            StorageError::Backend(format!("Failed to create metadata column family: {e}"))
+        })?;
+
+        self.db.cf_handle(&cf_name).ok_or_else(|| {
+            StorageError::Backend("Failed to get metadata column family after creation".to_string())
+        })
+    }
+
     /// Encode a log key for RocksDB
-    fn encode_key(index: u64) -> Vec<u8> {
-        index.to_be_bytes().to_vec()
+    fn encode_key(index: NonZero<u64>) -> Vec<u8> {
+        index.get().to_be_bytes().to_vec()
     }
 
     /// Decode a log key from RocksDB
-    fn decode_key(key: &[u8]) -> StorageResult<u64> {
+    fn decode_key(key: &[u8]) -> StorageResult<NonZero<u64>> {
         if key.len() != 8 {
             return Err(StorageError::InvalidKey("Invalid key length".to_string()));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(key);
-        Ok(u64::from_be_bytes(bytes))
+        let value = u64::from_be_bytes(bytes);
+        NonZero::new(value)
+            .ok_or_else(|| StorageError::InvalidKey("Zero index not allowed".to_string()))
     }
 }
 
@@ -111,7 +143,7 @@ impl LogStorage for RocksDbStorage {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(u64, Bytes)>,
+        entries: Vec<(NonZero<u64>, Bytes)>,
     ) -> StorageResult<()> {
         if entries.is_empty() {
             return Ok(());
@@ -122,19 +154,25 @@ impl LogStorage for RocksDbStorage {
         let mut bounds = self.log_bounds.write().await;
 
         // Get current bounds
-        let (mut first_index, mut last_index) =
-            bounds.get(namespace).copied().unwrap_or((u64::MAX, 0));
+        let existing_bounds = bounds.get(namespace).copied();
+        let mut first_index: Option<NonZero<u64>> = existing_bounds.map(|(first, _)| first);
+        let mut last_index: Option<NonZero<u64>> = existing_bounds.map(|(_, last)| last);
 
         // Add all entries to batch
         for (index, data) in entries {
             batch.put_cf(&cf, Self::encode_key(index), data.as_ref());
 
             // Update bounds
-            if first_index == u64::MAX || index < first_index {
-                first_index = index;
+            match first_index {
+                None => first_index = Some(index),
+                Some(first) if index < first => first_index = Some(index),
+                _ => {}
             }
-            if index > last_index {
-                last_index = index;
+
+            match last_index {
+                None => last_index = Some(index),
+                Some(last) if index > last => last_index = Some(index),
+                _ => {}
             }
         }
 
@@ -143,8 +181,10 @@ impl LogStorage for RocksDbStorage {
             .write(batch)
             .map_err(|e| StorageError::Backend(format!("Failed to write batch: {e}")))?;
 
-        // Update bounds cache
-        bounds.insert(namespace.clone(), (first_index, last_index));
+        // Update bounds cache if we have entries
+        if let (Some(first), Some(last)) = (first_index, last_index) {
+            bounds.insert(namespace.clone(), (first, last));
+        }
 
         Ok(())
     }
@@ -152,9 +192,9 @@ impl LogStorage for RocksDbStorage {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: u64,
-    ) -> StorageResult<Vec<(u64, Bytes)>> {
+        start: NonZero<u64>,
+        end: NonZero<u64>,
+    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
         let cf = self.get_or_create_cf(namespace)?;
         let mut entries = Vec::new();
 
@@ -182,21 +222,30 @@ impl LogStorage for RocksDbStorage {
         Ok(entries)
     }
 
-    async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn truncate_after(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let cf = self.get_or_create_cf(namespace)?;
         let mut batch = WriteBatch::default();
         let mut bounds = self.log_bounds.write().await;
 
-        let start_key = Self::encode_key(index + 1);
-        let iter = self.db.iterator_cf(
-            &cf,
-            rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
-        );
+        // Create next index for the range
+        let next_index = NonZero::new(index.get() + 1);
 
-        for result in iter {
-            let (key, _) =
-                result.map_err(|e| StorageError::Backend(format!("Iterator error: {e}")))?;
-            batch.delete_cf(&cf, key);
+        if let Some(next) = next_index {
+            let start_key = Self::encode_key(next);
+            let iter = self.db.iterator_cf(
+                &cf,
+                rocksdb::IteratorMode::From(&start_key, rocksdb::Direction::Forward),
+            );
+
+            for result in iter {
+                let (key, _) =
+                    result.map_err(|e| StorageError::Backend(format!("Iterator error: {e}")))?;
+                batch.delete_cf(&cf, key);
+            }
         }
 
         self.db
@@ -216,19 +265,29 @@ impl LogStorage for RocksDbStorage {
         Ok(())
     }
 
-    async fn compact_before(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn compact_before(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let cf = self.get_or_create_cf(namespace)?;
         let mut batch = WriteBatch::default();
         let mut bounds = self.log_bounds.write().await;
 
-        let end_key = Self::encode_key(index + 1);
+        // We want to delete everything up to and including index
+        let next_index = NonZero::new(index.get() + 1);
+        let end_key = next_index.map(Self::encode_key);
+
         let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
 
         for result in iter {
             let (key, _) =
                 result.map_err(|e| StorageError::Backend(format!("Iterator error: {e}")))?;
 
-            if key.as_ref() >= end_key.as_slice() {
+            // If we have an end key and we've reached or passed it, stop
+            if let Some(ref end) = end_key
+                && key.as_ref() >= end.as_slice()
+            {
                 break;
             }
 
@@ -241,10 +300,15 @@ impl LogStorage for RocksDbStorage {
 
         // Update bounds cache
         if let Some((first, last)) = bounds.get_mut(namespace) {
-            if index >= *first {
-                *first = index + 1;
-            }
-            if *first > *last {
+            if let Some(next) = next_index {
+                if index >= *first {
+                    *first = next;
+                }
+                if *first > *last {
+                    bounds.remove(namespace);
+                }
+            } else {
+                // If next_index overflowed, we're deleting everything
                 bounds.remove(namespace);
             }
         }
@@ -252,7 +316,10 @@ impl LogStorage for RocksDbStorage {
         Ok(())
     }
 
-    async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+    async fn bounds(
+        &self,
+        namespace: &StorageNamespace,
+    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
         // First check cache
         {
             let bounds = self.log_bounds.read().await;
@@ -292,12 +359,45 @@ impl LogStorage for RocksDbStorage {
             _ => Ok(None),
         }
     }
+
+    async fn get_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+    ) -> StorageResult<Option<Bytes>> {
+        let cf = self.get_or_create_metadata_cf(namespace)?;
+
+        match self.db.get_cf(&cf, key.as_bytes()) {
+            Ok(Some(value)) => Ok(Some(Bytes::from(value))),
+            Ok(None) => Ok(None),
+            Err(e) => Err(StorageError::Backend(format!(
+                "Failed to get metadata: {e}"
+            ))),
+        }
+    }
+
+    async fn set_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+        value: Bytes,
+    ) -> StorageResult<()> {
+        let cf = self.get_or_create_metadata_cf(namespace)?;
+
+        self.db
+            .put_cf(&cf, key.as_bytes(), value.as_ref())
+            .map_err(|e| StorageError::Backend(format!("Failed to set metadata: {e}")))
+    }
 }
 
 // Implement LogStorageWithDelete for RocksDbStorage
 #[async_trait]
 impl proven_storage::LogStorageWithDelete for RocksDbStorage {
-    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+    async fn delete_entry(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<bool> {
         let cf = self.get_or_create_cf(namespace)?;
         let key = Self::encode_key(index);
 
@@ -327,9 +427,10 @@ impl proven_storage::LogStorageStreaming for RocksDbStorage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: Option<u64>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        start: NonZero<u64>,
+        end: Option<NonZero<u64>>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+    {
         let _cf = self.get_or_create_cf(namespace)?;
         let start_key = Self::encode_key(start);
 
@@ -439,6 +540,11 @@ mod tests {
     use tempfile::TempDir;
     use tokio_stream::StreamExt;
 
+    // Helper function to create NonZero<u64>
+    fn nz(n: u64) -> NonZero<u64> {
+        NonZero::new(n).expect("test indices should be non-zero")
+    }
+
     #[tokio::test]
     async fn test_rocksdb_storage() {
         let temp_dir = TempDir::new().unwrap();
@@ -447,21 +553,21 @@ mod tests {
 
         // Test append and read
         let entries = vec![
-            (1, Bytes::from("data 1")),
-            (2, Bytes::from("data 2")),
-            (3, Bytes::from("data 3")),
+            (nz(1), Bytes::from("data 1")),
+            (nz(2), Bytes::from("data 2")),
+            (nz(3), Bytes::from("data 3")),
         ];
         storage.append(&namespace, entries).await.unwrap();
 
-        let range = storage.read_range(&namespace, 1, 4).await.unwrap();
+        let range = storage.read_range(&namespace, nz(1), nz(4)).await.unwrap();
         assert_eq!(range.len(), 3);
-        assert_eq!(range[0], (1, Bytes::from("data 1")));
-        assert_eq!(range[1], (2, Bytes::from("data 2")));
-        assert_eq!(range[2], (3, Bytes::from("data 3")));
+        assert_eq!(range[0], (nz(1), Bytes::from("data 1")));
+        assert_eq!(range[1], (nz(2), Bytes::from("data 2")));
+        assert_eq!(range[2], (nz(3), Bytes::from("data 3")));
 
         // Test bounds
         let bounds = storage.bounds(&namespace).await.unwrap();
-        assert_eq!(bounds, Some((1, 3)));
+        assert_eq!(bounds, Some((nz(1), nz(3))));
     }
 
     #[tokio::test]
@@ -472,16 +578,19 @@ mod tests {
 
         // Append entries
         let entries = vec![
-            (1, Bytes::from("data 1")),
-            (2, Bytes::from("data 2")),
-            (3, Bytes::from("data 3")),
-            (4, Bytes::from("data 4")),
-            (5, Bytes::from("data 5")),
+            (nz(1), Bytes::from("data 1")),
+            (nz(2), Bytes::from("data 2")),
+            (nz(3), Bytes::from("data 3")),
+            (nz(4), Bytes::from("data 4")),
+            (nz(5), Bytes::from("data 5")),
         ];
         storage.append(&namespace, entries).await.unwrap();
 
         // Test streaming with end bound
-        let mut stream = storage.stream_range(&namespace, 2, Some(4)).await.unwrap();
+        let mut stream = storage
+            .stream_range(&namespace, nz(2), Some(nz(4)))
+            .await
+            .unwrap();
 
         let mut results = Vec::new();
         while let Some(item) = stream.next().await {
@@ -489,11 +598,11 @@ mod tests {
         }
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0], (2, Bytes::from("data 2")));
-        assert_eq!(results[1], (3, Bytes::from("data 3")));
+        assert_eq!(results[0], (nz(2), Bytes::from("data 2")));
+        assert_eq!(results[1], (nz(3), Bytes::from("data 3")));
 
         // Test streaming without end bound
-        let mut stream = storage.stream_range(&namespace, 3, None).await.unwrap();
+        let mut stream = storage.stream_range(&namespace, nz(3), None).await.unwrap();
 
         let mut results = Vec::new();
         while let Some(item) = stream.next().await {
@@ -501,13 +610,13 @@ mod tests {
         }
 
         assert_eq!(results.len(), 3);
-        assert_eq!(results[0], (3, Bytes::from("data 3")));
-        assert_eq!(results[1], (4, Bytes::from("data 4")));
-        assert_eq!(results[2], (5, Bytes::from("data 5")));
+        assert_eq!(results[0], (nz(3), Bytes::from("data 3")));
+        assert_eq!(results[1], (nz(4), Bytes::from("data 4")));
+        assert_eq!(results[2], (nz(5), Bytes::from("data 5")));
 
         // Test streaming empty namespace
         let empty_ns = StorageNamespace::new("empty");
-        let mut stream = storage.stream_range(&empty_ns, 1, None).await.unwrap();
+        let mut stream = storage.stream_range(&empty_ns, nz(1), None).await.unwrap();
 
         let mut count = 0;
         while (stream.next().await).is_some() {

@@ -71,11 +71,19 @@ where
             match service.submit_to_group(group_id, request.clone()).await {
                 Ok(response) => Ok(response),
                 Err(e) if e.is_not_leader() => {
-                    // We're not the leader for this group, forward to remote leader
-                    // The forwarder will handle finding the leader
-                    self.forwarder
-                        .forward_to_remote_group(group_id, request)
-                        .await
+                    // We're not the leader for this group
+                    // Check if the error contains the leader info
+                    if let Some(leader) = e.get_leader() {
+                        // Forward directly to the known leader
+                        self.forwarder
+                            .forward_to_leader(group_id, request, leader.clone())
+                            .await
+                    } else {
+                        // No leader known, try forwarding to find one
+                        self.forwarder
+                            .forward_to_remote_group(group_id, request)
+                            .await
+                    }
                 }
                 Err(e) => Err(e),
             }

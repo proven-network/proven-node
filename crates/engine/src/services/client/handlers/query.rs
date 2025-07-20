@@ -1,5 +1,7 @@
 //! Query handler for client service
 
+use std::num::NonZero;
+
 use proven_storage::StorageAdaptor;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
@@ -82,14 +84,30 @@ where
                                 }
                             }),
                             group_id: route.group_id,
-                            last_sequence: stream_state.next_sequence.saturating_sub(1),
+                            last_sequence: NonZero::new(stream_state.next_sequence.get().saturating_sub(1)).unwrap_or(stream_state.next_sequence),
                             message_count: stream_state.stats.message_count,
                         };
                         Ok(Some(stream_info))
                     }
                     Ok(None) => {
-                        // Stream exists in routing but not in group state (inconsistency)
-                        Ok(None)
+                        // Stream exists in routing but has no state yet (no messages)
+                        // Return info based on routing alone
+                        let stream_info = StreamInfo {
+                            name: stream_name.to_string(),
+                            config: route.config.unwrap_or({
+                                // Fallback config if not stored in route
+                                crate::services::stream::StreamConfig {
+                                    max_message_size: 1024 * 1024,
+                                    retention: crate::services::stream::config::RetentionPolicy::Forever,
+                                    persistence_type: crate::services::stream::config::PersistenceType::Persistent,
+                                    allow_auto_create: false,
+                                }
+                            }),
+                            group_id: route.group_id,
+                            last_sequence: NonZero::new(1).unwrap(), // No messages yet, start at 1
+                            message_count: 0, // No messages yet
+                        };
+                        Ok(Some(stream_info))
                     }
                     Err(e) => Err(e),
                 }

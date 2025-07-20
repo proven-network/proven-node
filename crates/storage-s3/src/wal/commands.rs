@@ -234,3 +234,60 @@ impl TryFrom<Bytes> for GetPendingBatchesResponse {
         bincode::deserialize(&value)
     }
 }
+
+/// Request to set metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetMetadataRequest {
+    pub namespace: String,
+    pub key: String,
+    pub value: Vec<u8>,
+}
+
+/// Response to set metadata
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetMetadataResponse {
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+impl RpcMessage for SetMetadataRequest {
+    type Response = SetMetadataResponse;
+
+    fn message_id(&self) -> &'static str {
+        "wal.set_metadata"
+    }
+}
+
+impl TryInto<Bytes> for SetMetadataRequest {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for SetMetadataRequest {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
+}
+
+impl TryInto<Bytes> for SetMetadataResponse {
+    type Error = bincode::Error;
+
+    fn try_into(self) -> std::result::Result<Bytes, Self::Error> {
+        let payload = bincode::serialize(&self)?;
+        Ok(Bytes::from(payload))
+    }
+}
+
+impl TryFrom<Bytes> for SetMetadataResponse {
+    type Error = bincode::Error;
+
+    fn try_from(value: Bytes) -> std::result::Result<Self, Self::Error> {
+        bincode::deserialize(&value)
+    }
+}

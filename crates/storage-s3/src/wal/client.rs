@@ -142,6 +142,37 @@ impl WalClient {
         }
     }
 
+    /// Set metadata in WAL
+    pub async fn set_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+        value: Bytes,
+    ) -> StorageResult<()> {
+        let request = SetMetadataRequest {
+            namespace: namespace.as_str().to_string(),
+            key: key.to_string(),
+            value: value.to_vec(),
+        };
+
+        let response = self
+            .client
+            .request(request)
+            .await
+            .map_err(|e| StorageError::Backend(format!("WAL metadata request failed: {e}")))?;
+
+        if response.success {
+            debug!("WAL metadata set successful for key {}", key);
+            Ok(())
+        } else {
+            Err(StorageError::Backend(
+                response
+                    .error
+                    .unwrap_or_else(|| "WAL metadata set failed".to_string()),
+            ))
+        }
+    }
+
     /// Get pending batches for recovery
     pub async fn get_pending_batches(&self) -> StorageResult<Vec<PendingBatch>> {
         let request = GetPendingBatchesRequest::default();

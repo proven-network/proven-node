@@ -5,7 +5,7 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use std::sync::Arc;
+use std::{num::NonZero, sync::Arc};
 use tokio_stream::Stream;
 use tracing::{debug, info};
 
@@ -120,7 +120,7 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(u64, Bytes)>,
+        entries: Vec<(NonZero<u64>, Bytes)>,
     ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -131,12 +131,19 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
         LogStorage::append(&*self.adaptor, &prefixed, entries).await
     }
 
-    async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+    async fn bounds(
+        &self,
+        namespace: &StorageNamespace,
+    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
         let prefixed = self.prefixed_namespace(namespace);
         LogStorage::bounds(&*self.adaptor, &prefixed).await
     }
 
-    async fn compact_before(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn compact_before(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "ConsensusStorage: compacting namespace {} before index {}",
@@ -148,9 +155,9 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: u64,
-    ) -> StorageResult<Vec<(u64, Bytes)>> {
+        start: NonZero<u64>,
+        end: NonZero<u64>,
+    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "ConsensusStorage: reading range [{}, {}) from namespace {}",
@@ -159,13 +166,44 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
         LogStorage::read_range(&*self.adaptor, &prefixed, start, end).await
     }
 
-    async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn truncate_after(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "ConsensusStorage: truncating namespace {} after index {}",
             prefixed, index
         );
         LogStorage::truncate_after(&*self.adaptor, &prefixed, index).await
+    }
+
+    async fn get_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+    ) -> StorageResult<Option<Bytes>> {
+        let prefixed = self.prefixed_namespace(namespace);
+        debug!(
+            "ConsensusStorage: getting metadata key {} from namespace {}",
+            key, prefixed
+        );
+        LogStorage::get_metadata(&*self.adaptor, &prefixed, key).await
+    }
+
+    async fn set_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+        value: Bytes,
+    ) -> StorageResult<()> {
+        let prefixed = self.prefixed_namespace(namespace);
+        debug!(
+            "ConsensusStorage: setting metadata key {} in namespace {}",
+            key, prefixed
+        );
+        LogStorage::set_metadata(&*self.adaptor, &prefixed, key, value).await
     }
 }
 
@@ -184,7 +222,7 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(u64, Bytes)>,
+        entries: Vec<(NonZero<u64>, Bytes)>,
     ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -195,12 +233,19 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
         LogStorage::append(&*self.adaptor, &prefixed, entries).await
     }
 
-    async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+    async fn bounds(
+        &self,
+        namespace: &StorageNamespace,
+    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
         let prefixed = self.prefixed_namespace(namespace);
         LogStorage::bounds(&*self.adaptor, &prefixed).await
     }
 
-    async fn compact_before(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn compact_before(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "StreamStorage: compacting namespace {} before index {}",
@@ -212,9 +257,9 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: u64,
-    ) -> StorageResult<Vec<(u64, Bytes)>> {
+        start: NonZero<u64>,
+        end: NonZero<u64>,
+    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "StreamStorage: reading range [{}, {}) from namespace {}",
@@ -223,7 +268,11 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
         LogStorage::read_range(&*self.adaptor, &prefixed, start, end).await
     }
 
-    async fn truncate_after(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<()> {
+    async fn truncate_after(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "StreamStorage: truncating namespace {} after index {}",
@@ -231,12 +280,43 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
         );
         LogStorage::truncate_after(&*self.adaptor, &prefixed, index).await
     }
+
+    async fn get_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+    ) -> StorageResult<Option<Bytes>> {
+        let prefixed = self.prefixed_namespace(namespace);
+        debug!(
+            "StreamStorage: getting metadata key {} from namespace {}",
+            key, prefixed
+        );
+        LogStorage::get_metadata(&*self.adaptor, &prefixed, key).await
+    }
+
+    async fn set_metadata(
+        &self,
+        namespace: &StorageNamespace,
+        key: &str,
+        value: Bytes,
+    ) -> StorageResult<()> {
+        let prefixed = self.prefixed_namespace(namespace);
+        debug!(
+            "StreamStorage: setting metadata key {} in namespace {}",
+            key, prefixed
+        );
+        LogStorage::set_metadata(&*self.adaptor, &prefixed, key, value).await
+    }
 }
 
 /// Implement LogStorageWithDelete for StreamStorage (allows deletion)
 #[async_trait]
 impl<S: StorageAdaptor> LogStorageWithDelete for StreamStorage<S> {
-    async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
+    async fn delete_entry(
+        &self,
+        namespace: &StorageNamespace,
+        index: NonZero<u64>,
+    ) -> StorageResult<bool> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "StreamStorage: deleting entry at index {} in namespace {}",
@@ -255,9 +335,10 @@ where
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: u64,
-        end: Option<u64>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        start: NonZero<u64>,
+        end: Option<NonZero<u64>>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+    {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "StreamStorage: streaming range from {} in namespace {}",
@@ -287,7 +368,7 @@ mod tests {
     #[derive(Clone, Debug)]
     struct MockAdaptor {
         #[allow(clippy::type_complexity)]
-        data: Arc<RwLock<HashMap<String, Vec<(u64, Bytes)>>>>,
+        data: Arc<RwLock<HashMap<String, Vec<(NonZero<u64>, Bytes)>>>>,
     }
 
     impl MockAdaptor {
@@ -303,7 +384,7 @@ mod tests {
         async fn append(
             &self,
             namespace: &StorageNamespace,
-            entries: Vec<(u64, Bytes)>,
+            entries: Vec<(NonZero<u64>, Bytes)>,
         ) -> StorageResult<()> {
             let mut data = self.data.write().await;
             let ns_entries = data.entry(namespace.as_str().to_string()).or_default();
@@ -311,7 +392,10 @@ mod tests {
             Ok(())
         }
 
-        async fn bounds(&self, namespace: &StorageNamespace) -> StorageResult<Option<(u64, u64)>> {
+        async fn bounds(
+            &self,
+            namespace: &StorageNamespace,
+        ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
             let data = self.data.read().await;
             if let Some(entries) = data.get(namespace.as_str()) {
                 if entries.is_empty() {
@@ -329,7 +413,7 @@ mod tests {
         async fn compact_before(
             &self,
             _namespace: &StorageNamespace,
-            _index: u64,
+            _index: NonZero<u64>,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -337,9 +421,9 @@ mod tests {
         async fn read_range(
             &self,
             namespace: &StorageNamespace,
-            start: u64,
-            end: u64,
-        ) -> StorageResult<Vec<(u64, Bytes)>> {
+            start: NonZero<u64>,
+            end: NonZero<u64>,
+        ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
             let data = self.data.read().await;
             if let Some(entries) = data.get(namespace.as_str()) {
                 Ok(entries
@@ -355,7 +439,24 @@ mod tests {
         async fn truncate_after(
             &self,
             _namespace: &StorageNamespace,
-            _index: u64,
+            _index: NonZero<u64>,
+        ) -> StorageResult<()> {
+            Ok(())
+        }
+
+        async fn get_metadata(
+            &self,
+            _namespace: &StorageNamespace,
+            _key: &str,
+        ) -> StorageResult<Option<Bytes>> {
+            Ok(None)
+        }
+
+        async fn set_metadata(
+            &self,
+            _namespace: &StorageNamespace,
+            _key: &str,
+            _value: Bytes,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -366,7 +467,7 @@ mod tests {
         async fn delete_entry(
             &self,
             namespace: &StorageNamespace,
-            index: u64,
+            index: NonZero<u64>,
         ) -> StorageResult<bool> {
             let mut data = self.data.write().await;
             if let Some(entries) = data.get_mut(namespace.as_str()) {
@@ -384,10 +485,11 @@ mod tests {
         async fn stream_range(
             &self,
             namespace: &StorageNamespace,
-            start: u64,
-            end: Option<u64>,
-        ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>>
-        {
+            start: NonZero<u64>,
+            end: Option<NonZero<u64>>,
+        ) -> StorageResult<
+            Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>,
+        > {
             let data = self.data.read().await;
             if let Some(entries) = data.get(namespace.as_str()) {
                 // Filter entries based on the range [start, end)
@@ -427,13 +529,19 @@ mod tests {
 
         // Append to consensus storage
         consensus
-            .append(&namespace, vec![(1, Bytes::from("consensus data"))])
+            .append(
+                &namespace,
+                vec![(NonZero::new(1).unwrap(), Bytes::from("consensus data"))],
+            )
             .await
             .unwrap();
 
         // Append to stream storage
         stream
-            .append(&namespace, vec![(1, Bytes::from("stream data"))])
+            .append(
+                &namespace,
+                vec![(NonZero::new(1).unwrap(), Bytes::from("stream data"))],
+            )
             .await
             .unwrap();
 
@@ -465,7 +573,10 @@ mod tests {
 
         // Append some data using consensus storage
         consensus
-            .append(&namespace, vec![(1, Bytes::from("consensus entry"))])
+            .append(
+                &namespace,
+                vec![(NonZero::new(1).unwrap(), Bytes::from("consensus entry"))],
+            )
             .await
             .unwrap();
 
@@ -490,19 +601,32 @@ mod tests {
         stream
             .append(
                 &namespace,
-                vec![(1, Bytes::from("data")), (2, Bytes::from("more data"))],
+                vec![
+                    (NonZero::new(1).unwrap(), Bytes::from("data")),
+                    (NonZero::new(2).unwrap(), Bytes::from("more data")),
+                ],
             )
             .await
             .unwrap();
 
         // Delete entry - this works because StreamStorage implements LogStorageWithDelete
-        let deleted = stream.delete_entry(&namespace, 1).await.unwrap();
+        let deleted = stream
+            .delete_entry(&namespace, NonZero::new(1).unwrap())
+            .await
+            .unwrap();
         assert!(deleted);
 
         // Verify deletion
-        let remaining = stream.read_range(&namespace, 1, 3).await.unwrap();
+        let remaining = stream
+            .read_range(
+                &namespace,
+                NonZero::new(1).unwrap(),
+                NonZero::new(3).unwrap(),
+            )
+            .await
+            .unwrap();
         assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].0, 2);
+        assert_eq!(remaining[0].0, NonZero::new(2).unwrap());
     }
 
     #[tokio::test]
@@ -520,32 +644,42 @@ mod tests {
             .append(
                 &namespace,
                 vec![
-                    (1, Bytes::from("one")),
-                    (3, Bytes::from("three")),
-                    (5, Bytes::from("five")),
-                    (7, Bytes::from("seven")),
-                    (9, Bytes::from("nine")),
+                    (NonZero::new(1).unwrap(), Bytes::from("one")),
+                    (NonZero::new(3).unwrap(), Bytes::from("three")),
+                    (NonZero::new(5).unwrap(), Bytes::from("five")),
+                    (NonZero::new(7).unwrap(), Bytes::from("seven")),
+                    (NonZero::new(9).unwrap(), Bytes::from("nine")),
                 ],
             )
             .await
             .unwrap();
 
         // Test streaming with both start and end
-        let stream_iter = stream.stream_range(&namespace, 3, Some(8)).await.unwrap();
+        let stream_iter = stream
+            .stream_range(
+                &namespace,
+                NonZero::new(3).unwrap(),
+                Some(NonZero::new(8).unwrap()),
+            )
+            .await
+            .unwrap();
         let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
 
         assert_eq!(results.len(), 3);
-        assert_eq!(results[0].as_ref().unwrap().0, 3);
-        assert_eq!(results[1].as_ref().unwrap().0, 5);
-        assert_eq!(results[2].as_ref().unwrap().0, 7);
+        assert_eq!(results[0].as_ref().unwrap().0, NonZero::new(3).unwrap());
+        assert_eq!(results[1].as_ref().unwrap().0, NonZero::new(5).unwrap());
+        assert_eq!(results[2].as_ref().unwrap().0, NonZero::new(7).unwrap());
 
         // Test streaming with no end (should stream to the end)
-        let stream_iter = stream.stream_range(&namespace, 5, None).await.unwrap();
+        let stream_iter = stream
+            .stream_range(&namespace, NonZero::new(5).unwrap(), None)
+            .await
+            .unwrap();
         let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
 
         assert_eq!(results.len(), 3);
-        assert_eq!(results[0].as_ref().unwrap().0, 5);
-        assert_eq!(results[1].as_ref().unwrap().0, 7);
-        assert_eq!(results[2].as_ref().unwrap().0, 9);
+        assert_eq!(results[0].as_ref().unwrap().0, NonZero::new(5).unwrap());
+        assert_eq!(results[1].as_ref().unwrap().0, NonZero::new(7).unwrap());
+        assert_eq!(results[2].as_ref().unwrap().0, NonZero::new(9).unwrap());
     }
 }

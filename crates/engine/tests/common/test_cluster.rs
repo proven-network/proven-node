@@ -384,14 +384,17 @@ impl TestCluster {
         config.network.connection_timeout = Duration::from_secs(1);
         config.network.request_timeout = Duration::from_secs(1);
 
-        // Reduce consensus timeouts for faster tests
-        config.consensus.global.election_timeout_min = Duration::from_millis(50);
-        config.consensus.global.election_timeout_max = Duration::from_millis(100);
-        config.consensus.global.heartbeat_interval = Duration::from_millis(20);
+        // Use sensible consensus timeouts for stable testing
+        // Heartbeat: 50ms (reasonable for local testing)
+        // Leader lease will be ~100-250ms (2-5x heartbeat)
+        // Election timeout: 300-600ms (must be > lease + network RTT)
+        config.consensus.global.election_timeout_min = Duration::from_millis(300);
+        config.consensus.global.election_timeout_max = Duration::from_millis(600);
+        config.consensus.global.heartbeat_interval = Duration::from_millis(50);
 
-        config.consensus.group.election_timeout_min = Duration::from_millis(50);
-        config.consensus.group.election_timeout_max = Duration::from_millis(100);
-        config.consensus.group.heartbeat_interval = Duration::from_millis(20);
+        config.consensus.group.election_timeout_min = Duration::from_millis(300);
+        config.consensus.group.election_timeout_max = Duration::from_millis(600);
+        config.consensus.group.heartbeat_interval = Duration::from_millis(50);
 
         config
     }

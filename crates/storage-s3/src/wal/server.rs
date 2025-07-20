@@ -11,6 +11,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+
 use tokio::{
     fs::{self, File, OpenOptions},
     io::AsyncWriteExt,
@@ -19,6 +20,9 @@ use tokio::{
 use tracing::{debug, error, info, instrument};
 
 use super::commands::*;
+
+/// Type alias for metadata storage to reduce type complexity
+type MetadataStorage = Arc<RwLock<HashMap<String, HashMap<String, Vec<u8>>>>>;
 
 /// Trait for implementing WAL command handlers
 #[async_trait]
@@ -46,6 +50,12 @@ pub trait WalCommandHandler: Send + Sync + 'static {
         &self,
         request: GetPendingBatchesRequest,
     ) -> Result<GetPendingBatchesResponse, Box<dyn std::error::Error>>;
+
+    /// Handle set metadata request
+    async fn handle_set_metadata(
+        &self,
+        request: SetMetadataRequest,
+    ) -> Result<SetMetadataResponse, Box<dyn std::error::Error>>;
 }
 
 /// WAL handler that wraps the command handler
@@ -215,6 +225,41 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
                     }
                 }
             }
+            "wal.set_metadata" => {
+                // Decode SetMetadataRequest
+                let request = SetMetadataRequest::try_from(message).map_err(|e| {
+                    proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                        "Failed to decode SetMetadataRequest: {e}"
+                    )))
+                })?;
+
+                // Handle the request
+                match self.inner.handle_set_metadata(request).await {
+                    Ok(resp) => {
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
+                    }
+                    Err(e) => {
+                        error!("Set metadata failed: {}", e);
+                        let resp = SetMetadataResponse {
+                            success: false,
+                            error: Some(e.to_string()),
+                        };
+                        let response_bytes: Bytes =
+                            resp.try_into().map_err(|e: bincode::Error| {
+                                proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
+                                    "Failed to encode response: {e}"
+                                )))
+                            })?;
+                        Ok(HandlerResponse::Single(response_bytes))
+                    }
+                }
+            }
             _ => Err(proven_vsock_rpc::Error::Handler(HandlerError::NotFound(
                 format!("Unknown message_id: {message_id}"),
             ))),
@@ -286,6 +331,8 @@ pub struct DefaultWalHandler {
     active_files: Arc<RwLock<HashMap<String, Arc<Mutex<File>>>>>,
     /// Pending batches
     pending_batches: Arc<RwLock<HashMap<String, PendingBatch>>>,
+    /// Metadata storage by namespace
+    metadata: MetadataStorage,
 }
 
 impl DefaultWalHandler {
@@ -298,6 +345,7 @@ impl DefaultWalHandler {
             wal_dir,
             active_files: Arc::new(RwLock::new(HashMap::new())),
             pending_batches: Arc::new(RwLock::new(HashMap::new())),
+            metadata: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -421,6 +469,42 @@ impl WalCommandHandler for DefaultWalHandler {
 
         Ok(GetPendingBatchesResponse {
             batches,
+            error: None,
+        })
+    }
+
+    async fn handle_set_metadata(
+        &self,
+        request: SetMetadataRequest,
+    ) -> Result<SetMetadataResponse, Box<dyn std::error::Error>> {
+        // Store metadata in memory and persist to disk
+        {
+            let mut metadata = self.metadata.write().await;
+            metadata
+                .entry(request.namespace.clone())
+                .or_insert_with(HashMap::new)
+                .insert(request.key.clone(), request.value.clone());
+        }
+
+        // Persist metadata to disk
+        let metadata_file_path = self.wal_dir.join(format!("{}.metadata", request.namespace));
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&metadata_file_path)
+            .await?;
+
+        // Read all metadata for this namespace and write it
+        let metadata = self.metadata.read().await;
+        if let Some(namespace_metadata) = metadata.get(&request.namespace) {
+            let serialized = serde_json::to_vec(namespace_metadata)?;
+            file.write_all(&serialized).await?;
+            file.sync_all().await?;
+        }
+
+        Ok(SetMetadataResponse {
+            success: true,
             error: None,
         })
     }

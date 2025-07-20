@@ -1,5 +1,6 @@
 //! Types for the event service
 
+use std::num::NonZero;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -111,18 +112,14 @@ pub enum Event {
         new_group: ConsensusGroupId,
     },
 
-    /// Message was appended to a stream (high priority)
-    StreamMessageAppended {
+    /// Messages were appended to a stream in batch (high priority)
+    StreamMessagesAppended {
         /// Stream name
         stream: StreamName,
         /// Consensus group ID
         group_id: ConsensusGroupId,
-        /// Assigned sequence number
-        sequence: u64,
-        /// Message data
-        message: crate::services::stream::StreamMessage,
-        /// Timestamp when appended
-        timestamp: u64,
+        /// Messages with their assigned sequences and timestamps
+        messages: Vec<(crate::services::stream::StreamMessage, NonZero<u64>, u64)>, // (message, sequence, timestamp)
         /// Consensus term when appended
         term: u64,
     },
@@ -134,7 +131,7 @@ pub enum Event {
         /// Consensus group ID
         group_id: ConsensusGroupId,
         /// New start sequence
-        new_start_seq: u64,
+        new_start_seq: NonZero<u64>,
     },
 
     /// Message was deleted from a stream
@@ -144,7 +141,7 @@ pub enum Event {
         /// Consensus group ID
         group_id: ConsensusGroupId,
         /// Deleted sequence number
-        sequence: u64,
+        sequence: NonZero<u64>,
         /// Timestamp when deleted
         timestamp: u64,
     },
@@ -507,7 +504,7 @@ impl Event {
             | Event::StreamDeleted { .. }
             | Event::StreamConfigUpdated { .. }
             | Event::StreamReallocated { .. }
-            | Event::StreamMessageAppended { .. }
+            | Event::StreamMessagesAppended { .. }
             | Event::StreamTrimmed { .. }
             | Event::StreamMessageDeleted { .. } => EventType::Stream,
 
@@ -546,7 +543,7 @@ impl Event {
             Event::StreamMigrating { .. }
             | Event::GroupHealthChanged { .. }
             | Event::MembershipChanged { .. }
-            | Event::StreamMessageAppended { .. }
+            | Event::StreamMessagesAppended { .. }
             | Event::GlobalLeaderChanged { .. }
             | Event::GroupLeaderChanged { .. }
             | Event::GlobalConsensusStateChanged { .. }

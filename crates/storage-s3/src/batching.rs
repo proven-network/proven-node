@@ -4,6 +4,7 @@ use bytes::Bytes;
 use proven_storage::StorageNamespace;
 use std::{
     collections::HashMap,
+    num::NonZero,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -18,7 +19,7 @@ pub struct LogBatch {
     /// Namespace for this batch
     pub namespace: StorageNamespace,
     /// Entries in the batch
-    pub entries: Vec<(u64, Bytes)>,
+    pub entries: Vec<(NonZero<u64>, Bytes)>,
     /// Total size of entries in bytes
     pub total_size: usize,
     /// Creation time of the batch
@@ -30,7 +31,7 @@ pub struct LogBatch {
 /// Request to add entries to a batch
 pub struct BatchRequest {
     pub namespace: StorageNamespace,
-    pub entries: Vec<(u64, Bytes)>,
+    pub entries: Vec<(NonZero<u64>, Bytes)>,
     pub completion: oneshot::Sender<Result<(), String>>,
 }
 
@@ -62,7 +63,7 @@ impl BatchManager {
     pub async fn add_entries(
         &self,
         namespace: StorageNamespace,
-        entries: Vec<(u64, Bytes)>,
+        entries: Vec<(NonZero<u64>, Bytes)>,
     ) -> Result<(), String> {
         let (completion_tx, completion_rx) = oneshot::channel();
 
@@ -284,8 +285,8 @@ mod tests {
 
         // Add entries that will exceed size limit
         let large_data = vec![0u8; 600];
-        let entries1 = vec![(1, Bytes::from(large_data.clone()))];
-        let entries2 = vec![(2, Bytes::from(large_data))];
+        let entries1 = vec![(NonZero::new(1).unwrap(), Bytes::from(large_data.clone()))];
+        let entries2 = vec![(NonZero::new(2).unwrap(), Bytes::from(large_data))];
 
         let result1 = manager.add_entries(namespace.clone(), entries1);
         let _result2 = manager.add_entries(namespace.clone(), entries2);

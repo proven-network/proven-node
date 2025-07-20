@@ -1,5 +1,7 @@
 //! Network messages for client service
 
+use std::num::NonZero;
+
 use serde::{Deserialize, Serialize};
 
 use proven_network::ServiceMessage;
@@ -53,9 +55,9 @@ pub enum ClientServiceMessage {
         /// Stream name
         stream_name: String,
         /// Start sequence
-        start_sequence: u64,
+        start_sequence: NonZero<u64>,
         /// Number of messages to read
-        count: u64,
+        count: NonZero<u64>,
     },
     /// Start a streaming session
     StreamStart {
@@ -68,7 +70,7 @@ pub enum ClientServiceMessage {
         /// Optional end sequence (None means stream to end)
         end_sequence: Option<u64>,
         /// Batch size (messages per response)
-        batch_size: u32,
+        batch_size: NonZero<u64>,
     },
     /// Continue a streaming session
     StreamContinue {

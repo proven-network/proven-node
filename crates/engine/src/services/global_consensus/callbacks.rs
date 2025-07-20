@@ -67,7 +67,10 @@ where
         &self,
         state: &crate::consensus::global::state::GlobalState,
     ) -> ConsensusResult<()> {
-        tracing::info!("Global state synchronized - performing initial sync");
+        tracing::info!(
+            "Global state synchronized - performing initial sync for node {}",
+            self.node_id
+        );
 
         // Update routing table with all groups and stream assignments
         if let Some(ref routing) = self.routing_service {
@@ -126,14 +129,26 @@ where
 
         // Create local group instances for groups where this node is a member
         let groups = state.get_all_groups().await;
+        tracing::info!("Found {} total groups in global state", groups.len());
+
         let my_groups: Vec<_> = groups
             .into_iter()
             .filter(|g| g.members.contains(&self.node_id))
             .collect();
 
+        tracing::info!(
+            "Node {} is a member of {} groups",
+            self.node_id,
+            my_groups.len()
+        );
+
         if let Some(ref group_consensus) = self.group_consensus_service {
             for group_info in my_groups.iter() {
-                tracing::info!("Synchronizing local group {:?}", group_info.id);
+                tracing::info!(
+                    "Synchronizing local group {:?} with members: {:?}",
+                    group_info.id,
+                    group_info.members
+                );
                 if let Err(e) = group_consensus
                     .create_group(group_info.id, group_info.members.clone())
                     .await
@@ -145,15 +160,19 @@ where
                     );
                 }
             }
+        } else {
+            tracing::warn!("No group consensus service available during state sync");
         }
 
         // Restore streams for groups where this node is a member
         if let Some(ref stream_service) = self.stream_service {
             let all_streams = state.get_all_streams().await;
+            tracing::info!("Found {} total streams in global state", all_streams.len());
 
             // Get the group IDs where this node is a member
             let my_group_ids: std::collections::HashSet<_> =
                 my_groups.iter().map(|g| g.id).collect();
+            tracing::info!("This node is a member of groups: {:?}", my_group_ids);
 
             // Filter streams that belong to our groups
             for stream_info in all_streams {
@@ -173,11 +192,18 @@ where
                         )
                         .await
                     {
-                        // Stream might already exist, which is fine
-                        tracing::debug!(
-                            "Failed to restore stream {} (may already exist): {}",
+                        // Log at error level to see what's happening
+                        tracing::error!(
+                            "Failed to restore stream {} in group {:?}: {}",
                             stream_info.name,
+                            stream_info.group_id,
                             e
+                        );
+                    } else {
+                        tracing::info!(
+                            "Successfully restored stream {} in group {:?}",
+                            stream_info.name,
+                            stream_info.group_id
                         );
                     }
                 }
@@ -304,28 +330,47 @@ where
                     },
                 );
 
-                if let Err(e) = group_consensus.submit_to_group(group_id, request).await {
-                    tracing::error!(
-                        "Failed to initialize stream {} in group {:?}: {}",
-                        stream_name,
-                        group_id,
-                        e
-                    );
-                }
-            }
+                match group_consensus.submit_to_group(group_id, request).await {
+                    Ok(_) => {
+                        tracing::debug!(
+                            "Successfully initialized stream {} in group {:?}",
+                            stream_name,
+                            group_id
+                        );
 
-            // Initialize the stream in StreamService immediately
-            if let Some(ref stream_service) = self.stream_service
-                && let Err(e) = stream_service
-                    .create_stream(stream_name.clone(), config.clone(), group_id)
-                    .await
-            {
-                // Stream might already exist, which is fine during replay
-                tracing::debug!(
-                    "Failed to create stream {} in StreamService: {}",
-                    stream_name,
-                    e
-                );
+                        // We successfully initialized in group consensus, now create in StreamService
+                        if let Some(ref stream_service) = self.stream_service
+                            && let Err(e) = stream_service
+                                .create_stream(stream_name.clone(), config.clone(), group_id)
+                                .await
+                        {
+                            // Stream might already exist, which is fine during replay
+                            tracing::debug!(
+                                "Failed to create stream {} in StreamService: {}",
+                                stream_name,
+                                e
+                            );
+                        }
+                    }
+                    Err(e) if e.is_not_leader() => {
+                        // We're not the leader - this is expected and fine
+                        // The leader will handle the initialization
+                        tracing::debug!(
+                            "Not the leader for group {:?}, stream {} will be initialized by leader",
+                            group_id,
+                            stream_name
+                        );
+                    }
+                    Err(e) => {
+                        // This is a real error
+                        tracing::error!(
+                            "Failed to initialize stream {} in group {:?}: {}",
+                            stream_name,
+                            group_id,
+                            e
+                        );
+                    }
+                }
             }
         }
 

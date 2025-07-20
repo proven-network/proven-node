@@ -3,6 +3,7 @@
 //! Pure state container for group consensus operations.
 
 use std::collections::HashMap;
+use std::num::NonZero;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -25,9 +26,9 @@ pub struct StreamState {
     /// Stream name
     pub name: StreamName,
     /// Next sequence number
-    pub next_sequence: u64,
+    pub next_sequence: NonZero<u64>,
     /// First sequence (for trimmed streams)
-    pub first_sequence: u64,
+    pub first_sequence: NonZero<u64>,
     /// Stream statistics
     pub stats: StreamStats,
 }
@@ -87,8 +88,8 @@ impl GroupState {
             name.clone(),
             StreamState {
                 name,
-                next_sequence: 1,
-                first_sequence: 1,
+                next_sequence: NonZero::new(1).unwrap(),
+                first_sequence: NonZero::new(1).unwrap(),
                 stats: StreamStats::default(),
             },
         );
@@ -117,47 +118,67 @@ impl GroupState {
         }
     }
 
-    /// Append message to stream
-    pub async fn append_message(&self, stream: &StreamName, message: MessageData) -> Option<u64> {
+    /// Append messages to stream
+    pub async fn append_messages(
+        &self,
+        stream: &StreamName,
+        messages: Vec<MessageData>,
+    ) -> Option<Vec<(MessageData, NonZero<u64>, u64)>> {
+        if messages.is_empty() {
+            return Some(vec![]);
+        }
+
         let mut streams = self.streams.write().await;
 
         if let Some(state) = streams.get_mut(stream) {
-            let sequence = state.next_sequence;
-            state.next_sequence += 1;
-
+            let mut results = Vec::with_capacity(messages.len());
+            let start_sequence = state.next_sequence;
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
 
-            let message_size = message.payload.len() as u64;
+            let mut total_size = 0u64;
 
-            // Update stats
-            state.stats.message_count += 1;
-            state.stats.total_bytes += message_size;
+            // Assign sequences to all messages
+            for (i, message) in messages.into_iter().enumerate() {
+                let sequence = start_sequence.saturating_add(i as u64);
+                let message_size = message.payload.len() as u64;
+                total_size += message_size;
+                results.push((message, sequence, timestamp));
+            }
+
+            // Update state
+            state.next_sequence = start_sequence.saturating_add(results.len() as u64);
+            state.stats.message_count += results.len() as u64;
+            state.stats.total_bytes += total_size;
             state.stats.last_update = timestamp;
 
             // Update metadata
             drop(streams);
             let mut metadata = self.metadata.write().await;
-            metadata.total_messages += 1;
-            metadata.total_bytes += message_size;
+            metadata.total_messages += results.len() as u64;
+            metadata.total_bytes += total_size;
 
-            Some(sequence)
+            Some(results)
         } else {
             None
         }
     }
 
     /// Trim stream up to sequence
-    pub async fn trim_stream(&self, stream: &StreamName, up_to_seq: u64) -> Option<u64> {
+    pub async fn trim_stream(
+        &self,
+        stream: &StreamName,
+        up_to_seq: NonZero<u64>,
+    ) -> Option<NonZero<u64>> {
         let mut streams = self.streams.write().await;
 
         if let Some(state) = streams.get_mut(stream) {
             // Can only trim if up_to_seq is valid
             if up_to_seq >= state.first_sequence && up_to_seq < state.next_sequence {
                 // Update first sequence
-                state.first_sequence = up_to_seq + 1;
+                state.first_sequence = up_to_seq.saturating_add(1);
 
                 // Note: We can't update stats accurately without knowing the actual messages trimmed
                 // This would need to be coordinated with StreamService
@@ -176,12 +197,16 @@ impl GroupState {
     }
 
     /// Delete a specific message from stream
-    pub async fn delete_message(&self, stream: &StreamName, sequence: u64) -> Option<u64> {
+    pub async fn delete_message(
+        &self,
+        stream: &StreamName,
+        sequence: NonZero<u64>,
+    ) -> Option<NonZero<u64>> {
         let streams = self.streams.read().await;
 
         if let Some(state) = streams.get(stream) {
             // Validate sequence is valid
-            if sequence == 0 || sequence >= state.next_sequence {
+            if sequence >= state.next_sequence {
                 return None;
             }
 

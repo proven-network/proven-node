@@ -23,15 +23,9 @@ use crate::services::global_consensus::GlobalConsensusService;
 use crate::services::group_consensus::GroupConsensusService;
 use crate::services::stream::StreamService;
 use crate::services::{
-    client::ClientService,
-    cluster::{ClusterFormationEvent, ClusterInfo, ClusterService, FormationMode},
-    event::EventService,
-    lifecycle::LifecycleService,
-    migration::MigrationService,
-    monitoring::MonitoringService,
-    network::NetworkService,
-    pubsub::PubSubService,
-    routing::RoutingService,
+    client::ClientService, event::EventService, lifecycle::LifecycleService,
+    migration::MigrationService, monitoring::MonitoringService, network::NetworkService,
+    pubsub::PubSubService, routing::RoutingService,
 };
 
 use super::config::EngineConfig;
@@ -55,7 +49,6 @@ where
 
     /// Services
     network_service: Arc<NetworkService<T, G>>,
-    cluster_service: Arc<ClusterService<T, G>>,
     event_service: Arc<EventService>,
     monitoring_service: Arc<MonitoringService>,
     routing_service: Arc<RoutingService>,
@@ -108,7 +101,6 @@ where
         config: EngineConfig,
         coordinator: Arc<ServiceCoordinator>,
         network_service: Arc<NetworkService<T, G>>,
-        cluster_service: Arc<ClusterService<T, G>>,
         event_service: Arc<EventService>,
         monitoring_service: Arc<MonitoringService>,
         routing_service: Arc<RoutingService>,
@@ -125,7 +117,6 @@ where
             config,
             coordinator,
             network_service,
-            cluster_service,
             event_service,
             monitoring_service,
             routing_service,
@@ -184,10 +175,17 @@ where
         // 1. Start all services (including consensus services if configured)
         self.coordinator.start_all().await?;
 
-        // 2. Run discovery and join/form cluster
-        // The ClusterService will trigger the formation callback which the
-        // GlobalConsensusService registered during builder setup
-        self.cluster_service.discover_and_join().await?;
+        // 2. Initialize global consensus from topology
+        // This handles both fresh starts and restarts
+        if let Some(ref global_consensus) = self.global_consensus_service {
+            info!("Initializing global consensus from topology");
+            global_consensus.initialize_from_topology().await?;
+        } else {
+            return Err(Error::with_context(
+                ErrorKind::Configuration,
+                "Global consensus service not configured",
+            ));
+        }
 
         // 3. Wait for default group to be created
         // This ensures the engine is ready to handle stream operations
@@ -259,7 +257,6 @@ where
         let result = tokio_timeout(timeout, async {
             loop {
                 // Check if the routing service knows about the default group
-                // Check if the default group exists in the routing table
                 match self
                     .routing_service
                     .get_group_location(default_group_id)
@@ -270,6 +267,42 @@ where
                             "Default group (ID 1) found in routing table with {} nodes",
                             location_info.nodes.len()
                         );
+
+                        // If we're a member of this group, wait for it to be fully initialized
+                        if location_info.is_local
+                            && let Some(ref group_consensus) = self.group_consensus_service {
+                                // Check if the group has a leader elected
+                                loop {
+                                    match group_consensus.get_group_state_info(default_group_id).await {
+                                        Ok(state_info) => {
+                                            if state_info.leader.is_some() {
+                                                info!(
+                                                    "Default group has elected leader: {:?}",
+                                                    state_info.leader
+                                                );
+                                                return Ok(());
+                                            } else {
+                                                tracing::debug!("Default group exists but no leader elected yet");
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::debug!("Default group not fully initialized yet: {}", e);
+                                        }
+                                    }
+
+                                    // Check timeout
+                                    if start.elapsed() > timeout {
+                                        return Err(Error::with_context(
+                                            ErrorKind::Timeout,
+                                            format!("Timeout waiting for default group leader election after {timeout:?}"),
+                                        ));
+                                    }
+
+                                    tokio::time::sleep(Duration::from_millis(200)).await;
+                                }
+                            }
+
+                        // For non-members, just having the group in routing is sufficient
                         return Ok(());
                     }
                     Err(e) => {
@@ -329,16 +362,6 @@ where
     /// Get a client for interacting with the consensus engine
     pub fn client(&self) -> crate::client::Client<T, G, S> {
         crate::client::Client::new(self.client_service.clone(), self.node_id.clone())
-    }
-
-    /// Get current cluster state information
-    pub async fn cluster_state(&self) -> ConsensusResult<ClusterInfo> {
-        self.cluster_service.get_cluster_info().await.map_err(|e| {
-            Error::with_context(
-                ErrorKind::Internal,
-                format!("Failed to get cluster state: {e}"),
-            )
-        })
     }
 
     /// Get all group IDs this node is a member of

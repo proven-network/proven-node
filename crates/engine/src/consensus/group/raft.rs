@@ -87,9 +87,16 @@ pub struct GroupConsensusLayer<L: LogStorage> {
     log_storage: Arc<GroupRaftLogStorage<L>>,
     /// State machine
     state_machine: Arc<GroupStateMachine>,
+    /// Whether this group needs initialization (no persisted state)
+    needs_initialization: bool,
 }
 
 impl<L: LogStorage> GroupConsensusLayer<L> {
+    /// Check if this group needs initialization
+    pub fn needs_initialization(&self) -> bool {
+        self.needs_initialization
+    }
+
     /// Shutdown the Raft instance
     pub async fn shutdown(&self) -> ConsensusResult<()> {
         self.raft.shutdown().await.map_err(|e| {
@@ -166,6 +173,7 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
             handler,
             log_storage,
             state_machine,
+            needs_initialization: replay_boundary.is_none(),
         })
     }
 
