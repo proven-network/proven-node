@@ -20,7 +20,7 @@ pub enum GlobalConsensusMessage {
     AppendEntries(AppendEntriesRequest<GlobalTypeConfig>),
     /// Install snapshot request from Raft
     InstallSnapshot(InstallSnapshotRequest<GlobalTypeConfig>),
-    /// Application-level consensus request
+    /// Global-level consensus request
     Consensus(GlobalRequest),
 }
 

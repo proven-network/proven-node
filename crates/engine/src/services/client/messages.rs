@@ -34,7 +34,7 @@ pub enum ClientServiceMessage {
         request: GroupRequest,
     },
     /// Forward a stream read request to another node
-    Read {
+    StreamRead {
         /// Original requester node
         requester_id: NodeId,
         /// Stream name
@@ -61,7 +61,7 @@ pub enum ClientServiceResponse {
         response: GroupResponse,
     },
     /// Response to a forwarded read request
-    Read {
+    StreamRead {
         /// The messages read
         messages: Vec<crate::services::stream::StoredMessage>,
     },

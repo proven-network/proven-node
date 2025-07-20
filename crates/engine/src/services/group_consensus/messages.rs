@@ -30,7 +30,7 @@ pub enum GroupConsensusMessage {
         group_id: ConsensusGroupId,
         request: InstallSnapshotRequest<GroupTypeConfig>,
     },
-    /// Application-level consensus request
+    /// Group-level consensus request
     Consensus {
         group_id: ConsensusGroupId,
         request: GroupRequest,

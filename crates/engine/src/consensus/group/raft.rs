@@ -191,54 +191,17 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
 
     /// Submit a request
     pub async fn submit_request(&self, request: GroupRequest) -> ConsensusResult<GroupResponse> {
-        // For testing purposes, handle requests directly without Raft consensus
-        // In production, this should use self.raft.client_write(request)
-        match request {
-            GroupRequest::Admin(admin_op) => {
-                use super::types::AdminOperation;
-                match admin_op {
-                    AdminOperation::InitializeStream { stream } => {
-                        tracing::info!("Initializing stream {stream} in group {}", self.group_id);
-                        // Initialize the stream in the state
-                        if self.state.initialize_stream(stream.clone()).await {
-                            Ok(GroupResponse::Success)
-                        } else {
-                            Ok(GroupResponse::Error {
-                                message: format!("Stream {stream} already exists"),
-                            })
-                        }
-                    }
-                    _ => Ok(GroupResponse::Success),
+        match self.raft.client_write(request).await {
+            Ok(response) => Ok(response.data),
+            Err(err) => {
+                if let Some(forward_to_leader) = err.forward_to_leader() {
+                    return Err(Error::not_leader(
+                        format!("Not the leader for group {:?}", self.group_id),
+                        forward_to_leader.leader_id.clone(),
+                    ));
                 }
-            }
-            GroupRequest::Stream(stream_op) => {
-                use super::types::StreamOperation;
-                match stream_op {
-                    StreamOperation::Append { stream, message } => {
-                        tracing::info!(
-                            "Appending message to stream {} in group {}",
-                            stream,
-                            self.group_id
-                        );
 
-                        // Use the GroupState to track sequences properly
-                        let sequence =
-                            match self.state.append_message(&stream, message.clone()).await {
-                                Some(seq) => seq,
-                                None => {
-                                    // Stream doesn't exist
-                                    return Ok(GroupResponse::Error {
-                                        message: format!("Stream {stream} not found"),
-                                    });
-                                }
-                            };
-
-                        // Storage is now handled synchronously in the state machine
-
-                        Ok(GroupResponse::Appended { stream, sequence })
-                    }
-                    _ => Ok(GroupResponse::Success),
-                }
+                Err(Error::with_context(ErrorKind::Consensus, err.to_string()))
             }
         }
     }

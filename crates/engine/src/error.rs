@@ -1,5 +1,6 @@
 //! Error types for the consensus system
 
+use proven_topology::NodeId;
 use std::fmt;
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -69,6 +70,30 @@ impl Error {
     pub fn storage(msg: impl Into<String>) -> Self {
         Self::with_context(ErrorKind::Storage, msg)
     }
+
+    /// Create a not leader error
+    pub fn not_leader(msg: impl Into<String>, current_leader: Option<NodeId>) -> Self {
+        Self {
+            kind: ErrorKind::NotLeader,
+            context: ErrorContext::Leadership {
+                message: msg.into(),
+                current_leader,
+            },
+        }
+    }
+
+    /// Check if this is a not-leader error
+    pub fn is_not_leader(&self) -> bool {
+        matches!(self.kind, ErrorKind::NotLeader)
+    }
+
+    /// Get the current leader from a not-leader error
+    pub fn get_leader(&self) -> Option<&NodeId> {
+        match &self.context {
+            ErrorContext::Leadership { current_leader, .. } => current_leader.as_ref(),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Error {
@@ -77,6 +102,16 @@ impl fmt::Display for Error {
             ErrorContext::Message(msg) => write!(f, "{}: {}", self.kind, msg),
             ErrorContext::Chain { message, source } => {
                 write!(f, "{}: {} (caused by: {})", self.kind, message, source)
+            }
+            ErrorContext::Leadership {
+                message,
+                current_leader,
+            } => {
+                if let Some(leader) = current_leader {
+                    write!(f, "{}: {} (current leader: {})", self.kind, message, leader)
+                } else {
+                    write!(f, "{}: {} (no known leader)", self.kind, message)
+                }
             }
         }
     }
@@ -109,6 +144,8 @@ pub enum ErrorKind {
     Internal,
     /// Cluster formation error
     ClusterFormation,
+    /// Not the leader
+    NotLeader,
 }
 
 impl fmt::Display for ErrorKind {
@@ -126,6 +163,7 @@ impl fmt::Display for ErrorKind {
             ErrorKind::Validation => write!(f, "Validation error"),
             ErrorKind::Internal => write!(f, "Internal error"),
             ErrorKind::ClusterFormation => write!(f, "Cluster formation error"),
+            ErrorKind::NotLeader => write!(f, "Not the leader"),
         }
     }
 }
@@ -141,6 +179,13 @@ pub enum ErrorContext {
         message: String,
         /// Source error
         source: Box<dyn std::error::Error + Send + Sync>,
+    },
+    /// Leadership error with info
+    Leadership {
+        /// Error message
+        message: String,
+        /// Current leader if known
+        current_leader: Option<NodeId>,
     },
 }
 

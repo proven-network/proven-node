@@ -1,46 +1,61 @@
-//! Client service implementation
+//! Simplified client service implementation
 //!
-//! The ClientService acts as a facade for client operations, coordinating
-//! with the global and group consensus services through direct service references
-//! rather than the event bus.
+//! The ClientService acts as a thin coordinator, delegating requests to specialized handlers.
 
 use std::sync::Arc;
 
-use crate::services::stream::StreamStorageReader;
-use proven_storage::{StorageAdaptor, StorageManager};
-use proven_topology::NodeId;
+use proven_network::NetworkManager;
+use proven_storage::StorageAdaptor;
+use proven_topology::{NodeId, TopologyAdaptor};
+use proven_transport::Transport;
 use tokio::sync::{RwLock, mpsc, oneshot};
 use tracing::{debug, info};
 
 use crate::{
-    consensus::{
-        global::{GlobalRequest, GlobalResponse},
-        group::{GroupRequest, GroupResponse, types::AdminOperation},
-    },
     error::{ConsensusResult, Error},
     foundation::{
         traits::{ServiceHealth, ServiceLifecycle},
         types::ConsensusGroupId,
     },
     services::{
-        event::Event,
-        global_consensus::GlobalConsensusService,
-        group_consensus::GroupConsensusService,
-        routing::{GroupRoute, RoutingService},
+        event::EventService, global_consensus::GlobalConsensusService,
+        group_consensus::GroupConsensusService, routing::RoutingService, stream::StreamService,
     },
 };
 
-use super::types::*;
+use super::{
+    handlers::{GlobalHandler, GroupHandler, QueryHandler, StreamHandler, StreamReadHandler},
+    network::RequestForwarder,
+    types::*,
+};
 
-/// Type alias for optional service references
-type OptionalServiceRef<T> = Arc<RwLock<Option<Arc<T>>>>;
-type OptionalNetworkManager<T, G> = Arc<RwLock<Option<Arc<proven_network::NetworkManager<T, G>>>>>;
+// Type aliases to simplify complex types
+type ServiceRef<T> = Arc<RwLock<Option<Arc<T>>>>;
+type GlobalConsensusRef<T, G, S> = ServiceRef<GlobalConsensusService<T, G, S>>;
+type GroupConsensusRef<T, G, S> = ServiceRef<GroupConsensusService<T, G, S>>;
+type StreamServiceRef<S> = ServiceRef<StreamService<S>>;
+type NetworkManagerRef<T, G> = ServiceRef<NetworkManager<T, G>>;
+type ClientHandlersRef<T, G, S> = Arc<RwLock<Option<Arc<ClientHandlers<T, G, S>>>>>;
+
+/// Client handlers container
+struct ClientHandlers<T, G, S>
+where
+    T: Transport,
+    G: TopologyAdaptor,
+    S: StorageAdaptor,
+{
+    global: GlobalHandler<T, G, S>,
+    group: GroupHandler<T, G, S>,
+    stream: StreamHandler<T, G, S>,
+    stream_read: StreamReadHandler<S>,
+    query: QueryHandler<T, G, S>,
+}
 
 /// Client service for handling client requests
 pub struct ClientService<T, G, S>
 where
-    T: proven_transport::Transport,
-    G: proven_topology::TopologyAdaptor,
+    T: Transport,
+    G: TopologyAdaptor,
     S: StorageAdaptor,
 {
     /// Service name
@@ -55,58 +70,67 @@ where
     /// Request sender (for submitting requests)
     request_tx: mpsc::Sender<ClientRequest>,
 
-    /// Global consensus service (set after construction)
-    global_consensus: OptionalServiceRef<GlobalConsensusService<T, G, S>>,
+    /// Handlers
+    handlers: ClientHandlersRef<T, G, S>,
 
-    /// Group consensus service (set after construction)
-    group_consensus: OptionalServiceRef<GroupConsensusService<T, G, S>>,
+    /// Request forwarder
+    forwarder: Arc<RequestForwarder<T, G>>,
 
-    /// Routing service (set after construction)
-    routing_service: OptionalServiceRef<RoutingService>,
-
-    /// Stream service (set after construction, for direct reads)
-    stream_service: OptionalServiceRef<crate::services::stream::StreamService<S>>,
-
-    /// Event service (set after construction)
-    event_service: Arc<RwLock<Option<Arc<crate::services::event::EventService>>>>,
-
-    /// Network manager (set after construction, for forwarding requests)
-    network_manager: OptionalNetworkManager<T, G>,
+    /// Service references (for initialization)
+    global_consensus: GlobalConsensusRef<T, G, S>,
+    group_consensus: GroupConsensusRef<T, G, S>,
+    routing_service: ServiceRef<RoutingService>,
+    stream_service: StreamServiceRef<S>,
+    event_service: ServiceRef<EventService>,
+    network_manager: NetworkManagerRef<T, G>,
 
     /// Whether the service is running
     is_running: Arc<RwLock<bool>>,
 
     /// Service shutdown signal
     shutdown: Arc<RwLock<Option<oneshot::Sender<()>>>>,
-
-    /// Type markers
-    _phantom: std::marker::PhantomData<(T, G, S)>,
 }
 
 impl<T, G, S> ClientService<T, G, S>
 where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
+    T: Transport + 'static,
+    G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
 {
     /// Create a new client service
     pub fn new(node_id: NodeId) -> Self {
         let (request_tx, request_rx) = mpsc::channel(1000);
 
+        // Service references
+        let global_consensus = Arc::new(RwLock::new(None));
+        let group_consensus = Arc::new(RwLock::new(None));
+        let routing_service = Arc::new(RwLock::new(None));
+        let stream_service = Arc::new(RwLock::new(None));
+        let event_service = Arc::new(RwLock::new(None));
+        let network_manager = Arc::new(RwLock::new(None));
+
+        // Create forwarder
+        let forwarder = Arc::new(RequestForwarder::new(
+            node_id.clone(),
+            network_manager.clone(),
+            routing_service.clone(),
+        ));
+
         Self {
             name: "ClientService".to_string(),
             node_id,
             request_rx: Arc::new(RwLock::new(Some(request_rx))),
             request_tx,
-            global_consensus: Arc::new(RwLock::new(None)),
-            group_consensus: Arc::new(RwLock::new(None)),
-            routing_service: Arc::new(RwLock::new(None)),
-            stream_service: Arc::new(RwLock::new(None)),
-            event_service: Arc::new(RwLock::new(None)),
-            network_manager: Arc::new(RwLock::new(None)),
+            handlers: Arc::new(RwLock::new(None)),
+            forwarder,
+            global_consensus,
+            group_consensus,
+            routing_service,
+            stream_service,
+            event_service,
+            network_manager,
             is_running: Arc::new(RwLock::new(false)),
             shutdown: Arc::new(RwLock::new(None)),
-            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -126,20 +150,17 @@ where
     }
 
     /// Set the stream service reference
-    pub async fn set_stream_service(
-        &self,
-        service: Arc<crate::services::stream::StreamService<S>>,
-    ) {
+    pub async fn set_stream_service(&self, service: Arc<StreamService<S>>) {
         *self.stream_service.write().await = Some(service);
     }
 
     /// Set the event service reference
-    pub async fn set_event_service(&self, service: Arc<crate::services::event::EventService>) {
+    pub async fn set_event_service(&self, service: Arc<EventService>) {
         *self.event_service.write().await = Some(service);
     }
 
     /// Set the network manager reference
-    pub async fn set_network_manager(&self, network: Arc<proven_network::NetworkManager<T, G>>) {
+    pub async fn set_network_manager(&self, network: Arc<NetworkManager<T, G>>) {
         *self.network_manager.write().await = Some(network);
     }
 
@@ -148,11 +169,364 @@ where
         self.request_tx.clone()
     }
 
-    /// Submit a global consensus request
+    /// Get a suitable group for stream creation
+    pub async fn get_suitable_group(&self) -> ConsensusResult<ConsensusGroupId> {
+        let routing_guard = self.routing_service.read().await;
+        let routing = routing_guard.as_ref().ok_or_else(|| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                "Routing service not available",
+            )
+        })?;
+
+        let routing_info = routing.get_routing_info().await.map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        // Find local groups
+        let mut local_groups: Vec<_> = routing_info
+            .group_routes
+            .iter()
+            .filter(|(_, group)| {
+                group.location == crate::services::routing::GroupLocation::Local
+                    || group.location == crate::services::routing::GroupLocation::Distributed
+            })
+            .collect();
+
+        if local_groups.is_empty() {
+            // Try remote groups
+            let mut remote_groups: Vec<_> = routing_info
+                .group_routes
+                .iter()
+                .filter(|(_, group)| {
+                    group.location == crate::services::routing::GroupLocation::Remote
+                })
+                .collect();
+
+            if remote_groups.is_empty() {
+                return Err(Error::with_context(
+                    crate::error::ErrorKind::InvalidState,
+                    "No consensus groups available",
+                ));
+            }
+
+            // Sort by preference: default group first, then by stream count
+            remote_groups.sort_by(|(id_a, group_a), (id_b, group_b)| {
+                let default_id = ConsensusGroupId::new(1);
+                if **id_a == default_id && **id_b != default_id {
+                    std::cmp::Ordering::Less
+                } else if **id_a != default_id && **id_b == default_id {
+                    std::cmp::Ordering::Greater
+                } else {
+                    group_a.stream_count.cmp(&group_b.stream_count)
+                }
+            });
+
+            return Ok(*remote_groups[0].0);
+        }
+
+        // Sort local groups by preference
+        local_groups.sort_by(|(id_a, group_a), (id_b, group_b)| {
+            let default_id = ConsensusGroupId::new(1);
+            if **id_a == default_id && **id_b != default_id {
+                std::cmp::Ordering::Less
+            } else if **id_b == default_id && **id_a != default_id {
+                std::cmp::Ordering::Greater
+            } else {
+                group_a.stream_count.cmp(&group_b.stream_count)
+            }
+        });
+
+        Ok(*local_groups[0].0)
+    }
+
+    /// Read messages directly from a stream
+    pub async fn read_stream(
+        &self,
+        stream_name: &str,
+        start_sequence: u64,
+        count: u64,
+    ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
+        let routing_guard = self.routing_service.read().await;
+        let routing = routing_guard.as_ref().ok_or_else(|| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                "Routing service not available",
+            )
+        })?;
+
+        let route_info = routing
+            .get_stream_routing_info(stream_name)
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    crate::error::ErrorKind::Service,
+                    format!("Failed to get routing info: {e}"),
+                )
+            })?
+            .ok_or_else(|| {
+                Error::with_context(
+                    crate::error::ErrorKind::NotFound,
+                    format!("Stream '{stream_name}' not found"),
+                )
+            })?;
+
+        let routing_info = routing.get_routing_info().await.map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        if let Some(group_info) = routing_info.group_routes.get(&route_info.group_id) {
+            if group_info.members.contains(&self.node_id) {
+                // Stream is local
+                let stream_guard = self.stream_service.read().await;
+                let stream_service = stream_guard.as_ref().ok_or_else(|| {
+                    Error::with_context(
+                        crate::error::ErrorKind::Service,
+                        "Stream service not available",
+                    )
+                })?;
+
+                stream_service
+                    .read_messages(stream_name, start_sequence, count)
+                    .await
+            } else {
+                // Stream is remote
+                self.forwarder
+                    .forward_read_request(route_info.group_id, stream_name, start_sequence, count)
+                    .await
+            }
+        } else {
+            Err(Error::with_context(
+                crate::error::ErrorKind::NotFound,
+                format!("Group {:?} not found", route_info.group_id),
+            ))
+        }
+    }
+
+    /// Initialize handlers after all services are set
+    async fn initialize_handlers(&self) -> ConsensusResult<()> {
+        // Create handlers
+        let global_handler = GlobalHandler::new(
+            self.node_id.clone(),
+            self.global_consensus.clone(),
+            self.network_manager.clone(),
+            self.routing_service.clone(),
+        );
+
+        let group_handler = GroupHandler::new(
+            self.group_consensus.clone(),
+            self.routing_service.clone(),
+            self.forwarder.clone(),
+        );
+
+        let stream_handler = StreamHandler::new(
+            self.routing_service.clone(),
+            Arc::new(group_handler.clone()),
+        );
+
+        let stream_read_handler = StreamReadHandler::new(self.stream_service.clone());
+
+        let query_handler = QueryHandler::new(
+            self.group_consensus.clone(),
+            self.global_consensus.clone(),
+            self.routing_service.clone(),
+        );
+
+        let handlers = Arc::new(ClientHandlers {
+            global: global_handler,
+            group: group_handler,
+            stream: stream_handler,
+            stream_read: stream_read_handler,
+            query: query_handler,
+        });
+
+        *self.handlers.write().await = Some(handlers);
+        Ok(())
+    }
+
+    /// Process incoming client requests
+    async fn process_requests(&self) {
+        let mut request_rx = match self.request_rx.write().await.take() {
+            Some(rx) => rx,
+            None => {
+                tracing::warn!("Request receiver already taken");
+                return;
+            }
+        };
+
+        let handlers = match self.handlers.read().await.clone() {
+            Some(h) => h,
+            None => {
+                tracing::error!("Handlers not initialized");
+                return;
+            }
+        };
+
+        tokio::spawn(async move {
+            while let Some(request) = request_rx.recv().await {
+                match request {
+                    ClientRequest::Global {
+                        request,
+                        response_tx,
+                    } => {
+                        debug!("Processing global request: {:?}", request);
+                        let result = handlers.global.handle(request).await;
+                        let _ = response_tx.send(result);
+                    }
+
+                    ClientRequest::Group {
+                        group_id,
+                        request,
+                        response_tx,
+                    } => {
+                        debug!(
+                            "Processing group request for group {:?}: {:?}",
+                            group_id, request
+                        );
+                        let result = handlers.group.handle(group_id, request).await;
+                        let _ = response_tx.send(result);
+                    }
+
+                    ClientRequest::Stream {
+                        stream_name,
+                        request,
+                        response_tx,
+                    } => {
+                        debug!("Processing stream request for: {}", stream_name);
+                        let result = handlers.stream.handle(&stream_name, request).await;
+                        let _ = response_tx.send(result);
+                    }
+
+                    ClientRequest::GetStreamInfo {
+                        stream_name,
+                        response_tx,
+                    } => {
+                        debug!("Processing stream info request for: {}", stream_name);
+                        let result = handlers.query.get_stream_info(&stream_name).await;
+                        let _ = response_tx.send(result);
+                    }
+
+                    ClientRequest::GetGroupInfo {
+                        group_id,
+                        response_tx,
+                    } => {
+                        debug!("Processing group info request for: {:?}", group_id);
+                        let result = handlers.query.get_group_info(group_id).await;
+                        let _ = response_tx.send(result);
+                    }
+                }
+            }
+
+            info!("Client request processor stopped");
+        });
+    }
+
+    /// Register network handlers for forwarded requests
+    async fn register_network_handlers(&self) -> ConsensusResult<()> {
+        let network_guard = self.network_manager.read().await;
+        let network = network_guard.as_ref().ok_or_else(|| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                "Network manager not available",
+            )
+        })?;
+
+        let handlers = self.handlers.clone();
+
+        network
+            .register_service::<super::messages::ClientServiceMessage, _>(move |sender, message| {
+                let handlers = handlers.clone();
+
+                Box::pin(async move {
+                    let handlers = handlers.read().await.clone().ok_or_else(|| {
+                        proven_network::NetworkError::Internal(
+                            "Handlers not initialized".to_string(),
+                        )
+                    })?;
+
+                    match message {
+                        super::messages::ClientServiceMessage::Global {
+                            requester_id: _,
+                            request,
+                        } => {
+                            tracing::info!("Received forwarded global request from {}", sender);
+                            let response = handlers.global.handle(request).await.map_err(|e| {
+                                proven_network::NetworkError::Internal(format!(
+                                    "Failed to handle global request: {e}"
+                                ))
+                            })?;
+                            Ok(super::messages::ClientServiceResponse::Global { response })
+                        }
+
+                        super::messages::ClientServiceMessage::Group {
+                            requester_id: _,
+                            group_id,
+                            request,
+                        } => {
+                            tracing::info!(
+                                "Received forwarded group request from {} for group {:?}",
+                                sender,
+                                group_id
+                            );
+                            let response =
+                                handlers
+                                    .group
+                                    .handle(group_id, request)
+                                    .await
+                                    .map_err(|e| {
+                                        proven_network::NetworkError::Internal(format!(
+                                            "Failed to handle group request: {e}"
+                                        ))
+                                    })?;
+                            Ok(super::messages::ClientServiceResponse::Group { response })
+                        }
+
+                        super::messages::ClientServiceMessage::StreamRead {
+                            requester_id: _,
+                            stream_name,
+                            start_sequence,
+                            count,
+                        } => {
+                            tracing::info!(
+                                "Received forwarded read request from {} for stream {}",
+                                sender,
+                                stream_name
+                            );
+
+                            let messages = handlers
+                                .stream_read
+                                .handle_read(&stream_name, start_sequence, count)
+                                .await
+                                .map_err(|e| {
+                                    proven_network::NetworkError::Internal(format!(
+                                        "Failed to read stream: {e}"
+                                    ))
+                                })?;
+
+                            Ok(super::messages::ClientServiceResponse::StreamRead { messages })
+                        }
+                    }
+                })
+            })
+            .await?;
+
+        info!("Client service network handlers registered successfully");
+        Ok(())
+    }
+
+    // Public API methods (delegate to handlers via channels)
+
+    /// Submit a global request to the client service
     pub async fn submit_global_request(
         &self,
-        request: GlobalRequest,
-    ) -> ConsensusResult<GlobalResponse> {
+        request: crate::consensus::global::GlobalRequest,
+    ) -> ConsensusResult<crate::consensus::global::GlobalResponse> {
         let (response_tx, response_rx) = oneshot::channel();
 
         self.request_tx
@@ -173,12 +547,11 @@ where
         })?
     }
 
-    /// Submit a group consensus request
     pub async fn submit_group_request(
         &self,
         group_id: ConsensusGroupId,
-        request: GroupRequest,
-    ) -> ConsensusResult<GroupResponse> {
+        request: crate::consensus::group::GroupRequest,
+    ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
         let (response_tx, response_rx) = oneshot::channel();
 
         self.request_tx
@@ -200,7 +573,32 @@ where
         })?
     }
 
-    /// Get stream information
+    pub async fn submit_stream_request(
+        &self,
+        stream_name: &str,
+        request: crate::consensus::group::GroupRequest,
+    ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
+        let (response_tx, response_rx) = oneshot::channel();
+
+        self.request_tx
+            .send(ClientRequest::Stream {
+                stream_name: stream_name.to_string(),
+                request,
+                response_tx,
+            })
+            .await
+            .map_err(|_| {
+                Error::with_context(
+                    crate::error::ErrorKind::Service,
+                    "Client service not accepting requests",
+                )
+            })?;
+
+        response_rx.await.map_err(|_| {
+            Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
+        })?
+    }
+
     pub async fn get_stream_info(&self, stream_name: &str) -> ConsensusResult<Option<StreamInfo>> {
         let (response_tx, response_rx) = oneshot::channel();
 
@@ -222,7 +620,6 @@ where
         })?
     }
 
-    /// Get group information
     pub async fn get_group_info(
         &self,
         group_id: ConsensusGroupId,
@@ -246,947 +643,13 @@ where
             Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
         })?
     }
-
-    /// Submit a stream operation (routing will determine target group)
-    pub async fn submit_stream_request(
-        &self,
-        stream_name: &str,
-        request: GroupRequest,
-    ) -> ConsensusResult<GroupResponse> {
-        let (response_tx, response_rx) = oneshot::channel();
-
-        self.request_tx
-            .send(ClientRequest::Stream {
-                stream_name: stream_name.to_string(),
-                request,
-                response_tx,
-            })
-            .await
-            .map_err(|_| {
-                Error::with_context(
-                    crate::error::ErrorKind::Service,
-                    "Client service not accepting requests",
-                )
-            })?;
-
-        response_rx.await.map_err(|_| {
-            Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
-        })?
-    }
-
-    /// Get a suitable group for stream creation
-    ///
-    /// This method finds an appropriate group that this node is a member of.
-    /// It prioritizes:
-    /// 1. Groups where this node is a member
-    /// 2. The default group (ID 1) if it exists and node is a member
-    /// 3. The least loaded group the node belongs to
-    pub async fn get_suitable_group(&self) -> ConsensusResult<ConsensusGroupId> {
-        // Get routing service to check group membership
-        let routing_service = self.routing_service.read().await;
-        let routing_service = routing_service.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                "Routing service not available",
-            )
-        })?;
-
-        // Get all routing info
-        let routing_info = routing_service.get_routing_info().await.map_err(|e| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                format!("Failed to get routing info: {e}"),
-            )
-        })?;
-
-        // Find groups that are local to this node
-        let mut local_groups: Vec<(&ConsensusGroupId, &GroupRoute)> = routing_info
-            .group_routes
-            .iter()
-            .filter(|(_, group)| {
-                group.location == crate::services::routing::GroupLocation::Local
-                    || group.location == crate::services::routing::GroupLocation::Distributed
-            })
-            .collect();
-
-        if local_groups.is_empty() {
-            // No local groups - try to find a remote group to forward to
-            let remote_groups: Vec<(&ConsensusGroupId, &GroupRoute)> = routing_info
-                .group_routes
-                .iter()
-                .filter(|(_, group)| {
-                    group.location == crate::services::routing::GroupLocation::Remote
-                })
-                .collect();
-            if remote_groups.is_empty() {
-                return Err(Error::with_context(
-                    crate::error::ErrorKind::InvalidState,
-                    "No consensus groups available",
-                ));
-            }
-
-            // When all groups are remote, we can still pick one
-            // The global consensus will handle ensuring the stream is created
-            // on the appropriate nodes in that group
-            info!(
-                "No local groups available, selecting from {} remote groups",
-                remote_groups.len()
-            );
-
-            // Sort remote groups by preference:
-            // 1. Default group (ID 1) comes first
-            // 2. Then by stream count (least loaded)
-            let mut remote_groups = remote_groups;
-            remote_groups.sort_by(|(id_a, group_a), (id_b, group_b)| {
-                let default_id = ConsensusGroupId::new(1);
-                if **id_a == default_id && **id_b != default_id {
-                    std::cmp::Ordering::Less
-                } else if **id_a != default_id && **id_b == default_id {
-                    std::cmp::Ordering::Greater
-                } else {
-                    group_a.stream_count.cmp(&group_b.stream_count)
-                }
-            });
-
-            // Return the best remote group
-            if let Some((group_id, group_info)) = remote_groups.first() {
-                info!(
-                    "Selected remote group {:?} with {} streams for stream creation",
-                    group_id, group_info.stream_count
-                );
-                return Ok(**group_id);
-            }
-        }
-
-        // Sort by preference:
-        // 1. Default group (ID 1) comes first
-        // 2. Then by stream count (least loaded)
-        local_groups.sort_by(|(id_a, group_a), (id_b, group_b)| {
-            // Check if either is the default group
-            let default_id = ConsensusGroupId::new(1);
-            if **id_a == default_id && **id_b != default_id {
-                return std::cmp::Ordering::Less;
-            }
-            if **id_b == default_id && **id_a != default_id {
-                return std::cmp::Ordering::Greater;
-            }
-
-            // Otherwise sort by stream count (ascending)
-            group_a.stream_count.cmp(&group_b.stream_count)
-        });
-
-        // Return the best group
-        Ok(*local_groups[0].0)
-    }
-
-    /// Read messages directly from a stream (bypasses consensus)
-    pub async fn read_stream(
-        &self,
-        stream_name: &str,
-        start_sequence: u64,
-        count: u64,
-    ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
-        // Get routing service to check where stream is located
-        let routing_service = self.routing_service.read().await;
-        let routing_service = routing_service.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                "Routing service not available",
-            )
-        })?;
-
-        // Get routing info to determine if stream is local
-        let route_info = routing_service
-            .get_stream_routing_info(stream_name)
-            .await
-            .map_err(|e| {
-                Error::with_context(
-                    crate::error::ErrorKind::Service,
-                    format!("Failed to get routing info: {e}"),
-                )
-            })?
-            .ok_or_else(|| {
-                Error::with_context(
-                    crate::error::ErrorKind::NotFound,
-                    format!("Stream '{stream_name}' not found"),
-                )
-            })?;
-
-        // Check if stream is on this node
-        let routing_info = routing_service.get_routing_info().await.map_err(|e| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                format!("Failed to get routing info: {e}"),
-            )
-        })?;
-
-        if let Some(group_info) = routing_info.group_routes.get(&route_info.group_id) {
-            if group_info.members.contains(&self.node_id) {
-                // Stream is local - directly call StreamService
-                let stream_service = self.stream_service.read().await;
-                let stream_service = stream_service.as_ref().ok_or_else(|| {
-                    Error::with_context(
-                        crate::error::ErrorKind::Service,
-                        "Stream service not available",
-                    )
-                })?;
-
-                stream_service
-                    .read_messages(stream_name, start_sequence, count)
-                    .await
-            } else {
-                // Stream is remote - forward the read request
-                info!(
-                    "Stream '{}' is on remote group {:?}, forwarding read request",
-                    stream_name, route_info.group_id
-                );
-
-                // Forward the read request to a node in the target group
-                self.forward_read_request(
-                    route_info.group_id,
-                    &group_info.members,
-                    stream_name,
-                    start_sequence,
-                    count,
-                )
-                .await
-            }
-        } else {
-            Err(Error::with_context(
-                crate::error::ErrorKind::NotFound,
-                format!("Group {:?} not found", route_info.group_id),
-            ))
-        }
-    }
-
-    /// Process incoming client requests
-    async fn process_requests(&self) {
-        let mut request_rx = match self.request_rx.write().await.take() {
-            Some(rx) => rx,
-            None => {
-                // Receiver already taken - this can happen if service was restarted
-                tracing::warn!("Request receiver already taken, process_requests returning early");
-                return;
-            }
-        };
-        let global_consensus = self.global_consensus.clone();
-        let group_consensus = self.group_consensus.clone();
-        let routing_service = self.routing_service.clone();
-        let _event_service = self.event_service.clone();
-        let node_id = self.node_id.clone();
-        let network_manager = self.network_manager.clone();
-
-        // Create an Arc reference to self for forwarding
-        let client_service = Arc::new(ClientService {
-            name: self.name.clone(),
-            node_id: self.node_id.clone(),
-            request_rx: Arc::new(RwLock::new(None)), // Not used in forwarding
-            request_tx: self.request_tx.clone(),
-            global_consensus: self.global_consensus.clone(),
-            group_consensus: self.group_consensus.clone(),
-            routing_service: self.routing_service.clone(),
-            stream_service: self.stream_service.clone(),
-            event_service: self.event_service.clone(),
-            network_manager: self.network_manager.clone(),
-            is_running: self.is_running.clone(),
-            shutdown: self.shutdown.clone(),
-            _phantom: std::marker::PhantomData,
-        });
-
-        tokio::spawn(async move {
-            while let Some(request) = request_rx.recv().await {
-                match request {
-                    ClientRequest::Global {
-                        request,
-                        response_tx,
-                    } => {
-                        debug!("Processing global request: {:?}", request);
-
-                        // All global requests should go through global consensus
-                        match &request {
-                            GlobalRequest::CreateGroup { .. }
-                            | GlobalRequest::CreateStream { .. } => {
-                                // Stream creation goes through global consensus
-                                let global = global_consensus.read().await;
-                                if let Some(service) = global.as_ref() {
-                                    match service.submit_request(request.clone()).await {
-                                        Ok(response) => {
-                                            // Check if the response is an error variant
-                                            match &response {
-                                                GlobalResponse::Error { message } => {
-                                                    let _ =
-                                                        response_tx.send(Err(Error::with_context(
-                                                            crate::error::ErrorKind::InvalidState,
-                                                            message.clone(),
-                                                        )));
-                                                }
-                                                _ => {
-                                                    let _ = response_tx.send(Ok(response));
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            // Check if we need to forward to the leader
-                                            let error_str = e.to_string();
-                                            if error_str.contains("has to forward request to") {
-                                                // Try to get the global leader from routing service first
-                                                let routing = routing_service.read().await;
-                                                let mut leader_id = None;
-                                                if let Some(routing) = routing.as_ref() {
-                                                    leader_id = routing.get_global_leader().await;
-                                                }
-                                                // If routing service doesn't know the leader, log a warning
-                                                // In a future version, we could parse the leader from the error message
-                                                if leader_id.is_none() {
-                                                    debug!(
-                                                        "Routing service doesn't know global leader yet, cannot forward request"
-                                                    );
-                                                }
-                                                if let Some(leader_id) = leader_id {
-                                                    if leader_id != node_id {
-                                                        // Forward to the leader
-                                                        debug!(
-                                                            "Forwarding global request to leader: {}",
-                                                            leader_id
-                                                        );
-                                                        // Create forward request
-                                                        let forward_request =
-                                                            super::messages::ClientServiceMessage::Global {
-                                                                requester_id: node_id.clone(),
-                                                                request: request.clone(),
-                                                            };
-                                                        // Send to leader
-                                                        let network = network_manager.read().await;
-                                                        if let Some(network) = network.as_ref() {
-                                                            match network
-                                                                .request_service(
-                                                                    leader_id.clone(),
-                                                                    forward_request,
-                                                                    std::time::Duration::from_secs(30),
-                                                                )
-                                                                .await
-                                                            {
-                                                                Ok(super::messages::ClientServiceResponse::Global { response }) => {
-                                                                    // Check if the forwarded response is an error variant
-                                                                    match &response {
-                                                                        GlobalResponse::Error { message } => {
-                                                                            let _ = response_tx.send(Err(Error::with_context(
-                                                                                crate::error::ErrorKind::InvalidState,
-                                                                                message.clone(),
-                                                                            )));
-                                                                        }
-                                                                        _ => {
-                                                                            let _ = response_tx.send(Ok(response));
-                                                                        }
-                                                                    }
-                                                                }
-                                                                Ok(super::messages::ClientServiceResponse::Group { .. }) => {
-                                                                    let _ = response_tx.send(Err(
-                                                                        Error::with_context(
-                                                                            crate::error::ErrorKind::Internal,
-                                                                            "Unexpected response type: expected ForwardGlobalResponse",
-                                                                        ),
-                                                                    ));
-                                                                }
-                                                                Ok(super::messages::ClientServiceResponse::Read { .. }) => {
-                                                                    let _ = response_tx.send(Err(
-                                                                        Error::with_context(
-                                                                            crate::error::ErrorKind::Internal,
-                                                                            "Unexpected response type: expected ForwardGlobalResponse",
-                                                                        ),
-                                                                    ));
-                                                                }
-                                                                Err(e) => {
-                                                                    let _ = response_tx.send(Err(
-                                                                        Error::with_context(
-                                                                            crate::error::ErrorKind::Network,
-                                                                            format!("Failed to forward request: {e}"),
-                                                                        ),
-                                                                    ));
-                                                                }
-                                                            }
-                                                        } else {
-                                                            let _ = response_tx.send(Err(
-                                                                Error::with_context(
-                                                                    crate::error::ErrorKind::Service,
-                                                                    "Network manager not available",
-                                                                ),
-                                                            ));
-                                                        }
-                                                    } else {
-                                                        // We are the leader but still got an error
-                                                        let _ = response_tx.send(Err(e));
-                                                    }
-                                                } else {
-                                                    // No leader known, return original error
-                                                    let _ = response_tx.send(Err(e));
-                                                }
-                                            } else {
-                                                let _ = response_tx.send(Err(e));
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    let _ = response_tx.send(Err(Error::with_context(
-                                        crate::error::ErrorKind::Service,
-                                        "Global consensus service not available",
-                                    )));
-                                }
-                            }
-                            _ => {
-                                // Other global requests still not implemented
-                                let global = global_consensus.read().await;
-                                if let Some(_service) = global.as_ref() {
-                                    let _ = response_tx.send(Err(Error::with_context(
-                                        crate::error::ErrorKind::Internal,
-                                        "Global consensus operation submission not yet implemented",
-                                    )));
-                                } else {
-                                    let _ = response_tx.send(Err(Error::with_context(
-                                        crate::error::ErrorKind::Service,
-                                        "Global consensus service not available",
-                                    )));
-                                }
-                            }
-                        }
-                    }
-
-                    ClientRequest::Group {
-                        group_id,
-                        request,
-                        response_tx,
-                    } => {
-                        debug!(
-                            "Processing group request for group {:?}: {:?}",
-                            group_id, request
-                        );
-
-                        // Get group consensus service
-                        let group = group_consensus.read().await;
-                        if let Some(service) = group.as_ref() {
-                            // Submit to specific group
-                            match service.submit_to_group(group_id, request).await {
-                                Ok(response) => {
-                                    let _ = response_tx.send(Ok(response));
-                                }
-                                Err(e) => {
-                                    let _ = response_tx.send(Err(e));
-                                }
-                            }
-                        } else {
-                            let _ = response_tx.send(Err(Error::with_context(
-                                crate::error::ErrorKind::Service,
-                                "Group consensus service not available",
-                            )));
-                        }
-                    }
-
-                    ClientRequest::GetStreamInfo {
-                        stream_name,
-                        response_tx,
-                    } => {
-                        debug!("Processing stream info request for: {}", stream_name);
-
-                        // Get routing service for stream info
-                        let routing = routing_service.read().await;
-                        if let Some(service) = routing.as_ref() {
-                            // Check if stream exists in routing table
-                            match service.get_stream_routing_info(&stream_name).await {
-                                Ok(Some(route)) => {
-                                    // Query the group consensus for stream state
-                                    let group = group_consensus.read().await;
-                                    if let Some(group_service) = group.as_ref() {
-                                        // Get the stream state from the group
-                                        match group_service
-                                            .get_stream_state(route.group_id, &stream_name)
-                                            .await
-                                        {
-                                            Ok(Some(stream_state)) => {
-                                                // Stream exists with state info
-                                                let stream_info = StreamInfo {
-                                                    name: stream_name.clone(),
-                                                    config: route.config.unwrap_or({
-                                                        // Fallback config if not stored in route
-                                                        crate::services::stream::StreamConfig {
-                                                            max_message_size: 1024 * 1024,
-                                                            retention:
-                                                                crate::services::stream::config::RetentionPolicy::Forever,
-                                                            persistence_type:
-                                                                crate::services::stream::config::PersistenceType::Persistent,
-                                                            allow_auto_create: false,
-                                                        }
-                                                    }),
-                                                    group_id: route.group_id,
-                                                    last_sequence: stream_state.next_sequence.saturating_sub(1),
-                                                    message_count: stream_state.stats.message_count,
-                                                };
-                                                let _ = response_tx.send(Ok(Some(stream_info)));
-                                            }
-                                            Ok(None) => {
-                                                // Stream exists in routing but not in group state (inconsistency)
-                                                let _ = response_tx.send(Ok(None));
-                                            }
-                                            Err(e) => {
-                                                let _ = response_tx.send(Err(e));
-                                            }
-                                        }
-                                    } else {
-                                        let _ = response_tx.send(Err(Error::with_context(
-                                            crate::error::ErrorKind::Service,
-                                            "Group consensus service not available",
-                                        )));
-                                    }
-                                }
-                                Ok(None) => {
-                                    // Stream not found
-                                    let _ = response_tx.send(Ok(None));
-                                }
-                                Err(e) => {
-                                    let _ = response_tx.send(Err(Error::with_context(
-                                        crate::error::ErrorKind::Service,
-                                        format!("Failed to query routing info: {e}"),
-                                    )));
-                                }
-                            }
-                        } else {
-                            let _ = response_tx.send(Err(Error::with_context(
-                                crate::error::ErrorKind::Service,
-                                "Routing service not available",
-                            )));
-                        }
-                    }
-
-                    ClientRequest::GetGroupInfo {
-                        group_id,
-                        response_tx,
-                    } => {
-                        debug!("Processing group info request for: {:?}", group_id);
-
-                        // Get group info from global consensus
-                        let global = global_consensus.read().await;
-                        if let Some(_service) = global.as_ref() {
-                            // TODO: Get group info from global consensus
-                            // match service.get_group_info(group_id).await {
-                            //     Ok(info) => {
-                            //         let _ = response_tx.send(Ok(info));
-                            //     }
-                            //     Err(e) => {
-                            //         let _ = response_tx.send(Err(e));
-                            //     }
-                            // }
-                            let _ = response_tx.send(Err(Error::with_context(
-                                crate::error::ErrorKind::Internal,
-                                "Group info query not yet implemented",
-                            )));
-                        } else {
-                            let _ = response_tx.send(Err(Error::with_context(
-                                crate::error::ErrorKind::Service,
-                                "Global consensus service not available",
-                            )));
-                        }
-                    }
-
-                    ClientRequest::Stream {
-                        stream_name,
-                        request,
-                        response_tx,
-                    } => {
-                        debug!("Processing stream request for: {}", stream_name);
-
-                        // Get routing service to determine target group
-                        let routing = routing_service.read().await;
-                        if let Some(routing_service) = routing.as_ref() {
-                            // Route the stream operation
-                            match routing_service
-                                .route_stream_operation(&stream_name, vec![])
-                                .await
-                            {
-                                Ok(crate::services::routing::RouteDecision::RouteToGroup(
-                                    group_id,
-                                )) => {
-                                    debug!(
-                                        "Routing stream {} operation to group {:?}",
-                                        stream_name, group_id
-                                    );
-
-                                    // Check if the group is local or remote
-                                    match routing_service.is_group_local(group_id).await {
-                                        Ok(true) => {
-                                            // Group is local, submit directly
-                                            let group = group_consensus.read().await;
-                                            if let Some(service) = group.as_ref() {
-                                                // Submit to group consensus
-                                                match service
-                                                    .submit_to_group(group_id, request)
-                                                    .await
-                                                {
-                                                    Ok(response) => {
-                                                        let _ = response_tx.send(Ok(response));
-                                                    }
-                                                    Err(e) => {
-                                                        let _ = response_tx.send(Err(e));
-                                                    }
-                                                }
-                                            } else {
-                                                let _ = response_tx.send(Err(Error::with_context(
-                                                    crate::error::ErrorKind::Service,
-                                                    "Group consensus service not available",
-                                                )));
-                                            }
-                                        }
-                                        Ok(false) => {
-                                            // Group is remote, need to forward
-                                            if let Ok(Some(group_info)) = routing_service
-                                                .get_routing_info()
-                                                .await
-                                                .map(|info| {
-                                                    info.group_routes.get(&group_id).cloned()
-                                                })
-                                            {
-                                                match client_service
-                                                    .forward_to_group(
-                                                        group_id,
-                                                        &group_info.members,
-                                                        request,
-                                                    )
-                                                    .await
-                                                {
-                                                    Ok(response) => {
-                                                        let _ = response_tx.send(Ok(response));
-                                                    }
-                                                    Err(e) => {
-                                                        let _ = response_tx.send(Err(e));
-                                                    }
-                                                }
-                                            } else {
-                                                let _ = response_tx.send(Err(Error::with_context(
-                                                    crate::error::ErrorKind::InvalidState,
-                                                    format!(
-                                                        "No routing info for group {group_id:?}"
-                                                    ),
-                                                )));
-                                            }
-                                        }
-                                        Err(e) => {
-                                            let _ =
-                                                response_tx.send(Err(Error::with_context(
-                                                    crate::error::ErrorKind::NotFound,
-                                                    format!(
-                                                        "Group {group_id:?} not found in routing table: {e}"
-                                                    ),
-                                                )));
-                                        }
-                                    }
-                                }
-                                Ok(crate::services::routing::RouteDecision::Reject(reason)) => {
-                                    let _ = response_tx.send(Err(Error::with_context(
-                                        crate::error::ErrorKind::Validation,
-                                        format!("Operation rejected: {reason}"),
-                                    )));
-                                }
-                                Ok(decision) => {
-                                    let _ = response_tx.send(Err(Error::with_context(
-                                        crate::error::ErrorKind::Internal,
-                                        format!("Unexpected routing decision: {decision:?}"),
-                                    )));
-                                }
-                                Err(e) => {
-                                    let _ = response_tx.send(Err(Error::with_context(
-                                        crate::error::ErrorKind::Service,
-                                        format!("Routing failed: {e}"),
-                                    )));
-                                }
-                            }
-                        } else {
-                            let _ = response_tx.send(Err(Error::with_context(
-                                crate::error::ErrorKind::Service,
-                                "Routing service not available",
-                            )));
-                        }
-                    }
-                }
-            }
-
-            info!("Client request processor stopped");
-        });
-    }
-
-    /// Forward a request to a node in the target group
-    async fn forward_to_group(
-        &self,
-        group_id: ConsensusGroupId,
-        members: &[NodeId],
-        request: GroupRequest,
-    ) -> ConsensusResult<GroupResponse> {
-        let network = self.network_manager.read().await;
-        let network = network.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Configuration,
-                "Network manager not available for forwarding",
-            )
-        })?;
-
-        // Get routing service to find the best node
-        let routing_service = self.routing_service.read().await;
-        let routing_service = routing_service.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                "Routing service not available",
-            )
-        })?;
-
-        // Get the best node to forward to
-        let target_node = routing_service
-            .get_best_node_for_group(group_id)
-            .await
-            .map_err(|e| {
-                Error::with_context(
-                    crate::error::ErrorKind::Service,
-                    format!("Failed to get target node for group {group_id:?}: {e}"),
-                )
-            })?;
-
-        let target_node = target_node
-            .or_else(|| members.first().cloned())
-            .ok_or_else(|| {
-                Error::with_context(
-                    crate::error::ErrorKind::InvalidState,
-                    format!("No target node available for group {group_id:?}"),
-                )
-            })?;
-
-        // Create the forward request
-        let forward_request = super::messages::ClientServiceMessage::Group {
-            requester_id: self.node_id.clone(),
-            group_id,
-            request,
-        };
-
-        // Send the request and wait for response
-        let response = network
-            .request_service(
-                target_node.clone(),
-                forward_request,
-                std::time::Duration::from_secs(30),
-            )
-            .await
-            .map_err(|e| {
-                Error::with_context(
-                    crate::error::ErrorKind::Network,
-                    format!("Failed to forward request to {target_node}: {e}"),
-                )
-            })?;
-
-        match response {
-            super::messages::ClientServiceResponse::Group { response } => Ok(response),
-            _ => Err(Error::with_context(
-                crate::error::ErrorKind::Internal,
-                "Unexpected response type",
-            )),
-        }
-    }
-
-    /// Forward a read request to a node in the target group
-    async fn forward_read_request(
-        &self,
-        group_id: ConsensusGroupId,
-        members: &[NodeId],
-        stream_name: &str,
-        start_sequence: u64,
-        count: u64,
-    ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
-        let network = self.network_manager.read().await;
-        let network = network.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Configuration,
-                "Network manager not available for forwarding",
-            )
-        })?;
-
-        // Get routing service to find the best node
-        let routing_service = self.routing_service.read().await;
-        let routing_service = routing_service.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                "Routing service not available",
-            )
-        })?;
-
-        // Get the best node to forward to
-        let target_node = routing_service
-            .get_best_node_for_group(group_id)
-            .await
-            .map_err(|e| {
-                Error::with_context(
-                    crate::error::ErrorKind::Service,
-                    format!("Failed to get target node for group {group_id:?}: {e}"),
-                )
-            })?;
-
-        let target_node = target_node
-            .or_else(|| members.first().cloned())
-            .ok_or_else(|| {
-                Error::with_context(
-                    crate::error::ErrorKind::InvalidState,
-                    format!("No target node available for group {group_id:?}"),
-                )
-            })?;
-
-        // Create the forward request
-        let forward_request = super::messages::ClientServiceMessage::Read {
-            requester_id: self.node_id.clone(),
-            stream_name: stream_name.to_string(),
-            start_sequence,
-            count,
-        };
-
-        // Send the request and wait for response
-        let response = network
-            .request_service(
-                target_node.clone(),
-                forward_request,
-                std::time::Duration::from_secs(30),
-            )
-            .await
-            .map_err(|e| {
-                Error::with_context(
-                    crate::error::ErrorKind::Network,
-                    format!("Failed to forward read request to {target_node}: {e}"),
-                )
-            })?;
-
-        match response {
-            super::messages::ClientServiceResponse::Read { messages } => Ok(messages),
-            _ => Err(Error::with_context(
-                crate::error::ErrorKind::Internal,
-                "Unexpected response type for read request",
-            )),
-        }
-    }
-
-    /// Register network handlers for forwarded requests
-    async fn register_network_handlers(
-        &self,
-        network: Arc<proven_network::NetworkManager<T, G>>,
-    ) -> ConsensusResult<()> {
-        info!("Registering client service network handlers");
-
-        // Clone references for handlers
-        let node_id = self.node_id.clone();
-        let group_consensus = self.group_consensus.clone();
-        let global_consensus = self.global_consensus.clone();
-        let stream_service = self.stream_service.clone();
-
-        // Register service handler
-        network
-            .register_service::<super::messages::ClientServiceMessage, _>(move |sender, message| {
-                let _node_id = node_id.clone();
-                let group_consensus = group_consensus.clone();
-                let global_consensus = global_consensus.clone();
-                let stream_service = stream_service.clone();
-
-                Box::pin(async move {
-                    match message {
-                        super::messages::ClientServiceMessage::Group {
-                            requester_id: _,
-                            group_id,
-                            request,
-                        } => {
-                            tracing::info!(
-                                "Received forwarded group request from {} for group {:?}",
-                                sender,
-                                group_id
-                            );
-
-                            // Get group consensus service
-                            let service = group_consensus.read().await;
-                            let service = service.as_ref().ok_or_else(|| {
-                                proven_network::NetworkError::Internal(
-                                    "Group consensus service not available".to_string(),
-                                )
-                            })?;
-
-                            // Submit the request locally
-                            let response = service
-                                .submit_to_group(group_id, request)
-                                .await
-                                .map_err(|e| {
-                                    proven_network::NetworkError::Internal(format!(
-                                        "Failed to submit to group: {e}"
-                                    ))
-                                })?;
-
-                            Ok(super::messages::ClientServiceResponse::Group { response })
-                        }
-                        super::messages::ClientServiceMessage::Global {
-                            requester_id: _,
-                            request,
-                        } => {
-                            tracing::info!("Received forwarded global request from {}", sender);
-
-                            // Get global consensus service
-                            let service = global_consensus.read().await;
-                            let service = service.as_ref().ok_or_else(|| {
-                                proven_network::NetworkError::Internal(
-                                    "Global consensus service not available".to_string(),
-                                )
-                            })?;
-
-                            // Submit the request locally
-                            let response = service.submit_request(request).await.map_err(|e| {
-                                proven_network::NetworkError::Internal(format!(
-                                    "Failed to submit to global consensus: {e}"
-                                ))
-                            })?;
-                            Ok(super::messages::ClientServiceResponse::Global { response })
-                        }
-                        super::messages::ClientServiceMessage::Read {
-                            requester_id: _,
-                            stream_name,
-                            start_sequence,
-                            count,
-                        } => {
-                            tracing::info!(
-                                "Received forwarded read request from {} for stream {}",
-                                sender,
-                                stream_name
-                            );
-
-                            // Get stream service
-                            let service = stream_service.read().await;
-                            let service = service.as_ref().ok_or_else(|| {
-                                proven_network::NetworkError::Internal(
-                                    "Stream service not available".to_string(),
-                                )
-                            })?;
-
-                            // Read the messages locally
-                            let messages = service
-                                .read_messages(&stream_name, start_sequence, count)
-                                .await
-                                .map_err(|e| {
-                                    proven_network::NetworkError::Internal(format!(
-                                        "Failed to read messages: {e}"
-                                    ))
-                                })?;
-
-                            Ok(super::messages::ClientServiceResponse::Read { messages })
-                        }
-                    }
-                })
-            })
-            .await?;
-
-        info!("Client service network handlers registered successfully");
-        Ok(())
-    }
 }
 
 #[async_trait::async_trait]
 impl<T, G, S> ServiceLifecycle for ClientService<T, G, S>
 where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
+    T: Transport + 'static,
+    G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn start(&self) -> ConsensusResult<()> {
@@ -1212,11 +675,14 @@ where
             ));
         }
 
+        // Initialize handlers
+        self.initialize_handlers().await?;
+
         // Register network handlers if network manager is available
-        if let Some(network) = self.network_manager.read().await.as_ref()
-            && let Err(e) = self.register_network_handlers(network.clone()).await
+        if self.network_manager.read().await.is_some()
+            && let Err(e) = self.register_network_handlers().await
         {
-            tracing::warn!("Failed to register network handlers: {e}");
+            tracing::warn!("Failed to register network handlers: {}", e);
             // Continue anyway - the service can still work for local requests
         }
 
@@ -1242,17 +708,12 @@ where
             let _ = shutdown_tx.send(());
         }
 
-        // Unregister the service handler from NetworkManager first
+        // Unregister the service handler from NetworkManager
         use super::messages::ClientServiceMessage;
-        if let Some(network_manager) = self.network_manager.read().await.as_ref() {
+        if let Some(network) = self.network_manager.read().await.as_ref() {
             tracing::debug!("Unregistering client service handler");
-            if let Err(e) = network_manager
-                .unregister_service::<ClientServiceMessage>()
-                .await
-            {
+            if let Err(e) = network.unregister_service::<ClientServiceMessage>().await {
                 tracing::warn!("Failed to unregister client service: {}", e);
-            } else {
-                tracing::debug!("Client service handler unregistered");
             }
         }
 
@@ -1273,15 +734,20 @@ where
     async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
         use crate::foundation::traits::HealthStatus;
 
-        // Check if required services are available
         let has_global = self.global_consensus.read().await.is_some();
         let has_group = self.group_consensus.read().await.is_some();
         let has_routing = self.routing_service.read().await.is_some();
+        let has_handlers = self.handlers.read().await.is_some();
 
         let (status, message) = if !has_global || !has_group || !has_routing {
             (
                 HealthStatus::Unhealthy,
                 Some("Required services not available".to_string()),
+            )
+        } else if !has_handlers {
+            (
+                HealthStatus::Unhealthy,
+                Some("Handlers not initialized".to_string()),
             )
         } else if !self.is_running().await {
             (

@@ -222,14 +222,19 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
 
     /// Submit a request
     pub async fn submit_request(&self, request: GlobalRequest) -> ConsensusResult<GlobalResponse> {
-        let response = self
-            .raft
-            .client_write(request)
-            .await
-            .map_err(|e| Error::with_context(ErrorKind::Consensus, e.to_string()))?
-            .data;
+        match self.raft.client_write(request).await {
+            Ok(response) => Ok(response.data),
+            Err(err) => {
+                if let Some(forward_to_leader) = err.forward_to_leader() {
+                    return Err(Error::not_leader(
+                        "Not the leader for global consensus",
+                        forward_to_leader.leader_id.clone(),
+                    ));
+                }
 
-        Ok(response)
+                Err(Error::with_context(ErrorKind::Consensus, err.to_string()))
+            }
+        }
     }
 
     /// Get current leader
