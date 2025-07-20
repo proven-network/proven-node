@@ -13,6 +13,7 @@ use bytes::Bytes;
 use proven_storage::{LogStorage, StorageError, StorageNamespace, StorageResult};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::{RwLock, mpsc};
+use tokio_stream::Stream;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -383,8 +384,9 @@ impl LogStorage for S3Storage {
         let mut entries = Vec::new();
         let mut cache_hits = 0;
         let mut cache_misses = 0;
+        let mut indices_to_fetch = Vec::new();
 
-        // Read each entry in the range
+        // First pass: collect data from pending writes and cache
         for index in start..end {
             // Check pending writes first for read-after-write consistency
             let from_pending = {
@@ -411,63 +413,28 @@ impl LogStorage for S3Storage {
             cache_misses += 1;
 
             // Check bloom filter to avoid unnecessary S3 calls
-            if !self.cache.might_exist(namespace, index).await {
-                continue; // Skip if bloom filter says it doesn't exist
+            if self.cache.might_exist(namespace, index).await {
+                indices_to_fetch.push(index);
             }
+        }
 
-            // Read from S3
-            let key = self.make_key(namespace, index);
+        // Batch fetch missing entries from S3
+        if !indices_to_fetch.is_empty() {
+            let s3_results = self.batch_read_from_s3(namespace, &indices_to_fetch).await;
 
-            match self
-                .client
-                .get_object()
-                .bucket(&self.config.s3.bucket)
-                .key(&key)
-                .send()
-                .await
-            {
-                Ok(response) => {
-                    let data =
-                        response.body.collect().await.map_err(|e| {
-                            StorageError::Backend(format!("S3 read body failed: {e}"))
-                        })?;
-
-                    let data_bytes = data.into_bytes();
-                    record_s3_download(namespace.as_str(), data_bytes.len(), true);
-
-                    // Decrypt if needed
-                    let decrypted = if let Some(encryption) = &self.encryption {
-                        match encryption.decrypt_from_s3(&data_bytes).await {
-                            Ok(dec) => {
-                                record_encryption("decrypt", "s3");
-                                dec
-                            }
-                            Err(e) => {
-                                error!("Failed to decrypt data from S3: {}", e);
-                                return Err(e);
-                            }
-                        }
-                    } else {
-                        data_bytes
-                    };
-
+            // Update cache and collect results
+            for &index in &indices_to_fetch {
+                if let Some(data) = s3_results.get(&index) {
                     // Update cache
-                    self.cache.put(namespace, index, decrypted.clone()).await;
-
-                    entries.push((index, decrypted));
-                }
-                Err(e) => {
-                    // If key not found, skip it (sparse logs are allowed)
-                    let service_error = e.into_service_error();
-                    if !service_error.is_no_such_key() {
-                        record_s3_download(namespace.as_str(), 0, false);
-                        return Err(StorageError::Backend(format!(
-                            "S3 get failed: {service_error}"
-                        )));
-                    }
+                    self.cache.put(namespace, index, data.clone()).await;
+                    entries.push((index, data.clone()));
+                    record_s3_download(namespace.as_str(), data.len(), true);
                 }
             }
         }
+
+        // Sort entries by index since we collected them out of order
+        entries.sort_by_key(|(idx, _)| *idx);
 
         // Record cache metrics
         if cache_hits > 0 {
@@ -793,7 +760,283 @@ impl proven_storage::LogStorageWithDelete for S3Storage {
     }
 }
 
+// Implement LogStorageStreaming for S3Storage
+#[async_trait]
+impl proven_storage::LogStorageStreaming for S3Storage {
+    async fn stream_range(
+        &self,
+        namespace: &StorageNamespace,
+        start: u64,
+        end: Option<u64>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        // Clone what we need for the stream
+        let client = self.client.clone();
+        let bucket = self.config.s3.bucket.clone();
+        let cache = self.cache.clone();
+        let encryption = self.encryption.clone();
+        let pending_writes = self.pending_writes.clone();
+        let prefix = self.config.s3.prefix.clone();
+        let namespace_str = namespace.as_str().to_string();
+
+        // Create a batched streaming implementation
+        let stream = async_stream::stream! {
+            let mut index = start;
+            let batch_size = 100; // Read ahead in batches
+            let namespace_obj = StorageNamespace::new(&namespace_str);
+
+            loop {
+                // Check if we've reached the end bound
+                if let Some(end_idx) = end
+                    && index >= end_idx {
+                        break;
+                    }
+
+                // Determine batch range
+                let batch_end = if let Some(end_idx) = end {
+                    std::cmp::min(index + batch_size, end_idx)
+                } else {
+                    index + batch_size
+                };
+
+                // Collect indices that need fetching from S3
+                let mut indices_to_fetch = Vec::new();
+                let mut cached_entries = Vec::new();
+
+                // Check cache and pending writes for the batch
+                for idx in index..batch_end {
+                    // Check pending writes first
+                    let from_pending = {
+                        let pending = pending_writes.read().await;
+                        if let Some(namespace_pending) = pending.get(&namespace_obj) {
+                            namespace_pending.get(&idx).cloned()
+                        } else {
+                            None
+                        }
+                    };
+
+                    if let Some(data) = from_pending {
+                        cached_entries.push((idx, data));
+                        continue;
+                    }
+
+                    // Check cache
+                    if let Some(data) = cache.get(&namespace_obj, idx).await {
+                        cached_entries.push((idx, data));
+                        continue;
+                    }
+
+                    // Check bloom filter
+                    if cache.might_exist(&namespace_obj, idx).await {
+                        indices_to_fetch.push(idx);
+                    }
+                }
+
+                // Yield cached entries first
+                for (idx, data) in cached_entries {
+                    yield Ok((idx, data));
+                }
+
+                // Batch fetch from S3 if needed
+                if !indices_to_fetch.is_empty() {
+                    // Helper to make keys
+                    let make_key = |idx: u64| -> String {
+                        let base_key = format!("{namespace_str}/{idx:020}");
+                        match &prefix {
+                            Some(p) => format!("{p}/{base_key}"),
+                            None => base_key,
+                        }
+                    };
+
+                    // Create futures for parallel fetching
+                    let futures: Vec<_> = indices_to_fetch
+                        .iter()
+                        .map(|&idx| {
+                            let client = client.clone();
+                            let bucket = bucket.clone();
+                            let key = make_key(idx);
+                            let encryption = encryption.clone();
+
+                            async move {
+                                match client
+                                    .get_object()
+                                    .bucket(&bucket)
+                                    .key(&key)
+                                    .send()
+                                    .await
+                                {
+                                    Ok(response) => {
+                                        match response.body.collect().await {
+                                            Ok(data) => {
+                                                let data_bytes = data.into_bytes();
+
+                                                // Decrypt if needed
+                                                let decrypted = if let Some(ref enc) = encryption {
+                                                    match enc.decrypt_from_s3(&data_bytes).await {
+                                                        Ok(dec) => dec,
+                                                        Err(e) => {
+                                                            tracing::warn!("Failed to decrypt index {}: {}", idx, e);
+                                                            return None;
+                                                        }
+                                                    }
+                                                } else {
+                                                    Bytes::from(data_bytes.to_vec())
+                                                };
+
+                                                Some((idx, decrypted))
+                                            }
+                                            Err(e) => {
+                                                tracing::debug!("Failed to read body for index {}: {}", idx, e);
+                                                None
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        if let Some(service_error) = e.as_service_error() {
+                                            match service_error {
+                                                aws_sdk_s3::operation::get_object::GetObjectError::NoSuchKey(_) => {
+                                                    // Object not found, this is ok
+                                                }
+                                                _ => {
+                                                    tracing::warn!("S3 get failed for index {}: {}", idx, e);
+                                                }
+                                            }
+                                        } else {
+                                            tracing::warn!("S3 get failed for index {}: {}", idx, e);
+                                        }
+                                        None
+                                    }
+                                }
+                            }
+                        })
+                        .collect();
+
+                    // Execute batch with concurrency limit
+                    use futures::stream::StreamExt;
+                    let concurrent_limit = 10;
+
+                    let mut fetch_stream = futures::stream::iter(futures)
+                        .buffer_unordered(concurrent_limit);
+
+                    let mut results = Vec::new();
+                    while let Some(result) = fetch_stream.next().await {
+                        if let Some((idx, data)) = result {
+                            results.push((idx, data));
+                        }
+                    }
+
+                    // Sort results by index and yield
+                    results.sort_by_key(|(idx, _)| *idx);
+                    for (idx, data) in results {
+                        // Update cache
+                        cache.put(&namespace_obj, idx, data.clone()).await;
+                        yield Ok((idx, data));
+                    }
+                }
+
+                // Move to next batch
+                index = batch_end;
+
+                // If we didn't find anything in this batch and have no end bound,
+                // we might be at the end of the stream
+                if indices_to_fetch.is_empty() && end.is_none() {
+                    break;
+                }
+            }
+        };
+
+        Ok(Box::new(Box::pin(stream)))
+    }
+}
+
 impl S3Storage {
+    /// Batch read multiple entries from S3
+    /// Returns a map of index -> data for successfully read entries
+    async fn batch_read_from_s3(
+        &self,
+        namespace: &StorageNamespace,
+        indices: &[u64],
+    ) -> HashMap<u64, Bytes> {
+        let mut results = HashMap::new();
+
+        // For now, we still read individually but in parallel
+        // Future optimization: store multiple entries per S3 object
+        let futures: Vec<_> = indices
+            .iter()
+            .map(|&index| {
+                let client = self.client.clone();
+                let bucket = self.config.s3.bucket.clone();
+                let key = self.make_key(namespace, index);
+                let encryption = self.encryption.clone();
+
+                async move {
+                    match client
+                        .get_object()
+                        .bucket(&bucket)
+                        .key(&key)
+                        .send()
+                        .await
+                    {
+                        Ok(response) => {
+                            match response.body.collect().await {
+                                Ok(data) => {
+                                    let data_bytes = data.into_bytes();
+
+                                    // Decrypt if needed
+                                    let decrypted = if let Some(ref enc) = encryption {
+                                        match enc.decrypt_from_s3(&data_bytes).await {
+                                            Ok(dec) => dec,
+                                            Err(e) => {
+                                                tracing::warn!("Failed to decrypt index {}: {}", index, e);
+                                                return None;
+                                            }
+                                        }
+                                    } else {
+                                        Bytes::from(data_bytes.to_vec())
+                                    };
+
+                                    Some((index, decrypted))
+                                }
+                                Err(e) => {
+                                    tracing::debug!("Failed to read body for index {}: {}", index, e);
+                                    None
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            if let Some(service_error) = e.as_service_error() {
+                                match service_error {
+                                    aws_sdk_s3::operation::get_object::GetObjectError::NoSuchKey(_) => {
+                                        // Object not found, this is ok
+                                    }
+                                    _ => {
+                                        tracing::warn!("S3 get failed for index {}: {}", index, e);
+                                    }
+                                }
+                            } else {
+                                tracing::warn!("S3 get failed for index {}: {}", index, e);
+                            }
+                            None
+                        }
+                    }
+                }
+            })
+            .collect();
+
+        // Execute all reads in parallel with a concurrency limit
+        use futures::stream::StreamExt;
+        let concurrent_limit = 10; // Adjust based on S3 rate limits
+
+        let mut stream = futures::stream::iter(futures).buffer_unordered(concurrent_limit);
+
+        while let Some(result) = stream.next().await {
+            if let Some((index, data)) = result {
+                results.insert(index, data);
+            }
+        }
+
+        results
+    }
+
     /// Create a simple S3 storage instance without advanced features
     pub async fn simple(
         client: S3Client,

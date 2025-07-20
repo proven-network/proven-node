@@ -33,6 +33,7 @@ pub trait GlobalConsensusCallbacks: Send + Sync {
     async fn on_stream_created(
         &self,
         stream_name: &StreamName,
+        config: &crate::services::stream::StreamConfig,
         group_id: ConsensusGroupId,
     ) -> ConsensusResult<()>;
 

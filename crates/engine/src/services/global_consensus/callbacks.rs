@@ -166,7 +166,11 @@ where
 
                     // Create the stream in StreamService
                     if let Err(e) = stream_service
-                        .create_stream(stream_info.name.clone(), stream_info.config.clone())
+                        .create_stream(
+                            stream_info.name.clone(),
+                            stream_info.config.clone(),
+                            stream_info.group_id,
+                        )
                         .await
                     {
                         // Stream might already exist, which is fine
@@ -253,6 +257,7 @@ where
     async fn on_stream_created(
         &self,
         stream_name: &StreamName,
+        config: &crate::services::stream::StreamConfig,
         group_id: ConsensusGroupId,
     ) -> ConsensusResult<()> {
         // Update routing service immediately
@@ -279,6 +284,51 @@ where
                 );
             }
         }
+
+        // Check if we're a member of the group that owns this stream
+        if let Some(ref routing) = self.routing_service
+            && let Ok(location_info) = routing.get_group_location(group_id).await
+            && location_info.is_local
+        {
+            tracing::info!(
+                "Initializing stream {} in local group {:?} via direct service communication",
+                stream_name,
+                group_id
+            );
+
+            // Initialize the stream in group consensus immediately
+            if let Some(ref group_consensus) = self.group_consensus_service {
+                let request = crate::consensus::group::GroupRequest::Admin(
+                    crate::consensus::group::types::AdminOperation::InitializeStream {
+                        stream: stream_name.clone(),
+                    },
+                );
+
+                if let Err(e) = group_consensus.submit_to_group(group_id, request).await {
+                    tracing::error!(
+                        "Failed to initialize stream {} in group {:?}: {}",
+                        stream_name,
+                        group_id,
+                        e
+                    );
+                }
+            }
+
+            // Initialize the stream in StreamService immediately
+            if let Some(ref stream_service) = self.stream_service
+                && let Err(e) = stream_service
+                    .create_stream(stream_name.clone(), config.clone(), group_id)
+                    .await
+            {
+                // Stream might already exist, which is fine during replay
+                tracing::debug!(
+                    "Failed to create stream {} in StreamService: {}",
+                    stream_name,
+                    e
+                );
+            }
+        }
+
         Ok(())
     }
 

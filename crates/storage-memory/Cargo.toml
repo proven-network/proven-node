@@ -8,6 +8,7 @@ async-trait.workspace = true
 bytes.workspace = true
 proven-storage.workspace = true
 tokio.workspace = true
+tokio-stream.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

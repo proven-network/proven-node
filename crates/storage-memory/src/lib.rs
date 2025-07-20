@@ -8,6 +8,7 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::RwLock;
+use tokio_stream::Stream;
 
 /// In-memory log storage implementation using BTreeMap for ordering
 #[derive(Clone)]
@@ -215,6 +216,40 @@ impl proven_storage::LogStorageWithDelete for MemoryStorage {
     }
 }
 
+// Implement LogStorageStreaming for MemoryStorage
+#[async_trait]
+impl proven_storage::LogStorageStreaming for MemoryStorage {
+    async fn stream_range(
+        &self,
+        namespace: &StorageNamespace,
+        start: u64,
+        end: Option<u64>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        // Clone the data we need to stream
+        let logs_guard = self.logs.read().await;
+        let entries: Vec<(u64, Bytes)> = if let Some(btree) = logs_guard.get(namespace) {
+            match end {
+                Some(end_idx) => btree
+                    .range(start..end_idx)
+                    .map(|(&idx, data)| (idx, data.clone()))
+                    .collect(),
+                None => btree
+                    .range(start..)
+                    .map(|(&idx, data)| (idx, data.clone()))
+                    .collect(),
+            }
+        } else {
+            Vec::new()
+        };
+        drop(logs_guard);
+
+        // Create a stream from the collected entries
+        let stream = tokio_stream::iter(entries.into_iter().map(Ok));
+
+        Ok(Box::new(stream))
+    }
+}
+
 impl std::fmt::Debug for MemoryStorage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MemoryStorage")
@@ -228,7 +263,8 @@ impl std::fmt::Debug for MemoryStorage {
 mod tests {
     use super::*;
 
-    use proven_storage::{LogStorage, LogStorageWithDelete};
+    use proven_storage::{LogStorage, LogStorageStreaming, LogStorageWithDelete};
+    use tokio_stream::StreamExt;
 
     #[tokio::test]
     async fn test_log_storage_append_and_get() {
@@ -371,5 +407,56 @@ mod tests {
         // Delete non-existent entry
         let deleted_nonexistent = storage.delete_entry(&namespace, 10).await.unwrap();
         assert!(!deleted_nonexistent);
+    }
+
+    #[tokio::test]
+    async fn test_log_storage_streaming() {
+        let storage = MemoryStorage::new();
+        let namespace = StorageNamespace::new("test");
+
+        // Append entries
+        let entries = vec![
+            (1, Bytes::from("data 1")),
+            (2, Bytes::from("data 2")),
+            (3, Bytes::from("data 3")),
+            (4, Bytes::from("data 4")),
+            (5, Bytes::from("data 5")),
+        ];
+        storage.append(&namespace, entries).await.unwrap();
+
+        // Test streaming with end bound
+        let mut stream = storage.stream_range(&namespace, 2, Some(4)).await.unwrap();
+
+        let mut results = Vec::new();
+        while let Some(item) = stream.next().await {
+            results.push(item.unwrap());
+        }
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], (2, Bytes::from("data 2")));
+        assert_eq!(results[1], (3, Bytes::from("data 3")));
+
+        // Test streaming without end bound
+        let mut stream = storage.stream_range(&namespace, 3, None).await.unwrap();
+
+        let mut results = Vec::new();
+        while let Some(item) = stream.next().await {
+            results.push(item.unwrap());
+        }
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0], (3, Bytes::from("data 3")));
+        assert_eq!(results[1], (4, Bytes::from("data 4")));
+        assert_eq!(results[2], (5, Bytes::from("data 5")));
+
+        // Test streaming empty namespace
+        let empty_ns = StorageNamespace::new("empty");
+        let mut stream = storage.stream_range(&empty_ns, 1, None).await.unwrap();
+
+        let mut count = 0;
+        while (stream.next().await).is_some() {
+            count += 1;
+        }
+        assert_eq!(count, 0);
     }
 }

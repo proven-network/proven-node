@@ -13,6 +13,19 @@ use crate::{
     foundation::types::ConsensusGroupId,
 };
 
+/// Reason for stream ending
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum StreamEndReason {
+    /// Reached the end of the stream
+    EndOfStream,
+    /// Client cancelled the stream
+    Cancelled,
+    /// Server timeout
+    Timeout,
+    /// Stream was deleted
+    StreamDeleted,
+}
+
 /// Client service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
@@ -44,6 +57,35 @@ pub enum ClientServiceMessage {
         /// Number of messages to read
         count: u64,
     },
+    /// Start a streaming session
+    StreamStart {
+        /// Original requester node
+        requester_id: NodeId,
+        /// Stream name
+        stream_name: String,
+        /// Start sequence
+        start_sequence: u64,
+        /// Optional end sequence (None means stream to end)
+        end_sequence: Option<u64>,
+        /// Batch size (messages per response)
+        batch_size: u32,
+    },
+    /// Continue a streaming session
+    StreamContinue {
+        /// Original requester node
+        requester_id: NodeId,
+        /// Stream session ID
+        session_id: uuid::Uuid,
+        /// Maximum messages to return
+        max_messages: u32,
+    },
+    /// Cancel a streaming session
+    StreamCancel {
+        /// Original requester node
+        requester_id: NodeId,
+        /// Stream session ID
+        session_id: uuid::Uuid,
+    },
 }
 
 /// Client service response
@@ -64,6 +106,31 @@ pub enum ClientServiceResponse {
     StreamRead {
         /// The messages read
         messages: Vec<crate::services::stream::StoredMessage>,
+    },
+    /// Response to stream start/continue
+    StreamBatch {
+        /// Stream session ID
+        session_id: uuid::Uuid,
+        /// Messages in this batch
+        messages: Vec<crate::services::stream::StoredMessage>,
+        /// Whether more messages are available
+        has_more: bool,
+        /// Next sequence number (if has_more is true)
+        next_sequence: Option<u64>,
+    },
+    /// Stream ended
+    StreamEnd {
+        /// Stream session ID
+        session_id: uuid::Uuid,
+        /// Reason for ending
+        reason: StreamEndReason,
+    },
+    /// Stream error
+    StreamError {
+        /// Stream session ID
+        session_id: uuid::Uuid,
+        /// Error message
+        error: String,
     },
 }
 

@@ -64,10 +64,18 @@ impl GlobalCallbackDispatcher {
         // Dispatch based on request type and response
         match (request, response) {
             (
-                GlobalRequest::CreateStream { name, group_id, .. },
+                GlobalRequest::CreateStream {
+                    name,
+                    config,
+                    group_id,
+                },
                 GlobalResponse::StreamCreated { .. },
             ) => {
-                if let Err(e) = self.callbacks.on_stream_created(name, *group_id).await {
+                if let Err(e) = self
+                    .callbacks
+                    .on_stream_created(name, config, *group_id)
+                    .await
+                {
                     tracing::error!("Stream creation callback failed: {}", e);
                 }
             }

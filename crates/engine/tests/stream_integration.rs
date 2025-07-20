@@ -10,6 +10,7 @@ use proven_engine::EngineState;
 use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio_stream::StreamExt;
 
 mod common;
 use common::test_cluster::{TestCluster, TransportType};
@@ -83,8 +84,7 @@ async fn test_stream_operations() {
         .expect("Failed to create stream");
     println!("Stream creation response: {response:?}");
 
-    // Give time for stream creation to propagate
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // With synchronous callbacks, stream should be immediately available - no sleep needed!
 
     // Step 3: Publish messages to the stream
     let num_messages = 10;
@@ -283,6 +283,155 @@ async fn test_stream_not_found() {
     assert!(result.is_err());
     let err = result.unwrap_err();
     assert!(err.to_string().contains("not found"));
+
+    // Clean up
+    for mut engine in engines {
+        engine.stop().await.expect("Failed to stop engine");
+    }
+}
+
+#[tokio::test]
+async fn test_stream_reading() {
+    // Initialize tracing
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info")
+        .with_test_writer()
+        .try_init();
+
+    // Create a single node for simplicity
+    let mut cluster = TestCluster::new(TransportType::Tcp);
+    let (engines, _node_infos) = cluster.add_nodes(1).await;
+
+    // Wait for default group formation
+    println!("Waiting for default group formation...");
+    cluster
+        .wait_for_specific_group(
+            &engines,
+            proven_engine::foundation::types::ConsensusGroupId::new(1),
+            1, // Single node
+            Duration::from_secs(10),
+        )
+        .await
+        .expect("Failed to wait for default group formation");
+
+    let client = engines[0].client();
+
+    // Create a stream with many messages
+    let stream_name = format!("streaming-test-{}", uuid::Uuid::new_v4());
+    let stream_config = StreamConfig {
+        persistence_type: PersistenceType::Persistent,
+        retention: RetentionPolicy::Forever,
+        max_message_size: 1024,
+        allow_auto_create: false,
+    };
+
+    println!("Creating stream '{stream_name}' for streaming test");
+    let response = client
+        .create_stream(stream_name.clone(), stream_config)
+        .await
+        .expect("Failed to create stream");
+    println!("Stream creation response: {response:?}");
+
+    // With synchronous callbacks, stream is immediately available - no sleep needed!
+
+    // Publish 50 messages for faster testing
+    let num_messages = 50;
+    println!("Publishing {num_messages} messages to test streaming");
+
+    for i in 0..num_messages {
+        let payload = format!("Streaming message {i:03}").into_bytes();
+        let mut metadata = HashMap::new();
+        metadata.insert("index".to_string(), i.to_string());
+
+        client
+            .publish(stream_name.clone(), payload, Some(metadata))
+            .await
+            .expect("Failed to publish message");
+    }
+
+    // Give time for messages to be persisted
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    // Test 1: Stream all messages
+    println!("\nTest 1: Streaming all messages");
+    let mut stream = client
+        .stream_messages(stream_name.clone(), 1, None)
+        .await
+        .expect("Failed to create stream reader");
+
+    let mut count = 0;
+    while let Some(result) = stream.next().await {
+        let msg = result.expect("Failed to read message from stream");
+        assert_eq!(msg.sequence, count + 1, "Sequence mismatch");
+        let expected_payload = format!("Streaming message {count:03}");
+        assert_eq!(
+            String::from_utf8_lossy(&msg.data.payload),
+            expected_payload,
+            "Payload mismatch at sequence {}",
+            msg.sequence
+        );
+        count += 1;
+    }
+    assert_eq!(count, num_messages, "Should have streamed all messages");
+    println!("Successfully streamed {count} messages");
+
+    // Test 2: Stream a range of messages
+    println!("\nTest 2: Streaming range [10, 30)");
+    let mut stream = client
+        .stream_messages(stream_name.clone(), 10, Some(30))
+        .await
+        .expect("Failed to create stream reader");
+
+    let mut count = 0;
+    while let Some(result) = stream.next().await {
+        let msg = result.expect("Failed to read message from stream");
+        assert!(
+            msg.sequence >= 10 && msg.sequence < 30,
+            "Message outside range"
+        );
+        count += 1;
+    }
+    assert_eq!(count, 20, "Should have streamed exactly 20 messages");
+    println!("Successfully streamed {count} messages in range");
+
+    // Test 3: Stream with custom batch size
+    println!("\nTest 3: Streaming with custom batch size");
+    let mut stream = client
+        .stream_messages(stream_name.clone(), 1, Some(50))
+        .await
+        .expect("Failed to create stream reader")
+        .with_batch_size(10);
+
+    let mut count = 0;
+    while let Some(result) = stream.next().await {
+        let _msg = result.expect("Failed to read message from stream");
+        count += 1;
+    }
+    assert_eq!(count, 49, "Should have streamed 49 messages");
+    println!("Successfully streamed {count} messages with batch size 10");
+
+    // Test 4: Early termination (drop stream before finishing)
+    println!("\nTest 4: Testing early termination");
+    let mut stream = client
+        .stream_messages(stream_name.clone(), 1, None)
+        .await
+        .expect("Failed to create stream reader");
+
+    // Read only 5 messages then drop
+    for _ in 0..5 {
+        let _msg = stream
+            .next()
+            .await
+            .unwrap()
+            .expect("Failed to read message");
+    }
+    drop(stream);
+    println!("Successfully dropped stream early");
+
+    // Give time for cleanup
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    println!("\nStreaming tests completed successfully!");
 
     // Clean up
     for mut engine in engines {

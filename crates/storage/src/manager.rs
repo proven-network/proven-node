@@ -6,10 +6,12 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::sync::Arc;
+use tokio_stream::Stream;
 use tracing::{debug, info};
 
 use crate::{
-    LogStorage, LogStorageWithDelete, StorageNamespace, StorageResult, adaptor::StorageAdaptor,
+    LogStorage, LogStorageStreaming, LogStorageWithDelete, StorageNamespace, StorageResult,
+    adaptor::StorageAdaptor,
 };
 
 /// Storage view for consensus operations (read-only logs)
@@ -244,6 +246,27 @@ impl<S: StorageAdaptor> LogStorageWithDelete for StreamStorage<S> {
     }
 }
 
+/// Implement LogStorageStreaming for StreamStorage (if adaptor supports it)
+#[async_trait]
+impl<S> LogStorageStreaming for StreamStorage<S>
+where
+    S: StorageAdaptor + LogStorageStreaming,
+{
+    async fn stream_range(
+        &self,
+        namespace: &StorageNamespace,
+        start: u64,
+        end: Option<u64>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        let prefixed = self.prefixed_namespace(namespace);
+        debug!(
+            "StreamStorage: streaming range from {} in namespace {}",
+            start, prefixed
+        );
+        LogStorageStreaming::stream_range(&*self.adaptor, &prefixed, start, end).await
+    }
+}
+
 impl<S: StorageAdaptor> std::fmt::Debug for StreamStorage<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("StreamStorage")
@@ -356,6 +379,36 @@ mod tests {
         }
     }
 
+    #[async_trait]
+    impl LogStorageStreaming for MockAdaptor {
+        async fn stream_range(
+            &self,
+            namespace: &StorageNamespace,
+            start: u64,
+            end: Option<u64>,
+        ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>>
+        {
+            let data = self.data.read().await;
+            if let Some(entries) = data.get(namespace.as_str()) {
+                // Filter entries based on the range [start, end)
+                let mut filtered: Vec<_> = entries
+                    .iter()
+                    .filter(|(idx, _)| *idx >= start && (end.is_none() || *idx < end.unwrap()))
+                    .map(|(idx, data)| (*idx, data.clone()))
+                    .collect();
+
+                // Sort by index to ensure entries are in order
+                filtered.sort_by_key(|(idx, _)| *idx);
+
+                Ok(Box::new(futures::stream::iter(
+                    filtered.into_iter().map(Ok),
+                )))
+            } else {
+                Ok(Box::new(futures::stream::empty()))
+            }
+        }
+    }
+
     impl StorageAdaptor for MockAdaptor {
         // Use default implementations
     }
@@ -450,5 +503,49 @@ mod tests {
         let remaining = stream.read_range(&namespace, 1, 3).await.unwrap();
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].0, 2);
+    }
+
+    #[tokio::test]
+    async fn test_stream_storage_streaming() {
+        use futures::StreamExt;
+
+        let adaptor = MockAdaptor::new();
+        let manager = StorageManager::new(adaptor);
+        let stream = manager.stream_storage();
+
+        let namespace = StorageNamespace::new("test");
+
+        // Append data with various indices
+        stream
+            .append(
+                &namespace,
+                vec![
+                    (1, Bytes::from("one")),
+                    (3, Bytes::from("three")),
+                    (5, Bytes::from("five")),
+                    (7, Bytes::from("seven")),
+                    (9, Bytes::from("nine")),
+                ],
+            )
+            .await
+            .unwrap();
+
+        // Test streaming with both start and end
+        let stream_iter = stream.stream_range(&namespace, 3, Some(8)).await.unwrap();
+        let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].as_ref().unwrap().0, 3);
+        assert_eq!(results[1].as_ref().unwrap().0, 5);
+        assert_eq!(results[2].as_ref().unwrap().0, 7);
+
+        // Test streaming with no end (should stream to the end)
+        let stream_iter = stream.stream_range(&namespace, 5, None).await.unwrap();
+        let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].as_ref().unwrap().0, 5);
+        assert_eq!(results[1].as_ref().unwrap().0, 7);
+        assert_eq!(results[2].as_ref().unwrap().0, 9);
     }
 }

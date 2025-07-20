@@ -635,72 +635,8 @@ where
                     tracing::info!("Successfully created default group");
                 }
             }
-            Event::StreamCreated {
-                name,
-                group_id,
-                config: _,
-            } => {
-                tracing::info!(
-                    "GroupConsensusService: Received StreamCreated event for {} in group {:?}",
-                    name,
-                    group_id
-                );
-                // Check if we have this group locally
-                let groups = self.groups.read().await;
-                if let Some(consensus) = groups.get(group_id) {
-                    tracing::info!("Initializing stream {} in local group {:?}", name, group_id);
-                    // Initialize the stream in the group
-                    let request = crate::consensus::group::GroupRequest::Admin(
-                        crate::consensus::group::types::AdminOperation::InitializeStream {
-                            stream: name.clone(),
-                        },
-                    );
-                    match consensus.submit_request(request).await {
-                        Ok(_) => {
-                            tracing::info!(
-                                "Successfully initialized stream {} in group {:?}",
-                                name,
-                                group_id
-                            );
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to initialize stream {} in group {:?}: {}",
-                                name,
-                                group_id,
-                                e
-                            );
-                        }
-                    }
-                } else {
-                    tracing::debug!(
-                        "Group {:?} not found locally, ignoring StreamCreated event",
-                        group_id
-                    );
-                }
-            }
-            Event::GroupCreated { group_id, members } => {
-                tracing::info!(
-                    "GroupConsensusService: Received GroupCreated event for group {:?} with members: {:?}",
-                    group_id,
-                    members
-                );
-                // Check if this node is a member of the group
-                if members.contains(&self.node_id) {
-                    tracing::info!("Creating local group {:?} as we are a member", group_id);
-                    // Create the group locally
-                    if let Err(e) = self.create_group(*group_id, members.clone()).await {
-                        tracing::error!("Failed to create group {:?}: {}", group_id, e);
-                    } else {
-                        tracing::info!("Successfully created local group {:?}", group_id);
-                    }
-                } else {
-                    tracing::debug!(
-                        "Not a member of group {:?}, skipping local creation",
-                        group_id
-                    );
-                }
-            }
+            // StreamCreated and GroupCreated events are now handled synchronously via GlobalConsensusCallbacks
+            // No need to handle them via async events anymore
             _ => {
                 // Ignore other events
             }

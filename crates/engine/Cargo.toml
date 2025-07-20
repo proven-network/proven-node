@@ -5,9 +5,11 @@ edition = "2024"
 
 [dependencies]
 # Core async and concurrency
+async-stream.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 tokio.workspace = true
+tokio-stream.workspace = true
 tokio-util = { workspace = true, features = ["rt"] }
 
 # Serialization and data handling

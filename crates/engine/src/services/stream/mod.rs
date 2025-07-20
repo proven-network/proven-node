@@ -13,4 +13,5 @@ pub use service::{StreamMetadata, StreamService, StreamServiceConfig};
 pub use storage::{StreamStorageImpl, StreamStorageReader, StreamStorageWriter};
 pub use types::{
     MessageData, MessageData as StreamMessage, StoredMessage, StreamName, StreamState,
+    deserialize_stored_message, serialize_stored_message,
 };

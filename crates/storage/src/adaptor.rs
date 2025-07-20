@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use std::fmt::Debug;
 
-use crate::{LogStorage, LogStorageWithDelete, StorageResult};
+use crate::{LogStorage, LogStorageStreaming, LogStorageWithDelete, StorageResult};
 
 /// Abstract interface for storage backends
 ///
@@ -15,7 +15,7 @@ use crate::{LogStorage, LogStorageWithDelete, StorageResult};
 /// specific to storage adaptors.
 #[async_trait]
 pub trait StorageAdaptor:
-    LogStorage + LogStorageWithDelete + Debug + Send + Sync + Clone + 'static
+    LogStorage + LogStorageStreaming + LogStorageWithDelete + Debug + Send + Sync + Clone + 'static
 {
     /// Gracefully shutdown the storage, ensuring all data is persisted
     /// Default implementation does nothing for backward compatibility

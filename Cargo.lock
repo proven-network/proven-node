@@ -11133,10 +11133,12 @@ dependencies = [
  "async-trait",
  "bytes",
  "chrono",
+ "futures",
  "hex",
  "serde",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-stream",
  "tracing",
 ]
 
@@ -11148,6 +11150,7 @@ dependencies = [
  "bytes",
  "proven-storage",
  "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-subscriber 0.3.19",
 ]
@@ -11156,6 +11159,7 @@ dependencies = [
 name = "proven-storage-rocksdb"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "async-trait",
  "bytes",
  "chrono",
@@ -11166,6 +11170,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-subscriber 0.3.19",
 ]
@@ -11175,6 +11180,7 @@ name = "proven-storage-s3"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "async-stream",
  "async-trait",
  "aws-config",
  "aws-sdk-s3",
@@ -11200,6 +11206,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-stream",
  "tokio-vsock",
  "tracing",
  "tracing-subscriber 0.3.19",

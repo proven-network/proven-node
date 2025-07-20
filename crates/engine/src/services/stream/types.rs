@@ -142,3 +142,15 @@ pub struct StoredMessage {
     /// Group consensus term when written
     pub term: u64,
 }
+
+/// Serialize a StoredMessage to bytes
+pub fn serialize_stored_message(msg: &StoredMessage) -> Result<Bytes, String> {
+    serde_json::to_vec(msg)
+        .map(Bytes::from)
+        .map_err(|e| format!("Failed to serialize message: {e}"))
+}
+
+/// Deserialize a StoredMessage from bytes
+pub fn deserialize_stored_message(bytes: Bytes) -> Result<StoredMessage, String> {
+    serde_json::from_slice(&bytes).map_err(|e| format!("Failed to deserialize message: {e}"))
+}

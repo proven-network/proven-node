@@ -226,4 +226,209 @@ where
             )
         }))
     }
+
+    /// Forward a streaming start request to a remote group
+    pub async fn forward_streaming_start(
+        &self,
+        group_id: ConsensusGroupId,
+        stream_name: &str,
+        start_sequence: u64,
+        end_sequence: Option<u64>,
+        batch_size: u32,
+    ) -> ConsensusResult<(
+        uuid::Uuid,
+        Vec<crate::services::stream::StoredMessage>,
+        bool,
+    )> {
+        let routing_guard = self.routing_service.read().await;
+        let routing = routing_guard.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Service, "Routing service not available")
+        })?;
+
+        let routing_info = routing.get_routing_info().await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        let group_info = routing_info.group_routes.get(&group_id).ok_or_else(|| {
+            Error::with_context(ErrorKind::NotFound, format!("Group {group_id:?} not found"))
+        })?;
+
+        // Try any member for streaming
+        let mut last_error = None;
+        for member in &group_info.members {
+            if member == &self.node_id {
+                continue;
+            }
+
+            let network_guard = self.network_manager.read().await;
+            let network = network_guard.as_ref().ok_or_else(|| {
+                Error::with_context(ErrorKind::Service, "Network manager not available")
+            })?;
+
+            let message = ClientServiceMessage::StreamStart {
+                requester_id: self.node_id.clone(),
+                stream_name: stream_name.to_string(),
+                start_sequence,
+                end_sequence,
+                batch_size,
+            };
+
+            match network
+                .request_service(member.clone(), message, std::time::Duration::from_secs(30))
+                .await
+            {
+                Ok(ClientServiceResponse::StreamBatch {
+                    session_id,
+                    messages,
+                    has_more,
+                    ..
+                }) => return Ok((session_id, messages, has_more)),
+                Ok(_) => {
+                    last_error = Some(Error::with_context(
+                        ErrorKind::Internal,
+                        "Unexpected response type",
+                    ));
+                }
+                Err(e) => {
+                    last_error = Some(Error::with_context(
+                        ErrorKind::Network,
+                        format!("Failed to start stream from {member}: {e}"),
+                    ));
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            Error::with_context(
+                ErrorKind::InvalidState,
+                format!("No available members in group {group_id:?}"),
+            )
+        }))
+    }
+
+    /// Forward a streaming continue request
+    pub async fn forward_streaming_continue(
+        &self,
+        session_id: uuid::Uuid,
+        max_messages: u32,
+    ) -> ConsensusResult<(Vec<crate::services::stream::StoredMessage>, bool)> {
+        // For continuing a session, we need to send to the same node that started it
+        // Since we don't track which node owns which session, we'll need to broadcast
+        // In practice, you might want to track session -> node mapping
+
+        let network_guard = self.network_manager.read().await;
+        let network = network_guard.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Service, "Network manager not available")
+        })?;
+
+        // Get all known nodes from topology
+        let routing_guard = self.routing_service.read().await;
+        let routing = routing_guard.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Service, "Routing service not available")
+        })?;
+
+        let routing_info = routing.get_routing_info().await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        // Try all known nodes
+        let mut all_nodes = std::collections::HashSet::new();
+        for group_info in routing_info.group_routes.values() {
+            all_nodes.extend(group_info.members.iter().cloned());
+        }
+
+        for node in all_nodes {
+            if node == self.node_id {
+                continue;
+            }
+
+            let message = ClientServiceMessage::StreamContinue {
+                requester_id: self.node_id.clone(),
+                session_id,
+                max_messages,
+            };
+
+            match network
+                .request_service(node.clone(), message, std::time::Duration::from_secs(30))
+                .await
+            {
+                Ok(ClientServiceResponse::StreamBatch {
+                    messages, has_more, ..
+                }) => return Ok((messages, has_more)),
+                Ok(ClientServiceResponse::StreamError { error, .. }) => {
+                    return Err(Error::with_context(ErrorKind::Internal, error));
+                }
+                Ok(_) => {
+                    // Node doesn't have this session, try next
+                    continue;
+                }
+                Err(_) => {
+                    // Network error, try next node
+                    continue;
+                }
+            }
+        }
+
+        Err(Error::with_context(
+            ErrorKind::NotFound,
+            format!("Session {session_id} not found on any node"),
+        ))
+    }
+
+    /// Forward a streaming cancel request
+    pub async fn forward_streaming_cancel(&self, session_id: uuid::Uuid) -> ConsensusResult<()> {
+        let network_guard = self.network_manager.read().await;
+        let network = network_guard.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Service, "Network manager not available")
+        })?;
+
+        let routing_guard = self.routing_service.read().await;
+        let routing = routing_guard.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Service, "Routing service not available")
+        })?;
+
+        let routing_info = routing.get_routing_info().await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        // Try all known nodes
+        let mut all_nodes = std::collections::HashSet::new();
+        for group_info in routing_info.group_routes.values() {
+            all_nodes.extend(group_info.members.iter().cloned());
+        }
+
+        for node in all_nodes {
+            if node == self.node_id {
+                continue;
+            }
+
+            let message = ClientServiceMessage::StreamCancel {
+                requester_id: self.node_id.clone(),
+                session_id,
+            };
+
+            match network
+                .request_service(node.clone(), message, std::time::Duration::from_secs(30))
+                .await
+            {
+                Ok(ClientServiceResponse::StreamEnd { .. }) => return Ok(()),
+                Ok(_) | Err(_) => {
+                    // Try next node
+                    continue;
+                }
+            }
+        }
+
+        // Even if we couldn't cancel it, don't error - the session will timeout
+        Ok(())
+    }
 }

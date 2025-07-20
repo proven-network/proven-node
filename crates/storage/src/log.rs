@@ -6,14 +6,16 @@
 //! unnecessary serialization in memory-based storage backends.
 //!
 //! Key features:
-//! - Simple API with only 6 essential methods
+//! - Simple API with only 7 essential methods
 //! - No generic types or forced serialization
 //! - Efficient range scans and atomic operations
 //! - Built-in truncation and compaction support
+//! - Native streaming support for large datasets
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use std::fmt::{Debug, Display};
+use tokio_stream::Stream;
 
 /// Result type for storage operations
 pub type StorageResult<T> = Result<T, StorageError>;
@@ -141,6 +143,27 @@ pub trait LogStorageWithDelete: LogStorage {
     async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool>;
 }
 
+/// Log storage trait that supports streaming reads
+/// This trait is optional and allows storage backends to provide optimized streaming
+#[async_trait]
+pub trait LogStorageStreaming: LogStorage {
+    /// Stream entries from a range [start, end)
+    ///
+    /// Returns a stream of (index, data) pairs. The stream may yield errors inline.
+    /// If end is None, streams until the last available entry.
+    ///
+    /// Implementations should:
+    /// - Use backend-specific optimizations (e.g., RocksDB iterators)
+    /// - Handle concurrent modifications gracefully
+    /// - Yield entries in index order
+    async fn stream_range(
+        &self,
+        namespace: &StorageNamespace,
+        start: u64,
+        end: Option<u64>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>>;
+}
+
 /// Implement LogStorage for Arc<T> where T: LogStorage
 #[async_trait]
 impl<T: LogStorage> LogStorage for std::sync::Arc<T> {
@@ -179,5 +202,18 @@ impl<T: LogStorage> LogStorage for std::sync::Arc<T> {
 impl<T: LogStorageWithDelete> LogStorageWithDelete for std::sync::Arc<T> {
     async fn delete_entry(&self, namespace: &StorageNamespace, index: u64) -> StorageResult<bool> {
         (**self).delete_entry(namespace, index).await
+    }
+}
+
+/// Implement LogStorageStreaming for Arc<T> where T: LogStorageStreaming
+#[async_trait]
+impl<T: LogStorageStreaming> LogStorageStreaming for std::sync::Arc<T> {
+    async fn stream_range(
+        &self,
+        namespace: &StorageNamespace,
+        start: u64,
+        end: Option<u64>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        (**self).stream_range(namespace, start, end).await
     }
 }

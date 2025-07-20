@@ -6,10 +6,12 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_storage::{LogStorage, StorageAdaptor, StorageError, StorageNamespace, StorageResult};
 use rocksdb::{
-    BoundColumnFamily, ColumnFamilyDescriptor, DBWithThreadMode, MultiThreaded, Options, WriteBatch,
+    BoundColumnFamily, ColumnFamilyDescriptor, DBWithThreadMode, IteratorMode, MultiThreaded,
+    Options, WriteBatch,
 };
 use std::{collections::HashMap, path::Path, sync::Arc};
 use tokio::sync::RwLock;
+use tokio_stream::Stream;
 
 /// RocksDB log storage implementation
 #[derive(Clone)]
@@ -319,6 +321,67 @@ impl proven_storage::LogStorageWithDelete for RocksDbStorage {
     }
 }
 
+// Implement LogStorageStreaming for RocksDbStorage
+#[async_trait]
+impl proven_storage::LogStorageStreaming for RocksDbStorage {
+    async fn stream_range(
+        &self,
+        namespace: &StorageNamespace,
+        start: u64,
+        end: Option<u64>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>> {
+        let _cf = self.get_or_create_cf(namespace)?;
+        let start_key = Self::encode_key(start);
+
+        // Clone what we need for the stream
+        let db = self.db.clone();
+        let namespace_str = namespace.as_str().to_string();
+
+        // Create the stream using async_stream
+        let stream = async_stream::stream! {
+            // Get column family inside the stream
+            let cf = match db.cf_handle(&namespace_str) {
+                Some(cf) => cf,
+                None => {
+                    yield Err(StorageError::NamespaceNotFound(namespace_str));
+                    return;
+                }
+            };
+
+            // Create an iterator starting from our key
+            let iter = db.iterator_cf(&cf, IteratorMode::From(&start_key, rocksdb::Direction::Forward));
+
+            for item in iter {
+                match item {
+                    Ok((key, value)) => {
+                        // Decode the key
+                        match Self::decode_key(&key) {
+                            Ok(index) => {
+                                // Check if we've reached the end bound
+                                if let Some(end_idx) = end
+                                    && index >= end_idx {
+                                        break;
+                                    }
+                                yield Ok((index, Bytes::from(value.to_vec())));
+                            }
+                            Err(e) => {
+                                yield Err(e);
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        yield Err(StorageError::Backend(format!("Iterator error: {e}")));
+                        break;
+                    }
+                }
+            }
+        };
+
+        Ok(Box::new(Box::pin(stream)))
+    }
+}
+
 impl std::fmt::Debug for RocksDbStorage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "RocksDbStorage")
@@ -372,7 +435,9 @@ impl StorageAdaptor for RocksDbStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proven_storage::LogStorageStreaming;
     use tempfile::TempDir;
+    use tokio_stream::StreamExt;
 
     #[tokio::test]
     async fn test_rocksdb_storage() {
@@ -397,5 +462,57 @@ mod tests {
         // Test bounds
         let bounds = storage.bounds(&namespace).await.unwrap();
         assert_eq!(bounds, Some((1, 3)));
+    }
+
+    #[tokio::test]
+    async fn test_rocksdb_streaming() {
+        let temp_dir = TempDir::new().unwrap();
+        let storage = RocksDbStorage::new(temp_dir.path()).await.unwrap();
+        let namespace = StorageNamespace::new("test");
+
+        // Append entries
+        let entries = vec![
+            (1, Bytes::from("data 1")),
+            (2, Bytes::from("data 2")),
+            (3, Bytes::from("data 3")),
+            (4, Bytes::from("data 4")),
+            (5, Bytes::from("data 5")),
+        ];
+        storage.append(&namespace, entries).await.unwrap();
+
+        // Test streaming with end bound
+        let mut stream = storage.stream_range(&namespace, 2, Some(4)).await.unwrap();
+
+        let mut results = Vec::new();
+        while let Some(item) = stream.next().await {
+            results.push(item.unwrap());
+        }
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0], (2, Bytes::from("data 2")));
+        assert_eq!(results[1], (3, Bytes::from("data 3")));
+
+        // Test streaming without end bound
+        let mut stream = storage.stream_range(&namespace, 3, None).await.unwrap();
+
+        let mut results = Vec::new();
+        while let Some(item) = stream.next().await {
+            results.push(item.unwrap());
+        }
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0], (3, Bytes::from("data 3")));
+        assert_eq!(results[1], (4, Bytes::from("data 4")));
+        assert_eq!(results[2], (5, Bytes::from("data 5")));
+
+        // Test streaming empty namespace
+        let empty_ns = StorageNamespace::new("empty");
+        let mut stream = storage.stream_range(&empty_ns, 1, None).await.unwrap();
+
+        let mut count = 0;
+        while (stream.next().await).is_some() {
+            count += 1;
+        }
+        assert_eq!(count, 0);
     }
 }

@@ -10,6 +10,7 @@ pub mod manager;
 // Re-export the essential types
 pub use adaptor::StorageAdaptor;
 pub use log::{
-    LogStorage, LogStorageWithDelete, StorageError, StorageKey, StorageNamespace, StorageResult,
+    LogStorage, LogStorageStreaming, LogStorageWithDelete, StorageError, StorageKey,
+    StorageNamespace, StorageResult,
 };
 pub use manager::{ConsensusStorage, StorageManager, StreamStorage};

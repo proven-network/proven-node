@@ -24,7 +24,10 @@ use crate::{
 };
 
 use super::{
-    handlers::{GlobalHandler, GroupHandler, QueryHandler, StreamHandler, StreamReadHandler},
+    handlers::{
+        GlobalHandler, GroupHandler, QueryHandler, StreamHandler, StreamReadHandler,
+        StreamStreamingHandler,
+    },
     network::RequestForwarder,
     types::*,
 };
@@ -48,6 +51,7 @@ where
     group: GroupHandler<T, G, S>,
     stream: StreamHandler<T, G, S>,
     stream_read: StreamReadHandler<S>,
+    stream_streaming: Option<StreamStreamingHandler<S>>,
     query: QueryHandler<T, G, S>,
 }
 
@@ -332,6 +336,9 @@ where
 
         let stream_read_handler = StreamReadHandler::new(self.stream_service.clone());
 
+        // Create streaming handler - StorageAdaptor now requires LogStorageStreaming
+        let stream_streaming = Some(StreamStreamingHandler::new(self.stream_service.clone()));
+
         let query_handler = QueryHandler::new(
             self.group_consensus.clone(),
             self.global_consensus.clone(),
@@ -343,6 +350,7 @@ where
             group: group_handler,
             stream: stream_handler,
             stream_read: stream_read_handler,
+            stream_streaming,
             query: query_handler,
         });
 
@@ -511,6 +519,113 @@ where
 
                             Ok(super::messages::ClientServiceResponse::StreamRead { messages })
                         }
+                        super::messages::ClientServiceMessage::StreamStart {
+                            requester_id: _,
+                            stream_name,
+                            start_sequence,
+                            end_sequence,
+                            batch_size,
+                        } => {
+                            tracing::info!(
+                                "Received stream start request from {} for stream {}",
+                                sender,
+                                stream_name
+                            );
+
+                            let stream_handler =
+                                handlers.stream_streaming.as_ref().ok_or_else(|| {
+                                    proven_network::NetworkError::Internal(
+                                        "Streaming not supported".to_string(),
+                                    )
+                                })?;
+
+                            let (session_id, messages, has_more, next_sequence) = stream_handler
+                                .start_stream(
+                                    sender.clone(),
+                                    stream_name,
+                                    start_sequence,
+                                    end_sequence,
+                                    batch_size,
+                                )
+                                .await
+                                .map_err(|e| {
+                                    proven_network::NetworkError::Internal(format!(
+                                        "Failed to start stream: {e}"
+                                    ))
+                                })?;
+
+                            Ok(super::messages::ClientServiceResponse::StreamBatch {
+                                session_id,
+                                messages,
+                                has_more,
+                                next_sequence,
+                            })
+                        }
+                        super::messages::ClientServiceMessage::StreamContinue {
+                            requester_id: _,
+                            session_id,
+                            max_messages,
+                        } => {
+                            tracing::debug!(
+                                "Received stream continue request from {} for session {}",
+                                sender,
+                                session_id
+                            );
+
+                            let stream_handler =
+                                handlers.stream_streaming.as_ref().ok_or_else(|| {
+                                    proven_network::NetworkError::Internal(
+                                        "Streaming not supported".to_string(),
+                                    )
+                                })?;
+
+                            let (messages, has_more, next_sequence) = stream_handler
+                                .continue_stream(session_id, max_messages)
+                                .await
+                                .map_err(|e| {
+                                    proven_network::NetworkError::Internal(format!(
+                                        "Failed to continue stream: {e}"
+                                    ))
+                                })?;
+
+                            Ok(super::messages::ClientServiceResponse::StreamBatch {
+                                session_id,
+                                messages,
+                                has_more,
+                                next_sequence,
+                            })
+                        }
+                        super::messages::ClientServiceMessage::StreamCancel {
+                            requester_id: _,
+                            session_id,
+                        } => {
+                            tracing::debug!(
+                                "Received stream cancel request from {} for session {}",
+                                sender,
+                                session_id
+                            );
+
+                            let stream_handler =
+                                handlers.stream_streaming.as_ref().ok_or_else(|| {
+                                    proven_network::NetworkError::Internal(
+                                        "Streaming not supported".to_string(),
+                                    )
+                                })?;
+
+                            stream_handler
+                                .cancel_stream(session_id)
+                                .await
+                                .map_err(|e| {
+                                    proven_network::NetworkError::Internal(format!(
+                                        "Failed to cancel stream: {e}"
+                                    ))
+                                })?;
+
+                            Ok(super::messages::ClientServiceResponse::StreamEnd {
+                                session_id,
+                                reason: super::messages::StreamEndReason::Cancelled,
+                            })
+                        }
                     }
                 })
             })
@@ -643,6 +758,222 @@ where
             Error::with_context(crate::error::ErrorKind::Internal, "Response channel closed")
         })?
     }
+
+    /// Check if a stream is local to this node
+    pub async fn is_stream_local(&self, stream_name: &str) -> ConsensusResult<bool> {
+        let routing_guard = self.routing_service.read().await;
+        let routing = routing_guard.as_ref().ok_or_else(|| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                "Routing service not available",
+            )
+        })?;
+
+        let route_info = routing
+            .get_stream_routing_info(stream_name)
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    crate::error::ErrorKind::Service,
+                    format!("Failed to get routing info: {e}"),
+                )
+            })?
+            .ok_or_else(|| {
+                Error::with_context(
+                    crate::error::ErrorKind::NotFound,
+                    format!("Stream '{stream_name}' not found"),
+                )
+            })?;
+
+        let routing_info = routing.get_routing_info().await.map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        if let Some(group_info) = routing_info.group_routes.get(&route_info.group_id) {
+            Ok(group_info.members.contains(&self.node_id))
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Start a streaming session for a stream
+    pub async fn start_streaming_session(
+        &self,
+        stream_name: &str,
+        start_sequence: u64,
+        end_sequence: Option<u64>,
+        batch_size: u32,
+    ) -> ConsensusResult<(
+        uuid::Uuid,
+        Vec<crate::services::stream::StoredMessage>,
+        bool,
+    )> {
+        let routing_guard = self.routing_service.read().await;
+        let routing = routing_guard.as_ref().ok_or_else(|| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                "Routing service not available",
+            )
+        })?;
+
+        let route_info = routing
+            .get_stream_routing_info(stream_name)
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    crate::error::ErrorKind::Service,
+                    format!("Failed to get routing info: {e}"),
+                )
+            })?
+            .ok_or_else(|| {
+                Error::with_context(
+                    crate::error::ErrorKind::NotFound,
+                    format!("Stream '{stream_name}' not found"),
+                )
+            })?;
+
+        let routing_info = routing.get_routing_info().await.map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        if let Some(group_info) = routing_info.group_routes.get(&route_info.group_id) {
+            if group_info.members.contains(&self.node_id) {
+                // Stream is local
+                let handlers_guard = self.handlers.read().await;
+                let handlers = handlers_guard.as_ref().ok_or_else(|| {
+                    Error::with_context(
+                        crate::error::ErrorKind::Service,
+                        "Handlers not initialized",
+                    )
+                })?;
+
+                let streaming_handler = handlers.stream_streaming.as_ref().ok_or_else(|| {
+                    Error::with_context(crate::error::ErrorKind::Service, "Streaming not supported")
+                })?;
+
+                let (session_id, messages, has_more, _next) = streaming_handler
+                    .start_stream(
+                        self.node_id.clone(),
+                        stream_name.to_string(),
+                        start_sequence,
+                        end_sequence,
+                        batch_size,
+                    )
+                    .await?;
+
+                Ok((session_id, messages, has_more))
+            } else {
+                // Stream is remote
+                self.forwarder
+                    .forward_streaming_start(
+                        route_info.group_id,
+                        stream_name,
+                        start_sequence,
+                        end_sequence,
+                        batch_size,
+                    )
+                    .await
+            }
+        } else {
+            Err(Error::with_context(
+                crate::error::ErrorKind::NotFound,
+                format!("Group {:?} not found", route_info.group_id),
+            ))
+        }
+    }
+
+    /// Continue a streaming session
+    pub async fn continue_streaming_session(
+        &self,
+        session_id: uuid::Uuid,
+        max_messages: u32,
+    ) -> ConsensusResult<(Vec<crate::services::stream::StoredMessage>, bool)> {
+        // For continuing a session, we need to know if it's local or remote
+        // We'll check if we have a local session first
+        let handlers_guard = self.handlers.read().await;
+        let handlers = handlers_guard.as_ref().ok_or_else(|| {
+            Error::with_context(crate::error::ErrorKind::Service, "Handlers not initialized")
+        })?;
+
+        if let Some(streaming_handler) = handlers.stream_streaming.as_ref() {
+            // Try to continue the local session
+            match streaming_handler
+                .continue_stream(session_id, max_messages)
+                .await
+            {
+                Ok((messages, has_more, _next)) => Ok((messages, has_more)),
+                Err(e) if *e.kind() == crate::error::ErrorKind::NotFound => {
+                    // Session not found locally, it might be remote
+                    self.forwarder
+                        .forward_streaming_continue(session_id, max_messages)
+                        .await
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            // No local streaming handler, must be remote
+            self.forwarder
+                .forward_streaming_continue(session_id, max_messages)
+                .await
+        }
+    }
+
+    /// Cancel a streaming session
+    pub async fn cancel_streaming_session(&self, session_id: uuid::Uuid) -> ConsensusResult<()> {
+        // Try to cancel locally first
+        let handlers_guard = self.handlers.read().await;
+        let handlers = handlers_guard.as_ref().ok_or_else(|| {
+            Error::with_context(crate::error::ErrorKind::Service, "Handlers not initialized")
+        })?;
+
+        if let Some(streaming_handler) = handlers.stream_streaming.as_ref() {
+            match streaming_handler.cancel_stream(session_id).await {
+                Ok(()) => Ok(()),
+                Err(e) if *e.kind() == crate::error::ErrorKind::NotFound => {
+                    // Session not found locally, try remote
+                    self.forwarder.forward_streaming_cancel(session_id).await
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            // No local handler, must be remote
+            self.forwarder.forward_streaming_cancel(session_id).await
+        }
+    }
+
+    /// Start periodic cleanup for streaming sessions
+    async fn start_streaming_cleanup(&self, mut shutdown_rx: oneshot::Receiver<()>) {
+        let handlers = self.handlers.clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        if let Some(handlers) = handlers.read().await.as_ref()
+                            && let Some(streaming_handler) = handlers.stream_streaming.as_ref() {
+                                streaming_handler.cleanup_expired_sessions().await;
+                                let active_count = streaming_handler.active_session_count().await;
+                                if active_count > 0 {
+                                    debug!("Active streaming sessions: {}", active_count);
+                                }
+                            }
+                    }
+                    _ = &mut shutdown_rx => {
+                        debug!("Streaming cleanup task shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+    }
 }
 
 #[async_trait::async_trait]
@@ -690,11 +1021,14 @@ where
         *self.is_running.write().await = true;
 
         // Set up shutdown channel
-        let (shutdown_tx, _) = oneshot::channel();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
         *self.shutdown.write().await = Some(shutdown_tx);
 
         // Start processing requests
         self.process_requests().await;
+
+        // Start periodic cleanup for streaming sessions
+        self.start_streaming_cleanup(shutdown_rx).await;
 
         info!("ClientService started successfully");
         Ok(())

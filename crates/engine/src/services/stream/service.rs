@@ -4,8 +4,10 @@
 //! the established service patterns in the consensus engine.
 
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::{RwLock, oneshot};
+use tokio_stream::{Stream, StreamExt};
 use tracing::{debug, error, info, warn};
 
 use proven_storage::{
@@ -13,7 +15,10 @@ use proven_storage::{
 };
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::traits::{HealthStatus, ServiceHealth, ServiceLifecycle, SubsystemHealth};
+use crate::foundation::{
+    ConsensusGroupId,
+    traits::{HealthStatus, ServiceHealth, ServiceLifecycle, SubsystemHealth},
+};
 use crate::services::event::{Event, EventEnvelope, EventFilter, EventService, EventType};
 use crate::services::stream::config::RetentionPolicy;
 use crate::services::stream::storage::{
@@ -120,6 +125,7 @@ impl<S: StorageAdaptor> StreamService<S> {
         &self,
         name: StreamName,
         config: StreamConfig,
+        group_id: ConsensusGroupId,
     ) -> ConsensusResult<()> {
         let mut configs = self.stream_configs.write().await;
 
@@ -131,6 +137,24 @@ impl<S: StorageAdaptor> StreamService<S> {
         }
 
         configs.insert(name.clone(), config.clone());
+
+        // Initialize stream metadata
+        let metadata = StreamMetadata {
+            name: name.clone(),
+            config: config.clone(),
+            group_id,
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            last_message_at: None,
+            message_count: 0,
+            total_bytes: 0,
+        };
+        self.stream_metadata
+            .write()
+            .await
+            .insert(name.clone(), metadata);
 
         // Create storage if persistence is required
         if config.persistence_type == PersistenceType::Persistent {
@@ -144,7 +168,10 @@ impl<S: StorageAdaptor> StreamService<S> {
             self.streams.write().await.insert(name.clone(), storage);
         }
 
-        info!("Created stream {} with config {:?}", name, config);
+        info!(
+            "Created stream {} in group {} with config {:?}",
+            name, group_id, config
+        );
         Ok(())
     }
 
@@ -201,39 +228,8 @@ impl<S: StorageAdaptor> StreamService<S> {
     async fn handle_event(&self, envelope: EventEnvelope) -> ConsensusResult<()> {
         debug!("StreamService received event: {:?}", envelope.event);
         match &envelope.event {
-            Event::StreamCreated {
-                name,
-                group_id,
-                config,
-            } => {
-                // Store stream metadata when stream is created
-                let metadata = StreamMetadata {
-                    name: name.clone(),
-                    config: config.clone(),
-                    group_id: *group_id,
-                    created_at: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs(),
-                    last_message_at: None,
-                    message_count: 0,
-                    total_bytes: 0,
-                };
-
-                self.stream_metadata
-                    .write()
-                    .await
-                    .insert(name.clone(), metadata);
-                self.stream_configs
-                    .write()
-                    .await
-                    .insert(name.clone(), config.clone());
-
-                info!(
-                    "Stream {} created in group {} with config {:?}",
-                    name, group_id, config
-                );
-            }
+            // StreamCreated events are now handled synchronously via GlobalConsensusCallbacks
+            // which calls create_stream directly - no need to handle them via async events
             Event::StreamMessageAppended {
                 stream,
                 group_id,
@@ -398,6 +394,106 @@ impl<S: StorageAdaptor> StreamService<S> {
             .read_range(start_sequence, end_sequence)
             .await
             .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))
+    }
+
+    /// Stream messages from a stream
+    ///
+    /// Returns a stream of messages starting from the given sequence.
+    /// If end_sequence is None, streams until the last available message.
+    pub async fn stream_messages(
+        &self,
+        stream_name: &str,
+        start_sequence: u64,
+        end_sequence: Option<u64>,
+    ) -> ConsensusResult<
+        Pin<Box<dyn Stream<Item = ConsensusResult<crate::services::stream::StoredMessage>> + Send>>,
+    > {
+        let stream_name_str = stream_name.to_string();
+        let stream_name = StreamName::new(stream_name);
+
+        // Check if the stream exists
+        let stream_config = self.get_stream_config(&stream_name).await.ok_or_else(|| {
+            Error::with_context(
+                ErrorKind::NotFound,
+                format!("Stream {stream_name} not found"),
+            )
+        })?;
+
+        // For persistent streams, use storage streaming
+        if stream_config.persistence_type == PersistenceType::Persistent {
+            // Use proven_storage::LogStorageStreaming if available
+            let namespace = StorageNamespace::new(format!("stream_{stream_name_str}"));
+            let stream_storage = self.storage_manager.stream_storage();
+
+            // Check if the storage supports streaming
+            if let Ok(storage_stream) = proven_storage::LogStorageStreaming::stream_range(
+                &stream_storage,
+                &namespace,
+                start_sequence,
+                end_sequence,
+            )
+            .await
+            {
+                // Convert storage stream to StoredMessage stream
+                let mapped_stream = storage_stream.map(move |result| {
+                    result
+                        .and_then(|(_seq, bytes)| {
+                            crate::services::stream::deserialize_stored_message(bytes).map_err(
+                                |e| proven_storage::StorageError::InvalidValue(e.to_string()),
+                            )
+                        })
+                        .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))
+                });
+
+                return Ok(Box::pin(mapped_stream));
+            }
+        }
+
+        // Fallback to batch reading for ephemeral streams or if streaming not supported
+        let storage = self.get_stream(&stream_name).await.ok_or_else(|| {
+            Error::with_context(
+                ErrorKind::NotFound,
+                format!("Stream storage {stream_name} not found"),
+            )
+        })?;
+
+        // Create a stream that reads in batches
+        let batch_size = 100;
+        let stream = async_stream::stream! {
+            let mut current_seq = start_sequence;
+
+            loop {
+                let batch_end = match end_sequence {
+                    Some(end) => std::cmp::min(current_seq + batch_size, end),
+                    None => current_seq + batch_size,
+                };
+
+                match storage.read_range(current_seq, batch_end).await {
+                    Ok(messages) => {
+                        if messages.is_empty() {
+                            // No more messages
+                            break;
+                        }
+
+                        for msg in messages {
+                            current_seq = msg.sequence + 1;
+                            yield Ok(msg);
+                        }
+
+                        // If we've reached the end sequence, stop
+                        if let Some(end) = end_sequence && current_seq >= end {
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        yield Err(Error::with_context(ErrorKind::Storage, e.to_string()));
+                        break;
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(stream))
     }
 
     /// List all streams
@@ -683,6 +779,20 @@ mod tests {
         }
     }
 
+    #[async_trait::async_trait]
+    impl proven_storage::LogStorageStreaming for DummyStorage {
+        async fn stream_range(
+            &self,
+            _namespace: &StorageNamespace,
+            _start: u64,
+            _end: Option<u64>,
+        ) -> StorageResult<
+            Box<dyn tokio_stream::Stream<Item = StorageResult<(u64, Bytes)>> + Send + Unpin>,
+        > {
+            Ok(Box::new(tokio_stream::empty()))
+        }
+    }
+
     impl StorageAdaptor for DummyStorage {}
 
     #[tokio::test]
@@ -728,9 +838,10 @@ mod tests {
         };
 
         // Create stream
+        let group_id = ConsensusGroupId::new(1);
         assert!(
             service
-                .create_stream(stream_name.clone(), stream_config.clone())
+                .create_stream(stream_name.clone(), stream_config.clone(), group_id)
                 .await
                 .is_ok()
         );
@@ -738,7 +849,7 @@ mod tests {
         // Should fail to create duplicate
         assert!(
             service
-                .create_stream(stream_name.clone(), stream_config)
+                .create_stream(stream_name.clone(), stream_config, group_id)
                 .await
                 .is_err()
         );
