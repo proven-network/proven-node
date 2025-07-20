@@ -307,6 +307,9 @@ where
         global_consensus_service
             .set_routing_service(routing_service.clone())
             .await;
+        global_consensus_service
+            .set_stream_service(stream_service.clone())
+            .await;
 
         // Wire up RoutingService dependencies
         routing_service

@@ -37,6 +37,9 @@ type ConsensusLayer<S> = Arc<RwLock<Option<Arc<GlobalConsensusLayer<ConsensusSto
 /// Type alias for the group consensus service
 type GroupConsensusServiceRef<T, G, S> = Arc<RwLock<Option<Arc<GroupConsensusService<T, G, S>>>>>;
 
+/// Type alias for the stream service
+type StreamServiceRef<S> = Arc<RwLock<Option<Arc<crate::services::stream::StreamService<S>>>>>;
+
 /// Global consensus service
 pub struct GlobalConsensusService<T, G, S>
 where
@@ -70,6 +73,8 @@ where
     routing_service: Arc<RwLock<Option<Arc<crate::services::routing::RoutingService>>>>,
     /// Group consensus service for direct group creation
     group_consensus_service: GroupConsensusServiceRef<T, G, S>,
+    /// Stream service for stream restoration
+    stream_service: StreamServiceRef<S>,
 }
 
 impl<T, G, S> GlobalConsensusService<T, G, S>
@@ -99,6 +104,7 @@ where
             cancellation_token: Arc::new(RwLock::new(None)),
             routing_service: Arc::new(RwLock::new(None)),
             group_consensus_service: Arc::new(RwLock::new(None)),
+            stream_service: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -128,6 +134,14 @@ where
         group_consensus_service: Arc<GroupConsensusService<T, G, S>>,
     ) {
         *self.group_consensus_service.write().await = Some(group_consensus_service);
+    }
+
+    /// Set stream service for stream restoration
+    pub async fn set_stream_service(
+        &self,
+        stream_service: Arc<crate::services::stream::StreamService<S>>,
+    ) {
+        *self.stream_service.write().await = Some(stream_service);
     }
 
     /// Start the service
@@ -255,6 +269,7 @@ where
         let event_publisher = self.event_publisher.clone();
         let routing_service = self.routing_service.clone();
         let group_consensus_service = self.group_consensus_service.clone();
+        let stream_service = self.stream_service.clone();
 
         Arc::new(move |event| {
             let consensus_layer = consensus_layer.clone();
@@ -266,6 +281,7 @@ where
             let event_publisher = event_publisher.clone();
             let routing_service = routing_service.clone();
             let group_consensus_service = group_consensus_service.clone();
+            let stream_service = stream_service.clone();
 
             Box::pin(async move {
                 match event {
@@ -286,12 +302,14 @@ where
                         // Extract the actual service references from the RwLock<Option<Arc<...>>>
                         let routing_ref = routing_service.read().await.clone();
                         let group_consensus_ref = group_consensus_service.read().await.clone();
+                        let stream_service_ref = stream_service.read().await.clone();
 
                         let callbacks = Arc::new(GlobalConsensusCallbacksImpl::new(
                             node_id.clone(),
                             event_publisher.clone(),
                             routing_ref,
                             group_consensus_ref,
+                            stream_service_ref,
                         ));
 
                         let layer = match Self::create_consensus_layer(
@@ -416,12 +434,14 @@ where
                         // Extract the actual service references from the RwLock<Option<Arc<...>>>
                         let routing_ref = routing_service.read().await.clone();
                         let group_consensus_ref = group_consensus_service.read().await.clone();
+                        let stream_service_ref = stream_service.read().await.clone();
 
                         let callbacks = Arc::new(GlobalConsensusCallbacksImpl::new(
                             node_id.clone(),
                             event_publisher.clone(),
                             routing_ref,
                             group_consensus_ref,
+                            stream_service_ref,
                         ));
 
                         let layer = match Self::create_consensus_layer(

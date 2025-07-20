@@ -14,7 +14,7 @@ use crate::{
     services::{
         event::{Event, EventPublisher},
         group_consensus::GroupConsensusService,
-        stream::StreamName,
+        stream::{StreamName, StreamService},
     },
 };
 
@@ -29,6 +29,7 @@ where
     event_publisher: Option<EventPublisher>,
     routing_service: Option<Arc<crate::services::routing::RoutingService>>,
     group_consensus_service: Option<Arc<GroupConsensusService<T, G, S>>>,
+    stream_service: Option<Arc<StreamService<S>>>,
 }
 
 impl<T, G, S> GlobalConsensusCallbacksImpl<T, G, S>
@@ -43,12 +44,14 @@ where
         event_publisher: Option<EventPublisher>,
         routing_service: Option<Arc<crate::services::routing::RoutingService>>,
         group_consensus_service: Option<Arc<GroupConsensusService<T, G, S>>>,
+        stream_service: Option<Arc<StreamService<S>>>,
     ) -> Self {
         Self {
             node_id,
             event_publisher,
             routing_service,
             group_consensus_service,
+            stream_service,
         }
     }
 }
@@ -129,7 +132,7 @@ where
             .collect();
 
         if let Some(ref group_consensus) = self.group_consensus_service {
-            for group_info in my_groups {
+            for group_info in my_groups.iter() {
                 tracing::info!("Synchronizing local group {:?}", group_info.id);
                 if let Err(e) = group_consensus
                     .create_group(group_info.id, group_info.members.clone())
@@ -140,6 +143,39 @@ where
                         group_info.id,
                         e
                     );
+                }
+            }
+        }
+
+        // Restore streams for groups where this node is a member
+        if let Some(ref stream_service) = self.stream_service {
+            let all_streams = state.get_all_streams().await;
+
+            // Get the group IDs where this node is a member
+            let my_group_ids: std::collections::HashSet<_> =
+                my_groups.iter().map(|g| g.id).collect();
+
+            // Filter streams that belong to our groups
+            for stream_info in all_streams {
+                if my_group_ids.contains(&stream_info.group_id) {
+                    tracing::info!(
+                        "Restoring stream {} in group {:?}",
+                        stream_info.name,
+                        stream_info.group_id
+                    );
+
+                    // Create the stream in StreamService
+                    if let Err(e) = stream_service
+                        .create_stream(stream_info.name.clone(), stream_info.config.clone())
+                        .await
+                    {
+                        // Stream might already exist, which is fine
+                        tracing::debug!(
+                            "Failed to restore stream {} (may already exist): {}",
+                            stream_info.name,
+                            e
+                        );
+                    }
                 }
             }
         }
