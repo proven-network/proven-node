@@ -5,6 +5,7 @@ mod callbacks;
 mod config;
 mod messages;
 mod service;
+mod topology_monitor;
 
 pub use adaptor::{GlobalNetworkFactory, GlobalRaftNetworkAdapter};
 pub use config::{GlobalConsensusConfig, ServiceState};

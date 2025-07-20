@@ -9,6 +9,7 @@ use openraft::raft::{
 };
 
 use crate::consensus::global::{GlobalRequest, GlobalResponse, GlobalTypeConfig};
+use proven_topology::NodeId;
 
 /// Global consensus service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +23,15 @@ pub enum GlobalConsensusMessage {
     InstallSnapshot(InstallSnapshotRequest<GlobalTypeConfig>),
     /// Global-level consensus request
     Consensus(GlobalRequest),
+    /// Check if a cluster already exists
+    CheckClusterExists(CheckClusterExistsRequest),
+}
+
+/// Request to check if a cluster already exists
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckClusterExistsRequest {
+    /// The node ID making the request
+    pub node_id: NodeId,
 }
 
 /// Global consensus service response
@@ -37,6 +47,21 @@ pub enum GlobalConsensusResponse {
     InstallSnapshot(InstallSnapshotResponse<GlobalTypeConfig>),
     /// Application-level consensus response
     Consensus(GlobalResponse),
+    /// Response to cluster exists check
+    CheckClusterExists(CheckClusterExistsResponse),
+}
+
+/// Response to check if a cluster already exists
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckClusterExistsResponse {
+    /// Whether this node has an initialized cluster
+    pub cluster_exists: bool,
+    /// Current cluster leader if known
+    pub current_leader: Option<NodeId>,
+    /// Current term
+    pub current_term: u64,
+    /// Members of the cluster if known
+    pub members: Vec<NodeId>,
 }
 
 impl ServiceMessage for GlobalConsensusMessage {

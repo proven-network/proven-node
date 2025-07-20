@@ -140,106 +140,41 @@ impl TestCluster {
     ) {
         let mut engines = Vec::new();
         let mut node_infos = Vec::new();
-        let mut network_managers = Vec::new();
-        let mut transports = Vec::new();
-        let mut topology_managers = Vec::new();
 
-        // First, create all nodes without starting anything
-        // This ensures all nodes are in governance before any network/engine starts
-        for _ in 0..count {
-            let (engine, info, network_manager, transport, topology_manager) =
-                self.create_tcp_node_without_starting().await;
+        // Create and fully start each node one at a time
+        // This ensures nodes are added to topology incrementally
+        for i in 0..count {
+            info!("Creating and starting node {} of {}", i + 1, count);
+
+            let (engine, node_info) = self.create_tcp_node().await;
+
+            info!(
+                "Node {} started: {} on port {}",
+                i + 1,
+                node_info.node_id,
+                node_info.port
+            );
+
             engines.push(engine);
-            node_infos.push(info);
-            network_managers.push(network_manager);
-            transports.push(transport);
-            topology_managers.push(topology_manager);
+            node_infos.push(node_info);
+
+            // Give a small delay between nodes to allow topology updates to propagate
+            if i < count - 1 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
         }
 
-        // Now start all TCP transports - this binds the TCP listeners
-        for (i, transport) in transports.iter().enumerate() {
-            info!("Starting TCP transport {} of {}", i + 1, transports.len());
-            let actual_addr = transport
-                .start()
-                .await
-                .expect("Failed to start TCP transport");
-            info!("TCP transport {} listening on {}", i + 1, actual_addr);
-        }
-
-        // Now start all topology managers
-        // This ensures all nodes are in governance before topology is refreshed
-        for (i, topology_manager) in topology_managers.iter().enumerate() {
-            info!(
-                "Starting topology manager {} of {}",
-                i + 1,
-                topology_managers.len()
-            );
-            topology_manager
-                .start()
-                .await
-                .expect("Failed to start topology manager");
-        }
-
-        // Now start all network managers
-        // This ensures all TCP listeners are ready before discovery begins
-        for (i, network_manager) in network_managers.iter().enumerate() {
-            info!(
-                "Starting network manager {} of {}",
-                i + 1,
-                network_managers.len()
-            );
-            network_manager
-                .start()
-                .await
-                .expect("Failed to start network manager");
-        }
-
-        // Give TCP listeners more time to bind and be ready to accept connections
-        info!("Waiting for TCP listeners to be ready...");
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        // Now start all engines in parallel
-        // This ensures all namespace handlers are registered before discovery begins
-        let engine_count = engines.len();
-        info!("Starting {} engines in parallel", engine_count);
-
-        let mut start_futures = Vec::new();
-        for (i, engine) in engines.iter_mut().enumerate() {
-            info!("Preparing to start engine {} of {}", i + 1, engine_count);
-            start_futures.push(engine.start());
-        }
-
-        // Wait for all engines to start
-        let results = futures::future::join_all(start_futures).await;
-        for (i, result) in results.into_iter().enumerate() {
-            result.unwrap_or_else(|e| panic!("Failed to start engine {i}: {e:?}"));
-        }
-        info!("All {} engines started successfully", engine_count);
-
-        // Give services more time to fully initialize and discover each other
-        info!("All engines started, waiting for discovery and cluster formation");
-
-        // Log created nodes
-        for (i, info) in node_infos.iter().enumerate() {
-            info!("Node {}: {} on port {}", i + 1, info.node_id, info.port);
-        }
-
-        // Give topology managers time to refresh and see all nodes
-        // The refresh happens periodically, so we need to wait a bit
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        info!("All {} nodes created and started successfully", count);
 
         (engines, node_infos)
     }
 
-    /// Create a single TCP node without starting the engine or network manager
-    async fn create_tcp_node_without_starting(
+    /// Create a single TCP node and start it
+    async fn create_tcp_node(
         &mut self,
     ) -> (
         Engine<TcpTransport<MockTopologyAdaptor, MockAttestor>, MockTopologyAdaptor, MemoryStorage>,
         NodeInfo,
-        Arc<NetworkManager<TcpTransport<MockTopologyAdaptor, MockAttestor>, MockTopologyAdaptor>>,
-        Arc<TcpTransport<MockTopologyAdaptor, MockAttestor>>,
-        Arc<TopologyManager<MockTopologyAdaptor>>,
     ) {
         // Generate node identity
         let signing_key = SigningKey::generate(&mut OsRng);
@@ -259,11 +194,15 @@ impl TestCluster {
         let all_nodes = governance.get_topology().await.unwrap();
         info!("Governance now has {} nodes", all_nodes.len());
 
-        // Start topology manager
-        let topology_manager = Arc::new(TopologyManager::new(governance.clone(), node_id.clone()));
-
-        // Don't start topology manager here - we'll start it after all nodes are created
-        // to ensure all nodes see the complete topology
+        // Create topology manager with shorter refresh interval for tests
+        let topology_config = proven_topology::TopologyManagerConfig {
+            refresh_interval: std::time::Duration::from_secs(2), // 2 seconds for tests
+        };
+        let topology_manager = Arc::new(TopologyManager::with_config(
+            governance.clone(),
+            node_id.clone(),
+            topology_config,
+        ));
 
         // Create TCP transport
         let tcp_config = TcpConfig {
@@ -280,11 +219,9 @@ impl TestCluster {
             signing_key.clone(),
             topology_manager.clone(),
         );
-
-        // Don't start the TCP listener here - we'll do it later after all nodes are created
         let transport = Arc::new(transport);
 
-        // Create network manager but DON'T start it yet
+        // Create network manager
         let network_manager = Arc::new(NetworkManager::new(
             node_id.clone(),
             transport.clone(),
@@ -297,7 +234,7 @@ impl TestCluster {
 
         // Create engine
         let config = self.create_test_config();
-        let engine = EngineBuilder::new(node_id.clone())
+        let mut engine = EngineBuilder::new(node_id.clone())
             .with_config(config)
             .with_network(network_manager.clone())
             .with_topology(topology_manager.clone())
@@ -306,7 +243,27 @@ impl TestCluster {
             .await
             .expect("Failed to build engine");
 
-        // Don't start the engine here - it will be started later
+        // Start all components
+        let actual_addr = transport
+            .start()
+            .await
+            .expect("Failed to start TCP transport");
+        info!("TCP transport listening on {}", actual_addr);
+
+        topology_manager
+            .start()
+            .await
+            .expect("Failed to start topology manager");
+
+        network_manager
+            .start()
+            .await
+            .expect("Failed to start network manager");
+
+        engine.start().await.expect("Failed to start engine");
+
+        // Give services a moment to fully initialize
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         let node_info = NodeInfo {
             node_id: node_id.clone(),
@@ -315,50 +272,6 @@ impl TestCluster {
         };
 
         self.nodes.push(node_info.clone());
-
-        (
-            engine,
-            node_info,
-            network_manager,
-            transport,
-            topology_manager,
-        )
-    }
-
-    /// Create a single TCP node and start it (for single-node tests)
-    async fn create_tcp_node(
-        &mut self,
-    ) -> (
-        Engine<TcpTransport<MockTopologyAdaptor, MockAttestor>, MockTopologyAdaptor, MemoryStorage>,
-        NodeInfo,
-    ) {
-        let (mut engine, node_info, network_manager, transport, topology_manager) =
-            self.create_tcp_node_without_starting().await;
-
-        // Start the TCP transport first
-        let actual_addr = transport
-            .start()
-            .await
-            .expect("Failed to start TCP transport");
-        info!("TCP transport listening on {}", actual_addr);
-
-        // Start the topology manager
-        topology_manager
-            .start()
-            .await
-            .expect("Failed to start topology manager");
-
-        // Start the network manager
-        network_manager
-            .start()
-            .await
-            .expect("Failed to start network manager");
-
-        // Start the engine
-        engine.start().await.expect("Failed to start engine");
-
-        // Give services a moment to fully initialize
-        tokio::time::sleep(Duration::from_millis(100)).await;
 
         (engine, node_info)
     }
@@ -374,6 +287,152 @@ impl TestCluster {
             HashSet::new(),
         );
         let _ = gov.add_node(node);
+    }
+
+    /// Create a single TCP node with RocksDB and start it
+    async fn create_tcp_node_with_rocksdb(
+        &mut self,
+        path: std::path::PathBuf,
+        signing_key: Option<SigningKey>,
+        existing_port: Option<u16>,
+    ) -> (
+        Engine<
+            TcpTransport<MockTopologyAdaptor, MockAttestor>,
+            MockTopologyAdaptor,
+            RocksDbStorage,
+        >,
+        NodeInfo,
+    ) {
+        // Use provided signing key or generate new one
+        let signing_key = signing_key.unwrap_or_else(|| SigningKey::generate(&mut OsRng));
+        let node_id = NodeId::from(signing_key.verifying_key());
+        let port = existing_port.unwrap_or_else(allocate_port);
+
+        info!("Creating TCP node {} on port {}", node_id, port);
+
+        // Only add node to governance if it's not already there (i.e., no existing port)
+        if existing_port.is_none() {
+            self.add_node_to_governance(&signing_key, port).await;
+            info!("Added node {} to governance with port {}", node_id, port);
+        } else {
+            info!(
+                "Node {} already in governance, reusing port {}",
+                node_id, port
+            );
+        }
+
+        // Create governance instance for this node
+        let governance = self.governance.read().await.clone();
+
+        // Log how many nodes are in governance now
+        let all_nodes = governance.get_topology().await.unwrap();
+        info!("Governance now has {} nodes", all_nodes.len());
+
+        // Create topology manager with shorter refresh interval for tests
+        let topology_config = proven_topology::TopologyManagerConfig {
+            refresh_interval: std::time::Duration::from_secs(2), // 2 seconds for tests
+        };
+        let topology_manager = Arc::new(TopologyManager::with_config(
+            governance.clone(),
+            node_id.clone(),
+            topology_config,
+        ));
+
+        // Create TCP transport
+        let tcp_config = TcpConfig {
+            transport: TransportConfig::default(),
+            local_addr: format!("127.0.0.1:{port}").parse().unwrap(),
+            retry_attempts: 3,
+            retry_delay_ms: 500,
+        };
+
+        let transport = TcpTransport::new(
+            tcp_config,
+            Arc::new(self.attestor.clone()),
+            governance,
+            signing_key.clone(),
+            topology_manager.clone(),
+        );
+        let transport = Arc::new(transport);
+
+        // Create network manager
+        let network_manager = Arc::new(NetworkManager::new(
+            node_id.clone(),
+            transport.clone(),
+            topology_manager.clone(),
+        ));
+
+        // Check if we already have a storage manager for this node (for restarts)
+        let node_key = node_id.to_string();
+        let existing_manager = {
+            let managers = self.rocksdb_storage_managers.lock().unwrap();
+            managers.get(&node_key).cloned()
+        };
+
+        let storage_manager = if let Some(existing) = existing_manager {
+            info!("Reusing existing storage manager for node {}", node_id);
+            existing
+        } else {
+            // Ensure the directory exists
+            std::fs::create_dir_all(&path).expect("Failed to create directory for RocksDB");
+
+            // Create RocksDB storage and storage manager
+            let storage = RocksDbStorage::new(path)
+                .await
+                .expect("Failed to create RocksDB storage");
+            let storage_manager = Arc::new(StorageManager::new(storage));
+
+            // Store it for future reuse
+            {
+                let mut managers = self.rocksdb_storage_managers.lock().unwrap();
+                managers.insert(node_key.clone(), storage_manager.clone());
+            }
+            info!("Created new storage manager for node {}", node_id);
+            storage_manager
+        };
+
+        // Create engine
+        let config = self.create_test_config();
+        let mut engine = EngineBuilder::new(node_id.clone())
+            .with_config(config)
+            .with_network(network_manager.clone())
+            .with_topology(topology_manager.clone())
+            .with_storage(storage_manager)
+            .build()
+            .await
+            .expect("Failed to build engine");
+
+        // Start all components
+        let actual_addr = transport
+            .start()
+            .await
+            .expect("Failed to start TCP transport");
+        info!("TCP transport listening on {}", actual_addr);
+
+        topology_manager
+            .start()
+            .await
+            .expect("Failed to start topology manager");
+
+        network_manager
+            .start()
+            .await
+            .expect("Failed to start network manager");
+
+        engine.start().await.expect("Failed to start engine");
+
+        // Give services a moment to fully initialize
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let node_info = NodeInfo {
+            node_id: node_id.clone(),
+            signing_key,
+            port,
+        };
+
+        self.nodes.push(node_info.clone());
+
+        (engine, node_info)
     }
 
     /// Create test engine configuration
@@ -581,9 +640,6 @@ impl TestCluster {
     ) {
         let mut engines = Vec::new();
         let mut node_infos = Vec::new();
-        let mut network_managers = Vec::new();
-        let mut transports = Vec::new();
-        let mut topology_managers = Vec::new();
 
         // Create a temp dir if we don't have one yet
         if self.temp_dirs.is_empty() {
@@ -592,243 +648,57 @@ impl TestCluster {
         }
         let temp_dir_path = self.temp_dirs.last().unwrap().path().to_path_buf();
 
-        // First, create all nodes without starting anything
-        // This ensures all nodes are in governance before any network/engine starts
+        // Create and fully start each node one at a time
+        // This ensures nodes are added to topology incrementally
         for i in 0..count {
+            info!("Creating and starting RocksDB node {} of {}", i + 1, count);
+
             // Use existing node info if provided (for restarts), otherwise generate new
             let (signing_key, node_id, existing_port) =
                 if let Some(ref existing) = existing_node_infos {
                     let info = &existing[i];
                     (
-                        info.signing_key.clone(),
+                        Some(info.signing_key.clone()),
                         info.node_id.clone(),
                         Some(info.port),
                     )
                 } else {
-                    let signing_key = SigningKey::generate(&mut OsRng);
-                    let node_id = NodeId::from(signing_key.verifying_key());
-                    (signing_key, node_id, None)
+                    let key = SigningKey::generate(&mut OsRng);
+                    let id = NodeId::from(key.verifying_key());
+                    (Some(key), id, None)
                 };
 
             // Use cluster ID and node ID in path to ensure consistency across restarts
             let path = temp_dir_path
                 .join(&self.cluster_id)
                 .join(format!("node_{node_id}"));
-            let (engine, info, network_manager, transport, topology_manager) = self
-                .create_tcp_node_without_starting_with_rocksdb(path, signing_key, existing_port)
+
+            let (engine, node_info) = self
+                .create_tcp_node_with_rocksdb(path, signing_key, existing_port)
                 .await;
+
+            info!(
+                "RocksDB node {} started: {} on port {}",
+                i + 1,
+                node_info.node_id,
+                node_info.port
+            );
+
             engines.push(engine);
-            node_infos.push(info);
-            network_managers.push(network_manager);
-            transports.push(transport);
-            topology_managers.push(topology_manager);
+            node_infos.push(node_info);
+
+            // Give a small delay between nodes to allow topology updates to propagate
+            if i < count - 1 {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
         }
 
-        // Now start all TCP transports - this binds the TCP listeners
-        for (i, transport) in transports.iter().enumerate() {
-            info!("Starting TCP transport {} of {}", i + 1, transports.len());
-            let actual_addr = transport
-                .start()
-                .await
-                .expect("Failed to start TCP transport");
-            info!("TCP transport {} listening on {}", i + 1, actual_addr);
-        }
-
-        // Now start all topology managers
-        // This ensures all nodes are in governance before topology is refreshed
-        for (i, topology_manager) in topology_managers.iter().enumerate() {
-            info!(
-                "Starting topology manager {} of {}",
-                i + 1,
-                topology_managers.len()
-            );
-            topology_manager
-                .start()
-                .await
-                .expect("Failed to start topology manager");
-        }
-
-        // Now start all network managers
-        // This ensures all TCP listeners are ready before discovery begins
-        for (i, network_manager) in network_managers.iter().enumerate() {
-            info!(
-                "Starting network manager {} of {}",
-                i + 1,
-                network_managers.len()
-            );
-            network_manager
-                .start()
-                .await
-                .expect("Failed to start network manager");
-        }
-
-        // Give TCP listeners more time to bind and be ready to accept connections
-        info!("Waiting for TCP listeners to be ready...");
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        // Now start all engines in parallel
-        // This ensures all namespace handlers are registered before discovery begins
-        let engine_count = engines.len();
-        info!("Starting {} engines in parallel", engine_count);
-
-        let mut start_futures = Vec::new();
-        for (i, engine) in engines.iter_mut().enumerate() {
-            info!("Preparing to start engine {} of {}", i + 1, engine_count);
-            start_futures.push(engine.start());
-        }
-
-        // Wait for all engines to start
-        let results = futures::future::join_all(start_futures).await;
-        for (i, result) in results.into_iter().enumerate() {
-            result.unwrap_or_else(|e| panic!("Failed to start engine {i}: {e:?}"));
-        }
-        info!("All {} engines started successfully", engine_count);
-
-        // Give services more time to fully initialize and discover each other
-        info!("All engines started, waiting for discovery and cluster formation");
-
-        // Log created nodes
-        for (i, info) in node_infos.iter().enumerate() {
-            info!("Node {}: {} on port {}", i + 1, info.node_id, info.port);
-        }
-
-        // Give topology managers time to refresh and see all nodes
-        // The refresh happens periodically, so we need to wait a bit
-        tokio::time::sleep(Duration::from_secs(3)).await;
-
-        (engines, node_infos)
-    }
-
-    /// Create a single TCP node without starting the engine or network manager, using RocksDB storage
-    async fn create_tcp_node_without_starting_with_rocksdb(
-        &mut self,
-        path: std::path::PathBuf,
-        signing_key: SigningKey,
-        existing_port: Option<u16>,
-    ) -> (
-        Engine<
-            TcpTransport<MockTopologyAdaptor, MockAttestor>,
-            MockTopologyAdaptor,
-            RocksDbStorage,
-        >,
-        NodeInfo,
-        Arc<NetworkManager<TcpTransport<MockTopologyAdaptor, MockAttestor>, MockTopologyAdaptor>>,
-        Arc<TcpTransport<MockTopologyAdaptor, MockAttestor>>,
-        Arc<TopologyManager<MockTopologyAdaptor>>,
-    ) {
-        // Use the provided signing key
-        let node_id = NodeId::from(signing_key.verifying_key());
-        let port = existing_port.unwrap_or_else(allocate_port);
-
-        info!("Creating TCP node {} on port {}", node_id, port);
-
-        // Only add node to governance if it's not already there (i.e., no existing port)
-        if existing_port.is_none() {
-            self.add_node_to_governance(&signing_key, port).await;
-            info!("Added node {} to governance with port {}", node_id, port);
-        } else {
-            info!(
-                "Node {} already in governance, reusing port {}",
-                node_id, port
-            );
-        }
-
-        // Create governance instance for this node
-        let governance = self.governance.read().await.clone();
-
-        // Log how many nodes are in governance now
-        let all_nodes = governance.get_topology().await.unwrap();
-        info!("Governance now has {} nodes", all_nodes.len());
-
-        // Start topology manager
-        let topology_manager = Arc::new(TopologyManager::new(governance.clone(), node_id.clone()));
-
-        // Don't start topology manager here - we'll start it after all nodes are created
-        // to ensure all nodes see the complete topology
-
-        // Create TCP transport
-        let tcp_config = TcpConfig {
-            transport: TransportConfig::default(),
-            local_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            retry_attempts: 3,
-            retry_delay_ms: 500,
-        };
-
-        let transport = TcpTransport::new(
-            tcp_config,
-            Arc::new(self.attestor.clone()),
-            governance,
-            signing_key.clone(),
-            topology_manager.clone(),
+        info!(
+            "All {} RocksDB nodes created and started successfully",
+            count
         );
 
-        // Don't start the TCP listener here - we'll do it later after all nodes are created
-        let transport = Arc::new(transport);
-
-        // Create network manager but DON'T start it yet
-        let network_manager = Arc::new(NetworkManager::new(
-            node_id.clone(),
-            transport.clone(),
-            topology_manager.clone(),
-        ));
-
-        // Check if we already have a storage manager for this node (for restarts)
-        let node_key = node_id.to_string();
-        let existing_manager = {
-            let managers = self.rocksdb_storage_managers.lock().unwrap();
-            managers.get(&node_key).cloned()
-        };
-
-        let storage_manager = if let Some(existing) = existing_manager {
-            info!("Reusing existing storage manager for node {}", node_id);
-            existing
-        } else {
-            // Ensure the directory exists
-            std::fs::create_dir_all(&path).expect("Failed to create directory for RocksDB");
-
-            // Create RocksDB storage and storage manager
-            let storage = RocksDbStorage::new(path)
-                .await
-                .expect("Failed to create RocksDB storage");
-            let storage_manager = Arc::new(StorageManager::new(storage));
-
-            // Store it for future reuse
-            {
-                let mut managers = self.rocksdb_storage_managers.lock().unwrap();
-                managers.insert(node_key.clone(), storage_manager.clone());
-            }
-            info!("Created new storage manager for node {}", node_id);
-            storage_manager
-        };
-
-        // Create engine
-        let config = self.create_test_config();
-        let engine = EngineBuilder::new(node_id.clone())
-            .with_config(config)
-            .with_network(network_manager.clone())
-            .with_topology(topology_manager.clone())
-            .with_storage(storage_manager)
-            .build()
-            .await
-            .expect("Failed to build engine");
-
-        // Don't start the engine here - it will be started later
-
-        let node_info = NodeInfo {
-            node_id: node_id.clone(),
-            signing_key,
-            port,
-        };
-
-        self.nodes.push(node_info.clone());
-
-        (
-            engine,
-            node_info,
-            network_manager,
-            transport,
-            topology_manager,
-        )
+        (engines, node_infos)
     }
 
     /// Stop a specific engine by index
@@ -927,5 +797,54 @@ impl TestCluster {
         }
         info!("All engines started successfully");
         Ok(())
+    }
+
+    /// Wait for all nodes to see the expected topology size
+    pub async fn wait_for_topology_size<T, G, L>(
+        &self,
+        engines: &[Engine<T, G, L>],
+        expected_size: usize,
+        timeout: Duration,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        T: proven_transport::Transport,
+        G: proven_topology::TopologyAdaptor,
+        L: proven_storage::StorageAdaptor,
+    {
+        let start = tokio::time::Instant::now();
+
+        loop {
+            // Force refresh on all nodes
+            for engine in engines {
+                let _ = engine.topology_manager().force_refresh().await;
+            }
+
+            // Check if all nodes see the expected size
+            let mut all_see_size = true;
+            for (i, engine) in engines.iter().enumerate() {
+                let nodes = engine.topology_manager().get_cached_nodes().await?;
+                if nodes.len() != expected_size {
+                    all_see_size = false;
+                    tracing::debug!(
+                        "Node {} sees {} nodes, expected {}",
+                        i,
+                        nodes.len(),
+                        expected_size
+                    );
+                    break;
+                }
+            }
+
+            if all_see_size {
+                tracing::info!("All nodes see {} nodes in topology", expected_size);
+                return Ok(());
+            }
+
+            if start.elapsed() > timeout {
+                return Err("Timeout waiting for topology size".into());
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 }

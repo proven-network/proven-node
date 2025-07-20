@@ -152,6 +152,14 @@ where
         self.topology_manager = Some(topology);
     }
 
+    /// Get the topology manager
+    pub fn topology_manager(&self) -> Arc<proven_topology::TopologyManager<G>> {
+        self.topology_manager
+            .as_ref()
+            .expect("Topology manager not set")
+            .clone()
+    }
+
     /// Start the engine
     pub async fn start(&mut self) -> ConsensusResult<()> {
         // Check state
@@ -402,6 +410,21 @@ where
                     format!("Failed to get group state: {e}"),
                 )
             })
+    }
+
+    /// Get global consensus membership information
+    pub async fn global_consensus_members(&self) -> ConsensusResult<Vec<NodeId>> {
+        self.ensure_running().await?;
+
+        let global_consensus = self.global_consensus_service.as_ref().ok_or_else(|| {
+            Error::with_context(
+                ErrorKind::InvalidState,
+                "Global consensus service not initialized",
+            )
+        })?;
+
+        // Get members from the global consensus service
+        Ok(global_consensus.get_members().await)
     }
 }
 

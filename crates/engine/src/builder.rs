@@ -317,7 +317,6 @@ where
                 "stream".to_string(),  // Start stream service before consensus
                 "group_consensus".to_string(), // Start group_consensus before global_consensus
                 "global_consensus".to_string(), // So it's ready to receive events
-                "cluster".to_string(),
                 "pubsub".to_string(),
                 "client".to_string(),
                 "migration".to_string(),

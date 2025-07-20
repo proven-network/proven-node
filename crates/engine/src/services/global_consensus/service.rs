@@ -1,6 +1,7 @@
 //! Global consensus service
 
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -15,6 +16,7 @@ use proven_transport::Transport;
 use super::{
     callbacks::GlobalConsensusCallbacksImpl,
     config::{GlobalConsensusConfig, ServiceState},
+    topology_monitor::TopologyMonitor,
 };
 use crate::{
     consensus::global::{
@@ -38,6 +40,16 @@ type GroupConsensusServiceRef<T, G, S> = Arc<RwLock<Option<Arc<GroupConsensusSer
 
 /// Type alias for the stream service
 type StreamServiceRef<S> = Arc<RwLock<Option<Arc<crate::services::stream::StreamService<S>>>>>;
+
+/// Type alias for Raft metrics receiver
+type RaftMetricsReceiver =
+    tokio::sync::watch::Receiver<openraft::RaftMetrics<crate::consensus::global::GlobalTypeConfig>>;
+
+/// Type alias for the topology monitor
+type TopologyMonitorRef<G, S> = Arc<RwLock<Option<Arc<TopologyMonitor<G, S>>>>>;
+
+/// Type alias for Raft metrics receiver ref
+type RaftMetricsReceiverRef = Arc<RwLock<Option<RaftMetricsReceiver>>>;
 
 /// Global consensus service
 pub struct GlobalConsensusService<T, G, S>
@@ -74,6 +86,10 @@ where
     group_consensus_service: GroupConsensusServiceRef<T, G, S>,
     /// Stream service for stream restoration
     stream_service: StreamServiceRef<S>,
+    /// Topology monitor for membership updates
+    topology_monitor: TopologyMonitorRef<G, S>,
+    /// Raft metrics receiver (kept alive for the service lifetime)
+    raft_metrics_rx: RaftMetricsReceiverRef,
 }
 
 impl<T, G, S> GlobalConsensusService<T, G, S>
@@ -104,6 +120,8 @@ where
             routing_service: Arc::new(RwLock::new(None)),
             group_consensus_service: Arc::new(RwLock::new(None)),
             stream_service: Arc::new(RwLock::new(None)),
+            topology_monitor: Arc::new(RwLock::new(None)),
+            raft_metrics_rx: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -172,6 +190,22 @@ where
 
         // Start the default group checker task
         self.spawn_default_group_checker(&task_tracker, &cancellation_token);
+
+        // Start topology monitor if we have a topology manager
+        if let Some(ref topology_manager) = self.topology_manager {
+            let monitor = Arc::new(TopologyMonitor::new(
+                self.node_id.clone(),
+                topology_manager.clone(),
+                self.consensus_layer.clone(),
+            ));
+
+            monitor
+                .clone()
+                .start_monitoring(&task_tracker, &cancellation_token);
+
+            let mut monitor_guard = self.topology_monitor.write().await;
+            *monitor_guard = Some(monitor);
+        }
 
         *state = ServiceState::Running;
         Ok(())
@@ -302,7 +336,9 @@ where
         consensus_layer: ConsensusLayer<S>,
         network_manager: Arc<NetworkManager<T, G>>,
     ) -> ConsensusResult<()> {
-        use super::messages::{GlobalConsensusMessage, GlobalConsensusResponse};
+        use super::messages::{
+            CheckClusterExistsResponse, GlobalConsensusMessage, GlobalConsensusResponse,
+        };
         use crate::consensus::global::raft::GlobalRaftMessageHandler;
 
         // Register the service handler
@@ -310,41 +346,75 @@ where
             .register_service::<GlobalConsensusMessage, _>(move |_sender, message| {
                 let consensus_layer = consensus_layer.clone();
                 Box::pin(async move {
-                    let layer_guard = consensus_layer.read().await;
-                    let layer = layer_guard.as_ref().ok_or_else(|| {
-                        proven_network::NetworkError::Other("Consensus not initialized".to_string())
-                    })?;
-
-                    let handler: &dyn GlobalRaftMessageHandler = layer.as_ref();
-
                     match message {
-                        GlobalConsensusMessage::Vote(req) => {
-                            let resp = handler
-                                .handle_vote(req)
-                                .await
-                                .map_err(|e| proven_network::NetworkError::Other(e.to_string()))?;
-                            Ok(GlobalConsensusResponse::Vote(resp))
+                        GlobalConsensusMessage::CheckClusterExists(_req) => {
+                            // Handle cluster exists check without requiring consensus layer
+                            let layer_guard = consensus_layer.read().await;
+                            let response = if let Some(layer) = layer_guard.as_ref() {
+                                // We have a consensus layer, check its state
+                                let metrics = layer.metrics();
+                                let metrics_data = metrics.borrow();
+                                let membership = &metrics_data.membership_config;
+
+                                CheckClusterExistsResponse {
+                                    cluster_exists: true,
+                                    current_leader: metrics_data.current_leader.clone(),
+                                    current_term: metrics_data.current_term,
+                                    members: membership.membership().voter_ids().collect(),
+                                }
+                            } else {
+                                // No consensus layer yet
+                                CheckClusterExistsResponse {
+                                    cluster_exists: false,
+                                    current_leader: None,
+                                    current_term: 0,
+                                    members: vec![],
+                                }
+                            };
+                            Ok(GlobalConsensusResponse::CheckClusterExists(response))
                         }
-                        GlobalConsensusMessage::AppendEntries(req) => {
-                            let resp = handler
-                                .handle_append_entries(req)
-                                .await
-                                .map_err(|e| proven_network::NetworkError::Other(e.to_string()))?;
-                            Ok(GlobalConsensusResponse::AppendEntries(resp))
-                        }
-                        GlobalConsensusMessage::InstallSnapshot(req) => {
-                            let resp = handler
-                                .handle_install_snapshot(req)
-                                .await
-                                .map_err(|e| proven_network::NetworkError::Other(e.to_string()))?;
-                            Ok(GlobalConsensusResponse::InstallSnapshot(resp))
-                        }
-                        GlobalConsensusMessage::Consensus(req) => {
-                            let resp = layer
-                                .submit_request(req)
-                                .await
-                                .map_err(|e| proven_network::NetworkError::Other(e.to_string()))?;
-                            Ok(GlobalConsensusResponse::Consensus(resp))
+                        _ => {
+                            // All other messages require consensus layer
+                            let layer_guard = consensus_layer.read().await;
+                            let layer = layer_guard.as_ref().ok_or_else(|| {
+                                proven_network::NetworkError::Other(
+                                    "Consensus not initialized".to_string(),
+                                )
+                            })?;
+
+                            let handler: &dyn GlobalRaftMessageHandler = layer.as_ref();
+
+                            match message {
+                                GlobalConsensusMessage::Vote(req) => {
+                                    let resp = handler.handle_vote(req).await.map_err(|e| {
+                                        proven_network::NetworkError::Other(e.to_string())
+                                    })?;
+                                    Ok(GlobalConsensusResponse::Vote(resp))
+                                }
+                                GlobalConsensusMessage::AppendEntries(req) => {
+                                    let resp =
+                                        handler.handle_append_entries(req).await.map_err(|e| {
+                                            proven_network::NetworkError::Other(e.to_string())
+                                        })?;
+                                    Ok(GlobalConsensusResponse::AppendEntries(resp))
+                                }
+                                GlobalConsensusMessage::InstallSnapshot(req) => {
+                                    let resp = handler.handle_install_snapshot(req).await.map_err(
+                                        |e| proven_network::NetworkError::Other(e.to_string()),
+                                    )?;
+                                    Ok(GlobalConsensusResponse::InstallSnapshot(resp))
+                                }
+                                GlobalConsensusMessage::Consensus(req) => {
+                                    let resp = layer.submit_request(req).await.map_err(|e| {
+                                        proven_network::NetworkError::Other(e.to_string())
+                                    })?;
+                                    Ok(GlobalConsensusResponse::Consensus(resp))
+                                }
+                                GlobalConsensusMessage::CheckClusterExists(_) => {
+                                    // Already handled above
+                                    unreachable!()
+                                }
+                            }
                         }
                     }
                 })
@@ -378,6 +448,22 @@ where
     pub async fn is_healthy(&self) -> bool {
         let state = self.state.read().await;
         *state == ServiceState::Running
+    }
+
+    /// Get current global consensus members
+    pub async fn get_members(&self) -> Vec<NodeId> {
+        // Use the stored metrics receiver
+        let metrics_guard = self.raft_metrics_rx.read().await;
+        if let Some(metrics_rx) = metrics_guard.as_ref() {
+            let metrics_data = metrics_rx.borrow();
+            let membership = &metrics_data.membership_config;
+
+            // Return all voter IDs
+            membership.membership().voter_ids().collect()
+        } else {
+            // Consensus layer not initialized yet
+            vec![]
+        }
     }
 
     /// Check if we have persisted consensus state
@@ -417,7 +503,7 @@ where
             return Ok(());
         }
 
-        // Create consensus layer
+        // Always create consensus layer first so we can handle Raft messages
         let consensus_storage = self.storage_manager.consensus_storage();
 
         // Create callbacks with all wired services
@@ -442,22 +528,26 @@ where
         )
         .await?;
 
-        // Start event monitoring
-        if let Some(ref publisher) = self.event_publisher {
-            Self::start_event_monitoring(layer.clone(), publisher.clone(), self.node_id.clone());
+        // Store the layer immediately so we can handle Raft messages
+        {
+            let mut consensus_guard = self.consensus_layer.write().await;
+            *consensus_guard = Some(layer.clone());
         }
 
-        // Store the layer
-        let mut consensus_guard = self.consensus_layer.write().await;
-        *consensus_guard = Some(layer.clone());
-        drop(consensus_guard);
+        // Store the metrics receiver
+        {
+            let metrics_rx = layer.metrics();
+            let mut metrics_guard = self.raft_metrics_rx.write().await;
+            *metrics_guard = Some(metrics_rx);
+        }
 
-        // Register message handlers
-        Self::register_message_handlers_static(
-            self.consensus_layer.clone(),
-            self.network_manager.clone(),
-        )
-        .await?;
+        // Start event monitoring
+        if let Some(ref publisher) = self.event_publisher {
+            let metrics_rx = self.raft_metrics_rx.read().await.clone();
+            if let Some(rx) = metrics_rx {
+                Self::start_event_monitoring(rx, publisher.clone(), self.node_id.clone());
+            }
+        }
 
         // Emit event
         if let Some(ref publisher) = self.event_publisher {
@@ -477,15 +567,12 @@ where
     }
 
     /// Start monitoring the consensus layer for events
-    fn start_event_monitoring<L>(
-        layer: Arc<GlobalConsensusLayer<L>>,
+    fn start_event_monitoring(
+        mut metrics_rx: RaftMetricsReceiver,
         publisher: EventPublisher,
         node_id: NodeId,
-    ) where
-        L: LogStorage + 'static,
-    {
+    ) {
         // Monitor for leader changes
-        let mut metrics_rx = layer.metrics();
         let publisher_clone = publisher.clone();
         let node_id_clone = node_id.clone();
 
@@ -532,6 +619,67 @@ where
         });
     }
 
+    /// Check if a cluster already exists by querying peers
+    async fn check_cluster_exists(&self) -> ConsensusResult<Option<(NodeId, Vec<NodeId>)>> {
+        use super::messages::{
+            CheckClusterExistsRequest, GlobalConsensusMessage, GlobalConsensusResponse,
+        };
+
+        let topology_manager = self.topology_manager.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Configuration, "No topology manager configured")
+        })?;
+
+        // Get all peers
+        let peers = topology_manager.get_all_peers().await;
+        if peers.is_empty() {
+            tracing::info!("No peers found, no existing cluster");
+            return Ok(None);
+        }
+
+        tracing::info!("Checking {} peers for existing cluster", peers.len());
+
+        // Query each peer
+        for peer in peers {
+            tracing::debug!("Querying peer {} for cluster status", peer.node_id);
+
+            let request = GlobalConsensusMessage::CheckClusterExists(CheckClusterExistsRequest {
+                node_id: self.node_id.clone(),
+            });
+
+            match self
+                .network_manager
+                .request_service(peer.node_id.clone(), request, Duration::from_secs(5))
+                .await
+            {
+                Ok(GlobalConsensusResponse::CheckClusterExists(response)) => {
+                    if response.cluster_exists {
+                        tracing::info!(
+                            "Peer {} reports cluster exists with leader {:?} and {} members",
+                            peer.node_id,
+                            response.current_leader,
+                            response.members.len()
+                        );
+
+                        // Return the leader and members
+                        if let Some(leader) = response.current_leader {
+                            return Ok(Some((leader, response.members)));
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!("Failed to query peer {}: {}", peer.node_id, e);
+                    // Continue to next peer
+                }
+                _ => {
+                    tracing::warn!("Unexpected response from peer {}", peer.node_id);
+                }
+            }
+        }
+
+        tracing::info!("No existing cluster found after querying all peers");
+        Ok(None)
+    }
+
     /// Initialize consensus directly from topology
     pub async fn initialize_from_topology(&self) -> ConsensusResult<()> {
         tracing::info!("Initializing global consensus from topology");
@@ -541,6 +689,13 @@ where
             tracing::debug!("Global consensus layer already initialized");
             return Ok(());
         }
+
+        // Register message handlers early so we can respond to CheckClusterExists
+        Self::register_message_handlers_static(
+            self.consensus_layer.clone(),
+            self.network_manager.clone(),
+        )
+        .await?;
 
         // Get topology
         let topology_manager = self.topology_manager.as_ref().ok_or_else(|| {
@@ -589,45 +744,71 @@ where
         )
         .await?;
 
+        // Store the metrics receiver
+        {
+            let metrics_rx = layer.metrics();
+            let mut metrics_guard = self.raft_metrics_rx.write().await;
+            *metrics_guard = Some(metrics_rx);
+        }
+
         // Check if we have persisted state in storage
         let has_persisted_state = self.has_persisted_state().await;
 
         if !has_persisted_state {
-            // Fresh cluster - only ONE node should initialize
-            tracing::info!("No persisted state found, checking if we should initialize cluster");
+            // Fresh cluster - check if a cluster already exists
+            tracing::info!("No persisted state found, checking for existing cluster");
 
-            // Sort nodes by ID to ensure deterministic selection
-            let mut sorted_nodes = all_nodes.clone();
-            sorted_nodes.sort_by(|a, b| a.node_id.cmp(&b.node_id));
+            // First, check if any peers already have a cluster
+            let existing_cluster = self.check_cluster_exists().await?;
 
-            // Only the first node (lowest ID) initializes the cluster
-            if sorted_nodes
-                .first()
-                .map(|n| n.node_id == self.node_id)
-                .unwrap_or(false)
-            {
+            if let Some((leader, members)) = existing_cluster {
                 tracing::info!(
-                    "This node ({}) has the lowest ID, initializing new cluster with {} nodes",
-                    self.node_id,
-                    all_nodes.len()
+                    "Found existing cluster with leader {} and {} members, waiting to be added",
+                    leader,
+                    members.len()
                 );
-
-                let mut raft_members = std::collections::BTreeMap::new();
-                for node in &all_nodes {
-                    raft_members.insert(node.node_id.clone(), node.clone());
-                }
-
-                // Initialize cluster - this node will become the first leader
-                let handler: &dyn GlobalRaftMessageHandler = layer.as_ref();
-                handler.initialize_cluster(raft_members).await?;
-
-                tracing::info!("Raft cluster initialized by this node");
+                // Don't initialize - the existing cluster will add us via topology monitor
             } else {
-                tracing::info!(
-                    "This node ({}) is not the initializer, waiting for leader contact",
-                    self.node_id
-                );
-                // Don't initialize - just start up and wait for the leader to contact us
+                tracing::info!("No existing cluster found, checking if we should initialize");
+
+                // Sort nodes by ID to ensure deterministic selection
+                let mut sorted_nodes = all_nodes.clone();
+                sorted_nodes.sort_by(|a, b| a.node_id.cmp(&b.node_id));
+
+                // Only the first node (lowest ID) initializes the cluster
+                if sorted_nodes
+                    .first()
+                    .map(|n| n.node_id == self.node_id)
+                    .unwrap_or(false)
+                {
+                    tracing::info!(
+                        "This node ({}) has the lowest ID, initializing new cluster",
+                        self.node_id
+                    );
+
+                    // Start with just ourselves - topology monitor will add others
+                    let mut raft_members = std::collections::BTreeMap::new();
+                    raft_members.insert(
+                        self.node_id.clone(),
+                        all_nodes
+                            .iter()
+                            .find(|n| n.node_id == self.node_id)
+                            .expect("Self not found in topology")
+                            .clone(),
+                    );
+
+                    // Initialize cluster - this node will become the first leader
+                    let handler: &dyn GlobalRaftMessageHandler = layer.as_ref();
+                    handler.initialize_cluster(raft_members).await?;
+
+                    tracing::info!("Raft cluster initialized by this node");
+                } else {
+                    tracing::info!(
+                        "This node ({}) is not the initializer, waiting for cluster formation",
+                        self.node_id
+                    );
+                    // Don't initialize - wait for the lowest ID node to initialize
+                }
             }
         } else {
             // Has persisted state - Raft will resume and trigger election if needed
@@ -640,22 +821,19 @@ where
             }
         }
 
-        // Start event monitoring
-        if let Some(ref publisher) = self.event_publisher {
-            Self::start_event_monitoring(layer.clone(), publisher.clone(), self.node_id.clone());
+        // Store the layer
+        {
+            let mut consensus_guard = self.consensus_layer.write().await;
+            *consensus_guard = Some(layer.clone());
         }
 
-        // Store the layer
-        let mut consensus_guard = self.consensus_layer.write().await;
-        *consensus_guard = Some(layer);
-        drop(consensus_guard);
-
-        // Register message handlers
-        Self::register_message_handlers_static(
-            self.consensus_layer.clone(),
-            self.network_manager.clone(),
-        )
-        .await?;
+        // Start event monitoring if we have an event publisher
+        if let Some(ref publisher) = self.event_publisher {
+            let metrics_rx = self.raft_metrics_rx.read().await.clone();
+            if let Some(rx) = metrics_rx {
+                Self::start_event_monitoring(rx, publisher.clone(), self.node_id.clone());
+            }
+        }
 
         // Emit event
         if let Some(ref publisher) = self.event_publisher {

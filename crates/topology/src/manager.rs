@@ -12,15 +12,34 @@ use tokio::sync::{RwLock, oneshot};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
+use crate::subscriber::{TopologyBroadcaster, TopologySubscription};
 use crate::{Node, NodeId, TopologyError};
 
 /// Duration to wait before allowing another forced refresh for a missing peer
 const MISSING_PEER_COOLDOWN: Duration = Duration::from_secs(30);
 
+/// Default refresh interval for topology updates
+const DEFAULT_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
+
 /// Bootable state for background tasks
 struct BootableState {
     refresh_task: Option<JoinHandle<()>>,
     shutdown_signal: Option<oneshot::Sender<()>>,
+}
+
+/// Configuration for the topology manager
+#[derive(Clone)]
+pub struct TopologyManagerConfig {
+    /// Interval at which to refresh the topology
+    pub refresh_interval: Duration,
+}
+
+impl Default for TopologyManagerConfig {
+    fn default() -> Self {
+        Self {
+            refresh_interval: DEFAULT_REFRESH_INTERVAL,
+        }
+    }
 }
 
 /// Manages network topology and peer discovery
@@ -35,15 +54,31 @@ where
     missing_peer_cooldown: Arc<RwLock<HashMap<NodeId, Instant>>>,
     /// Bootable state for background tasks
     bootable_state: Arc<RwLock<BootableState>>,
+    /// Broadcaster for topology changes
+    broadcaster: Arc<TopologyBroadcaster>,
+    /// Configuration
+    config: TopologyManagerConfig,
 }
 
 impl<T> TopologyManager<T>
 where
     T: TopologyAdaptor,
 {
-    /// Create a new topology manager
+    /// Create a new topology manager with default configuration
     pub fn new(topology_adaptor: Arc<T>, node_id: NodeId) -> Self {
-        info!("Creating topology manager for node {}", node_id);
+        Self::with_config(topology_adaptor, node_id, TopologyManagerConfig::default())
+    }
+
+    /// Create a new topology manager with custom configuration
+    pub fn with_config(
+        topology_adaptor: Arc<T>,
+        node_id: NodeId,
+        config: TopologyManagerConfig,
+    ) -> Self {
+        info!(
+            "Creating topology manager for node {} with refresh interval {:?}",
+            node_id, config.refresh_interval
+        );
 
         Self {
             topology_adaptor,
@@ -54,19 +89,44 @@ where
                 refresh_task: None,
                 shutdown_signal: None,
             })),
+            broadcaster: Arc::new(TopologyBroadcaster::new(Vec::new())),
+            config,
         }
     }
 
     /// Start the topology manager (refresh topology)
     pub async fn start(&self) -> Result<(), TopologyError> {
         info!("Starting topology manager for node {}", self.node_id);
+
+        // Do initial refresh
         self.refresh_topology().await?;
+
+        // Start background refresh task
+        self.start_refresh_task().await;
+
         Ok(())
     }
 
     /// Shutdown the topology manager
     pub async fn shutdown(&self) -> Result<(), TopologyError> {
         info!("Shutting down topology manager for node {}", self.node_id);
+
+        let mut bootable_state = self.bootable_state.write().await;
+
+        // Send shutdown signal
+        if let Some(shutdown_signal) = bootable_state.shutdown_signal.take() {
+            let _ = shutdown_signal.send(());
+        }
+
+        // Wait for task to complete
+        if let Some(task) = bootable_state.refresh_task.take() {
+            match tokio::time::timeout(Duration::from_secs(5), task).await {
+                Ok(Ok(())) => debug!("Topology refresh task completed"),
+                Ok(Err(e)) => warn!("Topology refresh task failed: {}", e),
+                Err(_) => warn!("Topology refresh task timed out"),
+            }
+        }
+
         Ok(())
     }
 
@@ -103,10 +163,38 @@ where
 
         info!("Found {} nodes in topology", nodes.len());
 
+        // Check if topology actually changed
+        let changed = {
+            let cached_nodes = self.cached_nodes.read().await;
+
+            // Check if size differs
+            if cached_nodes.len() != nodes.len() {
+                true
+            } else {
+                // Check if any node differs
+                !nodes.iter().all(|new_node| {
+                    cached_nodes.iter().any(|cached_node| {
+                        cached_node.node_id == new_node.node_id
+                            && cached_node.origin == new_node.origin
+                            && cached_node.region == new_node.region
+                            && cached_node.availability_zone == new_node.availability_zone
+                    })
+                })
+            }
+        };
+
         // Update cached nodes
         {
             let mut cached_nodes = self.cached_nodes.write().await;
-            *cached_nodes = nodes;
+            *cached_nodes = nodes.clone();
+        }
+
+        // Only notify subscribers if topology actually changed
+        if changed {
+            info!("Topology has changed, notifying subscribers");
+            self.broadcaster.update(nodes);
+        } else {
+            debug!("Topology unchanged, skipping notification");
         }
 
         // Clean up expired cooldowns while we're refreshing
@@ -266,6 +354,108 @@ where
     /// Get provider reference
     pub fn provider(&self) -> &Arc<T> {
         &self.topology_adaptor
+    }
+
+    /// Get cached nodes
+    pub async fn get_cached_nodes(&self) -> Result<Vec<Node>, TopologyError> {
+        Ok(self.cached_nodes.read().await.clone())
+    }
+
+    /// Subscribe to topology changes
+    pub fn subscribe(&self) -> TopologySubscription {
+        self.broadcaster.subscribe()
+    }
+
+    /// Force an immediate refresh of the topology
+    /// Useful for tests and scenarios where you need immediate updates
+    pub async fn force_refresh(&self) -> Result<(), TopologyError> {
+        info!("Forcing topology refresh for node {}", self.node_id);
+        self.refresh_topology().await
+    }
+
+    /// Start the background refresh task
+    async fn start_refresh_task(&self) {
+        let cached_nodes = self.cached_nodes.clone();
+        let topology_adaptor = self.topology_adaptor.clone();
+        let node_id = self.node_id.clone();
+        let broadcaster = self.broadcaster.clone();
+
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
+
+        let refresh_interval = self.config.refresh_interval;
+        let task = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(refresh_interval);
+
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        debug!("Refreshing topology for node {}", node_id);
+
+                        match topology_adaptor.get_topology().await {
+                            Ok(topology) => {
+                                let mut nodes = Vec::new();
+                                for node in topology {
+                                    if let Err(e) = url::Url::parse(&node.origin) {
+                                        warn!(
+                                            "Invalid origin URL '{}' for node {}: {}",
+                                            node.origin, node.node_id, e
+                                        );
+                                    }
+                                    nodes.push(node);
+                                }
+
+                                debug!("Refreshed topology: {} nodes", nodes.len());
+
+                                // Check if topology actually changed
+                                let changed = {
+                                    let cached = cached_nodes.read().await;
+
+                                    // Check if size differs
+                                    if cached.len() != nodes.len() {
+                                        true
+                                    } else {
+                                        // Check if any node differs
+                                        !nodes.iter().all(|new_node| {
+                                            cached.iter().any(|cached_node| {
+                                                cached_node.node_id == new_node.node_id &&
+                                                cached_node.origin == new_node.origin &&
+                                                cached_node.region == new_node.region &&
+                                                cached_node.availability_zone == new_node.availability_zone
+                                            })
+                                        })
+                                    }
+                                };
+
+                                // Update cached nodes
+                                {
+                                    let mut cached = cached_nodes.write().await;
+                                    *cached = nodes.clone();
+                                }
+
+                                // Only notify subscribers if topology actually changed
+                                if changed {
+                                    debug!("Background refresh: topology changed, notifying subscribers");
+                                    broadcaster.update(nodes);
+                                } else {
+                                    debug!("Background refresh: topology unchanged");
+                                }
+                            }
+                            Err(e) => {
+                                error!("Failed to refresh topology: {}", e);
+                            }
+                        }
+                    }
+                    _ = &mut shutdown_rx => {
+                        info!("Topology refresh task shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+
+        let mut bootable_state = self.bootable_state.write().await;
+        bootable_state.refresh_task = Some(task);
+        bootable_state.shutdown_signal = Some(shutdown_tx);
     }
 
     /// Get our own Node from the topology
@@ -527,6 +717,8 @@ where
             node_id: self.node_id.clone(),
             missing_peer_cooldown: Arc::clone(&self.missing_peer_cooldown),
             bootable_state: Arc::clone(&self.bootable_state),
+            broadcaster: Arc::clone(&self.broadcaster),
+            config: self.config.clone(),
         }
     }
 }

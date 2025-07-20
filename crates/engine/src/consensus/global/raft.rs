@@ -144,6 +144,44 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         })
     }
 
+    /// Add a node as a learner (non-voting member)
+    pub async fn add_learner(
+        &self,
+        node_id: NodeId,
+        node_info: proven_topology::Node,
+    ) -> ConsensusResult<()> {
+        self.raft
+            .add_learner(node_id, node_info, true)
+            .await
+            .map_err(|e| {
+                Error::with_context(ErrorKind::Consensus, format!("Failed to add learner: {e}"))
+            })?;
+        Ok(())
+    }
+
+    /// Change membership (promote learners to voters or remove members)
+    pub async fn change_membership(
+        &self,
+        members: std::collections::BTreeSet<NodeId>,
+        retain: bool,
+    ) -> ConsensusResult<()> {
+        self.raft
+            .change_membership(members, retain)
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    ErrorKind::Consensus,
+                    format!("Failed to change membership: {e}"),
+                )
+            })?;
+        Ok(())
+    }
+
+    /// Check if this node is the current leader
+    pub async fn is_leader(&self) -> bool {
+        self.raft.current_leader().await == Some(self.node_id.clone())
+    }
+
     /// Create a new global consensus layer
     pub async fn new<NF>(
         node_id: NodeId,
