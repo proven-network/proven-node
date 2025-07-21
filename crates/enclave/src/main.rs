@@ -18,7 +18,7 @@ mod speedtest;
 use bootstrap::Bootstrap;
 use error::{Error, Result};
 use node::EnclaveNode;
-use proven_vsock_tracing::enclave::VsockTracingProducer;
+use proven_logger_vsock::client::{VsockLogger, VsockLoggerConfig};
 
 use std::sync::Arc;
 
@@ -27,9 +27,9 @@ use proven_vsock_cac::{
     CacServer, InitializeRequest, InitializeResponse, ShutdownResponse, commands::ShutdownRequest,
     server::CacCommandHandler,
 };
-use proven_vsock_rpc::VsockAddr;
 use tokio::sync::RwLock;
-use tokio_vsock::VMADDR_CID_ANY;
+#[cfg(target_os = "linux")]
+use tokio_vsock::{VMADDR_CID_ANY, VsockAddr};
 use tracing::{error, info};
 use tracing_panic::panic_hook;
 
@@ -115,13 +115,37 @@ impl CacCommandHandler for EnclaveHandler {
 async fn main() -> Result<()> {
     // Configure logging
     std::panic::set_hook(Box::new(panic_hook));
-    VsockTracingProducer::start()?;
+
+    // Initialize VSOCK logger to send logs to the host
+    // The host runs the server on VMADDR_CID_HOST (2) port 5555
+    let logger_config = VsockLoggerConfig::builder()
+        .vsock_addr(
+            #[cfg(target_os = "linux")]
+            VsockAddr::new(tokio_vsock::VMADDR_CID_HOST, 5555),
+            #[cfg(not(target_os = "linux"))]
+            std::net::SocketAddr::from(([127, 0, 0, 1], 5555)),
+        )
+        .batch_size(50)
+        .flush_interval(std::time::Duration::from_millis(100))
+        .build();
+
+    let vsock_logger = Arc::new(VsockLogger::new(logger_config).await?);
+
+    // Initialize proven-logger with compatibility bridges for tracing
+    proven_logger::compat::init_with_bridges(vsock_logger)
+        .map_err(|e| Error::LoggerInit(format!("Failed to initialize logger: {e}").into()))?;
 
     fdlimit::raise_fdlimit();
 
     // Create the CAC server with our handler
     let handler = EnclaveHandler::new();
-    let server = CacServer::new(VsockAddr::new(VMADDR_CID_ANY, 1024), handler);
+    let server = CacServer::new(
+        #[cfg(target_os = "linux")]
+        VsockAddr::new(VMADDR_CID_ANY, 1024),
+        #[cfg(not(target_os = "linux"))]
+        std::net::SocketAddr::from(([127, 0, 0, 1], 1024)),
+        handler,
+    );
 
     // Start serving
     info!("Starting enclave CAC server on port 1024");

@@ -14,9 +14,9 @@ use axum::routing::any;
 use nix::unistd::Uid;
 use proven_bootable::Bootable;
 use proven_http_insecure::InsecureHttpServer;
+use proven_logger_vsock::server::{StdoutLogProcessor, VsockLogServerBuilder};
 use proven_vsock_cac::{CacClient, InitializeRequest};
 use proven_vsock_proxy::Proxy;
-use proven_vsock_tracing::host::VsockTracingConsumer;
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::{error, info};
 
@@ -58,8 +58,23 @@ pub async fn start(args: StartArgs) -> Result<()> {
     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
     // Enclave (vsock-based) logging
-    let vsock_tracing_consumer = VsockTracingConsumer::new(args.enclave_cid);
-    let vsock_tracing_consumer_handle = vsock_tracing_consumer.start()?;
+    // The new logger-vsock server listens on the host side
+    #[cfg(target_os = "linux")]
+    let log_addr = tokio_vsock::VsockAddr::new(tokio_vsock::VMADDR_CID_ANY, 5555);
+
+    #[cfg(not(target_os = "linux"))]
+    let log_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 5555));
+
+    let log_server = VsockLogServerBuilder::new(log_addr)
+        .processor(std::sync::Arc::new(StdoutLogProcessor))
+        .build()
+        .await?;
+
+    let log_server_handle = tokio::spawn(async move {
+        if let Err(e) = log_server.serve().await {
+            error!("Log server error: {}", e);
+        }
+    });
 
     configure_nat(&args.outbound_device, args.cidr).await?;
     configure_route(&args.tun_device, args.cidr, args.enclave_ip).await?;
@@ -97,8 +112,7 @@ pub async fn start(args: StartArgs) -> Result<()> {
             }
             else => {
                 info!("all critical tasks exited normally");
-                vsock_tracing_consumer.shutdown().await;
-                vsock_tracing_consumer_handle.await.unwrap();
+                log_server_handle.abort();
             }
         }
     });
@@ -197,7 +211,7 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
     Ok(())
 }
 
-async fn shutdown_enclave(#[cfg(target_os = "linux")] rgs: &StartArgs) -> Result<()> {
+async fn shutdown_enclave(#[cfg(target_os = "linux")] args: &StartArgs) -> Result<()> {
     let client = CacClient::new(
         #[cfg(target_os = "linux")]
         tokio_vsock::VsockAddr::new(args.enclave_cid, 1024),

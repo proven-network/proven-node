@@ -5,14 +5,12 @@ use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
 use super::node::{EnclaveNode, EnclaveNodeCore, Services};
 use super::speedtest::SpeedTest;
 
-use std::convert::Infallible;
 use std::convert::TryInto;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_nats::Client as NatsClient;
 use axum::Router;
 use axum::routing::any;
 use bytes::Bytes;
@@ -25,24 +23,26 @@ use proven_bootable::Bootable;
 use proven_cert_store::CertStore;
 use proven_core::{BootstrapUpgrade, Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
-use proven_engine::config::{ClusterJoinRetryConfig, StorageConfig, TransportConfig};
-use proven_engine::{ConsensusConfigBuilder, ProvenEngine, RaftConfig};
+use proven_engine::config::{
+    ConsensusConfig, GlobalConsensusConfig, GroupConsensusConfig, NetworkConfig, ServiceConfig,
+    StorageConfig,
+};
+use proven_engine::{EngineBuilder, EngineConfig};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
+use proven_identity::IdentityManager;
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::{Kms, KmsOptions};
+use proven_locks_memory::MemoryLockManager;
 use proven_messaging::stream::Stream;
-use proven_messaging_nats::client::NatsClientOptions;
-use proven_messaging_nats::consumer::NatsConsumerOptions;
-use proven_messaging_nats::service::NatsServiceOptions;
-use proven_topology_mock::MockTopologyAdaptor;
-// use proven_nats_monitor::NatsMonitor;
-use proven_identity::IdentityManager;
-use proven_locks_nats::{NatsLockManager, NatsLockManagerConfig};
-use proven_messaging_nats::stream::{NatsStream, NatsStream2, NatsStream3, NatsStreamOptions};
-use proven_nats_server::{NatsServer, NatsServerOptions};
-use proven_network::{Peer, ProvenNetwork, ProvenNetworkOptions};
+use proven_messaging_memory::client::MemoryClientOptions;
+use proven_messaging_memory::consumer::MemoryConsumerOptions;
+use proven_messaging_memory::service::MemoryServiceOptions;
+use proven_messaging_memory::stream::{
+    MemoryStream, MemoryStream2, MemoryStream3, MemoryStreamOptions,
+};
+use proven_network::NetworkManager;
 use proven_passkeys::{PasskeyManagement, PasskeyManager, PasskeyManagerOptions};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
@@ -54,10 +54,16 @@ use proven_runtime::{
 };
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
 use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
+use proven_storage::StorageManager;
+use proven_storage_memory::MemoryStorage;
 use proven_store::Store;
 use proven_store_asm::{AsmStore, AsmStoreOptions};
-use proven_store_nats::{NatsStore, NatsStore1, NatsStore2, NatsStore3, NatsStoreOptions};
+use proven_store_memory::{MemoryStore, MemoryStore1, MemoryStore2, MemoryStore3};
 use proven_store_s3::{S3Store, S3Store2, S3Store3, S3StoreOptions};
+use proven_topology::{NodeId, TopologyManager};
+use proven_topology_mock::MockTopologyAdaptor;
+use proven_transport::HttpIntegratedTransport;
+use proven_transport_ws::{WebsocketConfig, WebsocketTransport};
 use proven_vsock_cac::InitializeRequest;
 use proven_vsock_proxy::Proxy;
 use tokio::sync::Mutex;
@@ -66,7 +72,6 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
-use uuid::Uuid;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
@@ -92,8 +97,15 @@ pub struct Bootstrap {
     governance: Option<MockTopologyAdaptor>,
     imds_identity: Option<IdentityDocument>,
     instance_details: Option<Instance>,
-    network: Option<ProvenNetwork<MockTopologyAdaptor, NsmAttestor>>,
-    node_config: Option<Peer<NsmAttestor>>,
+    transport: Option<Arc<WebsocketTransport<MockTopologyAdaptor, NsmAttestor>>>,
+    network: Option<
+        Arc<
+            NetworkManager<
+                WebsocketTransport<MockTopologyAdaptor, NsmAttestor>,
+                MockTopologyAdaptor,
+            >,
+        >,
+    >,
 
     proxy: Option<Proxy>,
     proxy_handle: Option<JoinHandle<proven_vsock_proxy::Result<()>>>,
@@ -115,14 +127,7 @@ pub struct Bootstrap {
 
     radix_gateway: Option<RadixGateway>,
 
-    nats_server_fs: Option<ExternalFs>,
-    nats_server_fs_handle: Option<JoinHandle<proven_external_fs::Result<()>>>,
-
-    nats_client: Option<NatsClient>,
-    nats_server: Option<
-        NatsServer<MockTopologyAdaptor, NsmAttestor, S3Store<Bytes, Infallible, Infallible>>,
-    >,
-
+    // Memory-based messaging - no longer need NATS server/client
     core: Option<EnclaveNodeCore>,
 
     // state
@@ -142,8 +147,8 @@ impl Bootstrap {
             governance: None,
             imds_identity: None,
             instance_details: None,
+            transport: None,
             network: None,
-            node_config: None,
 
             proxy: None,
             proxy_handle: None,
@@ -165,12 +170,6 @@ impl Bootstrap {
 
             radix_gateway: None,
 
-            nats_server_fs: None,
-            nats_server_fs_handle: None,
-
-            nats_client: None,
-            nats_server: None,
-
             core: None,
 
             started: false,
@@ -181,6 +180,7 @@ impl Bootstrap {
 
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::large_stack_frames)]
+    #[allow(clippy::cognitive_complexity)]
     pub async fn initialize(mut self) -> Result<EnclaveNode> {
         if self.started {
             return Err(Error::AlreadyStarted);
@@ -294,7 +294,6 @@ impl Bootstrap {
         let dnscrypt_proxy_handle = self.dnscrypt_proxy_handle.take().unwrap();
         let radix_node_fs_handle = self.radix_node_fs_handle.take().unwrap();
         let postgres_fs_handle = self.postgres_fs_handle.take().unwrap();
-        let nats_server_fs_handle = self.nats_server_fs_handle.take().unwrap();
 
         let proxy = Arc::new(Mutex::new(self.proxy.take().unwrap()));
         let dnscrypt_proxy = Arc::new(Mutex::new(self.dnscrypt_proxy.take().unwrap()));
@@ -304,8 +303,6 @@ impl Bootstrap {
         let postgres = Arc::new(Mutex::new(self.postgres.take().unwrap()));
         let radix_aggregator = Arc::new(Mutex::new(self.radix_aggregator.take().unwrap()));
         let radix_gateway = Arc::new(Mutex::new(self.radix_gateway.take().unwrap()));
-        let nats_server_fs = Arc::new(Mutex::new(self.nats_server_fs.take().unwrap()));
-        let nats_server = Arc::new(Mutex::new(self.nats_server.take().unwrap()));
         let core = Arc::new(Mutex::new(self.core.take().unwrap()));
 
         let node_services = Services {
@@ -317,8 +314,6 @@ impl Bootstrap {
             postgres: postgres.clone(),
             radix_aggregator: radix_aggregator.clone(),
             radix_gateway: radix_gateway.clone(),
-            nats_server_fs: nats_server_fs.clone(),
-            nats_server: nats_server.clone(),
             core: core.clone(),
         };
 
@@ -328,7 +323,6 @@ impl Bootstrap {
                 let radix_node = radix_node.clone();
                 let radix_aggregator = radix_aggregator.clone();
                 let radix_gateway = radix_gateway.clone();
-                let nats_server = nats_server.clone();
                 let postgres = postgres.clone();
                 let core = core.clone();
 
@@ -345,9 +339,6 @@ impl Bootstrap {
 
                     let postgres = postgres.clone();
                     let postgres_guard = postgres.lock().await;
-
-                    let nats_server = nats_server.clone();
-                    let nats_server_guard = nats_server.lock().await;
 
                     let core = core.clone();
                     let core_guard = core.lock().await;
@@ -377,12 +368,6 @@ impl Bootstrap {
                         () = radix_gateway_guard.wait() => {
                             error!("radix_gateway exited");
                         }
-                        Ok(Err(e)) = nats_server_fs_handle => {
-                            error!("nats_external_fs exited: {:?}", e);
-                        }
-                        () = nats_server_guard.wait() => {
-                            error!("nats_server exited");
-                        }
                         () = core_guard.wait() => {
                             error!("core exited");
                         }
@@ -399,8 +384,6 @@ impl Bootstrap {
             }
 
             let _ = core.lock().await.shutdown().await;
-            let _ = nats_server.lock().await.shutdown().await;
-            nats_server_fs.lock().await.shutdown().await;
             let _ = radix_gateway.lock().await.shutdown().await;
             let _ = radix_aggregator.lock().await.shutdown().await;
             let _ = radix_node.lock().await.shutdown().await;
@@ -430,14 +413,6 @@ impl Bootstrap {
 
         if let Some(core) = self.core {
             let _ = core.shutdown().await;
-        }
-
-        if let Some(nats_server) = self.nats_server {
-            let _ = nats_server.shutdown().await;
-        }
-
-        if let Some(nats_server_fs) = self.nats_server_fs {
-            nats_server_fs.shutdown().await;
         }
 
         if let Some(radix_gateway) = self.radix_gateway {
@@ -619,15 +594,39 @@ impl Bootstrap {
             vec![],
         );
 
-        let network = ProvenNetwork::new(ProvenNetworkOptions {
-            attestor: self.attestor.clone(),
-            governance: governance.clone(),
-            nats_cluster_port: self.args.nats_cluster_port,
-            private_key,
-        })
-        .await?;
+        // Create node ID from private key
+        let node_id = NodeId::from(private_key.verifying_key());
+
+        // Create topology manager
+        let topology_manager = Arc::new(TopologyManager::new(
+            Arc::new(governance.clone()),
+            node_id.clone(),
+        ));
+        topology_manager
+            .start()
+            .await
+            .map_err(|e| Error::Consensus(format!("Failed to start topology manager: {e}")))?;
+
+        // Create websocket transport
+        let websocket_config = WebsocketConfig::default();
+        let transport = Arc::new(WebsocketTransport::new(
+            websocket_config,
+            Arc::new(self.attestor.clone()),
+            Arc::new(governance.clone()),
+            private_key.clone(),
+            topology_manager.clone(),
+        ));
+
+        // Create network manager
+        let network = Arc::new(NetworkManager::new(
+            node_id.clone(),
+            transport.clone(),
+            topology_manager.clone(),
+        ));
+        network.start().await.map_err(Error::Bootable)?;
 
         self.governance = Some(governance);
+        self.transport = Some(transport);
         self.network = Some(network);
 
         Ok(())
@@ -767,146 +766,43 @@ impl Bootstrap {
         Ok(())
     }
 
-    async fn start_nats_fs(&mut self) -> Result<()> {
-        let nats_server_fs = ExternalFs::new(ExternalFsOptions {
-            encryption_key: "your-password".to_string(),
-            nfs_mount_point_dir: PathBuf::from(format!("{}/nats/", self.args.nfs_mount_point)),
-            mount_dir: PathBuf::from("/var/lib/nats"),
-            skip_fsck: self.args.skip_fsck,
-        })?;
-
-        let nats_server_fs_handle = nats_server_fs.start().await?;
-
-        self.nats_server_fs = Some(nats_server_fs);
-        self.nats_server_fs_handle = Some(nats_server_fs_handle);
-
-        info!("nats filesystem started");
-
-        Ok(())
-    }
-
-    async fn start_nats_server(&mut self) -> Result<()> {
-        let instance_details = self.instance_details.as_ref().unwrap_or_else(|| {
-            panic!("instance details not fetched before nats-server");
-        });
-
-        let network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("governance not set before nats server step");
-        });
-
-        let nats_server = NatsServer::new(NatsServerOptions {
-            cert_store: None,
-            cli_bin_dir: Some(PathBuf::from("/apps/nats/v2.11.4")), // TODO: update to actual nats dir
-            client_port: 4222,
-            config_dir: PathBuf::from("/tmp/nats-config"),
-            debug: self.args.testnet,
-            http_port: 8222,
-            network: network.clone(),
-            server_bin_dir: Some(PathBuf::from("/apps/nats/v2.11.4")),
-            server_name: instance_details.instance_id.clone(),
-            store_dir: PathBuf::from("/var/lib/nats/nats"),
-        })?;
-
-        nats_server.start().await.map_err(Error::Bootable)?;
-        let nats_client = nats_server.build_client().await?;
-
-        self.nats_server = Some(nats_server);
-        self.nats_client = Some(nats_client);
-
-        info!("nats server started");
-
-        Ok(())
-    }
-
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::large_stack_frames)]
+    #[allow(clippy::cognitive_complexity)]
     async fn start_core(&mut self) -> Result<()> {
         let id = self.imds_identity.as_ref().unwrap_or_else(|| {
             panic!("imds identity not fetched before core");
         });
 
-        let nats_client = self.nats_client.as_ref().unwrap_or_else(|| {
-            panic!("nats client not fetched before core");
-        });
-
-        let network = self.network.as_ref().unwrap_or_else(|| {
+        let _network = self.network.as_ref().unwrap_or_else(|| {
             panic!("network not set before core");
         });
 
-        let node_config = self.node_config.as_ref().unwrap_or_else(|| {
-            panic!("node config not set before core");
-        });
-
-        let lock_manager = NatsLockManager::new(NatsLockManagerConfig {
-            bucket: "GLOBAL_LOCKS".to_string(),
-            client: nats_client.clone(),
-            local_identifier: format!("enclave-{}", Uuid::new_v4()),
-            num_replicas: 1,
-            persist: true,
-            ttl: Duration::from_secs(30),
-            operation_timeout: None,
-            max_retries: None,
-            retry_base_delay: None,
-            retry_max_delay: None,
-        });
+        let lock_manager = MemoryLockManager::new();
 
         let identity_manager = IdentityManager::new(
             // Command stream for processing identity commands
-            NatsStream::new(
-                "IDENTITY_COMMANDS",
-                NatsStreamOptions {
-                    client: nats_client.clone(),
-                    num_replicas: 1,
-                },
-            ),
+            MemoryStream::new("IDENTITY_COMMANDS", MemoryStreamOptions),
             // Event stream for publishing identity events
-            NatsStream::new(
-                "IDENTITY_EVENTS",
-                NatsStreamOptions {
-                    client: nats_client.clone(),
-                    num_replicas: 1,
-                },
-            ),
+            MemoryStream::new("IDENTITY_EVENTS", MemoryStreamOptions),
             // Service options for the command processing service
-            NatsServiceOptions {
-                client: nats_client.clone(),
-                durable_name: None,
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
+            MemoryServiceOptions,
             // Client options for the command client
-            NatsClientOptions {
-                client: nats_client.clone(),
-            },
+            MemoryClientOptions,
             // Consumer options for the event consumer
-            NatsConsumerOptions {
-                client: nats_client.clone(),
-                durable_name: Some("IDENTITY_VIEW_CONSUMER".to_string()),
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
+            MemoryConsumerOptions,
             // Lock manager for distributed leadership
             lock_manager.clone(),
         )
         .await?;
 
         let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
-            passkeys_store: NatsStore::new(NatsStoreOptions {
-                bucket: "passkeys".to_string(),
-                client: nats_client.clone(),
-                max_age: Duration::ZERO,
-                num_replicas: 1,
-                persist: true,
-            }),
+            passkeys_store: MemoryStore::new(),
         });
 
         let sessions_manager = SessionManager::new(SessionManagerOptions {
             attestor: self.attestor.clone(),
-            sessions_store: NatsStore1::new(NatsStoreOptions {
-                bucket: "sessions".to_string(),
-                client: nats_client.clone(),
-                max_age: Duration::ZERO,
-                num_replicas: 1,
-                persist: true,
-            }),
+            sessions_store: MemoryStore1::new(),
         });
 
         let cert_store = CertStore::new(
@@ -924,8 +820,13 @@ impl Bootstrap {
             .await,
         );
 
-        // Parse the domain name from the origin in node config
-        let domain = node_config.fqdn()?;
+        // Extract domain from email or use a default
+        let domain = self
+            .args
+            .email
+            .first()
+            .and_then(|email| email.split('@').next_back())
+            .unwrap_or("enclave.local");
 
         let http_sock_addr = SocketAddr::from((self.args.enclave_ip, self.args.https_port));
         let http_server = LetsEncryptHttpServer::new(LetsEncryptHttpServerOptions {
@@ -941,66 +842,26 @@ impl Bootstrap {
 
         let application_manager = ApplicationManager::new(
             // Command stream for processing application commands
-            NatsStream::new(
-                "APPLICATION_COMMANDS",
-                NatsStreamOptions {
-                    client: nats_client.clone(),
-                    num_replicas: 1,
-                },
-            ),
+            MemoryStream::new("APPLICATION_COMMANDS", MemoryStreamOptions),
             // Event stream for publishing and consuming application events
-            NatsStream::new(
-                "APPLICATION_EVENTS",
-                NatsStreamOptions {
-                    client: nats_client.clone(),
-                    num_replicas: 1,
-                },
-            ),
+            MemoryStream::new("APPLICATION_EVENTS", MemoryStreamOptions),
             // Service options for command processing
-            NatsServiceOptions {
-                client: nats_client.clone(),
-                durable_name: Some("APPLICATION_SERVICE".to_string()),
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
+            MemoryServiceOptions,
             // Client options for sending commands
-            NatsClientOptions {
-                client: nats_client.clone(),
-            },
+            MemoryClientOptions,
             // Consumer options for event processing
-            NatsConsumerOptions {
-                client: nats_client.clone(),
-                durable_name: Some("APPLICATION_VIEW_CONSUMER".to_string()),
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
+            MemoryConsumerOptions,
             // Lock manager for distributed leadership
             lock_manager,
         )
         .await?;
 
-        let application_store = NatsStore2::new(NatsStoreOptions {
-            bucket: "APPLICATION_KV".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            num_replicas: 1,
-            persist: true,
-        });
+        let application_store = MemoryStore2::new();
 
         let application_sql_store = StreamedSqlStore2::new(
-            NatsStream2::new(
-                "APPLICATION_SQL",
-                NatsStreamOptions {
-                    client: nats_client.clone(),
-                    num_replicas: 1,
-                },
-            ),
-            NatsServiceOptions {
-                client: nats_client.clone(),
-                durable_name: None,
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
-            NatsClientOptions {
-                client: nats_client.clone(),
-            },
+            MemoryStream2::new("APPLICATION_SQL", MemoryStreamOptions),
+            MemoryServiceOptions,
+            MemoryClientOptions,
             S3Store2::new(S3StoreOptions {
                 bucket: self.args.certificates_bucket.clone(),
                 prefix: Some("application".to_string()),
@@ -1015,30 +876,12 @@ impl Bootstrap {
             .await,
         );
 
-        let personal_store = NatsStore3::new(NatsStoreOptions {
-            bucket: "PERSONAL_KV".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            num_replicas: 1,
-            persist: true,
-        });
+        let personal_store = MemoryStore3::new();
 
         let personal_sql_store = StreamedSqlStore3::new(
-            NatsStream3::new(
-                "PERSONAL_SQL",
-                NatsStreamOptions {
-                    client: nats_client.clone(),
-                    num_replicas: 1,
-                },
-            ),
-            NatsServiceOptions {
-                client: nats_client.clone(),
-                durable_name: None,
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
-            NatsClientOptions {
-                client: nats_client.clone(),
-            },
+            MemoryStream3::new("PERSONAL_SQL", MemoryStreamOptions),
+            MemoryServiceOptions,
+            MemoryClientOptions,
             S3Store3::new(S3StoreOptions {
                 bucket: self.args.certificates_bucket.clone(),
                 prefix: Some("personal".to_string()),
@@ -1053,30 +896,12 @@ impl Bootstrap {
             .await,
         );
 
-        let nft_store = NatsStore3::new(NatsStoreOptions {
-            bucket: "NFT_KV".to_string(),
-            client: nats_client.clone(),
-            max_age: Duration::ZERO,
-            num_replicas: 1,
-            persist: true,
-        });
+        let nft_store = MemoryStore3::new();
 
         let nft_sql_store = StreamedSqlStore3::new(
-            NatsStream3::new(
-                "NFT_SQL",
-                NatsStreamOptions {
-                    client: nats_client.clone(),
-                    num_replicas: 1,
-                },
-            ),
-            NatsServiceOptions {
-                client: nats_client.clone(),
-                durable_name: None,
-                jetstream_context: async_nats::jetstream::new(nats_client.clone()),
-            },
-            NatsClientOptions {
-                client: nats_client.clone(),
-            },
+            MemoryStream3::new("NFT_SQL", MemoryStreamOptions),
+            MemoryServiceOptions,
+            MemoryClientOptions,
             S3Store3::new(S3StoreOptions {
                 bucket: self.args.certificates_bucket.clone(),
                 prefix: Some("nft".to_string()),
@@ -1124,40 +949,110 @@ impl Bootstrap {
             panic!("governance not set before core");
         });
 
-        let attestor = self.attestor.clone();
+        let _attestor = self.attestor.clone();
 
         let node_key = hex::decode(self.args.node_key.clone()).unwrap();
         let node_key: [u8; 32] = node_key.try_into().unwrap();
         let node_key = SigningKey::from_bytes(&node_key);
 
-        let consensus_config = ConsensusConfigBuilder::new()
-            .governance(Arc::new(governance.clone()))
-            .attestor(Arc::new(attestor.clone()))
-            .signing_key(node_key.clone())
-            .raft_config(RaftConfig {
-                heartbeat_interval: 500,    // 500ms
-                election_timeout_min: 1500, // 1.5s
-                election_timeout_max: 3000, // 3s
-                ..RaftConfig::default()
-            })
-            .transport_config(TransportConfig::WebSocket)
-            .storage_config(StorageConfig::Memory)
-            .cluster_discovery_timeout(Duration::from_secs(30))
-            .cluster_join_retry_config(ClusterJoinRetryConfig {
-                max_attempts: 20,
-                initial_delay: Duration::from_secs(1),
-                max_delay: Duration::from_secs(10),
-                request_timeout: Duration::from_secs(5),
-            })
-            .build()
-            .map_err(|e| Error::Consensus(format!("Failed to build consensus config: {e}")))?;
+        // Get node ID from key
+        let node_id = NodeId::from(node_key.verifying_key());
 
-        let consensus = Arc::new(ProvenEngine::new(consensus_config).await.unwrap());
+        // Configure the engine
+        let engine_config = EngineConfig {
+            consensus: ConsensusConfig {
+                global: GlobalConsensusConfig {
+                    election_timeout_min: Duration::from_millis(1500),
+                    election_timeout_max: Duration::from_millis(3000),
+                    heartbeat_interval: Duration::from_millis(500),
+                    snapshot_interval: std::num::NonZero::new(10000).unwrap(),
+                    max_entries_per_append: std::num::NonZero::new(100).unwrap(),
+                },
+                group: GroupConsensusConfig {
+                    election_timeout_min: Duration::from_millis(1500),
+                    election_timeout_max: Duration::from_millis(3000),
+                    heartbeat_interval: Duration::from_millis(500),
+                    snapshot_interval: std::num::NonZero::new(10000).unwrap(),
+                    max_entries_per_append: std::num::NonZero::new(100).unwrap(),
+                },
+            },
+            network: NetworkConfig {
+                listen_addr: format!("0.0.0.0:{}", self.args.https_port),
+                public_addr: format!(
+                    "https://enclave-{}.local",
+                    self.args.enclave_ip.to_string().replace('.', "-")
+                ),
+                connection_timeout: Duration::from_secs(10),
+                request_timeout: Duration::from_secs(30),
+            },
+            node_name: node_id.to_string(),
+            services: ServiceConfig::default(),
+            storage: StorageConfig {
+                path: "/tmp/engine-storage".to_string(),
+                max_log_size: std::num::NonZero::new(1_000_000).unwrap(),
+                compaction_interval: Duration::from_secs(300),
+                cache_size: 1_000_000,
+            },
+        };
+
+        // Get network and topology managers
+        let network_manager = self
+            .network
+            .as_ref()
+            .ok_or_else(|| Error::Consensus("Network not initialized".to_string()))?;
+
+        // Extract topology manager from network - we'll need to store it separately
+        // For now, create a new one (this is a limitation we'll need to fix)
+        let topology_manager = Arc::new(TopologyManager::new(
+            Arc::new(governance.clone()),
+            node_id.clone(),
+        ));
+        topology_manager
+            .start()
+            .await
+            .map_err(|e| Error::Consensus(format!("Failed to start topology manager: {e}")))?;
+
+        // Create memory storage
+        let storage_adaptor = MemoryStorage::new();
+        let storage_manager = Arc::new(StorageManager::new(storage_adaptor));
+
+        // Build the engine
+        let mut engine = EngineBuilder::new(node_id)
+            .with_config(engine_config)
+            .with_network(network_manager.clone())
+            .with_topology(topology_manager)
+            .with_storage(storage_manager)
+            .build()
+            .await
+            .map_err(|e| Error::Consensus(format!("Failed to build engine: {e}")))?;
+
+        // Start the engine
+        engine
+            .start()
+            .await
+            .map_err(|e| Error::Consensus(format!("Failed to start engine: {e}")))?;
+
+        // Get the client for Core to use
+        let _consensus = Arc::new(engine.client());
+
+        // Get engine router from transport
+        let transport = self
+            .transport
+            .as_ref()
+            .ok_or_else(|| Error::Consensus("Transport not initialized".to_string()))?;
+        let engine_router = transport
+            .create_router_integration()
+            .map_err(|e| Error::Consensus(format!("Failed to create router integration: {e}")))?;
 
         let core = Core::new(CoreOptions {
-            consensus,
+            attestor: self.attestor.clone(),
+            engine_router,
+            governance: governance.clone(),
             http_server,
-            network: network.clone(),
+            origin: format!(
+                "https://enclave-{}.local",
+                self.args.enclave_ip.to_string().replace('.', "-")
+            ),
         });
 
         core.bootstrap(BootstrapUpgrade {

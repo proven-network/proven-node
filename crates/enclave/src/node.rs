@@ -11,7 +11,6 @@ use proven_external_fs::ExternalFs;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
-use proven_network::Node;
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;

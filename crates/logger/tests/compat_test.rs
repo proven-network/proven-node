@@ -4,10 +4,6 @@
 mod tests {
     use proven_logger::*;
     use std::sync::Arc;
-    use std::sync::Once;
-
-    // Ensure bridges are only initialized once
-    static INIT: Once = Once::new();
 
     #[test]
     #[cfg(all(feature = "test-support", feature = "log-compat"))]

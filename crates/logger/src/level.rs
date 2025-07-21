@@ -60,19 +60,8 @@ impl Level {
         #[cfg(feature = "max-level-debug")]
         return Self::Debug;
 
-        #[cfg(not(any(
-            feature = "max-level-off",
-            feature = "max-level-error",
-            feature = "max-level-warn",
-            feature = "max-level-info",
-            feature = "max-level-debug",
-            feature = "release-max-level-off",
-            feature = "release-max-level-error",
-            feature = "release-max-level-warn",
-            feature = "release-max-level-info",
-            feature = "release-max-level-debug"
-        )))]
-        return Self::Trace;
+        // Default to Trace if no features match
+        Self::Trace
     }
 }
 

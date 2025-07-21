@@ -20,10 +20,10 @@ impl std::fmt::Display for BridgeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             #[cfg(feature = "log-compat")]
-            BridgeError::LogBridge(e) => write!(f, "Failed to initialize log bridge: {}", e),
+            BridgeError::LogBridge(e) => write!(f, "Failed to initialize log bridge: {e}"),
             #[cfg(feature = "tracing-compat")]
             BridgeError::TracingBridge(e) => {
-                write!(f, "Failed to initialize tracing bridge: {}", e)
+                write!(f, "Failed to initialize tracing bridge: {e}")
             }
             BridgeError::NoBridges => write!(
                 f,
@@ -118,7 +118,7 @@ pub fn init_with_bridges(logger: Arc<dyn Logger>) -> Result<(), Box<dyn std::err
         Err(BridgeError::NoBridges) => Ok(()), // No bridges is OK
         Err(e) => {
             // Log the error but don't fail
-            eprintln!("Warning: Failed to initialize some bridges: {}", e);
+            eprintln!("Warning: Failed to initialize some bridges: {e}");
             Ok(())
         }
     }

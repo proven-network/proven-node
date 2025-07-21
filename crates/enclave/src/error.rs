@@ -110,10 +110,6 @@ pub enum Error {
     #[error("private key error: {0}")]
     PrivateKey(String),
 
-    /// Proven network error.
-    #[error(transparent)]
-    ProvenNetwork(#[from] proven_network::Error),
-
     /// Babylon aggregator error.
     #[error(transparent)]
     RadixAggregator(#[from] proven_radix_aggregator::Error),
@@ -138,7 +134,11 @@ pub enum Error {
     #[error(transparent)]
     VsockRpcCac(#[from] proven_vsock_cac::Error),
 
-    /// VSOCK tracing error.
+    /// Logger VSOCK error.
     #[error(transparent)]
-    VsockTracing(#[from] proven_vsock_tracing::enclave::Error),
+    LoggerVsock(#[from] proven_logger_vsock::Error),
+
+    /// Logger initialization error.
+    #[error("Logger initialization failed: {0}")]
+    LoggerInit(Box<dyn std::error::Error + Send + Sync>),
 }
