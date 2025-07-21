@@ -764,7 +764,7 @@ where
         // Only the leader should propose membership changes
         let is_leader = consensus.is_leader().await;
         if !is_leader {
-            tracing::debug!("Not the leader, skipping membership update");
+            tracing::trace!("Not the leader, skipping membership update");
             return Ok(());
         }
 

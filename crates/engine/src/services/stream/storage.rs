@@ -124,8 +124,7 @@ impl<L: LogStorageWithDelete> StreamStorageReader for StreamStorageImpl<L> {
                         }
                         Err(e) => {
                             return Err(StorageError::InvalidValue(format!(
-                                "Failed to deserialize message at sequence {}: {}",
-                                seq, e
+                                "Failed to deserialize message at sequence {seq}: {e}"
                             )));
                         }
                     }

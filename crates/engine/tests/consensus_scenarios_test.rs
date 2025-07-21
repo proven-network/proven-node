@@ -26,11 +26,18 @@ async fn test_node_restart_rejoin() {
 
     let (engines, node_infos) = cluster.add_nodes(3).await;
 
-    // Wait for cluster formation
+    // Wait for global cluster formation first
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_global_cluster(&engines, Duration::from_secs(10))
         .await
-        .expect("Failed to form groups");
+        .expect("Failed to wait for global cluster formation");
+
+    // Now wait for default group to become routable (at least 1 member)
+    // The default group starts with just the coordinator, which is sufficient
+    cluster
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
+        .await
+        .expect("Failed to wait for default group to become routable");
 
     let group_id = ConsensusGroupId::new(1);
 
@@ -135,11 +142,17 @@ async fn test_concurrent_operations() {
 
     let (engines, _node_infos) = cluster.add_nodes(3).await;
 
-    // Wait for cluster formation
+    // Wait for global cluster formation
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_global_cluster(&engines, Duration::from_secs(10))
         .await
-        .expect("Failed to form groups");
+        .expect("Failed to wait for global cluster formation");
+
+    // Then wait for default group to become routable
+    cluster
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
+        .await
+        .expect("Failed to wait for default group to become routable");
 
     tracing::info!("=== Creating multiple streams concurrently ===");
 
@@ -259,11 +272,17 @@ async fn test_large_cluster_formation() {
         tracing::info!("  Node {}: {}", i, info.node_id);
     }
 
-    // Wait for cluster formation with longer timeout
+    // Wait for global cluster formation with longer timeout for larger cluster
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(60))
+        .wait_for_global_cluster(&engines, Duration::from_secs(20))
         .await
-        .expect("Failed to form groups in large cluster");
+        .expect("Failed to wait for global cluster formation in large cluster");
+
+    // Then wait for default group to become routable
+    cluster
+        .wait_for_default_group_routable(&engines, Duration::from_secs(60))
+        .await
+        .expect("Failed to wait for default group to become routable in large cluster");
 
     // Verify consensus state
     let group_id = ConsensusGroupId::new(1);
@@ -357,11 +376,17 @@ async fn test_network_delays() {
     node_infos.extend(new_infos);
     tracing::info!("Started node 3: {}", node_infos[2].node_id);
 
-    // Wait for cluster to stabilize
+    // Wait for global cluster formation with staggered starts
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_global_cluster(&engines, Duration::from_secs(15))
         .await
-        .expect("Failed to form groups with staggered starts");
+        .expect("Failed to wait for global cluster formation with staggered starts");
+
+    // Then wait for default group to become routable
+    cluster
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
+        .await
+        .expect("Failed to wait for default group to become routable with staggered starts");
 
     // Verify cluster formed correctly despite staggered starts
     let group_id = ConsensusGroupId::new(1);

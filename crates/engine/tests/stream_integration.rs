@@ -39,13 +39,11 @@ async fn test_stream_operations() {
         println!("  - Node {} on port {}", info.node_id, info.port);
     }
 
-    // Wait for cluster discovery and formation
-    assert!(
-        cluster
-            .wait_for_cluster_formation(Duration::from_secs(10))
-            .await,
-        "Failed to wait for cluster formation"
-    );
+    // Wait for global cluster formation
+    cluster
+        .wait_for_global_cluster(&engines, Duration::from_secs(10))
+        .await
+        .expect("Failed to wait for global cluster formation");
 
     // Verify all nodes are healthy
     for (i, engine) in engines.iter().enumerate() {

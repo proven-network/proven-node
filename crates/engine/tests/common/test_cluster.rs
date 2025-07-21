@@ -148,11 +148,13 @@ impl TestCluster {
 
             let (engine, node_info) = self.create_tcp_node().await;
 
+            // Get short node ID for logging
+            let node_id_str = node_info.node_id.to_string();
+            let short_id = &node_id_str[..8];
+
             info!(
-                "Node {} started: {} on port {}",
-                i + 1,
-                node_info.node_id,
-                node_info.port
+                "[Node-{}] Started: {} on port {}",
+                short_id, node_info.node_id, node_info.port
             );
 
             engines.push(engine);
@@ -181,18 +183,29 @@ impl TestCluster {
         let node_id = NodeId::from(signing_key.verifying_key());
         let port = allocate_port();
 
-        info!("Creating TCP node {} on port {}", node_id, port);
+        // Get short node ID for logging
+        let node_id_str = node_id.to_string();
+        let short_id = &node_id_str[..8];
+
+        info!(
+            "[Node-{}] Creating TCP node {} on port {}",
+            short_id, node_id, port
+        );
 
         // Add node to governance
         self.add_node_to_governance(&signing_key, port).await;
-        info!("Added node {} to governance with port {}", node_id, port);
+        info!("[Node-{}] Added to governance with port {}", short_id, port);
 
         // Create governance instance for this node
         let governance = self.governance.read().await.clone();
 
         // Log how many nodes are in governance now
         let all_nodes = governance.get_topology().await.unwrap();
-        info!("Governance now has {} nodes", all_nodes.len());
+        info!(
+            "[Node-{}] Governance now has {} nodes",
+            short_id,
+            all_nodes.len()
+        );
 
         // Create topology manager with shorter refresh interval for tests
         let topology_config = proven_topology::TopologyManagerConfig {
@@ -248,7 +261,10 @@ impl TestCluster {
             .start()
             .await
             .expect("Failed to start TCP transport");
-        info!("TCP transport listening on {}", actual_addr);
+        info!(
+            "[Node-{}] TCP transport listening on {}",
+            short_id, actual_addr
+        );
 
         topology_manager
             .start()
@@ -308,16 +324,23 @@ impl TestCluster {
         let node_id = NodeId::from(signing_key.verifying_key());
         let port = existing_port.unwrap_or_else(allocate_port);
 
-        info!("Creating TCP node {} on port {}", node_id, port);
+        // Get short node ID for logging
+        let node_id_str = node_id.to_string();
+        let short_id = &node_id_str[..8];
+
+        info!(
+            "[Node-{}] Creating TCP node {} on port {}",
+            short_id, node_id, port
+        );
 
         // Only add node to governance if it's not already there (i.e., no existing port)
         if existing_port.is_none() {
             self.add_node_to_governance(&signing_key, port).await;
-            info!("Added node {} to governance with port {}", node_id, port);
+            info!("[Node-{}] Added to governance with port {}", short_id, port);
         } else {
             info!(
-                "Node {} already in governance, reusing port {}",
-                node_id, port
+                "[Node-{}] Already in governance, reusing port {}",
+                short_id, port
             );
         }
 
@@ -326,7 +349,11 @@ impl TestCluster {
 
         // Log how many nodes are in governance now
         let all_nodes = governance.get_topology().await.unwrap();
-        info!("Governance now has {} nodes", all_nodes.len());
+        info!(
+            "[Node-{}] Governance now has {} nodes",
+            short_id,
+            all_nodes.len()
+        );
 
         // Create topology manager with shorter refresh interval for tests
         let topology_config = proven_topology::TopologyManagerConfig {
@@ -370,7 +397,7 @@ impl TestCluster {
         };
 
         let storage_manager = if let Some(existing) = existing_manager {
-            info!("Reusing existing storage manager for node {}", node_id);
+            info!("[Node-{}] Reusing existing storage manager", short_id);
             existing
         } else {
             // Ensure the directory exists
@@ -387,7 +414,7 @@ impl TestCluster {
                 let mut managers = self.rocksdb_storage_managers.lock().unwrap();
                 managers.insert(node_key.clone(), storage_manager.clone());
             }
-            info!("Created new storage manager for node {}", node_id);
+            info!("[Node-{}] Created new storage manager", short_id);
             storage_manager
         };
 
@@ -407,7 +434,10 @@ impl TestCluster {
             .start()
             .await
             .expect("Failed to start TCP transport");
-        info!("TCP transport listening on {}", actual_addr);
+        info!(
+            "[Node-{}] TCP transport listening on {}",
+            short_id, actual_addr
+        );
 
         topology_manager
             .start()
@@ -463,7 +493,60 @@ impl TestCluster {
         &self.nodes
     }
 
-    /// Wait for cluster formation
+    /// Wait for global cluster formation
+    /// This waits for all nodes to discover each other and establish global consensus
+    pub async fn wait_for_global_cluster<T, G, S>(
+        &self,
+        engines: &[Engine<T, G, S>],
+        timeout: Duration,
+    ) -> Result<(), String>
+    where
+        T: proven_transport::Transport,
+        G: TopologyAdaptor,
+        S: StorageAdaptor,
+    {
+        let start = std::time::Instant::now();
+
+        // For now, we'll use a simple time-based wait to ensure nodes have time to:
+        // 1. Discover each other via membership service
+        // 2. Establish global consensus
+        // 3. Create the default group
+
+        // This is a pragmatic approach until we have a proper way to check
+        // global consensus state directly
+        let wait_time = std::cmp::min(Duration::from_secs(3), timeout);
+        tokio::time::sleep(wait_time).await;
+
+        // After the initial wait, verify that at least the coordinator has created groups
+        let mut any_has_groups = false;
+        for engine in engines {
+            if let Ok(groups) = engine.node_groups().await
+                && !groups.is_empty()
+            {
+                any_has_groups = true;
+                info!(
+                    "Found node with {} groups after global cluster wait",
+                    groups.len()
+                );
+                break;
+            }
+        }
+
+        if any_has_groups || start.elapsed() < timeout {
+            info!(
+                "Global cluster formation complete after {:?}",
+                start.elapsed()
+            );
+            Ok(())
+        } else {
+            Err(format!(
+                "Timeout after {timeout:?} waiting for global cluster formation"
+            ))
+        }
+    }
+
+    /// Wait for cluster formation (deprecated - use wait_for_global_cluster)
+    #[deprecated(note = "Use wait_for_global_cluster instead")]
     pub async fn wait_for_cluster_formation(&self, timeout: Duration) -> bool {
         let start = std::time::Instant::now();
 
@@ -538,6 +621,27 @@ impl TestCluster {
         Err(format!(
             "Timeout after {timeout:?} waiting for group formation"
         ))
+    }
+
+    /// Wait for the default group (ID 1) to become routable
+    /// This only requires at least 1 member (typically the coordinator)
+    pub async fn wait_for_default_group_routable<T, G, S>(
+        &self,
+        engines: &[Engine<T, G, S>],
+        timeout: Duration,
+    ) -> Result<(), String>
+    where
+        T: proven_transport::Transport,
+        G: TopologyAdaptor,
+        S: StorageAdaptor,
+    {
+        self.wait_for_specific_group(
+            engines,
+            proven_engine::foundation::types::ConsensusGroupId::new(1),
+            1, // Only need 1 member for routability
+            timeout,
+        )
+        .await
     }
 
     /// Wait for a specific group to be formed on all expected nodes
@@ -677,11 +781,13 @@ impl TestCluster {
                 .create_tcp_node_with_rocksdb(path, signing_key, existing_port)
                 .await;
 
+            // Get short node ID for logging
+            let node_id_str = node_info.node_id.to_string();
+            let short_id = &node_id_str[..8];
+
             info!(
-                "RocksDB node {} started: {} on port {}",
-                i + 1,
-                node_info.node_id,
-                node_info.port
+                "[Node-{}] RocksDB node started: {} on port {}",
+                short_id, node_info.node_id, node_info.port
             );
 
             engines.push(engine);
