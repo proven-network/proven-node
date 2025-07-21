@@ -105,7 +105,7 @@ where
         };
 
         match network
-            .request_service(
+            .service_request(
                 target_node.clone(),
                 message,
                 std::time::Duration::from_secs(30),
@@ -131,7 +131,7 @@ where
                     };
 
                     match network
-                        .request_service(
+                        .service_request(
                             member.clone(),
                             message,
                             std::time::Duration::from_secs(30),
@@ -181,7 +181,7 @@ where
         };
 
         match network
-            .request_service(leader.clone(), message, std::time::Duration::from_secs(30))
+            .service_request(leader.clone(), message, std::time::Duration::from_secs(30))
             .await
         {
             Ok(ClientServiceResponse::Group { response }) => Ok(response),
@@ -244,7 +244,7 @@ where
             };
 
             match network
-                .request_service(member.clone(), message, std::time::Duration::from_secs(30))
+                .service_request(member.clone(), message, std::time::Duration::from_secs(30))
                 .await
             {
                 Ok(ClientServiceResponse::StreamRead { messages }) => return Ok(messages),
@@ -321,7 +321,7 @@ where
             };
 
             match network
-                .request_service(member.clone(), message, std::time::Duration::from_secs(30))
+                .service_request(member.clone(), message, std::time::Duration::from_secs(30))
                 .await
             {
                 Ok(ClientServiceResponse::StreamBatch {
@@ -399,7 +399,7 @@ where
             };
 
             match network
-                .request_service(node.clone(), message, std::time::Duration::from_secs(30))
+                .service_request(node.clone(), message, std::time::Duration::from_secs(30))
                 .await
             {
                 Ok(ClientServiceResponse::StreamBatch {
@@ -461,7 +461,7 @@ where
             };
 
             match network
-                .request_service(node.clone(), message, std::time::Duration::from_secs(30))
+                .service_request(node.clone(), message, std::time::Duration::from_secs(30))
                 .await
             {
                 Ok(ClientServiceResponse::StreamEnd { .. }) => return Ok(()),

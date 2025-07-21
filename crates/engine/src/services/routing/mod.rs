@@ -23,7 +23,8 @@
 //! ## Usage
 //!
 //! ```rust,ignore
-//! let routing_service = RoutingService::new(config);
+//! let event_bus = Arc::new(EventBus::new(event_config));
+//! let routing_service = RoutingService::new(config, node_id, event_bus);
 //! routing_service.start().await?;
 //!
 //! // Route a stream operation
@@ -37,12 +38,15 @@
 //! ```
 
 mod balancer;
+mod events;
 mod router;
 mod service;
+mod subscribers;
 mod table;
 mod types;
 
 pub use balancer::{LoadBalancer, LoadStrategy};
+pub use events::RoutingEvent;
 pub use router::{OperationRouter, RouteDecision};
 pub use service::{RoutingConfig, RoutingService};
 pub use table::{RouteEntry, RoutingTable};

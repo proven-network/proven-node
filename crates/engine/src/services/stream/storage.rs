@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 use proven_storage::{LogStorageWithDelete, StorageError, StorageNamespace, StorageResult};
 
 use super::types::{MessageData, StoredMessage};
+use crate::foundation::message_format;
 use crate::services::stream::StreamName;
 
 /// Stream storage reader interface
@@ -112,12 +113,22 @@ impl<L: LogStorageWithDelete> StreamStorageReader for StreamStorageImpl<L> {
                 let entries = storage.read_range(namespace, start, end).await?;
 
                 let mut results = Vec::new();
-                for (_, bytes) in entries {
-                    let message: StoredMessage =
-                        ciborium::from_reader(bytes.as_ref()).map_err(|e| {
-                            StorageError::InvalidValue(format!("Failed to deserialize: {e}"))
-                        })?;
-                    results.push(message);
+                for (seq, bytes) in entries {
+                    match message_format::deserialize_entry(&bytes) {
+                        Ok((message, timestamp, _sequence)) => {
+                            results.push(StoredMessage {
+                                sequence: seq,
+                                data: message,
+                                timestamp,
+                            });
+                        }
+                        Err(e) => {
+                            return Err(StorageError::InvalidValue(format!(
+                                "Failed to deserialize message at sequence {}: {}",
+                                seq, e
+                            )));
+                        }
+                    }
                 }
                 Ok(results)
             }
@@ -178,7 +189,7 @@ impl<L: LogStorageWithDelete> StreamStorageWriter for StreamStorageImpl<L> {
                     .map_err(|e| StorageError::InvalidValue(format!("Failed to serialize: {e}")))?;
 
                 storage
-                    .append(namespace, vec![(seq, Bytes::from(buffer))])
+                    .put_at(namespace, vec![(seq, Arc::new(Bytes::from(buffer)))])
                     .await
             }
         }

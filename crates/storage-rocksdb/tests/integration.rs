@@ -20,13 +20,14 @@ async fn test_basic_operations() {
     // Test initial bounds (should be None)
     assert_eq!(storage.bounds(&namespace).await.unwrap(), None);
 
-    // Append some entries
-    let entries = vec![
-        (nz(1), Bytes::from("entry 1")),
-        (nz(2), Bytes::from("entry 2")),
-        (nz(3), Bytes::from("entry 3")),
-    ];
-    storage.append(&namespace, entries).await.unwrap();
+    // Test append (sequential)
+    let entries = Arc::new(vec![
+        Bytes::from("entry 1"),
+        Bytes::from("entry 2"),
+        Bytes::from("entry 3"),
+    ]);
+    let last_seq = storage.append(&namespace, entries).await.unwrap();
+    assert_eq!(last_seq, nz(3));
 
     // Test bounds after append
     assert_eq!(
@@ -57,12 +58,13 @@ async fn test_persistence_across_restarts() {
         let storage = RocksDbStorage::new(&path).await.unwrap();
         let namespace = StorageNamespace::new("test_persist");
 
+        // Use put_at for specific non-sequential positions
         let entries = vec![
-            (nz(10), Bytes::from("persistent 1")),
-            (nz(20), Bytes::from("persistent 2")),
-            (nz(30), Bytes::from("persistent 3")),
+            (nz(10), Arc::new(Bytes::from("persistent 1"))),
+            (nz(20), Arc::new(Bytes::from("persistent 2"))),
+            (nz(30), Arc::new(Bytes::from("persistent 3"))),
         ];
-        storage.append(&namespace, entries).await.unwrap();
+        storage.put_at(&namespace, entries).await.unwrap();
 
         assert_eq!(
             storage.bounds(&namespace).await.unwrap(),
@@ -103,15 +105,17 @@ async fn test_multiple_namespaces() {
 
     // Write to different namespaces
     storage
-        .append(&ns1, vec![(nz(1), Bytes::from("ns1 data"))])
+        .append(&ns1, Arc::new(vec![Bytes::from("ns1 data")]))
+        .await
+        .unwrap();
+
+    // Use put_at for specific indices in other namespaces
+    storage
+        .put_at(&ns2, vec![(nz(100), Arc::new(Bytes::from("ns2 data")))])
         .await
         .unwrap();
     storage
-        .append(&ns2, vec![(nz(100), Bytes::from("ns2 data"))])
-        .await
-        .unwrap();
-    storage
-        .append(&ns3, vec![(nz(1000), Bytes::from("ns3 data"))])
+        .put_at(&ns3, vec![(nz(1000), Arc::new(Bytes::from("ns3 data")))])
         .await
         .unwrap();
 
@@ -157,11 +161,11 @@ async fn test_engine_like_namespaces() {
             "global_logs",
         ];
 
-        for (i, ns_name) in namespaces.iter().enumerate() {
+        for ns_name in namespaces.iter() {
             let ns = StorageNamespace::new(*ns_name);
             let data = format!("data for {ns_name}");
             storage
-                .append(&ns, vec![(nz((i + 1) as u64), Bytes::from(data))])
+                .append(&ns, Arc::new(vec![Bytes::from(data)]))
                 .await
                 .unwrap();
         }
@@ -185,14 +189,14 @@ async fn test_truncate_after() {
     let storage = RocksDbStorage::new(temp_dir.path()).await.unwrap();
     let namespace = StorageNamespace::new("test_truncate");
 
-    // Append entries
-    let entries = vec![
-        (nz(1), Bytes::from("entry 1")),
-        (nz(2), Bytes::from("entry 2")),
-        (nz(3), Bytes::from("entry 3")),
-        (nz(4), Bytes::from("entry 4")),
-        (nz(5), Bytes::from("entry 5")),
-    ];
+    // Append entries sequentially
+    let entries = Arc::new(vec![
+        Bytes::from("entry 1"),
+        Bytes::from("entry 2"),
+        Bytes::from("entry 3"),
+        Bytes::from("entry 4"),
+        Bytes::from("entry 5"),
+    ]);
     storage.append(&namespace, entries).await.unwrap();
 
     // Truncate after index 3
@@ -216,14 +220,14 @@ async fn test_compact_before() {
     let storage = RocksDbStorage::new(temp_dir.path()).await.unwrap();
     let namespace = StorageNamespace::new("test_compact");
 
-    // Append entries
-    let entries = vec![
-        (nz(1), Bytes::from("entry 1")),
-        (nz(2), Bytes::from("entry 2")),
-        (nz(3), Bytes::from("entry 3")),
-        (nz(4), Bytes::from("entry 4")),
-        (nz(5), Bytes::from("entry 5")),
-    ];
+    // Append entries sequentially
+    let entries = Arc::new(vec![
+        Bytes::from("entry 1"),
+        Bytes::from("entry 2"),
+        Bytes::from("entry 3"),
+        Bytes::from("entry 4"),
+        Bytes::from("entry 5"),
+    ]);
     storage.append(&namespace, entries).await.unwrap();
 
     // Compact before index 3 (should remove 1 and 2)
@@ -253,9 +257,11 @@ async fn test_concurrent_access() {
         let storage_clone = storage.clone();
         tasks.spawn(async move {
             let namespace = StorageNamespace::new(format!("concurrent_{i}"));
-            let entries: Vec<(NonZero<u64>, Bytes)> = (1..=100)
-                .map(|j| (nz(j), Bytes::from(format!("task {i} entry {j}"))))
-                .collect();
+            let entries: Arc<Vec<Bytes>> = Arc::new(
+                (1..=100)
+                    .map(|j| Bytes::from(format!("task {i} entry {j}")))
+                    .collect(),
+            );
 
             storage_clone.append(&namespace, entries).await.unwrap();
 
@@ -294,9 +300,8 @@ async fn test_large_entries() {
 
     // Create large entries (1MB each)
     let large_data = vec![0u8; 1024 * 1024];
-    let entries: Vec<(NonZero<u64>, Bytes)> = (1..=10)
-        .map(|i| (nz(i), Bytes::from(large_data.clone())))
-        .collect();
+    let entries: Arc<Vec<Bytes>> =
+        Arc::new((1..=10).map(|_| Bytes::from(large_data.clone())).collect());
 
     storage.append(&namespace, entries).await.unwrap();
 
@@ -314,14 +319,14 @@ async fn test_non_contiguous_indices() {
     let storage = RocksDbStorage::new(temp_dir.path()).await.unwrap();
     let namespace = StorageNamespace::new("test_gaps");
 
-    // Write non-contiguous indices
+    // Write non-contiguous indices - use put_at for specific positions
     let entries = vec![
-        (nz(10), Bytes::from("entry 10")),
-        (nz(20), Bytes::from("entry 20")),
-        (nz(30), Bytes::from("entry 30")),
-        (nz(100), Bytes::from("entry 100")),
+        (nz(10), Arc::new(Bytes::from("entry 10"))),
+        (nz(20), Arc::new(Bytes::from("entry 20"))),
+        (nz(30), Arc::new(Bytes::from("entry 30"))),
+        (nz(100), Arc::new(Bytes::from("entry 100"))),
     ];
-    storage.append(&namespace, entries).await.unwrap();
+    storage.put_at(&namespace, entries).await.unwrap();
 
     // Verify bounds
     assert_eq!(

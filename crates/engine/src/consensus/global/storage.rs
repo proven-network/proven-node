@@ -154,12 +154,12 @@ impl<L: LogStorage> RaftLogStorage<GlobalTypeConfig> for Arc<GlobalRaftLogStorag
             // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
             let storage_index = NonZero::new(entry.log_id.index + 1)
                 .expect("entry.log_id.index + 1 should never be 0");
-            storage_entries.push((storage_index, Bytes::from(buffer)));
+            storage_entries.push((storage_index, Arc::new(Bytes::from(buffer))));
         }
 
-        // Append to storage
+        // Put entries at specific indices using RandomAccessLogStorage
         self.log_storage
-            .append(&self.namespace, storage_entries)
+            .put_at(&self.namespace, storage_entries)
             .await
             .map_err(|e| StorageError::write(&e))?;
 

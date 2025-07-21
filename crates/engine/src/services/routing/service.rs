@@ -3,12 +3,15 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
+use async_trait::async_trait;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 use crate::foundation::ConsensusGroupId;
-use crate::services::event::{Event, EventEnvelope, EventFilter, EventService, EventType};
+use crate::services::event::{EventBus, EventHandler};
+use crate::services::routing::events::RoutingEvent;
+use crate::services::routing::subscribers::{GlobalConsensusSubscriber, GroupConsensusSubscriber};
 use proven_topology::NodeId;
 
 use super::balancer::LoadBalancer;
@@ -45,8 +48,8 @@ pub struct RoutingService {
     /// Service state
     state: Arc<RwLock<ServiceState>>,
 
-    /// Event service reference
-    event_service: Arc<RwLock<Option<Arc<EventService>>>>,
+    /// Event bus reference
+    event_bus: Arc<EventBus>,
 }
 
 /// Service state
@@ -64,7 +67,7 @@ enum ServiceState {
 
 impl RoutingService {
     /// Create a new routing service
-    pub fn new(config: RoutingConfig, local_node_id: NodeId) -> Self {
+    pub fn new(config: RoutingConfig, local_node_id: NodeId, event_bus: Arc<EventBus>) -> Self {
         let routing_table = Arc::new(RoutingTable::new(config.cache_ttl));
         let load_balancer = Arc::new(LoadBalancer::new(
             config.default_strategy,
@@ -86,13 +89,8 @@ impl RoutingService {
             background_tasks: Arc::new(RwLock::new(Vec::new())),
             shutdown_signal: Arc::new(tokio::sync::Notify::new()),
             state: Arc::new(RwLock::new(ServiceState::NotStarted)),
-            event_service: Arc::new(RwLock::new(None)),
+            event_bus,
         }
-    }
-
-    /// Set the event service for this service
-    pub async fn set_event_service(&self, event_service: Arc<EventService>) {
-        *self.event_service.write().await = Some(event_service);
     }
 
     /// Start the routing service internally
@@ -138,85 +136,21 @@ impl RoutingService {
         // Start metrics aggregation
         tasks.push(self.spawn_metrics_aggregator());
 
-        // Register event handler for synchronous processing
-        if let Some(event_service) = self.event_service.read().await.as_ref() {
-            // Start event subscription for routing updates
-            self.start_event_subscription(event_service.clone()).await;
-        }
+        // Register event handlers for consensus events
+        // Create subscribers with reference to routing table
+        let global_subscriber =
+            GlobalConsensusSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
 
-        Ok(())
-    }
+        let group_subscriber =
+            GroupConsensusSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
 
-    /// Start event subscription for routing updates
-    async fn start_event_subscription(&self, event_service: Arc<EventService>) {
-        use crate::services::event::{EventFilter, EventType};
+        // Subscribe to global consensus events
+        self.event_bus.subscribe(global_subscriber).await;
 
-        // Subscribe only to consensus events for leadership changes
-        let filter = EventFilter::ByType(vec![EventType::Consensus]);
+        // Subscribe to group consensus events
+        self.event_bus.subscribe(group_subscriber).await;
 
-        match event_service
-            .subscribe("routing_service".to_string(), filter)
-            .await
-        {
-            Ok(mut subscriber) => {
-                let routing_table = self.routing_table.clone();
-
-                tokio::spawn(async move {
-                    while let Some(envelope) = subscriber.recv().await {
-                        if let Err(e) = Self::handle_event_static(envelope, &routing_table).await {
-                            error!("Failed to handle routing event: {}", e);
-                        }
-                    }
-                    debug!("Routing event subscription ended");
-                });
-
-                info!("RoutingService: Started event subscription");
-            }
-            Err(e) => {
-                error!("Failed to subscribe to routing events: {}", e);
-            }
-        }
-    }
-
-    /// Static event handler - only handles leadership changes not covered by callbacks
-    async fn handle_event_static(
-        envelope: crate::services::event::EventEnvelope,
-        routing_table: &Arc<RoutingTable>,
-    ) -> RoutingResult<()> {
-        use crate::services::event::Event;
-
-        match envelope.event {
-            Event::GroupLeaderChanged {
-                group_id,
-                new_leader,
-                ..
-            } => {
-                // Only track leader for local groups (where we participate in consensus)
-                if let Ok(Some(mut route)) = routing_table.get_group_route(group_id).await
-                    && (route.location == GroupLocation::Local
-                        || route.location == GroupLocation::Distributed)
-                {
-                    route.leader = Some(new_leader.clone());
-                    route.last_updated = SystemTime::now();
-                    routing_table.update_group_route(group_id, route).await?;
-                    info!(
-                        "Updated leader for local group {:?} to {}",
-                        group_id, new_leader
-                    );
-                }
-                // For remote groups, we don't track the leader as we don't participate in their consensus
-            }
-            Event::GlobalLeaderChanged { new_leader, .. } => {
-                // Global leader changes need to be handled here
-                routing_table
-                    .update_global_leader(Some(new_leader.clone()))
-                    .await;
-                info!("Updated global leader to {}", new_leader);
-            }
-            _ => {
-                // All other routing updates come through callbacks
-            }
-        }
+        info!("RoutingService: Registered subscribers for consensus events");
 
         Ok(())
     }

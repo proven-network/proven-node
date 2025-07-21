@@ -207,7 +207,7 @@ async fn test_simple_request_reply() {
     info!("Sending request from {} to {}", node1_id, node2_id);
 
     let response_result = network1
-        .request_service(
+        .service_request(
             node2_id.clone(),
             request,
             Duration::from_secs(15), // 15 second timeout

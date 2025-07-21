@@ -21,8 +21,9 @@ use crate::foundation::{
     ConsensusGroupId,
     traits::{HealthStatus, ServiceHealth, ServiceLifecycle, SubsystemHealth},
 };
-use crate::services::event::{Event, EventEnvelope, EventFilter, EventService, EventType};
+use crate::services::event::{EventBus, EventHandler};
 use crate::services::stream::config::RetentionPolicy;
+use crate::services::stream::events::StreamEvent;
 use crate::services::stream::storage::{
     StreamStorageImpl, StreamStorageReader, StreamStorageWriter,
 };
@@ -88,8 +89,8 @@ pub struct StreamService<S: StorageAdaptor> {
     /// Storage manager for persistent streams
     storage_manager: Arc<StorageManager<S>>,
 
-    /// Event service reference
-    event_service: Arc<RwLock<Option<Arc<EventService>>>>,
+    /// Event bus reference
+    event_bus: Arc<EventBus>,
 
     /// Service running state
     is_running: Arc<RwLock<bool>>,
@@ -103,23 +104,22 @@ pub struct StreamService<S: StorageAdaptor> {
 
 impl<S: StorageAdaptor> StreamService<S> {
     /// Create a new stream service
-    pub fn new(config: StreamServiceConfig, storage_manager: Arc<StorageManager<S>>) -> Self {
+    pub fn new(
+        config: StreamServiceConfig,
+        storage_manager: Arc<StorageManager<S>>,
+        event_bus: Arc<EventBus>,
+    ) -> Self {
         Self {
             config,
             streams: Arc::new(RwLock::new(HashMap::new())),
             stream_configs: Arc::new(RwLock::new(HashMap::new())),
             stream_metadata: Arc::new(RwLock::new(HashMap::new())),
             storage_manager,
-            event_service: Arc::new(RwLock::new(None)),
+            event_bus,
             is_running: Arc::new(RwLock::new(false)),
             shutdown: Arc::new(RwLock::new(None)),
             background_tasks: Arc::new(RwLock::new(Vec::new())),
         }
-    }
-
-    /// Set the event service for this service
-    pub async fn set_event_service(&self, event_service: Arc<EventService>) {
-        *self.event_service.write().await = Some(event_service);
     }
 
     /// Create a new stream with the given configuration
@@ -224,121 +224,8 @@ impl<S: StorageAdaptor> StreamService<S> {
         storage
     }
 
-    /// Handle a stream event
-    async fn handle_event(&self, envelope: EventEnvelope) -> ConsensusResult<()> {
-        debug!("StreamService received event: {:?}", envelope.event);
-        match &envelope.event {
-            Event::StreamMessagesAppended {
-                stream,
-                group_id,
-                messages,
-                term: _,
-            } => {
-                // Note: With callbacks, messages should already be persisted
-                // This is here as a fallback or for other event consumers
-                debug!(
-                    "Received batch append event for stream {} in group {} with {} messages",
-                    stream,
-                    group_id,
-                    messages.len()
-                );
-            }
-            Event::StreamTrimmed {
-                stream,
-                group_id,
-                new_start_seq,
-            } => {
-                if let Some(_storage) = self.streams.read().await.get(stream) {
-                    // Implement trimming when storage supports it
-                    debug!(
-                        "Stream {} in group {} trimmed to start at {}",
-                        stream, group_id, new_start_seq
-                    );
-                }
-            }
-            Event::StreamMessageDeleted {
-                stream,
-                group_id: _,
-                sequence,
-                timestamp: _,
-            } => {
-                let _ = self.get_or_create_storage(stream).await;
-
-                // Use the delete method which handles metadata updates
-                match self.delete_message_from_storage(stream, *sequence).await {
-                    Ok(deleted) => {
-                        if !deleted {
-                            debug!(
-                                "Message {} not found in stream {} storage",
-                                sequence, stream
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            "Failed to delete message {} from stream {}: {}",
-                            sequence, stream, e
-                        );
-                    }
-                }
-            }
-            _ => {
-                // Ignore other events
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Start the event processing loop
-    async fn start_event_processing(&self, shutdown_rx: oneshot::Receiver<()>) {
-        let event_service = match self.event_service.read().await.as_ref() {
-            Some(service) => service.clone(),
-            None => {
-                error!("Event service not set, cannot start event processing");
-                return;
-            }
-        };
-
-        // Subscribe to stream events
-        let filter = EventFilter::ByType(vec![EventType::Stream]);
-        let mut subscriber = match event_service
-            .subscribe("stream-service".to_string(), filter)
-            .await
-        {
-            Ok(sub) => sub,
-            Err(e) => {
-                error!("Failed to subscribe to events: {}", e);
-                return;
-            }
-        };
-
-        let service = self.clone();
-
-        let handle = tokio::spawn(async move {
-            tokio::pin!(shutdown_rx);
-
-            loop {
-                tokio::select! {
-                    Some(envelope) = subscriber.recv() => {
-                        if let Err(e) = service.handle_event(envelope).await {
-                            error!("Error handling stream event: {}", e);
-                        }
-                    }
-                    _ = &mut shutdown_rx => {
-                        info!("Stream service event processing shutting down");
-                        break;
-                    }
-                    else => {
-                        info!("Stream service event channel closed");
-                        break;
-                    }
-                }
-            }
-        });
-
-        self.background_tasks.write().await.push(handle);
-    }
+    // Note: StreamService publishes events but doesn't consume them.
+    // It receives operations via direct method calls from consensus services.
 
     /// Get stream storage for reading
     pub async fn get_stream(
@@ -607,6 +494,20 @@ impl<S: StorageAdaptor> StreamService<S> {
             metadata.total_bytes += message_size;
         }
     }
+
+    /// Update stream metadata from a consensus event
+    pub async fn update_stream_metadata_for_event(
+        &self,
+        stream_name: &StreamName,
+        message_count: usize,
+        last_sequence: NonZero<u64>,
+    ) {
+        if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream_name) {
+            metadata.message_count += message_count as u64;
+            // Update timestamp based on sequence number (approximate)
+            metadata.last_message_at = Some(last_sequence.get());
+        }
+    }
 }
 
 // Implement Clone for StreamService to match other services
@@ -618,7 +519,7 @@ impl<S: StorageAdaptor> Clone for StreamService<S> {
             stream_configs: self.stream_configs.clone(),
             stream_metadata: self.stream_metadata.clone(),
             storage_manager: self.storage_manager.clone(),
-            event_service: self.event_service.clone(),
+            event_bus: self.event_bus.clone(),
             is_running: self.is_running.clone(),
             shutdown: self.shutdown.clone(),
             background_tasks: self.background_tasks.clone(),
@@ -639,23 +540,32 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
             ));
         }
 
-        // Check that event service is set
-        if self.event_service.read().await.is_none() {
-            return Err(Error::with_context(
-                ErrorKind::Configuration,
-                "Event service not set",
-            ));
-        }
+        // Register event subscribers
+        // Subscribe to GlobalConsensusEvents
+        let global_subscriber =
+            crate::services::stream::subscribers::GlobalConsensusSubscriber::new(
+                Arc::new(self.clone()),
+                proven_topology::NodeId::default(), // TODO: Get actual node ID
+            );
+
+        self.event_bus.subscribe(global_subscriber).await;
+
+        // Subscribe to GroupConsensusEvents
+        let group_subscriber = crate::services::stream::subscribers::GroupConsensusSubscriber::new(
+            Arc::new(self.clone()),
+            proven_topology::NodeId::default(), // TODO: Get actual node ID
+        );
+
+        self.event_bus.subscribe(group_subscriber).await;
+
+        info!("StreamService: Registered subscribers for consensus events");
 
         // Mark as running
         *self.is_running.write().await = true;
 
         // Set up shutdown channel
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let (shutdown_tx, _shutdown_rx) = oneshot::channel();
         *self.shutdown.write().await = Some(shutdown_tx);
-
-        // Start event processing
-        self.start_event_processing(shutdown_rx).await;
 
         info!("StreamService started successfully");
         Ok(())
@@ -700,24 +610,16 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
 
     async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
         let is_running = self.is_running().await;
-        let has_event_service = self.event_service.read().await.is_some();
+        let has_event_bus = true; // Event bus is always present now
         let stream_count = self.streams.read().await.len();
 
         let mut subsystems = vec![];
 
         // Check event service subsystem
         subsystems.push(SubsystemHealth {
-            name: "event_service".to_string(),
-            status: if has_event_service {
-                HealthStatus::Healthy
-            } else {
-                HealthStatus::Unhealthy
-            },
-            message: if !has_event_service {
-                Some("Event service not configured".to_string())
-            } else {
-                None
-            },
+            name: "event_bus".to_string(),
+            status: HealthStatus::Healthy,
+            message: None,
         });
 
         // Check storage subsystem
@@ -732,7 +634,7 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
                 HealthStatus::Unhealthy,
                 Some("Service not running".to_string()),
             )
-        } else if !has_event_service {
+        } else if !has_event_bus {
             (
                 HealthStatus::Degraded,
                 Some("Event service not available".to_string()),
@@ -753,7 +655,6 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::event::{EventConfig, EventService};
     use bytes::Bytes;
     use proven_storage::{LogStorage, StorageNamespace, StorageResult};
 
@@ -766,9 +667,9 @@ mod tests {
         async fn append(
             &self,
             _namespace: &StorageNamespace,
-            _entries: Vec<(NonZero<u64>, Bytes)>,
-        ) -> StorageResult<()> {
-            Ok(())
+            _entries: Arc<Vec<Bytes>>,
+        ) -> StorageResult<NonZero<u64>> {
+            Ok(NonZero::new(1).unwrap())
         }
 
         async fn bounds(
@@ -782,6 +683,14 @@ mod tests {
             &self,
             _namespace: &StorageNamespace,
             _index: NonZero<u64>,
+        ) -> StorageResult<()> {
+            Ok(())
+        }
+
+        async fn put_at(
+            &self,
+            _namespace: &StorageNamespace,
+            _entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -856,19 +765,13 @@ mod tests {
     async fn test_stream_service_lifecycle() {
         let config = StreamServiceConfig::default();
         let storage_manager = Arc::new(StorageManager::new(DummyStorage));
-        let service = StreamService::new(config, storage_manager);
+        let event_bus = Arc::new(EventBus::new());
+        let service = StreamService::new(config, storage_manager, event_bus);
 
         // Should not be running initially
         assert!(!service.is_running().await);
 
-        // Should fail to start without event service
-        assert!(service.start().await.is_err());
-
-        // Set event service and start
-        let event_config = EventConfig::default();
-        let mut event_service = EventService::new(event_config);
-        event_service.start().await.ok();
-        service.set_event_service(Arc::new(event_service)).await;
+        // Start service
         assert!(service.start().await.is_ok());
         assert!(service.is_running().await);
 
@@ -884,7 +787,8 @@ mod tests {
     async fn test_stream_operations() {
         let config = StreamServiceConfig::default();
         let storage_manager = Arc::new(StorageManager::new(DummyStorage));
-        let service = StreamService::new(config, storage_manager);
+        let event_bus = Arc::new(EventBus::new());
+        let service = StreamService::new(config, storage_manager, event_bus);
 
         let stream_name = StreamName::new("test-stream");
         let stream_config = StreamConfig {

@@ -1,466 +1,250 @@
-//! Event bus implementation
+//! Type-safe event bus implementation
 
-use std::collections::{HashMap, HashSet};
+use std::any::TypeId;
+use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::SystemTime;
+use tokio::sync::RwLock;
+use tracing::{debug, error, info};
 
-use tokio::sync::{RwLock, broadcast, mpsc, oneshot};
-use tracing::{debug, error, warn};
-use uuid::Uuid;
+use super::traits::{
+    ClosureHandler, EventHandler, EventPriority, ServiceEvent, TypeErasedHandler,
+    TypeErasedHandlerWrapper,
+};
 
-use super::filters::EventFilter;
-use super::types::*;
+/// Type alias for the handler storage
+type HandlerMap = HashMap<TypeId, Vec<Arc<dyn TypeErasedHandler>>>;
 
-/// Type alias for synchronous response channels
-type SyncResponseMap = Arc<RwLock<HashMap<EventId, oneshot::Sender<EventResult>>>>;
-
-/// Event bus for publishing and subscribing to events
-pub struct EventBus {
-    /// Broadcast channel for events
-    sender: broadcast::Sender<EventEnvelope>,
-    /// Subscriber registry
-    subscribers: Arc<RwLock<HashMap<String, SubscriberInfo>>>,
-    /// Event deduplication cache
-    dedup_cache: Arc<RwLock<HashSet<EventId>>>,
-    /// Configuration
-    config: EventConfig,
+/// Statistics for the event bus
+#[derive(Debug, Clone, Default)]
+pub struct EventBusStats {
+    pub total_events_published: u64,
+    pub total_handlers_invoked: u64,
+    pub events_by_type: HashMap<String, u64>,
 }
 
-/// Subscriber information
-struct SubscriberInfo {
-    /// Subscriber ID
-    id: String,
-    /// Event filter
-    filter: EventFilter,
-    /// Subscription time
-    subscribed_at: EventTimestamp,
+/// Type-safe event bus for inter-service communication
+pub struct EventBus {
+    handlers: Arc<RwLock<HandlerMap>>,
+    stats: Arc<RwLock<EventBusStats>>,
 }
 
 impl EventBus {
     /// Create a new event bus
-    pub fn new(config: EventConfig) -> Self {
-        let (sender, _) = broadcast::channel(config.bus_capacity);
+    pub fn new() -> Self {
         Self {
-            sender,
-            subscribers: Arc::new(RwLock::new(HashMap::new())),
-            dedup_cache: Arc::new(RwLock::new(HashSet::new())),
-            config,
+            handlers: Arc::new(RwLock::new(HashMap::new())),
+            stats: Arc::new(RwLock::new(EventBusStats::default())),
         }
     }
 
-    /// Publish an event
-    pub async fn publish(&self, envelope: EventEnvelope) -> EventingResult<()> {
-        // Check deduplication
-        if self.config.enable_deduplication {
-            let mut cache = self.dedup_cache.write().await;
-            if !cache.insert(envelope.metadata.id) {
-                debug!("Duplicate event {} ignored", envelope.metadata.id);
-                return Ok(());
-            }
+    /// Subscribe to a specific event type with a handler
+    pub async fn subscribe<E, H>(&self, handler: H) -> SubscriptionId
+    where
+        E: ServiceEvent,
+        H: EventHandler<E> + 'static,
+    {
+        let type_id = TypeId::of::<E>();
+        let wrapped = Arc::new(TypeErasedHandlerWrapper::new(handler));
 
-            // Clean old entries if cache is too large
-            if cache.len() > 10000 {
-                cache.clear();
-            }
-        }
+        let mut handlers = self.handlers.write().await;
+        let handler_list = handlers.entry(type_id).or_insert_with(Vec::new);
+        let subscription_id = SubscriptionId {
+            type_id,
+            handler_index: handler_list.len(),
+        };
 
-        // Publish event
-        self.sender
-            .send(envelope.clone())
-            .map_err(|_| EventError::PublishFailed("No active subscribers".to_string()))?;
+        handler_list.push(wrapped as Arc<dyn TypeErasedHandler>);
 
         debug!(
-            "Published event {} of type {:?}",
-            envelope.metadata.id, envelope.metadata.event_type
+            "New subscription for event type: {:?}, total handlers: {}",
+            std::any::type_name::<E>(),
+            handler_list.len()
         );
 
-        Ok(())
+        subscription_id
     }
 
-    /// Subscribe to events
-    pub async fn subscribe(
-        &self,
-        subscriber_id: String,
-        filter: EventFilter,
-    ) -> EventingResult<EventSubscriber> {
-        let subscribers = self.subscribers.read().await;
-        if subscribers.len() >= self.config.max_subscribers {
-            return Err(EventError::SubscribeFailed(
-                "Maximum subscribers reached".to_string(),
-            ));
+    /// Subscribe with a closure
+    pub async fn subscribe_fn<E, F>(&self, closure: F) -> SubscriptionId
+    where
+        E: ServiceEvent,
+        F: Fn(E) + Send + Sync + 'static,
+    {
+        self.subscribe::<E, _>(ClosureHandler::new(closure)).await
+    }
+
+    /// Publish an event to all subscribers
+    pub async fn publish<E: ServiceEvent>(&self, event: E) {
+        let type_id = TypeId::of::<E>();
+        let event_name = event.event_name();
+
+        debug!("Publishing event: {}", event_name);
+
+        // Update stats
+        {
+            let mut stats = self.stats.write().await;
+            stats.total_events_published += 1;
+            *stats
+                .events_by_type
+                .entry(event_name.to_string())
+                .or_insert(0) += 1;
         }
-        drop(subscribers);
 
-        let receiver = self.sender.subscribe();
-
-        let info = SubscriberInfo {
-            id: subscriber_id.clone(),
-            filter: filter.clone(),
-            subscribed_at: SystemTime::now(),
+        // Get handlers
+        let handlers = {
+            let handlers_map = self.handlers.read().await;
+            handlers_map.get(&type_id).cloned()
         };
 
-        self.subscribers
-            .write()
-            .await
-            .insert(subscriber_id.clone(), info);
+        if let Some(event_handlers) = handlers {
+            let handler_count = event_handlers.len();
+            debug!("Dispatching {} to {} handlers", event_name, handler_count);
 
-        debug!(
-            "Subscriber {} registered with filter {:?}",
-            subscriber_id, filter
-        );
+            // Update handler invocation stats
+            {
+                let mut stats = self.stats.write().await;
+                stats.total_handlers_invoked += handler_count as u64;
+            }
 
-        Ok(EventSubscriber {
-            id: subscriber_id,
-            receiver,
-            filter,
-        })
-    }
+            // Group handlers by priority
+            let mut critical_handlers = Vec::new();
+            let mut other_handlers = Vec::new();
 
-    /// Unsubscribe from events
-    pub async fn unsubscribe(&self, subscriber_id: &str) -> EventingResult<()> {
-        self.subscribers.write().await.remove(subscriber_id);
-        debug!("Subscriber {} unregistered", subscriber_id);
-        Ok(())
-    }
+            for handler in event_handlers {
+                if handler.priority() == EventPriority::Critical {
+                    critical_handlers.push(handler);
+                } else {
+                    other_handlers.push(handler);
+                }
+            }
 
-    /// Get active subscriber count
-    pub async fn subscriber_count(&self) -> usize {
-        self.subscribers.read().await.len()
-    }
+            // Handle critical priority handlers synchronously
+            for handler in critical_handlers {
+                debug!("Handling {} synchronously (Critical priority)", event_name);
+                handler.handle_any(Box::new(event.clone())).await;
+            }
 
-    /// Get subscriber information
-    pub async fn get_subscribers(&self) -> Vec<String> {
-        self.subscribers.read().await.keys().cloned().collect()
-    }
+            // Handle other priority handlers asynchronously
+            for handler in other_handlers {
+                let event_clone = event.clone();
+                let handler = handler.clone();
+                let event_name = event_name.to_string();
+                let priority = handler.priority();
 
-    /// Clean expired deduplication entries
-    pub async fn clean_dedup_cache(&self) {
-        if self.config.enable_deduplication {
-            let mut cache = self.dedup_cache.write().await;
-            cache.clear();
-            debug!("Cleared deduplication cache");
-        }
-    }
-}
+                debug!(
+                    "Handling {} asynchronously (priority: {:?})",
+                    event_name, priority
+                );
 
-/// Event subscriber handle
-pub struct EventSubscriber {
-    /// Subscriber ID
-    pub id: String,
-    /// Receiver for events
-    receiver: broadcast::Receiver<EventEnvelope>,
-    /// Event filter
-    filter: EventFilter,
-}
-
-impl EventSubscriber {
-    /// Receive the next event matching the filter
-    pub async fn recv(&mut self) -> Option<EventEnvelope> {
-        loop {
-            match self.receiver.recv().await {
-                Ok(envelope) => {
-                    if self.filter.matches(&envelope) {
-                        return Some(envelope);
+                tokio::spawn(async move {
+                    if let Err(e) = tokio::spawn(async move {
+                        handler.handle_any(Box::new(event_clone)).await;
+                    })
+                    .await
+                    {
+                        error!("Handler panicked while processing {}: {:?}", event_name, e);
                     }
-                    // Event doesn't match filter, continue
-                }
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    warn!("Subscriber {} lagged by {} messages", self.id, n);
-                    // Continue receiving
-                }
-                Err(broadcast::error::RecvError::Closed) => {
-                    error!("Event bus closed");
-                    return None;
-                }
+                });
             }
+        } else {
+            debug!("No handlers registered for event: {}", event_name);
         }
     }
 
-    /// Try to receive without blocking
-    pub fn try_recv(&mut self) -> Option<EventEnvelope> {
-        loop {
-            match self.receiver.try_recv() {
-                Ok(envelope) => {
-                    if self.filter.matches(&envelope) {
-                        return Some(envelope);
-                    }
-                    // Event doesn't match filter, continue
-                }
-                Err(broadcast::error::TryRecvError::Empty) => {
-                    return None;
-                }
-                Err(broadcast::error::TryRecvError::Lagged(n)) => {
-                    warn!("Subscriber {} lagged by {} messages", self.id, n);
-                    // Continue receiving
-                }
-                Err(broadcast::error::TryRecvError::Closed) => {
-                    error!("Event bus closed");
-                    return None;
-                }
+    /// Unsubscribe a handler
+    pub async fn unsubscribe(&self, subscription_id: SubscriptionId) -> bool {
+        let mut handlers = self.handlers.write().await;
+
+        if let Some(handler_list) = handlers.get_mut(&subscription_id.type_id)
+            && subscription_id.handler_index < handler_list.len()
+        {
+            handler_list.remove(subscription_id.handler_index);
+
+            // If no more handlers for this type, remove the entry
+            if handler_list.is_empty() {
+                handlers.remove(&subscription_id.type_id);
             }
+
+            return true;
         }
+
+        false
     }
 
-    /// Get the subscriber ID
-    pub fn id(&self) -> &str {
-        &self.id
+    /// Get current statistics
+    pub async fn stats(&self) -> EventBusStats {
+        self.stats.read().await.clone()
     }
 
-    /// Get the event filter
-    pub fn filter(&self) -> &EventFilter {
-        &self.filter
+    /// Get the number of subscribers for a specific event type
+    pub async fn subscriber_count<E: ServiceEvent>(&self) -> usize {
+        let type_id = TypeId::of::<E>();
+        let handlers = self.handlers.read().await;
+        handlers.get(&type_id).map(|h| h.len()).unwrap_or(0)
     }
 }
 
-/// Event publisher handle
-#[derive(Clone)]
-pub struct EventPublisher {
-    /// Channel for publishing events
-    sender: mpsc::Sender<EventEnvelope>,
-    /// Synchronous response channels (shared with EventService)
-    sync_responses: Option<SyncResponseMap>,
+/// Subscription identifier for unsubscribing
+#[derive(Debug, Clone, Copy)]
+pub struct SubscriptionId {
+    type_id: TypeId,
+    handler_index: usize,
 }
 
-impl EventPublisher {
-    /// Create a new publisher
-    pub fn new(sender: mpsc::Sender<EventEnvelope>) -> Self {
-        Self {
-            sender,
-            sync_responses: None,
-        }
-    }
-
-    /// Create a new publisher with sync response support
-    pub fn with_sync_responses(
-        sender: mpsc::Sender<EventEnvelope>,
-        sync_responses: SyncResponseMap,
-    ) -> Self {
-        Self {
-            sender,
-            sync_responses: Some(sync_responses),
-        }
-    }
-
-    /// Publish an event
-    pub async fn publish(&self, event: Event, source: String) -> EventingResult<()> {
-        let envelope = EventEnvelope {
-            metadata: EventMetadata {
-                id: Uuid::new_v4(),
-                timestamp: SystemTime::now(),
-                event_type: event.event_type(),
-                priority: event.default_priority(),
-                source,
-                correlation_id: None,
-                tags: Vec::new(),
-                synchronous: false,
-            },
-            event,
-        };
-
-        self.sender
-            .send(envelope)
-            .await
-            .map_err(|_| EventError::PublishFailed("Failed to send event".to_string()))?;
-
-        Ok(())
-    }
-
-    /// Send an event request and wait for handler response
-    pub async fn request(&self, event: Event, source: String) -> EventingResult<EventResult> {
-        // Check if we have sync response support
-        let sync_responses = self.sync_responses.as_ref().ok_or_else(|| {
-            EventError::Internal("Publisher not configured for synchronous requests".to_string())
-        })?;
-
-        let event_id = Uuid::new_v4();
-        let (tx, rx) = oneshot::channel();
-
-        // Store the response channel
-        sync_responses.write().await.insert(event_id, tx);
-
-        let envelope = EventEnvelope {
-            metadata: EventMetadata {
-                id: event_id,
-                timestamp: SystemTime::now(),
-                event_type: event.event_type(),
-                priority: event.default_priority(),
-                source,
-                correlation_id: None,
-                tags: Vec::new(),
-                synchronous: true,
-            },
-            event,
-        };
-
-        self.sender
-            .send(envelope)
-            .await
-            .map_err(|_| EventError::PublishFailed("Failed to send event request".to_string()))?;
-
-        // Wait for response with timeout
-        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
-            Ok(Ok(result)) => Ok(result),
-            Ok(Err(_)) => {
-                // Clean up the entry if still there
-                sync_responses.write().await.remove(&event_id);
-                Err(EventError::Internal("Response channel closed".to_string()))
-            }
-            Err(_) => {
-                // Clean up the entry if still there
-                sync_responses.write().await.remove(&event_id);
-                Err(EventError::Timeout)
-            }
-        }
-    }
-
-    /// Publish an event with custom metadata
-    pub async fn publish_with_metadata(
-        &self,
-        event: Event,
-        metadata: EventMetadata,
-    ) -> EventingResult<()> {
-        let envelope = EventEnvelope { metadata, event };
-
-        self.sender
-            .send(envelope)
-            .await
-            .map_err(|_| EventError::PublishFailed("Failed to send event".to_string()))?;
-
-        Ok(())
-    }
-
-    /// Send an event request with custom metadata and wait for response
-    pub async fn request_with_metadata(
-        &self,
-        event: Event,
-        mut metadata: EventMetadata,
-    ) -> EventingResult<EventResult> {
-        metadata.synchronous = true;
-
-        let envelope = EventEnvelope { metadata, event };
-
-        self.sender
-            .send(envelope)
-            .await
-            .map_err(|_| EventError::PublishFailed("Failed to send event request".to_string()))?;
-
-        // For now, return Success. The actual implementation will be in the service
-        Ok(EventResult::Success)
+impl Default for EventBus {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        foundation::types::ConsensusGroupId,
-        services::stream::{StreamConfig, StreamName},
-    };
-
     use super::*;
+    use async_trait::async_trait;
 
-    #[tokio::test]
-    async fn test_event_bus_pub_sub() {
-        let config = EventConfig::default();
-        let bus = EventBus::new(config);
+    #[derive(Debug, Clone)]
+    struct TestEvent {
+        message: String,
+    }
 
-        // Subscribe
-        let mut subscriber = bus
-            .subscribe("test".to_string(), EventFilter::All)
-            .await
-            .unwrap();
+    impl ServiceEvent for TestEvent {
+        fn event_name(&self) -> &'static str {
+            "TestEvent"
+        }
+    }
 
-        // Publish event
-        let event = Event::StreamCreated {
-            name: StreamName::new("test-stream"),
-            config: StreamConfig::default(),
-            group_id: ConsensusGroupId::new(1),
-        };
+    struct TestHandler {
+        received: Arc<RwLock<Vec<String>>>,
+    }
 
-        let envelope = EventEnvelope {
-            metadata: EventMetadata {
-                id: Uuid::new_v4(),
-                timestamp: SystemTime::now(),
-                event_type: EventType::Stream,
-                priority: EventPriority::Normal,
-                source: "test".to_string(),
-                correlation_id: None,
-                tags: vec![],
-                synchronous: false,
-            },
-            event,
-        };
-
-        bus.publish(envelope.clone()).await.unwrap();
-
-        // Receive event
-        let received = subscriber.recv().await.unwrap();
-        assert_eq!(received.metadata.id, envelope.metadata.id);
+    #[async_trait]
+    impl EventHandler<TestEvent> for TestHandler {
+        async fn handle(&self, event: TestEvent) {
+            self.received.write().await.push(event.message);
+        }
     }
 
     #[tokio::test]
-    async fn test_event_filtering() {
-        let config = EventConfig::default();
-        let bus = EventBus::new(config);
+    async fn test_event_bus() {
+        let bus = EventBus::new();
+        let received = Arc::new(RwLock::new(Vec::new()));
 
-        // Subscribe with filter
-        let mut subscriber = bus
-            .subscribe(
-                "test".to_string(),
-                EventFilter::ByType(vec![EventType::Stream]),
-            )
-            .await
-            .unwrap();
-
-        // Publish stream event
-        let stream_event = Event::StreamCreated {
-            name: StreamName::new("test-stream"),
-            config: StreamConfig::default(),
-            group_id: ConsensusGroupId::new(1),
+        let handler = TestHandler {
+            received: received.clone(),
         };
 
-        let envelope = EventEnvelope {
-            metadata: EventMetadata {
-                id: Uuid::new_v4(),
-                timestamp: SystemTime::now(),
-                event_type: EventType::Stream,
-                priority: EventPriority::Normal,
-                source: "test".to_string(),
-                correlation_id: None,
-                tags: vec![],
-                synchronous: false,
-            },
-            event: stream_event,
-        };
+        bus.subscribe::<TestEvent, _>(handler).await;
 
-        bus.publish(envelope).await.unwrap();
+        bus.publish(TestEvent {
+            message: "Hello".to_string(),
+        })
+        .await;
 
-        // Publish group event (should be filtered out)
-        let group_event = Event::GroupCreated {
-            group_id: ConsensusGroupId::new(1),
-            members: vec![],
-        };
+        // Give async handler time to process
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
-        let envelope = EventEnvelope {
-            metadata: EventMetadata {
-                id: Uuid::new_v4(),
-                timestamp: SystemTime::now(),
-                event_type: EventType::Group,
-                priority: EventPriority::Normal,
-                source: "test".to_string(),
-                correlation_id: None,
-                tags: vec![],
-                synchronous: false,
-            },
-            event: group_event,
-        };
-
-        bus.publish(envelope).await.unwrap();
-
-        // Should only receive stream event
-        let received = subscriber.recv().await.unwrap();
-        assert_eq!(received.metadata.event_type, EventType::Stream);
-
-        // Should not receive group event (non-blocking check)
-        assert!(subscriber.try_recv().is_none());
+        let messages = received.read().await;
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0], "Hello");
     }
 }

@@ -120,8 +120,8 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Bytes)>,
-    ) -> StorageResult<()> {
+        entries: Arc<Vec<Bytes>>,
+    ) -> StorageResult<NonZero<u64>> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "ConsensusStorage: appending {} entries to namespace {}",
@@ -129,6 +129,20 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
             prefixed
         );
         LogStorage::append(&*self.adaptor, &prefixed, entries).await
+    }
+
+    async fn put_at(
+        &self,
+        namespace: &StorageNamespace,
+        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+    ) -> StorageResult<()> {
+        let prefixed = self.prefixed_namespace(namespace);
+        debug!(
+            "ConsensusStorage: putting {} entries in namespace {}",
+            entries.len(),
+            prefixed
+        );
+        LogStorage::put_at(&*self.adaptor, &prefixed, entries).await
     }
 
     async fn bounds(
@@ -222,8 +236,8 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Bytes)>,
-    ) -> StorageResult<()> {
+        entries: Arc<Vec<Bytes>>,
+    ) -> StorageResult<NonZero<u64>> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "StreamStorage: appending {} entries to namespace {}",
@@ -231,6 +245,20 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
             prefixed
         );
         LogStorage::append(&*self.adaptor, &prefixed, entries).await
+    }
+
+    async fn put_at(
+        &self,
+        namespace: &StorageNamespace,
+        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+    ) -> StorageResult<()> {
+        let prefixed = self.prefixed_namespace(namespace);
+        debug!(
+            "StreamStorage: putting {} entries in namespace {}",
+            entries.len(),
+            prefixed
+        );
+        LogStorage::put_at(&*self.adaptor, &prefixed, entries).await
     }
 
     async fn bounds(
@@ -384,11 +412,53 @@ mod tests {
         async fn append(
             &self,
             namespace: &StorageNamespace,
-            entries: Vec<(NonZero<u64>, Bytes)>,
+            entries: Arc<Vec<Bytes>>,
+        ) -> StorageResult<NonZero<u64>> {
+            let mut data = self.data.write().await;
+            let ns_entries = data.entry(namespace.as_str().to_string()).or_default();
+
+            // Get the next index
+            let start_index = if ns_entries.is_empty() {
+                NonZero::new(1).unwrap()
+            } else {
+                let last = ns_entries.iter().map(|(idx, _)| *idx).max().unwrap();
+                NonZero::new(last.get() + 1).unwrap()
+            };
+
+            // Add entries sequentially
+            let mut last_index = start_index;
+            for (i, bytes) in entries.iter().enumerate() {
+                let index = NonZero::new(start_index.get() + i as u64).unwrap();
+                ns_entries.push((index, bytes.clone()));
+                last_index = index;
+            }
+
+            Ok(last_index)
+        }
+
+        async fn put_at(
+            &self,
+            namespace: &StorageNamespace,
+            entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
         ) -> StorageResult<()> {
             let mut data = self.data.write().await;
             let ns_entries = data.entry(namespace.as_str().to_string()).or_default();
-            ns_entries.extend(entries);
+
+            // Add entries at specific positions
+            for (index, bytes) in entries {
+                // Find position to insert to maintain sorted order
+                let pos = ns_entries
+                    .binary_search_by_key(&index, |(idx, _)| *idx)
+                    .unwrap_or_else(|pos| pos);
+
+                // Insert or replace at position
+                if pos < ns_entries.len() && ns_entries[pos].0 == index {
+                    ns_entries[pos] = (index, (*bytes).clone());
+                } else {
+                    ns_entries.insert(pos, (index, (*bytes).clone()));
+                }
+            }
+
             Ok(())
         }
 
@@ -529,19 +599,13 @@ mod tests {
 
         // Append to consensus storage
         consensus
-            .append(
-                &namespace,
-                vec![(NonZero::new(1).unwrap(), Bytes::from("consensus data"))],
-            )
+            .append(&namespace, Arc::new(vec![Bytes::from("consensus data")]))
             .await
             .unwrap();
 
         // Append to stream storage
         stream
-            .append(
-                &namespace,
-                vec![(NonZero::new(1).unwrap(), Bytes::from("stream data"))],
-            )
+            .append(&namespace, Arc::new(vec![Bytes::from("stream data")]))
             .await
             .unwrap();
 
@@ -553,10 +617,12 @@ mod tests {
         // Verify data isolation
         let consensus_data = &data["consensus:myapp"];
         assert_eq!(consensus_data.len(), 1);
+        assert_eq!(consensus_data[0].0, NonZero::new(1).unwrap());
         assert_eq!(consensus_data[0].1, Bytes::from("consensus data"));
 
         let stream_data = &data["stream:myapp"];
         assert_eq!(stream_data.len(), 1);
+        assert_eq!(stream_data[0].0, NonZero::new(1).unwrap());
         assert_eq!(stream_data[0].1, Bytes::from("stream data"));
     }
 
@@ -573,10 +639,7 @@ mod tests {
 
         // Append some data using consensus storage
         consensus
-            .append(
-                &namespace,
-                vec![(NonZero::new(1).unwrap(), Bytes::from("consensus entry"))],
-            )
+            .append(&namespace, Arc::new(vec![Bytes::from("consensus entry")]))
             .await
             .unwrap();
 
@@ -601,10 +664,7 @@ mod tests {
         stream
             .append(
                 &namespace,
-                vec![
-                    (NonZero::new(1).unwrap(), Bytes::from("data")),
-                    (NonZero::new(2).unwrap(), Bytes::from("more data")),
-                ],
+                Arc::new(vec![Bytes::from("data"), Bytes::from("more data")]),
             )
             .await
             .unwrap();
@@ -639,17 +699,17 @@ mod tests {
 
         let namespace = StorageNamespace::new("test");
 
-        // Append data with various indices
+        // Append data sequentially
         stream
             .append(
                 &namespace,
-                vec![
-                    (NonZero::new(1).unwrap(), Bytes::from("one")),
-                    (NonZero::new(3).unwrap(), Bytes::from("three")),
-                    (NonZero::new(5).unwrap(), Bytes::from("five")),
-                    (NonZero::new(7).unwrap(), Bytes::from("seven")),
-                    (NonZero::new(9).unwrap(), Bytes::from("nine")),
-                ],
+                Arc::new(vec![
+                    Bytes::from("one"),
+                    Bytes::from("two"),
+                    Bytes::from("three"),
+                    Bytes::from("four"),
+                    Bytes::from("five"),
+                ]),
             )
             .await
             .unwrap();
@@ -658,28 +718,27 @@ mod tests {
         let stream_iter = stream
             .stream_range(
                 &namespace,
-                NonZero::new(3).unwrap(),
-                Some(NonZero::new(8).unwrap()),
+                NonZero::new(2).unwrap(),
+                Some(NonZero::new(4).unwrap()),
             )
+            .await
+            .unwrap();
+        let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].as_ref().unwrap().0, NonZero::new(2).unwrap());
+        assert_eq!(results[1].as_ref().unwrap().0, NonZero::new(3).unwrap());
+
+        // Test streaming with no end (should stream to the end)
+        let stream_iter = stream
+            .stream_range(&namespace, NonZero::new(3).unwrap(), None)
             .await
             .unwrap();
         let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
 
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].as_ref().unwrap().0, NonZero::new(3).unwrap());
-        assert_eq!(results[1].as_ref().unwrap().0, NonZero::new(5).unwrap());
-        assert_eq!(results[2].as_ref().unwrap().0, NonZero::new(7).unwrap());
-
-        // Test streaming with no end (should stream to the end)
-        let stream_iter = stream
-            .stream_range(&namespace, NonZero::new(5).unwrap(), None)
-            .await
-            .unwrap();
-        let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
-
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[0].as_ref().unwrap().0, NonZero::new(5).unwrap());
-        assert_eq!(results[1].as_ref().unwrap().0, NonZero::new(7).unwrap());
-        assert_eq!(results[2].as_ref().unwrap().0, NonZero::new(9).unwrap());
+        assert_eq!(results[1].as_ref().unwrap().0, NonZero::new(4).unwrap());
+        assert_eq!(results[2].as_ref().unwrap().0, NonZero::new(5).unwrap());
     }
 }

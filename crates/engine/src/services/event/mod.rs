@@ -1,61 +1,59 @@
 //! Event service for consensus operations
 //!
-//! This service provides an event-driven communication system that allows
+//! This service provides a type-safe event-driven communication system that allows
 //! different components to communicate asynchronously while maintaining clear boundaries.
 //!
 //! ## Overview
 //!
 //! The event service enables:
-//! - Async communication between consensus layers
-//! - Event routing and filtering
-//! - Request-response patterns via reply channels
-//! - Event persistence and replay
-//! - Monitoring and metrics
+//! - Type-safe async communication between services
+//! - Per-service event definitions
+//! - Priority-based event handling
+//! - Event statistics and monitoring
 //!
 //! ## Architecture
 //!
 //! - **Event Bus**: Central message broker for events
-//! - **Event Router**: Routes events to appropriate handlers
-//! - **Event Store**: Optional persistence for events
-//! - **Event Filters**: Subscription filtering capabilities
+//! - **Service Events**: Per-service event enums implementing ServiceEvent trait
+//! - **Event Handlers**: Type-safe handlers for specific event types
+//! - **Event Service**: Lifecycle management and statistics
 //!
 //! ## Usage
 //!
 //! ```rust,ignore
-//! let event_service = EventService::new(config);
-//! event_service.start().await?;
+//! // Define service-specific events
+//! #[derive(Debug, Clone)]
+//! enum MyServiceEvent {
+//!     TaskCompleted { id: u64 },
+//!     ErrorOccurred { message: String },
+//! }
 //!
-//! // Subscribe to events
-//! let mut subscriber = event_service.subscribe("my-component", EventFilter::All).await?;
-//!
-//! // Publish an event
-//! event_service.publish(Event::StreamCreated { ... }).await?;
-//!
-//! // Handle events
-//! while let Some(event) = subscriber.recv().await {
-//!     match event {
-//!         Event::StreamCreated { reply_to, ... } => {
-//!             // Process and reply
-//!             reply_to.reply(EventResult::Success);
+//! impl ServiceEvent for MyServiceEvent {
+//!     fn event_name(&self) -> &'static str {
+//!         match self {
+//!             Self::TaskCompleted { .. } => "MyServiceEvent::TaskCompleted",
+//!             Self::ErrorOccurred { .. } => "MyServiceEvent::ErrorOccurred",
 //!         }
-//!         _ => {}
 //!     }
 //! }
+//!
+//! // Subscribe to events
+//! let handler = MyEventHandler::new();
+//! event_bus.subscribe(handler).await;
+//!
+//! // Publish events
+//! event_bus.publish(MyServiceEvent::TaskCompleted { id: 42 }).await;
 //! ```
 
-mod bus;
-mod filters;
-mod router;
-mod service;
-mod store;
-mod types;
+pub mod bus;
+pub mod traits;
 
-pub use bus::{EventBus, EventPublisher, EventSubscriber};
-pub use filters::{EventFilter, FilterExpression, FilterOperator, FilterValue};
-pub use router::{EventHandler, EventRoute, EventRoutePattern, EventRouter};
-pub use service::{EventConfig, EventService};
-pub use store::{EventHistory, EventQuery, EventStore};
-pub use types::{
-    Event, EventEnvelope, EventError, EventId, EventMetadata, EventPriority, EventResult,
-    EventTimestamp, EventType, EventingResult,
-};
+// Main event service
+mod service;
+
+// Re-export event service as the main EventService
+pub use service::{EventService, EventServiceConfig};
+
+// Core exports
+pub use bus::{EventBus, EventBusStats, SubscriptionId};
+pub use traits::{EventHandler, EventPriority, ServiceEvent};

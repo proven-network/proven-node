@@ -118,51 +118,62 @@ impl GroupState {
         }
     }
 
-    /// Append messages to stream
+    /// Append messages to stream and return pre-serialized entries
     pub async fn append_messages(
         &self,
         stream: &StreamName,
         messages: Vec<MessageData>,
-    ) -> Option<Vec<(MessageData, NonZero<u64>, u64)>> {
+        timestamp_millis: u64,
+    ) -> Arc<Vec<bytes::Bytes>> {
         if messages.is_empty() {
-            return Some(vec![]);
+            return Arc::new(vec![]);
         }
 
         let mut streams = self.streams.write().await;
 
         if let Some(state) = streams.get_mut(stream) {
-            let mut results = Vec::with_capacity(messages.len());
+            let mut entries = Vec::with_capacity(messages.len());
             let start_sequence = state.next_sequence;
-            let timestamp = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs();
 
             let mut total_size = 0u64;
+            let mut message_count = 0u64;
 
-            // Assign sequences to all messages
+            // Serialize each message to binary format
             for (i, message) in messages.into_iter().enumerate() {
-                let sequence = start_sequence.saturating_add(i as u64);
-                let message_size = message.payload.len() as u64;
-                total_size += message_size;
-                results.push((message, sequence, timestamp));
+                let sequence = start_sequence.saturating_add(i as u64).get();
+
+                // Serialize to binary format
+                match crate::foundation::serialize_entry(&message, timestamp_millis, sequence) {
+                    Ok(serialized) => {
+                        total_size += message.payload.len() as u64;
+                        entries.push(serialized);
+                        message_count += 1;
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to serialize message: {}", e);
+                        // Skip this message
+                        continue;
+                    }
+                }
             }
 
             // Update state
-            state.next_sequence = start_sequence.saturating_add(results.len() as u64);
-            state.stats.message_count += results.len() as u64;
+            state.next_sequence = start_sequence.saturating_add(message_count);
+            state.stats.message_count += message_count;
             state.stats.total_bytes += total_size;
-            state.stats.last_update = timestamp;
+            state.stats.last_update = timestamp_millis / 1000; // Convert to seconds
 
             // Update metadata
             drop(streams);
             let mut metadata = self.metadata.write().await;
-            metadata.total_messages += results.len() as u64;
+            metadata.total_messages += message_count;
             metadata.total_bytes += total_size;
 
-            Some(results)
+            Arc::new(entries)
         } else {
-            None
+            // Stream doesn't exist - this shouldn't happen as we validate in operations
+            tracing::error!("Stream {} not found in state", stream);
+            Arc::new(vec![])
         }
     }
 

@@ -1,0 +1,191 @@
+//! Global consensus event subscriber for stream service
+
+use async_trait::async_trait;
+use std::sync::Arc;
+use tracing::{debug, error, info};
+
+use crate::foundation::types::ConsensusGroupId;
+use crate::services::event::{EventHandler, EventPriority};
+use crate::services::global_consensus::events::GlobalConsensusEvent;
+use crate::services::stream::{StreamName, StreamService};
+use proven_storage::StorageAdaptor;
+use proven_topology::NodeId;
+
+/// Subscriber for global consensus events that manages streams
+#[derive(Clone)]
+pub struct GlobalConsensusSubscriber<S>
+where
+    S: StorageAdaptor,
+{
+    stream_service: Arc<StreamService<S>>,
+    local_node_id: NodeId,
+}
+
+impl<S> GlobalConsensusSubscriber<S>
+where
+    S: StorageAdaptor,
+{
+    /// Create a new global consensus subscriber
+    pub fn new(stream_service: Arc<StreamService<S>>, local_node_id: NodeId) -> Self {
+        Self {
+            stream_service,
+            local_node_id,
+        }
+    }
+}
+
+#[async_trait]
+impl<S> EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber<S>
+where
+    S: StorageAdaptor + 'static,
+{
+    fn priority(&self) -> EventPriority {
+        // Handle GlobalConsensusEvents synchronously for stream management
+        EventPriority::Critical
+    }
+
+    async fn handle(&self, event: GlobalConsensusEvent) {
+        match event {
+            GlobalConsensusEvent::StateSynchronized { snapshot } => {
+                // Process all streams from the snapshot
+                info!(
+                    "StreamSubscriber: Processing state sync with {} streams",
+                    snapshot.streams.len()
+                );
+
+                // First, figure out which groups this node is part of
+                let my_groups: std::collections::HashSet<_> = snapshot
+                    .groups
+                    .iter()
+                    .filter(|g| g.members.contains(&self.local_node_id))
+                    .map(|g| g.group_id)
+                    .collect();
+
+                info!(
+                    "StreamSubscriber: This node is member of {} groups",
+                    my_groups.len()
+                );
+
+                // Create streams for groups we're a member of
+                for stream in &snapshot.streams {
+                    if my_groups.contains(&stream.group_id) {
+                        info!(
+                            "StreamSubscriber: Creating stream {} from snapshot (group {:?})",
+                            stream.stream_name, stream.group_id
+                        );
+
+                        match self
+                            .stream_service
+                            .create_stream(
+                                stream.stream_name.clone(),
+                                stream.config.clone(),
+                                stream.group_id,
+                            )
+                            .await
+                        {
+                            Ok(_) => {
+                                info!(
+                                    "Successfully created stream {} from snapshot",
+                                    stream.stream_name
+                                );
+                            }
+                            Err(e) if e.to_string().contains("already exists") => {
+                                debug!("Stream {} already exists", stream.stream_name);
+                            }
+                            Err(e) => {
+                                error!(
+                                    "Failed to create stream {} from snapshot: {}",
+                                    stream.stream_name, e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            GlobalConsensusEvent::StreamCreated {
+                stream_name,
+                config,
+                group_id,
+            } => {
+                info!(
+                    "StreamSubscriber: Stream {} created in group {:?}",
+                    stream_name, group_id
+                );
+
+                // Always try to create the stream - the stream service will only
+                // actually persist it if we're a member of the group.
+                // This simplifies the logic and removes cross-service dependencies.
+                info!(
+                    "StreamSubscriber: Creating stream {} in group {:?}",
+                    stream_name, group_id
+                );
+
+                match self
+                    .stream_service
+                    .create_stream(stream_name.clone(), config.clone(), group_id)
+                    .await
+                {
+                    Ok(_) => {
+                        info!(
+                            "Successfully created stream {} in group {:?}",
+                            stream_name, group_id
+                        );
+                    }
+                    Err(e) if e.to_string().contains("already exists") => {
+                        // Stream already exists - this is fine during replay
+                        debug!(
+                            "Stream {} already exists in group {:?}",
+                            stream_name, group_id
+                        );
+                    }
+                    Err(e) => {
+                        error!(
+                            "Failed to create stream {} in group {:?}: {}",
+                            stream_name, group_id, e
+                        );
+                    }
+                }
+            }
+
+            GlobalConsensusEvent::StreamDeleted { stream_name } => {
+                info!("StreamSubscriber: Stream {} deleted", stream_name);
+
+                // Delete the stream from our local storage if we have it
+                if let Err(e) = self.stream_service.delete_stream(&stream_name).await {
+                    // It's ok if the stream doesn't exist locally
+                    if !e.to_string().contains("not found") {
+                        error!("Failed to delete stream {}: {}", stream_name, e);
+                    }
+                }
+            }
+
+            GlobalConsensusEvent::GroupCreated { .. } => {
+                // Stream service doesn't need to handle group creation directly
+                debug!("StreamSubscriber: Group created event (no action needed)");
+            }
+
+            GlobalConsensusEvent::GroupDissolved { group_id } => {
+                // When a group is dissolved, we should clean up its streams
+                info!(
+                    "StreamSubscriber: Group {:?} dissolved, cleaning up streams",
+                    group_id
+                );
+
+                // TODO: We might want to add a method to StreamService to delete all streams
+                // belonging to a specific group
+            }
+
+            GlobalConsensusEvent::MembershipChanged { .. } => {
+                // Membership changes might affect which streams we should have locally
+                // but for now we'll rely on explicit stream creation/deletion events
+                debug!("StreamSubscriber: Global membership changed");
+            }
+
+            GlobalConsensusEvent::LeaderChanged { .. } => {
+                // Global leader changes don't directly affect streams
+                debug!("StreamSubscriber: Global leader changed");
+            }
+        }
+    }
+}

@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::{num::NonZero, time::Duration};
 
 use crate::services::{
-    cluster::ClusterConfig, event::EventConfig, lifecycle::LifecycleConfig,
-    migration::MigrationConfig, monitoring::MonitoringConfig,
-    network::NetworkConfig as NetworkServiceConfig, pubsub::service::PubSubConfig,
-    routing::RoutingConfig,
+    lifecycle::LifecycleConfig, migration::MigrationConfig, monitoring::MonitoringConfig,
+    pubsub::service::PubSubConfig, routing::RoutingConfig,
 };
 
 /// Engine configuration
@@ -32,15 +30,6 @@ pub struct EngineConfig {
 /// Service configurations
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ServiceConfig {
-    /// Network service config
-    pub network: NetworkServiceConfig,
-
-    /// Cluster service config
-    pub cluster: ClusterConfig,
-
-    /// Event service config
-    pub event: EventConfig,
-
     /// Monitoring service config
     pub monitoring: MonitoringConfig,
 

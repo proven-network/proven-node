@@ -34,7 +34,7 @@ pub struct HandlerRegistry {
 /// Trait for type-erased message handlers
 trait MessageHandler: Send + Sync {
     /// Handle a message and return a response
-    fn handle(
+    fn handle_request(
         &self,
         sender: NodeId,
         payload: &[u8],
@@ -102,7 +102,7 @@ impl HandlerRegistry {
         debug!("Found handler for message type: {}", envelope.message_type);
 
         match handler
-            .handle(
+            .handle_request(
                 envelope.sender.clone(),
                 &envelope.payload,
                 envelope.correlation_id,
@@ -148,7 +148,10 @@ impl HandlerRegistry {
 
         debug!("Found handler for message type: {}", message_type);
 
-        match handler.handle(sender, &payload, correlation_id).await {
+        match handler
+            .handle_request(sender, &payload, correlation_id)
+            .await
+        {
             Ok(Some(response)) => {
                 // Serialize response to bytes
                 Ok(Some(response.serialize()?))
@@ -164,7 +167,7 @@ where
     M: HandledMessage + serde::de::DeserializeOwned + 'static,
     M::Response: 'static,
 {
-    fn handle(
+    fn handle_request(
         &self,
         sender: NodeId,
         payload: &[u8],

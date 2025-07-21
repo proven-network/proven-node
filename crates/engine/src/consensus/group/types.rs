@@ -1,10 +1,11 @@
 //! Types for group consensus layer
 
-use std::num::NonZero;
+use std::{num::NonZero, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::services::stream::StreamMessage as MessageData;
+/// Message type for consensus operations
+pub type MessageData = crate::foundation::Message;
 use crate::services::stream::StreamName;
 
 /// Group consensus request
@@ -25,6 +26,8 @@ pub enum StreamOperation {
         stream: StreamName,
         /// Messages to append
         messages: Vec<MessageData>,
+        /// Timestamp assigned by the leader (milliseconds since epoch)
+        timestamp: u64,
     },
     /// Trim stream
     Trim {
@@ -61,6 +64,7 @@ pub enum AdminOperation {
 
 /// Group consensus response
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum GroupResponse {
     /// Operation succeeded
     Success,
@@ -70,6 +74,9 @@ pub enum GroupResponse {
         stream: StreamName,
         /// Assigned sequence number
         sequence: NonZero<u64>,
+        /// Pre-serialized entries (not serialized, only for in-memory passing)
+        #[serde(skip)]
+        entries: Option<Arc<Vec<bytes::Bytes>>>,
     },
     /// Stream trimmed
     Trimmed {

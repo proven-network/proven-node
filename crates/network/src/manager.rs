@@ -318,7 +318,7 @@ where
     }
 
     /// Send a typed request to a service and wait for response
-    pub async fn request_service<M>(
+    pub async fn service_request<M>(
         &self,
         target: NodeId,
         message: M,

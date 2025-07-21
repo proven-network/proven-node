@@ -17,6 +17,7 @@ use bytes::Bytes;
 use std::{
     fmt::{Debug, Display},
     num::NonZero,
+    sync::Arc,
 };
 use tokio_stream::Stream;
 
@@ -111,11 +112,21 @@ impl Display for StorageNamespace {
 /// Simplified log storage trait - just stores indexed byte sequences
 #[async_trait]
 pub trait LogStorage: Clone + Send + Sync + 'static {
-    /// Atomically append entries (one or more)
+    /// Atomically append entries to the log
+    /// Returns the last sequence number assigned
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Bytes)>,
+        entries: Arc<Vec<Bytes>>,
+    ) -> StorageResult<NonZero<u64>>;
+
+    /// Put entries at specific indices
+    /// The entries vector contains (index, data) pairs where the index specifies
+    /// the exact position where each entry should be stored
+    async fn put_at(
+        &self,
+        namespace: &StorageNamespace,
+        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
     ) -> StorageResult<()>;
 
     /// Get the current bounds of the log (first_index, last_index)
@@ -203,9 +214,17 @@ impl<T: LogStorage> LogStorage for std::sync::Arc<T> {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Bytes)>,
-    ) -> StorageResult<()> {
+        entries: Arc<Vec<Bytes>>,
+    ) -> StorageResult<NonZero<u64>> {
         (**self).append(namespace, entries).await
+    }
+
+    async fn put_at(
+        &self,
+        namespace: &StorageNamespace,
+        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+    ) -> StorageResult<()> {
+        (**self).put_at(namespace, entries).await
     }
 
     async fn bounds(

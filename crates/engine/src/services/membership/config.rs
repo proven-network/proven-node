@@ -5,7 +5,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for membership service
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MembershipConfig {
     /// Discovery configuration
     pub discovery: DiscoveryConfig,
@@ -13,16 +13,6 @@ pub struct MembershipConfig {
     pub health: HealthConfig,
     /// Formation configuration
     pub formation: FormationConfig,
-}
-
-impl Default for MembershipConfig {
-    fn default() -> Self {
-        Self {
-            discovery: DiscoveryConfig::default(),
-            health: HealthConfig::default(),
-            formation: FormationConfig::default(),
-        }
-    }
 }
 
 /// Configuration for discovery

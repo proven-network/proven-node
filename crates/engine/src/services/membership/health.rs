@@ -53,7 +53,7 @@ where
     pub async fn start_monitoring(
         self: Arc<Self>,
         membership_view: Arc<RwLock<MembershipView>>,
-        event_publisher: Option<crate::services::event::EventPublisher>,
+        event_bus: Arc<crate::services::event::bus::EventBus>,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) {
         let mut check_interval = interval(self.config.health_check_interval);
@@ -62,7 +62,7 @@ where
         loop {
             tokio::select! {
                 _ = check_interval.tick() => {
-                    if let Err(e) = self.check_all_members(&membership_view, &event_publisher).await {
+                    if let Err(e) = self.check_all_members(&membership_view, &event_bus).await {
                         warn!("Health check round failed: {}", e);
                     }
                 }
@@ -78,7 +78,7 @@ where
     async fn check_all_members(
         &self,
         membership_view: &Arc<RwLock<MembershipView>>,
-        event_publisher: &Option<crate::services::event::EventPublisher>,
+        event_bus: &Arc<crate::services::event::bus::EventBus>,
     ) -> ConsensusResult<()> {
         let nodes_to_check: Vec<NodeId> = {
             let view = membership_view.read().await;
@@ -117,7 +117,7 @@ where
                 let start = std::time::Instant::now();
                 let result = timeout(
                     timeout_duration,
-                    network.request_service(node_id.clone(), request, timeout_duration),
+                    network.service_request(node_id.clone(), request, timeout_duration),
                 )
                 .await;
 
@@ -136,10 +136,10 @@ where
                 Ok((node_id, Ok(Ok(MembershipResponse::HealthCheck(response))), latency_ms)) => {
                     health_updates.insert(
                         node_id,
-                        HealthCheckResult::Success {
+                        HealthCheckResult::Success(Box::new(HealthCheckSuccess {
                             response,
                             latency_ms,
-                        },
+                        })),
                     );
                 }
                 Ok((node_id, _, _)) => {
@@ -152,7 +152,7 @@ where
         }
 
         // Update membership view with health results
-        self.update_health_status(membership_view, health_updates, event_publisher)
+        self.update_health_status(membership_view, health_updates, event_bus)
             .await;
 
         Ok(())
@@ -163,7 +163,7 @@ where
         &self,
         membership_view: &Arc<RwLock<MembershipView>>,
         results: HashMap<NodeId, HealthCheckResult>,
-        event_publisher: &Option<crate::services::event::EventPublisher>,
+        event_bus: &Arc<crate::services::event::bus::EventBus>,
     ) {
         let mut view = membership_view.write().await;
         let now_ms = SystemTime::now()
@@ -174,10 +174,9 @@ where
         for (node_id, result) in results {
             if let Some(member) = view.nodes.get_mut(&node_id) {
                 match result {
-                    HealthCheckResult::Success {
-                        response,
-                        latency_ms,
-                    } => {
+                    HealthCheckResult::Success(success) => {
+                        let response = success.response;
+                        let latency_ms = success.latency_ms;
                         // Update health info
                         member.health.last_check_ms = now_ms;
                         member.health.consecutive_failures = 0;
@@ -230,28 +229,17 @@ where
                                         member.status = NodeStatus::Offline { since_ms: now_ms };
 
                                         // Publish event for membership change
-                                        if let Some(publisher) = event_publisher {
-                                            let node_id_clone = node_id.clone();
-                                            let publisher_clone = publisher.clone();
-                                            tokio::spawn(async move {
-                                                use crate::services::event::Event;
-                                                use crate::services::membership::types::MembershipEvent;
+                                        let node_id_clone = node_id.clone();
+                                        let bus_clone = event_bus.clone();
+                                        tokio::spawn(async move {
+                                            use crate::services::membership::events::MembershipEvent;
 
-                                                if let Err(e) = publisher_clone
-                                                    .publish(
-                                                        Event::Membership(MembershipEvent::MembershipChangeRequired {
-                                                            add_nodes: vec![],
-                                                            remove_nodes: vec![node_id_clone],
-                                                            reason: "Node offline due to failed health checks".to_string(),
-                                                        }),
-                                                        "health-monitor".to_string(),
-                                                    )
-                                                    .await
-                                                {
-                                                    error!("Failed to publish membership change event: {}", e);
-                                                }
-                                            });
-                                        }
+                                            bus_clone.publish(MembershipEvent::MembershipChangeRequired {
+                                                    add_nodes: vec![],
+                                                    remove_nodes: vec![node_id_clone],
+                                                    reason: "Node offline due to failed health checks".to_string(),
+                                                }).await;
+                                        });
                                     }
                                 }
                                 _ => {}
@@ -300,11 +288,13 @@ where
 
 /// Result of a health check
 enum HealthCheckResult {
-    Success {
-        response: HealthCheckResponse,
-        latency_ms: u32,
-    },
+    Success(Box<HealthCheckSuccess>),
     Failed,
+}
+
+struct HealthCheckSuccess {
+    response: HealthCheckResponse,
+    latency_ms: u32,
 }
 
 /// Get current timestamp in milliseconds

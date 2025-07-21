@@ -8,15 +8,16 @@
 
 mod config;
 mod discovery;
+pub mod events;
 mod health;
 mod messages;
 mod service;
 mod types;
 
 pub use config::MembershipConfig;
+pub use events::MembershipEvent;
 pub use messages::{MembershipMessage, MembershipResponse};
 pub use service::MembershipService;
 pub use types::{
-    ClusterFormationState, HealthInfo, MembershipEvent, MembershipView, NodeMembership, NodeRole,
-    NodeStatus,
+    ClusterFormationState, HealthInfo, MembershipView, NodeMembership, NodeRole, NodeStatus,
 };

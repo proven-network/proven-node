@@ -9,7 +9,7 @@ use proven_topology::NodeId;
 use super::{
     callbacks::GroupConsensusCallbacks,
     state::GroupState,
-    types::{AdminOperation, GroupRequest, GroupResponse, MessageData, StreamOperation},
+    types::{AdminOperation, GroupRequest, GroupResponse, StreamOperation},
 };
 
 /// Dispatches callbacks based on operation results
@@ -75,51 +75,22 @@ impl GroupCallbackDispatcher {
         // Dispatch based on request type and response
         match (request, response) {
             (
-                GroupRequest::Stream(StreamOperation::Append { stream, messages }),
-                GroupResponse::Appended {
-                    sequence: last_sequence,
-                    ..
-                },
+                GroupRequest::Stream(StreamOperation::Append { stream, .. }),
+                GroupResponse::Appended { entries, .. },
             ) => {
-                // Compute sequences for all messages in the batch
-                // last_sequence is the sequence of the last message
-                // So the first message has sequence: last_sequence - (messages.len() - 1)
-                let first_sequence = NonZero::new(
-                    last_sequence
-                        .get()
-                        .saturating_sub(messages.len() as u64 - 1),
-                )
-                .unwrap();
-
-                // Get current timestamp
-                let timestamp = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-
-                // Build the messages with sequences and timestamps
-                let messages_with_meta: Vec<(MessageData, NonZero<u64>, u64)> = messages
-                    .iter()
-                    .enumerate()
-                    .map(|(i, msg)| {
-                        let seq = NonZero::new(first_sequence.get() + i as u64).unwrap();
-                        (msg.clone(), seq, timestamp)
-                    })
-                    .collect();
+                let entries = entries
+                    .as_ref()
+                    .expect("Entries should be present coming from local state machine");
 
                 tracing::info!(
-                    "Dispatching on_messages_appended callback for {} messages to stream {} (sequences: {:?})",
-                    messages_with_meta.len(),
+                    "Dispatching on_messages_appended callback for {} entries to stream {}",
+                    entries.len(),
                     stream,
-                    messages_with_meta
-                        .iter()
-                        .map(|(_, seq, _)| seq)
-                        .collect::<Vec<_>>()
                 );
 
                 if let Err(e) = self
                     .callbacks
-                    .on_messages_appended(group_id, stream.as_str(), &messages_with_meta)
+                    .on_messages_appended(group_id, stream.as_str(), entries.clone())
                     .await
                 {
                     tracing::error!("Messages append callback failed: {}", e);

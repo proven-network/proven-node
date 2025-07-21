@@ -4,23 +4,20 @@ use async_trait::async_trait;
 use std::{num::NonZero, sync::Arc};
 
 use crate::{
-    consensus::group::callbacks::GroupConsensusCallbacks,
-    consensus::group::state::GroupState,
-    consensus::group::types::MessageData,
-    error::ConsensusResult,
-    foundation::types::ConsensusGroupId,
-    services::event::{Event, EventPublisher},
-    services::stream::{StreamName, StreamService},
+    consensus::group::callbacks::GroupConsensusCallbacks, consensus::group::state::GroupState,
+    consensus::group::types::MessageData, error::ConsensusResult,
+    foundation::types::ConsensusGroupId, services::event::bus::EventBus,
+    services::group_consensus::GroupConsensusEvent,
 };
-use proven_storage::{LogStorage, StorageAdaptor};
+use proven_storage::StorageAdaptor;
 use proven_topology::NodeId;
 
 /// Implementation of group consensus callbacks
 pub struct GroupConsensusCallbacksImpl<S: StorageAdaptor> {
     group_id: ConsensusGroupId,
     node_id: NodeId,
-    event_publisher: Option<EventPublisher>,
-    stream_service: Option<Arc<StreamService<S>>>,
+    event_bus: Option<Arc<EventBus>>,
+    _phantom: std::marker::PhantomData<S>,
 }
 
 impl<S: StorageAdaptor> GroupConsensusCallbacksImpl<S> {
@@ -28,14 +25,13 @@ impl<S: StorageAdaptor> GroupConsensusCallbacksImpl<S> {
     pub fn new(
         group_id: ConsensusGroupId,
         node_id: NodeId,
-        event_publisher: Option<EventPublisher>,
-        stream_service: Option<Arc<StreamService<S>>>,
+        event_bus: Option<Arc<EventBus>>,
     ) -> Self {
         Self {
             group_id,
             node_id,
-            event_publisher,
-            stream_service,
+            event_bus,
+            _phantom: std::marker::PhantomData,
         }
     }
 }
@@ -52,6 +48,13 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
             group_id,
             self.node_id
         );
+
+        // Publish event
+        if let Some(ref event_bus) = self.event_bus {
+            let event = GroupConsensusEvent::StateSynchronized { group_id };
+            event_bus.publish(event).await;
+        }
+
         Ok(())
     }
 
@@ -95,86 +98,39 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
-        messages: &[(MessageData, NonZero<u64>, u64)], // (message, sequence, timestamp)
+        entries: Arc<Vec<bytes::Bytes>>,
     ) -> ConsensusResult<()> {
         tracing::debug!(
-            "Messages appended to stream {} in group {:?}, count: {}",
+            "Messages appended to stream {} in group {:?}, {} entries",
             stream_name,
             group_id,
-            messages.len()
+            entries.len()
         );
 
-        // Directly persist the messages to storage via stream service
-        if let Some(ref stream_service) = self.stream_service {
-            let stream_name = StreamName::new(stream_name);
-
-            // Get or create the storage for this stream
-            let _storage = stream_service.get_or_create_storage(&stream_name).await;
-
-            // Prepare messages for batch append
-            let mut entries = Vec::new();
-            let mut total_bytes = 0u64;
-
-            for (message, sequence, timestamp) in messages {
-                let stored_message = crate::services::stream::StoredMessage {
-                    sequence: *sequence,
-                    data: message.clone(),
-                    timestamp: *timestamp,
-                };
-
-                // Serialize the message
-                let mut bytes = Vec::new();
-                if let Err(e) = ciborium::into_writer(&stored_message, &mut bytes) {
-                    tracing::error!(
-                        "Failed to serialize message {} for stream {}: {}",
-                        sequence,
-                        stream_name,
-                        e
-                    );
-                    continue;
-                }
-
-                total_bytes += message.payload.len() as u64;
-                entries.push((*sequence, bytes.into()));
-            }
-
-            // Batch append to storage
-            if !entries.is_empty() {
-                let namespace =
-                    proven_storage::StorageNamespace::new(format!("stream_{stream_name}"));
-                if let Err(e) = stream_service
-                    .storage_manager()
-                    .stream_storage()
-                    .append(&namespace, entries)
-                    .await
-                {
-                    tracing::error!(
-                        "Failed to persist {} messages to stream {} storage: {}",
-                        messages.len(),
-                        stream_name,
-                        e
-                    );
-                } else {
-                    // Update stream metadata
-                    if let Some((_, _, last_timestamp)) = messages.last() {
-                        stream_service
-                            .update_stream_metadata_for_append(
-                                &stream_name,
-                                *last_timestamp,
-                                total_bytes,
-                            )
-                            .await;
-                    }
-
-                    tracing::info!(
-                        "Successfully persisted {} messages to stream {} storage (sequences: {:?})",
-                        messages.len(),
-                        stream_name,
-                        messages.iter().map(|(_, seq, _)| seq).collect::<Vec<_>>()
-                    );
-                }
-            }
+        // Publish event with pre-serialized entries for persistence
+        if let Some(ref event_bus) = self.event_bus {
+            let event = GroupConsensusEvent::MessagesToPersist(Box::new(
+                crate::services::group_consensus::events::MessagesToPersist {
+                    stream_name: stream_name.to_string(),
+                    entries: entries.clone(),
+                },
+            ));
+            event_bus.publish(event).await;
         }
+
+        // Also publish the metadata event for other subscribers
+        if let Some(ref event_bus) = self.event_bus {
+            let event = GroupConsensusEvent::MessagesAppended(Box::new(
+                crate::services::group_consensus::events::MessagesAppendedData {
+                    group_id,
+                    stream_name: stream_name.to_string(),
+                    message_count: entries.len(),
+                },
+            ));
+            event_bus.publish(event).await;
+        }
+
+        // Storage is now handled by StreamService through the MessagesToPersist event
 
         Ok(())
     }
@@ -192,7 +148,18 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
             removed_members
         );
 
-        // Could publish membership change events if needed
+        // Publish event
+        if let Some(ref event_bus) = self.event_bus {
+            let event = GroupConsensusEvent::MembershipChanged(Box::new(
+                crate::services::group_consensus::events::MembershipChangedData {
+                    group_id,
+                    added_members: added_members.to_vec(),
+                    removed_members: removed_members.to_vec(),
+                },
+            ));
+            event_bus.publish(event).await;
+        }
+
         Ok(())
     }
 }

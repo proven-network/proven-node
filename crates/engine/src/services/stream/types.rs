@@ -41,16 +41,8 @@ impl From<&str> for StreamName {
     }
 }
 
-/// Message data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageData {
-    /// Message payload
-    pub payload: Bytes,
-    /// Message headers
-    pub headers: Vec<(String, String)>,
-    /// Message key (for partitioning)
-    pub key: Option<String>,
-}
+/// Message data type alias for the foundation Message type
+pub type MessageData = crate::foundation::Message;
 
 /// Stream metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]

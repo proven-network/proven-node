@@ -123,28 +123,34 @@ impl GroupOperationHandler {
         _is_replay: bool,
     ) -> ConsensusResult<GroupResponse> {
         match operation {
-            StreamOperation::Append { stream, messages } => {
-                // Check if stream exists
-                if self.state.get_stream(&stream).await.is_none() {
-                    return Ok(GroupResponse::error(format!("Stream {stream} not found")));
-                }
+            StreamOperation::Append {
+                stream,
+                messages,
+                timestamp,
+            } => {
+                // Check if stream exists and get its current state
+                let initial_next_seq = match self.state.get_stream(&stream).await {
+                    Some(state) => state.next_sequence,
+                    None => return Ok(GroupResponse::error(format!("Stream {stream} not found"))),
+                };
 
-                // Append messages
-                if let Some(results) = self.state.append_messages(&stream, messages).await {
-                    // Return the last sequence number
-                    // Since we validate that batches are not empty, results.last() should always be Some
-                    let (_, last_seq, _) = results
-                        .last()
-                        .expect("Validated non-empty batch should have results");
-                    Ok(GroupResponse::Appended {
-                        stream,
-                        sequence: *last_seq,
-                    })
-                } else {
-                    Ok(GroupResponse::error(format!(
-                        "Failed to append to stream {stream}"
-                    )))
-                }
+                let message_count = messages.len() as u64;
+
+                // Append messages - returns pre-serialized entries
+                let entries = self
+                    .state
+                    .append_messages(&stream, messages, timestamp)
+                    .await;
+
+                // Calculate the last sequence number
+                // Since we know the initial next_sequence and how many messages we appended
+                let last_seq = initial_next_seq.saturating_add(message_count - 1);
+
+                Ok(GroupResponse::Appended {
+                    stream,
+                    sequence: last_seq,
+                    entries: Some(entries),
+                })
             }
 
             StreamOperation::Trim { stream, up_to_seq } => {

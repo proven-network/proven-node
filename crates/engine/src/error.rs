@@ -228,18 +228,6 @@ impl From<tokio::task::JoinError> for Error {
 }
 
 // Allow services to convert their errors to consensus errors
-impl From<crate::services::cluster::ClusterError> for Error {
-    fn from(err: crate::services::cluster::ClusterError) -> Self {
-        Self::with_context(ErrorKind::Service, format!("Cluster error: {err}"))
-    }
-}
-
-impl From<crate::services::event::EventError> for Error {
-    fn from(err: crate::services::event::EventError) -> Self {
-        Self::with_context(ErrorKind::Service, format!("Event error: {err}"))
-    }
-}
-
 impl From<crate::services::monitoring::MonitoringError> for Error {
     fn from(err: crate::services::monitoring::MonitoringError) -> Self {
         Self::with_context(ErrorKind::Service, format!("Monitoring error: {err}"))
@@ -267,12 +255,6 @@ impl From<crate::services::lifecycle::LifecycleError> for Error {
 impl From<crate::services::pubsub::PubSubError> for Error {
     fn from(err: crate::services::pubsub::PubSubError) -> Self {
         Self::with_context(ErrorKind::Service, format!("PubSub error: {err}"))
-    }
-}
-
-impl From<crate::services::network::NetworkError> for Error {
-    fn from(err: crate::services::network::NetworkError) -> Self {
-        Self::with_context(ErrorKind::Network, format!("Network service error: {err}"))
     }
 }
 

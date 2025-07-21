@@ -46,7 +46,6 @@ pub use {
     config::EngineConfig,
     engine::Engine,
     engine::EngineState,
-    services::cluster::{ClusterInfo, ClusterState, NodeRole},
     services::stream::{
         MessageData, PersistenceType, RetentionPolicy, StoredMessage, StreamConfig, StreamName,
     },

@@ -120,7 +120,7 @@ where
         };
 
         let response = network
-            .request_service(
+            .service_request(
                 leader.clone(),
                 forward_msg,
                 std::time::Duration::from_secs(30),

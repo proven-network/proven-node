@@ -14,7 +14,6 @@ use uuid::Uuid;
 use proven_topology::NodeId;
 
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::{Event, EventPublisher};
 use crate::services::lifecycle::ComponentState;
 use proven_network::NetworkManager;
 use proven_topology::TopologyAdaptor;
@@ -71,8 +70,7 @@ where
     pending_requests: Arc<RwLock<HashMap<Uuid, oneshot::Sender<PubSubResponse>>>>,
     /// Network manager
     network: Option<Arc<NetworkManager<T, G>>>,
-    /// Event publisher for persistence bridge
-    event_publisher: Option<EventPublisher>,
+    // Event publishing removed - TODO: Add new event system if needed
     /// Global consensus handle for querying stream mappings
     global_consensus_handle: Option<Arc<dyn GlobalConsensusHandle>>,
     /// Group consensus handle for stream writes
@@ -110,7 +108,6 @@ where
             message_router: MessageRouter::new(),
             pending_requests: Arc::new(RwLock::new(HashMap::new())),
             network: None,
-            event_publisher: None,
             global_consensus_handle: None,
             group_consensus_handle: None,
             stream_mappings_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -126,11 +123,6 @@ where
     /// Set the network manager
     pub fn set_network(&mut self, network: Arc<NetworkManager<T, G>>) {
         self.network = Some(network);
-    }
-
-    /// Set the event publisher
-    pub fn set_event_publisher(&mut self, publisher: EventPublisher) {
-        self.event_publisher = Some(publisher);
     }
 
     /// Publish a message
@@ -324,7 +316,8 @@ where
 
                 // Check if we need to persist
                 if subscription.persist || self.should_persist(&message.subject) {
-                    self.publish_persistence_event(message).await?;
+                    // Event publishing removed - just update stats
+                    self.stats.write().await.messages_persisted += 1;
                 }
 
                 // Check for stream subscriptions
@@ -459,33 +452,6 @@ where
             .persistence_patterns
             .iter()
             .any(|pattern| subject_matches_pattern(subject, pattern))
-    }
-
-    /// Publish event for persistence
-    async fn publish_persistence_event(&self, message: &PubSubNetworkMessage) -> PubSubResult<()> {
-        if let Some(publisher) = &self.event_publisher {
-            let event = Event::Custom {
-                event_type: "pubsub.message.persist".to_string(),
-                payload: serde_json::json!({
-                    "subject": message.subject,
-                    "message_id": message.id,
-                    "payload_size": message.payload.len(),
-                    "source": message.source,
-                    "timestamp": message.timestamp,
-                }),
-            };
-
-            if let Err(e) = publisher
-                .publish(event, format!("pubsub-{}", self.node_id))
-                .await
-            {
-                warn!("Failed to publish persistence event: {}", e);
-            } else {
-                self.stats.write().await.messages_persisted += 1;
-            }
-        }
-
-        Ok(())
     }
 
     /// Get service statistics

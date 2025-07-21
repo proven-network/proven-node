@@ -2,6 +2,7 @@
 
 use async_trait::async_trait;
 use std::num::NonZero;
+use std::sync::Arc;
 
 use crate::{error::ConsensusResult, foundation::types::ConsensusGroupId};
 use proven_topology::NodeId;
@@ -41,7 +42,7 @@ pub trait GroupConsensusCallbacks: Send + Sync {
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
-        messages: &[(MessageData, NonZero<u64>, u64)], // (message, sequence, timestamp)
+        entries: Arc<Vec<bytes::Bytes>>, // Pre-serialized entries ready for storage
     ) -> ConsensusResult<()>;
 
     /// Called when group consensus membership changes (not during replay)

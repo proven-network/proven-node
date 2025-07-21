@@ -154,7 +154,7 @@ where
             futures.push(async move {
                 match timeout(
                     timeout_duration,
-                    network.request_service(peer_id.clone(), request, timeout_duration),
+                    network.service_request(peer_id.clone(), request, timeout_duration),
                 )
                 .await
                 {

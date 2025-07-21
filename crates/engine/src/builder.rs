@@ -11,9 +11,13 @@ use proven_transport::Transport;
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::ServiceLifecycle;
 use crate::services::{
-    client::ClientService, event::EventService, lifecycle::LifecycleService,
-    migration::MigrationService, monitoring::MonitoringService, network::NetworkService,
-    pubsub::PubSubService, routing::RoutingService,
+    client::ClientService,
+    event::{EventService, EventServiceConfig},
+    lifecycle::LifecycleService,
+    migration::MigrationService,
+    monitoring::MonitoringService,
+    pubsub::PubSubService,
+    routing::RoutingService,
 };
 use tracing::{error, info};
 
@@ -107,17 +111,10 @@ where
         // Create service coordinator
         let coordinator = Arc::new(ServiceCoordinator::new());
 
-        // Create network service first as others depend on it
-        let network_service = NetworkService::new(
-            crate::services::network::NetworkConfig::default(),
-            self.node_id.clone(),
-            network_manager.clone(),
-        );
-
         // Create other services
-        let mut event_service = EventService::new(config.services.event.clone());
+        let event_config = EventServiceConfig::default();
+        let event_service = Arc::new(EventService::new(event_config));
         event_service.start().await?;
-        let event_service = Arc::new(event_service);
 
         // Create consensus services
         use crate::services::global_consensus::{GlobalConsensusConfig, GlobalConsensusService};
@@ -129,20 +126,18 @@ where
         let node_info = topology_manager.get_own_node().await.map_err(|e| {
             Error::with_context(
                 ErrorKind::Configuration,
-                format!("Failed to get current node: {}", e),
+                format!("Failed to get current node: {e}"),
             )
         })?;
 
-        let membership_service = Arc::new(
-            MembershipService::new(
-                membership_config,
-                self.node_id.clone(),
-                node_info,
-                network_manager.clone(),
-                topology_manager.clone(),
-            )
-            .with_event_publisher(event_service.create_publisher()),
-        );
+        let membership_service = Arc::new(MembershipService::new(
+            membership_config,
+            self.node_id.clone(),
+            node_info,
+            network_manager.clone(),
+            topology_manager.clone(),
+            event_service.bus(),
+        ));
 
         let global_consensus_config = GlobalConsensusConfig {
             election_timeout_min: config.consensus.global.election_timeout_min,
@@ -158,9 +153,9 @@ where
                 self.node_id.clone(),
                 network_manager.clone(),
                 storage_manager.clone(),
+                event_service.bus(),
             )
-            .with_topology(topology_manager.clone())
-            .with_event_publisher(event_service.create_publisher()),
+            .with_topology(topology_manager.clone()),
         );
 
         let group_consensus_config = GroupConsensusConfig {
@@ -177,8 +172,8 @@ where
                 self.node_id.clone(),
                 network_manager.clone(),
                 storage_manager.clone(),
+                event_service.bus(),
             )
-            .with_event_publisher(event_service.create_publisher())
             .with_topology(topology_manager.clone()),
         );
 
@@ -195,6 +190,7 @@ where
         let routing_service = Arc::new(RoutingService::new(
             config.services.routing.clone(),
             self.node_id.clone(),
+            event_service.bus(),
         ));
 
         let migration_service = Arc::new(MigrationService::new(config.services.migration.clone()));
@@ -213,16 +209,17 @@ where
         // Create StreamService with storage manager
         use crate::services::stream::{StreamService, StreamServiceConfig};
         let stream_config = StreamServiceConfig::default();
-        let stream_service = Arc::new(StreamService::new(stream_config, storage_manager.clone()));
+        let stream_service = Arc::new(StreamService::new(
+            stream_config,
+            storage_manager.clone(),
+            event_service.bus(),
+        ));
 
         // Create service wrappers that implement ServiceLifecycle
         let membership_wrapper = Arc::new(ServiceWrapper::new(
             "membership",
             membership_service.clone(),
         ));
-        let network_service = Arc::new(network_service);
-        let network_wrapper = Arc::new(ServiceWrapper::new("network", network_service.clone()));
-        // ClusterService removed - functionality in GlobalConsensusService
         let event_wrapper = Arc::new(ServiceWrapper::new("event", event_service.clone()));
         let monitoring_wrapper = Arc::new(ServiceWrapper::new(
             "monitoring",
@@ -250,9 +247,6 @@ where
         // Register services with coordinator
         coordinator
             .register("membership".to_string(), membership_wrapper)
-            .await;
-        coordinator
-            .register("network".to_string(), network_wrapper)
             .await;
         coordinator
             .register("event".to_string(), event_wrapper)
@@ -300,21 +294,10 @@ where
             .set_stream_service(stream_service.clone())
             .await;
         client_service
-            .set_event_service(event_service.clone())
-            .await;
-        client_service
             .set_network_manager(network_manager.clone())
             .await;
 
-        // Wire up StreamService dependencies
-        stream_service
-            .set_event_service(event_service.clone())
-            .await;
-
         // Wire up GroupConsensusService dependencies
-        group_consensus_service
-            .set_event_service(event_service.clone())
-            .await;
         group_consensus_service
             .set_stream_service(stream_service.clone())
             .await;
@@ -323,25 +306,15 @@ where
         global_consensus_service
             .set_group_consensus_service(group_consensus_service.clone())
             .await;
-        global_consensus_service
-            .set_routing_service(routing_service.clone())
-            .await;
-        global_consensus_service
-            .set_stream_service(stream_service.clone())
-            .await;
+        // Routing and stream services are no longer set directly on global consensus
+        // They communicate through events instead
         global_consensus_service
             .set_membership_service(membership_service.clone())
-            .await;
-
-        // Wire up RoutingService dependencies
-        routing_service
-            .set_event_service(event_service.clone())
             .await;
 
         // Set start order
         coordinator
             .set_start_order(vec![
-                "network".to_string(),
                 "event".to_string(),
                 "monitoring".to_string(),
                 "membership".to_string(),
@@ -361,7 +334,6 @@ where
             self.node_id,
             config,
             coordinator,
-            network_service,
             event_service,
             monitoring_service,
             routing_service,
@@ -419,7 +391,7 @@ impl ServiceLifecycle for ServiceWrapper<EventService> {
     }
 
     async fn stop(&self) -> ConsensusResult<()> {
-        self.service.stop().await.map_err(|e| e.into())
+        self.service.stop().await
     }
 
     async fn is_running(&self) -> bool {
@@ -516,37 +488,6 @@ impl ServiceLifecycle for ServiceWrapper<LifecycleService> {
     }
 
     async fn stop(&self) -> ConsensusResult<()> {
-        Ok(())
-    }
-
-    async fn is_running(&self) -> bool {
-        true
-    }
-
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: HealthStatus::Healthy,
-            message: None,
-            subsystems: Vec::new(),
-        })
-    }
-}
-
-// Implement for NetworkService
-#[async_trait]
-impl<T, G> ServiceLifecycle for ServiceWrapper<NetworkService<T, G>>
-where
-    T: Transport + Send + Sync + 'static,
-    G: TopologyAdaptor + Send + Sync + 'static,
-{
-    async fn start(&self) -> ConsensusResult<()> {
-        // Already started in builder
-        Ok(())
-    }
-
-    async fn stop(&self) -> ConsensusResult<()> {
-        // NetworkService would need a stop method
         Ok(())
     }
 

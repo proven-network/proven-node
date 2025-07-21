@@ -20,7 +20,6 @@ use proven_transport::Transport;
 use super::messages::{GroupConsensusMessage, GroupConsensusServiceResponse};
 use crate::consensus::group::GroupTypeConfig;
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::network::NetworkStats;
 
 /// Factory for creating group Raft network instances
 pub struct GroupNetworkFactory<T, G>
@@ -30,7 +29,6 @@ where
 {
     network_manager: Arc<NetworkManager<T, G>>,
     group_id: ConsensusGroupId,
-    stats: Arc<RwLock<NetworkStats>>,
 }
 
 impl<T, G> GroupNetworkFactory<T, G>
@@ -39,15 +37,10 @@ where
     G: TopologyAdaptor,
 {
     /// Create a new group network factory
-    pub fn new(
-        network_manager: Arc<NetworkManager<T, G>>,
-        group_id: ConsensusGroupId,
-        stats: Arc<RwLock<NetworkStats>>,
-    ) -> Self {
+    pub fn new(network_manager: Arc<NetworkManager<T, G>>, group_id: ConsensusGroupId) -> Self {
         Self {
             network_manager,
             group_id,
-            stats,
         }
     }
 }
@@ -63,7 +56,6 @@ where
         GroupRaftNetworkAdapter {
             network_manager: self.network_manager.clone(),
             group_id: self.group_id,
-            stats: self.stats.clone(),
             target_node_id: target,
         }
     }
@@ -79,8 +71,6 @@ where
     network_manager: Arc<NetworkManager<T, G>>,
     /// Group ID
     group_id: ConsensusGroupId,
-    /// Network statistics
-    stats: Arc<RwLock<NetworkStats>>,
     /// Target node ID
     target_node_id: NodeId,
 }
@@ -109,16 +99,9 @@ where
         // Send request and wait for response
         let response = self
             .network_manager
-            .request_service(self.target_node_id.clone(), message, timeout)
+            .service_request(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
-
-        // Update stats
-        {
-            let mut stats = self.stats.write().await;
-            stats.messages_sent += 1;
-            stats.messages_received += 1;
-        }
 
         // Extract the response
         match response {
@@ -156,16 +139,9 @@ where
         // Send request and wait for response
         let response = self
             .network_manager
-            .request_service(self.target_node_id.clone(), message, timeout)
+            .service_request(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
-
-        // Update stats
-        {
-            let mut stats = self.stats.write().await;
-            stats.messages_sent += 1;
-            stats.messages_received += 1;
-        }
 
         // Extract the response
         match response {
@@ -206,17 +182,10 @@ where
         loop {
             match self
                 .network_manager
-                .request_service(self.target_node_id.clone(), message.clone(), timeout)
+                .service_request(self.target_node_id.clone(), message.clone(), timeout)
                 .await
             {
                 Ok(response) => {
-                    // Update stats
-                    {
-                        let mut stats = self.stats.write().await;
-                        stats.messages_sent += 1;
-                        stats.messages_received += 1;
-                    }
-
                     // Extract the response
                     match response {
                         GroupConsensusServiceResponse::Vote { group_id, response } => {

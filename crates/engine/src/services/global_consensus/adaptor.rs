@@ -19,7 +19,6 @@ use proven_transport::Transport;
 
 use super::messages::{GlobalConsensusMessage, GlobalConsensusResponse};
 use crate::consensus::global::GlobalTypeConfig;
-use crate::services::network::NetworkStats;
 
 /// Factory for creating global Raft network instances
 pub struct GlobalNetworkFactory<T, G>
@@ -28,7 +27,6 @@ where
     G: TopologyAdaptor,
 {
     network_manager: Arc<NetworkManager<T, G>>,
-    stats: Arc<RwLock<NetworkStats>>,
 }
 
 impl<T, G> GlobalNetworkFactory<T, G>
@@ -37,14 +35,8 @@ where
     G: TopologyAdaptor,
 {
     /// Create a new global network factory
-    pub fn new(
-        network_manager: Arc<NetworkManager<T, G>>,
-        stats: Arc<RwLock<NetworkStats>>,
-    ) -> Self {
-        Self {
-            network_manager,
-            stats,
-        }
+    pub fn new(network_manager: Arc<NetworkManager<T, G>>) -> Self {
+        Self { network_manager }
     }
 }
 
@@ -58,7 +50,6 @@ where
     async fn new_client(&mut self, target: NodeId, _node: &proven_topology::Node) -> Self::Network {
         GlobalRaftNetworkAdapter {
             network_manager: self.network_manager.clone(),
-            stats: self.stats.clone(),
             target_node_id: target,
         }
     }
@@ -72,8 +63,6 @@ where
 {
     /// Network manager for sending messages
     network_manager: Arc<NetworkManager<T, G>>,
-    /// Network statistics
-    stats: Arc<RwLock<NetworkStats>>,
     /// Target node ID
     target_node_id: NodeId,
 }
@@ -84,13 +73,9 @@ where
     G: TopologyAdaptor,
 {
     /// Create a new global Raft network adapter
-    pub fn new(
-        network_manager: Arc<NetworkManager<T, G>>,
-        stats: Arc<RwLock<NetworkStats>>,
-    ) -> Self {
+    pub fn new(network_manager: Arc<NetworkManager<T, G>>) -> Self {
         Self {
             network_manager,
-            stats,
             target_node_id: NodeId::from_bytes(&[0u8; 32]).expect("valid bytes"), // This will be set per-connection
         }
     }
@@ -117,16 +102,9 @@ where
         // Send request and wait for response
         let response = self
             .network_manager
-            .request_service(self.target_node_id.clone(), message, timeout)
+            .service_request(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
-
-        // Update stats
-        {
-            let mut stats = self.stats.write().await;
-            stats.messages_sent += 1;
-            stats.messages_received += 1;
-        }
 
         // Extract the response
         match response {
@@ -153,16 +131,9 @@ where
         // Send request and wait for response
         let response = self
             .network_manager
-            .request_service(self.target_node_id.clone(), message, timeout)
+            .service_request(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
-
-        // Update stats
-        {
-            let mut stats = self.stats.write().await;
-            stats.messages_sent += 1;
-            stats.messages_received += 1;
-        }
 
         // Extract the response
         match response {
@@ -194,16 +165,10 @@ where
         loop {
             match self
                 .network_manager
-                .request_service(self.target_node_id.clone(), message.clone(), timeout)
+                .service_request(self.target_node_id.clone(), message.clone(), timeout)
                 .await
             {
                 Ok(response) => {
-                    // Update stats
-                    {
-                        let mut stats = self.stats.write().await;
-                        stats.messages_sent += 1;
-                        stats.messages_received += 1;
-                    }
                     // Extract the response
                     match response {
                         GlobalConsensusResponse::Vote(resp) => return Ok(resp),

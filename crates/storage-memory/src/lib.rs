@@ -50,7 +50,48 @@ impl proven_storage::LogStorage for MemoryStorage {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Bytes)>,
+        entries: Arc<Vec<Bytes>>,
+    ) -> StorageResult<NonZero<u64>> {
+        if entries.is_empty() {
+            return Err(proven_storage::StorageError::InvalidValue(
+                "Cannot append empty entries".to_string(),
+            ));
+        }
+
+        let mut logs = self.logs.write().await;
+        let mut bounds = self.log_bounds.write().await;
+
+        let btree = logs.entry(namespace.clone()).or_insert_with(BTreeMap::new);
+
+        // Get the next index based on current bounds
+        let start_index = if let Some((_, last)) = bounds.get(namespace) {
+            NonZero::new(last.get() + 1).unwrap()
+        } else {
+            NonZero::new(1).unwrap()
+        };
+
+        // Insert all entries sequentially
+        let mut last_index = start_index;
+        for (i, data) in entries.iter().enumerate() {
+            let index = NonZero::new(start_index.get() + i as u64).unwrap();
+            btree.insert(index, data.clone());
+            last_index = index;
+        }
+
+        // Update bounds cache
+        let (first, _) = bounds
+            .get(namespace)
+            .copied()
+            .unwrap_or((start_index, last_index));
+        bounds.insert(namespace.clone(), (first, last_index));
+
+        Ok(last_index)
+    }
+
+    async fn put_at(
+        &self,
+        namespace: &StorageNamespace,
+        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
     ) -> StorageResult<()> {
         if entries.is_empty() {
             return Ok(());
@@ -69,7 +110,7 @@ impl proven_storage::LogStorage for MemoryStorage {
         let mut last_index: Option<NonZero<u64>> = existing_bounds.map(|(_, last)| last);
 
         for (index, data) in entries {
-            btree.insert(index, data);
+            btree.insert(index, (*data).clone());
 
             // Update bounds
             match first_index {
@@ -345,8 +386,9 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Test single entry append
-        let entries = vec![(nz(1), Bytes::from("test data 1"))];
-        storage.append(&namespace, entries).await.unwrap();
+        let entries = Arc::new(vec![Bytes::from("test data 1")]);
+        let last_seq = storage.append(&namespace, entries).await.unwrap();
+        assert_eq!(last_seq, nz(1));
 
         // Test read single entry via range
         let result = storage.read_range(&namespace, nz(1), nz(2)).await.unwrap();
@@ -364,12 +406,13 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Append multiple entries
-        let entries = vec![
-            (nz(1), Bytes::from("data 1")),
-            (nz(2), Bytes::from("data 2")),
-            (nz(3), Bytes::from("data 3")),
-        ];
-        storage.append(&namespace, entries).await.unwrap();
+        let entries = Arc::new(vec![
+            Bytes::from("data 1"),
+            Bytes::from("data 2"),
+            Bytes::from("data 3"),
+        ]);
+        let last_seq = storage.append(&namespace, entries).await.unwrap();
+        assert_eq!(last_seq, nz(3));
 
         // Test read range
         let range = storage.read_range(&namespace, nz(1), nz(4)).await.unwrap();
@@ -389,13 +432,13 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Append entries
-        let entries = vec![
-            (nz(1), Bytes::from("data 1")),
-            (nz(2), Bytes::from("data 2")),
-            (nz(3), Bytes::from("data 3")),
-            (nz(4), Bytes::from("data 4")),
-            (nz(5), Bytes::from("data 5")),
-        ];
+        let entries = Arc::new(vec![
+            Bytes::from("data 1"),
+            Bytes::from("data 2"),
+            Bytes::from("data 3"),
+            Bytes::from("data 4"),
+            Bytes::from("data 5"),
+        ]);
         storage.append(&namespace, entries).await.unwrap();
 
         // Truncate after index 3
@@ -419,13 +462,13 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Append entries
-        let entries = vec![
-            (nz(1), Bytes::from("data 1")),
-            (nz(2), Bytes::from("data 2")),
-            (nz(3), Bytes::from("data 3")),
-            (nz(4), Bytes::from("data 4")),
-            (nz(5), Bytes::from("data 5")),
-        ];
+        let entries = Arc::new(vec![
+            Bytes::from("data 1"),
+            Bytes::from("data 2"),
+            Bytes::from("data 3"),
+            Bytes::from("data 4"),
+            Bytes::from("data 5"),
+        ]);
         storage.append(&namespace, entries).await.unwrap();
 
         // Compact before index 3
@@ -448,13 +491,13 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Append entries
-        let entries = vec![
-            (nz(1), Bytes::from("data 1")),
-            (nz(2), Bytes::from("data 2")),
-            (nz(3), Bytes::from("data 3")),
-            (nz(4), Bytes::from("data 4")),
-            (nz(5), Bytes::from("data 5")),
-        ];
+        let entries = Arc::new(vec![
+            Bytes::from("data 1"),
+            Bytes::from("data 2"),
+            Bytes::from("data 3"),
+            Bytes::from("data 4"),
+            Bytes::from("data 5"),
+        ]);
         storage.append(&namespace, entries).await.unwrap();
 
         // Delete entry at index 3
@@ -488,13 +531,13 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Append entries
-        let entries = vec![
-            (nz(1), Bytes::from("data 1")),
-            (nz(2), Bytes::from("data 2")),
-            (nz(3), Bytes::from("data 3")),
-            (nz(4), Bytes::from("data 4")),
-            (nz(5), Bytes::from("data 5")),
-        ];
+        let entries = Arc::new(vec![
+            Bytes::from("data 1"),
+            Bytes::from("data 2"),
+            Bytes::from("data 3"),
+            Bytes::from("data 4"),
+            Bytes::from("data 5"),
+        ]);
         storage.append(&namespace, entries).await.unwrap();
 
         // Test streaming with end bound
@@ -534,5 +577,41 @@ mod tests {
             count += 1;
         }
         assert_eq!(count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_random_access_storage() {
+        let storage = MemoryStorage::new();
+        let namespace = StorageNamespace::new("test");
+
+        // Put entries at specific indices (non-sequential)
+        let entries = vec![
+            (nz(5), Arc::new(Bytes::from("data 5"))),
+            (nz(2), Arc::new(Bytes::from("data 2"))),
+            (nz(8), Arc::new(Bytes::from("data 8"))),
+            (nz(1), Arc::new(Bytes::from("data 1"))),
+        ];
+        storage.put_at(&namespace, entries).await.unwrap();
+
+        // Check bounds
+        let bounds = storage.bounds(&namespace).await.unwrap();
+        assert_eq!(bounds, Some((nz(1), nz(8))));
+
+        // Read the entries
+        let range = storage.read_range(&namespace, nz(1), nz(9)).await.unwrap();
+        assert_eq!(range.len(), 4);
+        assert_eq!(range[0], (nz(1), Bytes::from("data 1")));
+        assert_eq!(range[1], (nz(2), Bytes::from("data 2")));
+        assert_eq!(range[2], (nz(5), Bytes::from("data 5")));
+        assert_eq!(range[3], (nz(8), Bytes::from("data 8")));
+
+        // Overwrite an entry
+        let overwrite = vec![(nz(5), Arc::new(Bytes::from("updated data 5")))];
+        storage.put_at(&namespace, overwrite).await.unwrap();
+
+        // Verify overwrite
+        let range = storage.read_range(&namespace, nz(5), nz(6)).await.unwrap();
+        assert_eq!(range.len(), 1);
+        assert_eq!(range[0], (nz(5), Bytes::from("updated data 5")));
     }
 }

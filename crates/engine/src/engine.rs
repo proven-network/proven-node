@@ -24,8 +24,8 @@ use crate::services::group_consensus::GroupConsensusService;
 use crate::services::stream::StreamService;
 use crate::services::{
     client::ClientService, event::EventService, lifecycle::LifecycleService,
-    migration::MigrationService, monitoring::MonitoringService, network::NetworkService,
-    pubsub::PubSubService, routing::RoutingService,
+    migration::MigrationService, monitoring::MonitoringService, pubsub::PubSubService,
+    routing::RoutingService,
 };
 
 use super::config::EngineConfig;
@@ -48,7 +48,6 @@ where
     coordinator: Arc<ServiceCoordinator>,
 
     /// Services
-    network_service: Arc<NetworkService<T, G>>,
     event_service: Arc<EventService>,
     monitoring_service: Arc<MonitoringService>,
     routing_service: Arc<RoutingService>,
@@ -100,7 +99,6 @@ where
         node_id: NodeId,
         config: EngineConfig,
         coordinator: Arc<ServiceCoordinator>,
-        network_service: Arc<NetworkService<T, G>>,
         event_service: Arc<EventService>,
         monitoring_service: Arc<MonitoringService>,
         routing_service: Arc<RoutingService>,
@@ -116,7 +114,6 @@ where
             node_id,
             config,
             coordinator,
-            network_service,
             event_service,
             monitoring_service,
             routing_service,
@@ -183,17 +180,15 @@ where
         // 1. Start all services (including consensus services if configured)
         self.coordinator.start_all().await?;
 
-        // 2. Initialize global consensus from topology
-        // This handles both fresh starts and restarts
-        if let Some(ref global_consensus) = self.global_consensus_service {
-            info!("Initializing global consensus from topology");
-            global_consensus.initialize_from_topology().await?;
-        } else {
+        // 2. Global consensus initialization is now event-driven via membership events
+        // The service will automatically initialize when it receives ClusterFormed event
+        if self.global_consensus_service.is_none() {
             return Err(Error::with_context(
                 ErrorKind::Configuration,
                 "Global consensus service not configured",
             ));
         }
+        info!("Global consensus will initialize via membership events");
 
         // 3. Wait for default group to be created
         // This ensures the engine is ready to handle stream operations

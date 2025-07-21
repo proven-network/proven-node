@@ -103,18 +103,24 @@ where
             })?;
 
         // Create message data
-        let message = MessageData {
-            payload: payload.into(),
-            headers: metadata
+        let message = MessageData::with_headers(
+            payload,
+            metadata
                 .map(|m| m.into_iter().collect())
                 .unwrap_or_default(),
-            key: None,
-        };
+        );
+
+        // Get current timestamp for the message
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
 
         // Submit to the group that owns the stream
         let request = GroupRequest::Stream(StreamOperation::Append {
             stream: stream.into(),
             messages: vec![message],
+            timestamp,
         });
 
         self.client_service

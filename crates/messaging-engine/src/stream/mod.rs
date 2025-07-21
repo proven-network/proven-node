@@ -433,6 +433,7 @@ where
         let GroupResponse::Appended {
             stream: _,
             sequence: seq,
+            ..
         } = response
         else {
             return Err(MessagingEngineError::Engine(format!(
@@ -527,6 +528,7 @@ where
         let GroupResponse::Appended {
             stream: _,
             sequence: seq,
+            ..
         } = response
         else {
             return Err(MessagingEngineError::Engine(format!(

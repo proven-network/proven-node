@@ -120,14 +120,16 @@ impl S3Storage {
                     if !recovered.is_empty() {
                         info!("Recovered {} namespaces from WAL", recovered.len());
                         for (namespace, entries) in recovered {
-                            // Convert u64 entries to NonZero<u64>
-                            let converted_entries: Vec<(NonZero<u64>, Bytes)> = entries
+                            // Convert u64 entries to NonZero<u64> with Arc
+                            let converted_entries: Vec<(NonZero<u64>, Arc<Bytes>)> = entries
                                 .into_iter()
-                                .filter_map(|(idx, data)| NonZero::new(idx).map(|nz| (nz, data)))
+                                .filter_map(|(idx, data)| {
+                                    NonZero::new(idx).map(|nz| (nz, Arc::new(data)))
+                                })
                                 .collect();
 
-                            // Re-submit recovered entries
-                            if let Err(e) = storage.append(&namespace, converted_entries).await {
+                            // Re-submit recovered entries using put_at since we have specific indices
+                            if let Err(e) = storage.put_at(&namespace, converted_entries).await {
                                 error!("Failed to re-append recovered entries: {}", e);
                             }
                         }
@@ -374,13 +376,61 @@ impl LogStorage for S3Storage {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Bytes)>,
+        entries: Arc<Vec<Bytes>>,
+    ) -> StorageResult<NonZero<u64>> {
+        if entries.is_empty() {
+            return Err(StorageError::InvalidValue(
+                "Cannot append empty entries".to_string(),
+            ));
+        }
+
+        let timer = start_timer("append", namespace.as_str());
+
+        // Get the next index based on current bounds
+        let bounds = self.bounds(namespace).await?;
+        let start_index = if let Some((_, last)) = bounds {
+            NonZero::new(last.get() + 1).unwrap()
+        } else {
+            NonZero::new(1).unwrap()
+        };
+
+        // Build entries with sequential indices
+        let mut indexed_entries = Vec::new();
+        let mut last_index = start_index;
+        for (i, data) in entries.iter().enumerate() {
+            let index = NonZero::new(start_index.get() + i as u64).unwrap();
+            indexed_entries.push((index, data.clone()));
+            last_index = index;
+        }
+
+        // Use batch manager for optimized writes
+        self.batch_manager
+            .add_entries(namespace.clone(), indexed_entries)
+            .await
+            .map_err(StorageError::Backend)?;
+
+        record_operation("append", namespace.as_str(), true);
+        timer.record();
+
+        Ok(last_index)
+    }
+
+    async fn put_at(
+        &self,
+        namespace: &StorageNamespace,
+        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
     ) -> StorageResult<()> {
         if entries.is_empty() {
             return Ok(());
         }
 
-        let timer = start_timer("append", namespace.as_str());
+        let timer = start_timer("put_at", namespace.as_str());
+
+        // Convert Arc<Bytes> to Bytes for batch manager
+        let entries: Vec<(NonZero<u64>, Bytes)> = entries
+            .into_iter()
+            .map(|(idx, data)| (idx, (*data).clone()))
+            .collect();
 
         // Use batch manager for optimized writes
         self.batch_manager
@@ -388,7 +438,7 @@ impl LogStorage for S3Storage {
             .await
             .map_err(StorageError::Backend)?;
 
-        record_operation("append", namespace.as_str(), true);
+        record_operation("put_at", namespace.as_str(), true);
         timer.record();
 
         Ok(())
@@ -1265,6 +1315,26 @@ impl S3Storage {
     }
 }
 
+impl std::fmt::Debug for S3Storage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("S3Storage")
+            .field("bucket", &self.config.s3.bucket)
+            .field("prefix", &self.config.s3.prefix)
+            .field("encryption_enabled", &self.config.encryption.is_some())
+            .field("vsock_port", &self.config.wal.vsock_port)
+            .field("cache_max_size_bytes", &self.config.cache.max_size_bytes)
+            .finish()
+    }
+}
+
+// Implement StorageAdaptor for S3Storage
+impl proven_storage::StorageAdaptor for S3Storage {
+    // Use default implementations
+    // shutdown() uses default implementation since S3 doesn't need cleanup
+    // delete_all() could be implemented to delete all objects in the bucket
+    // stats() could be implemented to return S3 usage statistics
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1288,11 +1358,11 @@ mod tests {
 
         // Test append and read
         let entries = vec![
-            (NonZero::new(1).unwrap(), Bytes::from("data 1")),
-            (NonZero::new(2).unwrap(), Bytes::from("data 2")),
-            (NonZero::new(3).unwrap(), Bytes::from("data 3")),
+            (NonZero::new(1).unwrap(), Arc::new(Bytes::from("data 1"))),
+            (NonZero::new(2).unwrap(), Arc::new(Bytes::from("data 2"))),
+            (NonZero::new(3).unwrap(), Arc::new(Bytes::from("data 3"))),
         ];
-        storage.append(&namespace, entries).await.unwrap();
+        storage.put_at(&namespace, entries).await.unwrap();
 
         let range = storage
             .read_range(
@@ -1335,7 +1405,7 @@ mod tests {
 
         // Test multiple appends that will be batched
         for i in 1..=10 {
-            let entries = vec![(NonZero::new(i).unwrap(), Bytes::from(format!("data {i}")))];
+            let entries = Arc::new(vec![Bytes::from(format!("data {i}"))]);
             storage.append(&namespace, entries).await.unwrap();
         }
 

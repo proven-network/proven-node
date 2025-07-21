@@ -21,10 +21,11 @@ use crate::foundation::{
     ServiceLifecycle,
     traits::{HealthStatus, ServiceHealth},
 };
-use crate::services::event::{Event, EventPublisher};
+use crate::services::event::bus::EventBus;
 
 use super::config::MembershipConfig;
 use super::discovery::{DiscoveryManager, DiscoveryResult};
+use super::events::MembershipEvent;
 use super::health::HealthMonitor;
 use super::messages::{
     AcceptProposalRequest, AcceptProposalResponse, ClusterState, DiscoverClusterResponse,
@@ -32,8 +33,7 @@ use super::messages::{
     MembershipMessage, MembershipResponse, ProposeClusterRequest, ProposeClusterResponse,
 };
 use super::types::{
-    ClusterFormationState, HealthInfo, MembershipEvent, MembershipView, NodeMembership, NodeRole,
-    NodeStatus,
+    ClusterFormationState, HealthInfo, MembershipView, NodeMembership, NodeRole, NodeStatus,
 };
 
 /// Service state
@@ -58,7 +58,7 @@ where
     node_info: Node,
     network_manager: Arc<NetworkManager<T, G>>,
     topology_manager: Arc<TopologyManager<G>>,
-    event_publisher: Option<EventPublisher>,
+    event_bus: Arc<EventBus>,
 
     /// Current membership view
     membership_view: Arc<RwLock<MembershipView>>,
@@ -95,6 +95,7 @@ where
         node_info: Node,
         network_manager: Arc<NetworkManager<T, G>>,
         topology_manager: Arc<TopologyManager<G>>,
+        event_bus: Arc<EventBus>,
     ) -> Self {
         let discovery_manager = Arc::new(DiscoveryManager::new(
             node_id.clone(),
@@ -115,7 +116,7 @@ where
             node_info,
             network_manager,
             topology_manager,
-            event_publisher: None,
+            event_bus,
             membership_view: Arc::new(RwLock::new(MembershipView::new())),
             discovery_manager,
             health_monitor,
@@ -124,12 +125,6 @@ where
             cancellation_token: CancellationToken::new(),
             _phantom: std::marker::PhantomData,
         }
-    }
-
-    /// Set event publisher
-    pub fn with_event_publisher(mut self, publisher: EventPublisher) -> Self {
-        self.event_publisher = Some(publisher);
-        self
     }
 
     /// Get current membership view
@@ -262,7 +257,7 @@ where
         for (peer_id, _) in &online_peers {
             match self
                 .network_manager
-                .request_service(
+                .service_request(
                     peer_id.clone(),
                     request.clone(),
                     self.config.discovery.node_request_timeout,
@@ -375,10 +370,7 @@ where
 
         Err(Error::with_context(
             ErrorKind::Timeout,
-            format!(
-                "Timeout waiting for coordinator {} to form cluster",
-                coordinator
-            ),
+            format!("Timeout waiting for coordinator {coordinator} to form cluster"),
         ))
     }
 
@@ -453,7 +445,7 @@ where
 
         match self
             .network_manager
-            .request_service(
+            .service_request(
                 coordinator.clone(),
                 request,
                 self.config.discovery.node_request_timeout,
@@ -477,14 +469,7 @@ where
 
     /// Publish membership event
     async fn publish_event(&self, event: MembershipEvent) {
-        if let Some(publisher) = &self.event_publisher {
-            if let Err(e) = publisher
-                .publish(Event::Membership(event), "membership-service".to_string())
-                .await
-            {
-                error!("Failed to publish membership event: {}", e);
-            }
-        }
+        self.event_bus.publish(event).await;
     }
 
     /// Register message handlers
@@ -658,11 +643,11 @@ where
         // Start health monitoring
         let health_monitor = self.health_monitor.clone();
         let membership_view = self.membership_view.clone();
-        let event_publisher = self.event_publisher.clone();
+        let event_bus = self.event_bus.clone();
         let token = self.cancellation_token.clone();
         self.task_tracker.spawn(async move {
             health_monitor
-                .start_monitoring(membership_view, event_publisher, token)
+                .start_monitoring(membership_view, event_bus, token)
                 .await;
         });
 
@@ -709,7 +694,7 @@ where
                 let msg = shutdown_msg.clone();
                 tokio::spawn(async move {
                     if let Err(e) = network
-                        .request_service(node_id.clone(), msg, Duration::from_millis(100))
+                        .service_request(node_id.clone(), msg, Duration::from_millis(100))
                         .await
                     {
                         debug!("Failed to send shutdown announcement to {}: {}", node_id, e);
@@ -784,7 +769,7 @@ where
             node_info: self.node_info.clone(),
             network_manager: self.network_manager.clone(),
             topology_manager: self.topology_manager.clone(),
-            event_publisher: self.event_publisher.clone(),
+            event_bus: self.event_bus.clone(),
             membership_view: self.membership_view.clone(),
             discovery_manager: self.discovery_manager.clone(),
             health_monitor: self.health_monitor.clone(),

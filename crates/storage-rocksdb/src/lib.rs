@@ -143,7 +143,50 @@ impl LogStorage for RocksDbStorage {
     async fn append(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Bytes)>,
+        entries: Arc<Vec<Bytes>>,
+    ) -> StorageResult<NonZero<u64>> {
+        if entries.is_empty() {
+            return Err(StorageError::InvalidValue(
+                "Cannot append empty entries".to_string(),
+            ));
+        }
+
+        let cf = self.get_or_create_cf(namespace)?;
+        let mut batch = WriteBatch::default();
+        let mut bounds = self.log_bounds.write().await;
+
+        // Get the next index based on current bounds
+        let existing_bounds = bounds.get(namespace).copied();
+        let start_index = if let Some((_, last)) = existing_bounds {
+            NonZero::new(last.get() + 1).unwrap()
+        } else {
+            NonZero::new(1).unwrap()
+        };
+
+        // Add all entries to batch sequentially
+        let mut last_index = start_index;
+        for (i, data) in entries.iter().enumerate() {
+            let index = NonZero::new(start_index.get() + i as u64).unwrap();
+            batch.put_cf(&cf, Self::encode_key(index), data.as_ref());
+            last_index = index;
+        }
+
+        // Write batch
+        self.db
+            .write(batch)
+            .map_err(|e| StorageError::Backend(format!("Failed to write batch: {e}")))?;
+
+        // Update bounds cache
+        let (first, _) = existing_bounds.unwrap_or((start_index, last_index));
+        bounds.insert(namespace.clone(), (first, last_index));
+
+        Ok(last_index)
+    }
+
+    async fn put_at(
+        &self,
+        namespace: &StorageNamespace,
+        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
     ) -> StorageResult<()> {
         if entries.is_empty() {
             return Ok(());
@@ -552,12 +595,13 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Test append and read
-        let entries = vec![
-            (nz(1), Bytes::from("data 1")),
-            (nz(2), Bytes::from("data 2")),
-            (nz(3), Bytes::from("data 3")),
-        ];
-        storage.append(&namespace, entries).await.unwrap();
+        let entries = Arc::new(vec![
+            Bytes::from("data 1"),
+            Bytes::from("data 2"),
+            Bytes::from("data 3"),
+        ]);
+        let last_seq = storage.append(&namespace, entries).await.unwrap();
+        assert_eq!(last_seq, nz(3));
 
         let range = storage.read_range(&namespace, nz(1), nz(4)).await.unwrap();
         assert_eq!(range.len(), 3);
@@ -577,13 +621,13 @@ mod tests {
         let namespace = StorageNamespace::new("test");
 
         // Append entries
-        let entries = vec![
-            (nz(1), Bytes::from("data 1")),
-            (nz(2), Bytes::from("data 2")),
-            (nz(3), Bytes::from("data 3")),
-            (nz(4), Bytes::from("data 4")),
-            (nz(5), Bytes::from("data 5")),
-        ];
+        let entries = Arc::new(vec![
+            Bytes::from("data 1"),
+            Bytes::from("data 2"),
+            Bytes::from("data 3"),
+            Bytes::from("data 4"),
+            Bytes::from("data 5"),
+        ]);
         storage.append(&namespace, entries).await.unwrap();
 
         // Test streaming with end bound
