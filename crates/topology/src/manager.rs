@@ -4,13 +4,13 @@ use crate::adaptor::TopologyAdaptor;
 use async_trait::async_trait;
 use ed25519_dalek::VerifyingKey;
 use proven_bootable::Bootable;
+use proven_logger::{debug, error, info, warn};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, oneshot};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, info, warn};
 
 use crate::subscriber::{TopologyBroadcaster, TopologySubscription};
 use crate::{Node, NodeId, TopologyError};

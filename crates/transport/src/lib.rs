@@ -123,7 +123,7 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_config_default() {
         let config = Config::default();
 
@@ -147,7 +147,7 @@ mod tests {
         assert_eq!(config.retry_delay_ms, 500);
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_config_with_custom_connection_config() {
         let custom_connection_config = ConnectionConfig {
             connection_timeout: Duration::from_secs(10),
@@ -185,7 +185,7 @@ mod tests {
         assert_eq!(config.retry_delay_ms, 1000);
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_connection_config_validation() {
         // Test valid configuration
         let valid_config = ConnectionConfig {
@@ -204,7 +204,7 @@ mod tests {
         assert_eq!(valid_config.keep_alive_interval, Duration::from_secs(60));
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_connection_config_extreme_values() {
         // Test with very short timeouts
         let short_timeout_config = ConnectionConfig {
@@ -258,7 +258,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_transport_envelope_creation() {
         let node_id = proven_topology::NodeId::from_seed(1);
         let correlation_id = Uuid::new_v4();
@@ -276,7 +276,7 @@ mod tests {
         assert_eq!(envelope.sender, node_id);
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_transport_envelope_without_correlation_id() {
         let node_id = proven_topology::NodeId::from_seed(2);
 
@@ -293,7 +293,7 @@ mod tests {
         assert_eq!(envelope.sender, node_id);
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_transport_envelope_with_empty_payload() {
         let node_id = proven_topology::NodeId::from_seed(3);
 
@@ -309,7 +309,7 @@ mod tests {
         assert_eq!(envelope.sender, node_id);
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_transport_envelope_with_large_payload() {
         let node_id = proven_topology::NodeId::from_seed(4);
 
@@ -330,7 +330,7 @@ mod tests {
         assert_eq!(envelope.sender, node_id);
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_transport_envelope_clone() {
         let node_id = proven_topology::NodeId::from_seed(5);
         let correlation_id = Uuid::new_v4();
@@ -350,7 +350,7 @@ mod tests {
         assert_eq!(envelope.sender, cloned_envelope.sender);
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_transport_envelope_debug() {
         let node_id = proven_topology::NodeId::from_seed(6);
 
@@ -368,7 +368,7 @@ mod tests {
         assert!(debug_str.contains("debug data"));
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_config_clone() {
         let config = Config::default();
         let cloned_config = config.clone();
@@ -398,7 +398,7 @@ mod tests {
         assert_eq!(config.retry_delay_ms, cloned_config.retry_delay_ms);
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_config_debug() {
         let config = Config::default();
         let debug_str = format!("{config:?}");
@@ -411,7 +411,7 @@ mod tests {
         assert!(debug_str.contains("retry_delay_ms"));
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_connection_config_clone() {
         let config = ConnectionConfig::default();
         let cloned_config = config.clone();
@@ -431,7 +431,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_connection_config_debug() {
         let config = ConnectionConfig::default();
         let debug_str = format!("{config:?}");
@@ -443,7 +443,7 @@ mod tests {
         assert!(debug_str.contains("keep_alive_interval"));
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_envelope_with_different_message_types() {
         let node_id = proven_topology::NodeId::from_seed(7);
 

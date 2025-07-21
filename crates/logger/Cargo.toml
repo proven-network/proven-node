@@ -1,0 +1,55 @@
+[package]
+name = "proven-logger"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Core dependencies
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+once_cell = { workspace = true }
+
+# Optional dependencies
+chrono = { workspace = true, features = ["serde"], optional = true }
+thiserror = { workspace = true, optional = true }
+termcolor = { version = "1.4", optional = true }
+proven-logger-macros = { path = "../logger-macros", optional = true }
+
+# Compatibility bridges
+log = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
+
+[features]
+default = ["timestamps", "stdout", "color", "test-support"]
+timestamps = ["chrono"]
+stdout = []
+color = ["termcolor"]
+test-support = ["proven-logger-macros"]
+
+# Compatibility features
+log-compat = ["dep:log"]
+tracing-compat = ["dep:tracing", "dep:tracing-subscriber"]
+
+# Compile-time log level filtering
+max-level-off = []
+max-level-error = []
+max-level-warn = []
+max-level-info = []
+max-level-debug = []
+
+# Release-specific log level filtering
+release-max-level-off = []
+release-max-level-error = []
+release-max-level-warn = []
+release-max-level-info = []
+release-max-level-debug = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+
+[lib]
+proc-macro = false

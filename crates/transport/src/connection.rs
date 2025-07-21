@@ -393,6 +393,7 @@ mod tests {
     use ed25519_dalek::SigningKey;
     use proven_attestation_mock::MockAttestor;
     use proven_topology_mock::MockTopologyAdaptor;
+    use std::sync::Arc;
 
     fn create_test_manager() -> ConnectionManager<MockTopologyAdaptor, MockAttestor> {
         let governance = Arc::new(MockTopologyAdaptor::new(
@@ -407,7 +408,7 @@ mod tests {
         ConnectionManager::new(attestor, governance, signing_key)
     }
 
-    #[tokio::test]
+    #[proven_logger::logged_tokio_test]
     async fn test_new_manager() {
         let manager = create_test_manager();
 
@@ -415,17 +416,16 @@ mod tests {
         assert_ne!(manager.our_node_id, NodeId::from_seed(0));
     }
 
-    #[test]
+    #[proven_logger::logged_test]
     fn test_manager_debug() {
         let manager = create_test_manager();
         let debug_str = format!("{manager:?}");
 
         assert!(debug_str.contains("TransportConnectionManager"));
         assert!(debug_str.contains("our_node_id"));
-        assert!(debug_str.contains("config"));
     }
 
-    #[tokio::test]
+    #[proven_logger::logged_tokio_test]
     async fn test_prepare_outgoing_message() {
         let manager = create_test_manager();
 

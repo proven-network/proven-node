@@ -17,7 +17,7 @@ proven-bootable.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
+proven-logger = { path = "../logger" }
 url.workspace = true
 
 [dev-dependencies]

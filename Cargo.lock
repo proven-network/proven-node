@@ -10751,6 +10751,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-logger"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "log",
+ "once_cell",
+ "proven-logger-macros",
+ "serde",
+ "serde_json",
+ "termcolor",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.19",
+]
+
+[[package]]
+name = "proven-logger-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "proven-messaging"
 version = "0.1.0"
 dependencies = [
@@ -11320,11 +11346,11 @@ dependencies = [
  "hex",
  "proven-attestation",
  "proven-bootable",
+ "proven-logger",
  "proven-topology-mock",
  "serde",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "url",
 ]
 
@@ -11379,6 +11405,7 @@ dependencies = [
  "futures",
  "proven-attestation",
  "proven-attestation-mock",
+ "proven-logger",
  "proven-topology",
  "proven-topology-mock",
  "proven-verification",
@@ -11388,7 +11415,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-test",
- "tracing",
  "uuid",
 ]
 

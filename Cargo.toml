@@ -41,6 +41,7 @@ members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
+    "crates/logger",
     "crates/messaging",
     "crates/messaging-engine",
     "crates/messaging-memory",
@@ -118,6 +119,7 @@ default-members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
+    "crates/logger",
     "crates/messaging",
     "crates/messaging-engine",
     "crates/messaging-memory",
@@ -465,6 +467,7 @@ proven-local-cli = { path = "crates/local-cli" }
 proven-local-tui = { path = "crates/local-tui" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
+proven-logger = { path = "crates/logger", features = ["log-compat", "release-max-level-info", "tracing-compat"] }
 proven-messaging = { path = "crates/messaging" }
 proven-messaging-engine = { path = "crates/messaging-engine" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
