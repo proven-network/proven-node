@@ -122,6 +122,27 @@ where
         // Create consensus services
         use crate::services::global_consensus::{GlobalConsensusConfig, GlobalConsensusService};
         use crate::services::group_consensus::{GroupConsensusConfig, GroupConsensusService};
+        use crate::services::membership::{MembershipConfig, MembershipService};
+
+        // Create membership service first as consensus services depend on it
+        let membership_config = MembershipConfig::default();
+        let node_info = topology_manager.get_own_node().await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Configuration,
+                format!("Failed to get current node: {}", e),
+            )
+        })?;
+
+        let membership_service = Arc::new(
+            MembershipService::new(
+                membership_config,
+                self.node_id.clone(),
+                node_info,
+                network_manager.clone(),
+                topology_manager.clone(),
+            )
+            .with_event_publisher(event_service.create_publisher()),
+        );
 
         let global_consensus_config = GlobalConsensusConfig {
             election_timeout_min: config.consensus.global.election_timeout_min,
@@ -195,6 +216,10 @@ where
         let stream_service = Arc::new(StreamService::new(stream_config, storage_manager.clone()));
 
         // Create service wrappers that implement ServiceLifecycle
+        let membership_wrapper = Arc::new(ServiceWrapper::new(
+            "membership",
+            membership_service.clone(),
+        ));
         let network_service = Arc::new(network_service);
         let network_wrapper = Arc::new(ServiceWrapper::new("network", network_service.clone()));
         // ClusterService removed - functionality in GlobalConsensusService
@@ -223,6 +248,9 @@ where
         ));
 
         // Register services with coordinator
+        coordinator
+            .register("membership".to_string(), membership_wrapper)
+            .await;
         coordinator
             .register("network".to_string(), network_wrapper)
             .await;
@@ -301,6 +329,9 @@ where
         global_consensus_service
             .set_stream_service(stream_service.clone())
             .await;
+        global_consensus_service
+            .set_membership_service(membership_service.clone())
+            .await;
 
         // Wire up RoutingService dependencies
         routing_service
@@ -313,6 +344,7 @@ where
                 "network".to_string(),
                 "event".to_string(),
                 "monitoring".to_string(),
+                "membership".to_string(),
                 "routing".to_string(), // Start routing before consensus services
                 "stream".to_string(),  // Start stream service before consensus
                 "group_consensus".to_string(), // Start group_consensus before global_consensus
@@ -687,5 +719,44 @@ where
 
     async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
         self.service.health_check().await
+    }
+}
+
+// Implement for MembershipService
+#[async_trait]
+impl<T, G, S> ServiceLifecycle
+    for ServiceWrapper<crate::services::membership::MembershipService<T, G, S>>
+where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    S: StorageAdaptor + Send + Sync + 'static,
+{
+    async fn start(&self) -> ConsensusResult<()> {
+        self.service.start().await
+    }
+
+    async fn stop(&self) -> ConsensusResult<()> {
+        self.service.stop().await
+    }
+
+    async fn is_running(&self) -> bool {
+        self.service.health_check().await.is_ok()
+    }
+
+    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+        match self.service.health_check().await {
+            Ok(_) => Ok(ServiceHealth {
+                name: self.name.clone(),
+                status: HealthStatus::Healthy,
+                message: None,
+                subsystems: Vec::new(),
+            }),
+            Err(e) => Ok(ServiceHealth {
+                name: self.name.clone(),
+                status: HealthStatus::Unhealthy,
+                message: Some(e.to_string()),
+                subsystems: Vec::new(),
+            }),
+        }
     }
 }

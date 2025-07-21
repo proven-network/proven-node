@@ -16,7 +16,6 @@ use proven_transport::Transport;
 use super::{
     callbacks::GlobalConsensusCallbacksImpl,
     config::{GlobalConsensusConfig, ServiceState},
-    topology_monitor::TopologyMonitor,
 };
 use crate::{
     consensus::global::{
@@ -45,8 +44,9 @@ type StreamServiceRef<S> = Arc<RwLock<Option<Arc<crate::services::stream::Stream
 type RaftMetricsReceiver =
     tokio::sync::watch::Receiver<openraft::RaftMetrics<crate::consensus::global::GlobalTypeConfig>>;
 
-/// Type alias for the topology monitor
-type TopologyMonitorRef<G, S> = Arc<RwLock<Option<Arc<TopologyMonitor<G, S>>>>>;
+/// Type alias for the membership service
+type MembershipServiceRef<T, G, S> =
+    Arc<RwLock<Option<Arc<crate::services::membership::MembershipService<T, G, S>>>>>;
 
 /// Type alias for Raft metrics receiver ref
 type RaftMetricsReceiverRef = Arc<RwLock<Option<RaftMetricsReceiver>>>;
@@ -86,8 +86,8 @@ where
     group_consensus_service: GroupConsensusServiceRef<T, G, S>,
     /// Stream service for stream restoration
     stream_service: StreamServiceRef<S>,
-    /// Topology monitor for membership updates
-    topology_monitor: TopologyMonitorRef<G, S>,
+    /// Membership service for cluster membership management
+    membership_service: MembershipServiceRef<T, G, S>,
     /// Raft metrics receiver (kept alive for the service lifetime)
     raft_metrics_rx: RaftMetricsReceiverRef,
 }
@@ -120,7 +120,7 @@ where
             routing_service: Arc::new(RwLock::new(None)),
             group_consensus_service: Arc::new(RwLock::new(None)),
             stream_service: Arc::new(RwLock::new(None)),
-            topology_monitor: Arc::new(RwLock::new(None)),
+            membership_service: Arc::new(RwLock::new(None)),
             raft_metrics_rx: Arc::new(RwLock::new(None)),
         }
     }
@@ -161,6 +161,14 @@ where
         *self.stream_service.write().await = Some(stream_service);
     }
 
+    /// Set membership service
+    pub async fn set_membership_service(
+        &self,
+        membership_service: Arc<crate::services::membership::MembershipService<T, G, S>>,
+    ) {
+        *self.membership_service.write().await = Some(membership_service);
+    }
+
     /// Start the service
     pub async fn start(&self) -> ConsensusResult<()> {
         let mut state = self.state.write().await;
@@ -191,21 +199,8 @@ where
         // Start the default group checker task
         self.spawn_default_group_checker(&task_tracker, &cancellation_token);
 
-        // Start topology monitor if we have a topology manager
-        if let Some(ref topology_manager) = self.topology_manager {
-            let monitor = Arc::new(TopologyMonitor::new(
-                self.node_id.clone(),
-                topology_manager.clone(),
-                self.consensus_layer.clone(),
-            ));
-
-            monitor
-                .clone()
-                .start_monitoring(&task_tracker, &cancellation_token);
-
-            let mut monitor_guard = self.topology_monitor.write().await;
-            *monitor_guard = Some(monitor);
-        }
+        // Start membership monitoring task
+        self.spawn_membership_monitor(&task_tracker, &cancellation_token);
 
         *state = ServiceState::Running;
         Ok(())
@@ -697,27 +692,16 @@ where
         )
         .await?;
 
-        // Get topology
-        let topology_manager = self.topology_manager.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Configuration, "No topology manager configured")
-        })?;
-
-        let all_nodes = topology_manager
-            .provider()
-            .get_topology()
-            .await
-            .map_err(|e| {
-                Error::with_context(ErrorKind::Network, format!("Failed to get topology: {e}"))
-            })?;
-
-        if all_nodes.is_empty() {
-            return Err(Error::with_context(
-                ErrorKind::Configuration,
-                "No nodes found in topology",
-            ));
-        }
-
-        tracing::info!("Found {} nodes in topology", all_nodes.len());
+        // Wait for membership service to be ready
+        let membership_service = loop {
+            let guard = self.membership_service.read().await;
+            if let Some(service) = guard.as_ref() {
+                break service.clone();
+            }
+            drop(guard);
+            tracing::info!("Waiting for membership service to be available...");
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        };
 
         // Create consensus layer
         let consensus_storage = self.storage_manager.consensus_storage();
@@ -755,60 +739,91 @@ where
         let has_persisted_state = self.has_persisted_state().await;
 
         if !has_persisted_state {
-            // Fresh cluster - check if a cluster already exists
-            tracing::info!("No persisted state found, checking for existing cluster");
+            // Fresh cluster - wait for membership service to determine cluster formation
+            tracing::info!(
+                "No persisted state found, waiting for membership service cluster formation"
+            );
 
-            // First, check if any peers already have a cluster
-            let existing_cluster = self.check_cluster_exists().await?;
+            // Wait for cluster to be formed by membership service
+            let start = std::time::Instant::now();
+            let timeout = std::time::Duration::from_secs(60);
 
-            if let Some((leader, members)) = existing_cluster {
-                tracing::info!(
-                    "Found existing cluster with leader {} and {} members, waiting to be added",
-                    leader,
-                    members.len()
-                );
-                // Don't initialize - the existing cluster will add us via topology monitor
-            } else {
-                tracing::info!("No existing cluster found, checking if we should initialize");
-
-                // Sort nodes by ID to ensure deterministic selection
-                let mut sorted_nodes = all_nodes.clone();
-                sorted_nodes.sort_by(|a, b| a.node_id.cmp(&b.node_id));
-
-                // Only the first node (lowest ID) initializes the cluster
-                if sorted_nodes
-                    .first()
-                    .map(|n| n.node_id == self.node_id)
-                    .unwrap_or(false)
-                {
-                    tracing::info!(
-                        "This node ({}) has the lowest ID, initializing new cluster",
-                        self.node_id
-                    );
-
-                    // Start with just ourselves - topology monitor will add others
-                    let mut raft_members = std::collections::BTreeMap::new();
-                    raft_members.insert(
-                        self.node_id.clone(),
-                        all_nodes
-                            .iter()
-                            .find(|n| n.node_id == self.node_id)
-                            .expect("Self not found in topology")
-                            .clone(),
-                    );
-
-                    // Initialize cluster - this node will become the first leader
-                    let handler: &dyn GlobalRaftMessageHandler = layer.as_ref();
-                    handler.initialize_cluster(raft_members).await?;
-
-                    tracing::info!("Raft cluster initialized by this node");
-                } else {
-                    tracing::info!(
-                        "This node ({}) is not the initializer, waiting for cluster formation",
-                        self.node_id
-                    );
-                    // Don't initialize - wait for the lowest ID node to initialize
+            loop {
+                if start.elapsed() > timeout {
+                    return Err(Error::with_context(
+                        ErrorKind::Timeout,
+                        "Timeout waiting for cluster formation",
+                    ));
                 }
+
+                let membership_view = membership_service.get_membership_view().await;
+
+                use crate::services::membership::ClusterFormationState;
+                match &membership_view.cluster_state {
+                    ClusterFormationState::Active { members, .. } => {
+                        tracing::info!("Cluster is active with {} members", members.len());
+
+                        // Check if we're the coordinator (lowest NodeId among members)
+                        let mut sorted_members = members.clone();
+                        sorted_members.sort();
+                        let should_initialize = sorted_members.first() == Some(&self.node_id);
+
+                        if should_initialize {
+                            tracing::info!(
+                                "We are the coordinator, initializing Raft with all {} members",
+                                members.len()
+                            );
+
+                            // Collect all member info from membership view
+                            let mut raft_members = std::collections::BTreeMap::new();
+                            for member_id in members {
+                                if let Some(member_info) = membership_view.nodes.get(member_id) {
+                                    raft_members
+                                        .insert(member_id.clone(), member_info.node_info.clone());
+                                } else {
+                                    tracing::warn!(
+                                        "Member {} not found in membership view",
+                                        member_id
+                                    );
+                                }
+                            }
+
+                            if raft_members.is_empty() {
+                                return Err(Error::with_context(
+                                    ErrorKind::InvalidState,
+                                    "No members found in membership view",
+                                ));
+                            }
+
+                            // Initialize cluster with all members
+                            let handler: &dyn GlobalRaftMessageHandler = layer.as_ref();
+                            handler.initialize_cluster(raft_members).await?;
+
+                            tracing::info!(
+                                "Raft cluster initialized with {} members",
+                                members.len()
+                            );
+                        } else {
+                            // Not the coordinator - wait for Raft to sync
+                            tracing::info!(
+                                "Not the coordinator (lowest ID is {}), waiting for Raft sync",
+                                sorted_members[0]
+                            );
+                        }
+                        break;
+                    }
+                    ClusterFormationState::Forming { coordinator, .. } => {
+                        tracing::info!("Cluster is forming, coordinator: {}", coordinator);
+                    }
+                    ClusterFormationState::Discovering { round, .. } => {
+                        tracing::debug!("Cluster discovery in progress, round {}", round);
+                    }
+                    ClusterFormationState::NotFormed => {
+                        tracing::debug!("Cluster not yet formed");
+                    }
+                }
+
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         } else {
             // Has persisted state - Raft will resume and trigger election if needed
@@ -835,13 +850,16 @@ where
             }
         }
 
-        // Emit event
+        // Emit event with members from membership service
         if let Some(ref publisher) = self.event_publisher {
+            let online_members = membership_service.get_online_members().await;
+            let member_ids: Vec<NodeId> = online_members.into_iter().map(|(id, _)| id).collect();
+
             let _ = publisher
                 .publish(
                     Event::GlobalConsensusInitialized {
                         node_id: self.node_id.clone(),
-                        members: all_nodes.into_iter().map(|n| n.node_id).collect(),
+                        members: member_ids,
                     },
                     "global_consensus".to_string(),
                 )
@@ -860,7 +878,7 @@ where
     ) {
         let consensus_layer = self.consensus_layer.clone();
         let node_id = self.node_id.clone();
-        let topology_manager = self.topology_manager.clone();
+        let _topology_manager = self.topology_manager.clone();
         let token = cancellation_token.clone();
 
         task_tracker.spawn(async move {
@@ -892,18 +910,17 @@ where
                             if is_leader {
                                 tracing::info!("Default group not found, creating it");
 
-                                // Get current cluster members from topology
-                                let members = if let Some(tm) = &topology_manager {
-                                    match tm.provider().get_topology().await {
-                                        Ok(nodes) => nodes.into_iter().map(|n| n.node_id).collect(),
-                                        Err(e) => {
-                                            tracing::error!("Failed to get topology for default group: {}", e);
-                                            continue;
-                                        }
-                                    }
-                                } else {
-                                    // If no topology manager, just use ourselves
-                                    vec![node_id.clone()]
+                                // Get current cluster members from membership service
+                                let members = {
+                                    // Get membership service
+                                    let membership_guard = consensus_layer.read().await;
+                                    drop(membership_guard); // Release lock before async call
+
+                                    // TODO: Pass membership service to this task
+                                    // For now, use all members from Raft membership
+                                    let metrics = consensus.metrics();
+                                    let membership = metrics.borrow().membership_config.membership().clone();
+                                    membership.voter_ids().collect::<Vec<_>>()
                                 };
 
                                 // Create the default group
@@ -942,5 +959,184 @@ where
                 }
             }
         });
+    }
+
+    /// Spawn the membership monitor background task
+    fn spawn_membership_monitor(
+        &self,
+        task_tracker: &TaskTracker,
+        cancellation_token: &CancellationToken,
+    ) {
+        let consensus_layer = self.consensus_layer.clone();
+        let membership_service = self.membership_service.clone();
+        let node_id = self.node_id.clone();
+        let _event_publisher = self.event_publisher.clone();
+        let token = cancellation_token.clone();
+
+        task_tracker.spawn(async move {
+            tracing::info!("Starting membership monitor for global consensus");
+
+            // Wait for membership service to be available
+            loop {
+                let membership_guard = membership_service.read().await;
+                if membership_guard.is_some() {
+                    drop(membership_guard);
+                    break;
+                }
+                drop(membership_guard);
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+
+            // TODO: We need access to the EventService to subscribe to events
+            // For now, we'll use a polling approach instead
+            let mut check_interval = tokio::time::interval(std::time::Duration::from_secs(10));
+
+            loop {
+                tokio::select! {
+                    _ = check_interval.tick() => {
+                        // Periodically check membership and update Raft if needed
+                        if let Err(e) = Self::update_raft_membership(
+                            &consensus_layer,
+                            &membership_service,
+                            &node_id,
+                        ).await {
+                            tracing::error!("Failed to update Raft membership: {}", e);
+                        }
+                    }
+                    _ = token.cancelled() => {
+                        tracing::info!("Membership monitor shutting down");
+                        return;
+                    }
+                }
+            }
+        });
+    }
+
+    /// Update Raft membership based on current membership view
+    async fn update_raft_membership(
+        consensus_layer: &ConsensusLayer<S>,
+        membership_service: &MembershipServiceRef<T, G, S>,
+        _node_id: &NodeId,
+    ) -> ConsensusResult<()> {
+        // Get consensus layer
+        let consensus_guard = consensus_layer.read().await;
+        let consensus = match consensus_guard.as_ref() {
+            Some(c) => c,
+            None => {
+                return Ok(());
+            }
+        };
+
+        // Only the leader should propose membership changes
+        let is_leader = consensus.is_leader().await;
+        if !is_leader {
+            tracing::debug!("Not the leader, skipping membership update");
+            return Ok(());
+        }
+
+        // Get membership service
+        let membership_guard = membership_service.read().await;
+        let membership = match membership_guard.as_ref() {
+            Some(m) => m,
+            None => {
+                return Ok(());
+            }
+        };
+
+        // Get online members from membership service
+        let online_members = membership.get_online_members().await;
+        let target_members: std::collections::BTreeSet<NodeId> =
+            online_members.iter().map(|(id, _)| id.clone()).collect();
+
+        // Get current Raft membership
+        let raft_metrics = consensus.metrics();
+        let current_membership = {
+            let metrics = raft_metrics.borrow();
+            metrics.membership_config.membership().clone()
+        };
+
+        let current_voters: std::collections::BTreeSet<NodeId> =
+            current_membership.voter_ids().collect();
+        let current_learners: std::collections::BTreeSet<NodeId> =
+            current_membership.learner_ids().collect();
+        let all_current: std::collections::BTreeSet<NodeId> =
+            current_voters.union(&current_learners).cloned().collect();
+
+        // Check if membership has changed
+        if target_members == all_current {
+            tracing::debug!("No membership changes needed");
+            return Ok(());
+        }
+
+        tracing::info!(
+            "Updating Raft membership. Current: {:?}, Target: {:?}",
+            all_current,
+            target_members
+        );
+
+        // Determine nodes to add and remove
+        let nodes_to_add: Vec<NodeId> = target_members.difference(&all_current).cloned().collect();
+        let nodes_to_remove: Vec<NodeId> =
+            all_current.difference(&target_members).cloned().collect();
+
+        // First, add new nodes as learners
+        for node_id in &nodes_to_add {
+            tracing::info!("Adding node {} as learner", node_id);
+
+            // Find the node info from membership
+            let node_info = online_members
+                .iter()
+                .find(|(id, _)| id == node_id)
+                .map(|(_, info)| info.clone())
+                .ok_or_else(|| {
+                    Error::with_context(
+                        ErrorKind::NotFound,
+                        format!("Node {node_id} not found in online members"),
+                    )
+                })?;
+
+            // Add as learner
+            match consensus.add_learner(node_id.clone(), node_info).await {
+                Ok(_) => tracing::info!("Successfully added {} as learner", node_id),
+                Err(e) => {
+                    tracing::warn!("Failed to add {} as learner: {}", node_id, e);
+                    // Continue with other nodes
+                }
+            }
+        }
+
+        // Give learners time to catch up
+        if !nodes_to_add.is_empty() {
+            tracing::info!("Waiting for learners to catch up...");
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+
+        // Now update membership to include new nodes as voters
+        let mut new_voters = current_voters.clone();
+        for node_id in nodes_to_add {
+            new_voters.insert(node_id);
+        }
+
+        // Remove nodes that are no longer online
+        for node_id in nodes_to_remove {
+            new_voters.remove(&node_id);
+        }
+
+        // Propose membership change
+        if new_voters != current_voters {
+            tracing::info!("Proposing membership change: {:?}", new_voters);
+
+            match consensus.change_membership(new_voters.clone(), false).await {
+                Ok(_) => {
+                    tracing::info!("Successfully updated membership");
+                }
+                Err(e) => {
+                    tracing::error!("Failed to update membership: {}", e);
+                    return Err(e);
+                }
+            }
+        }
+
+        Ok(())
     }
 }

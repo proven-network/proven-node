@@ -294,6 +294,9 @@ pub enum Event {
         new_state: String,
     },
 
+    /// Membership event
+    Membership(crate::services::membership::MembershipEvent),
+
     /// Custom event for extensions
     Custom {
         /// Event type
@@ -529,6 +532,8 @@ impl Event {
             | Event::GlobalConsensusStateChanged { .. }
             | Event::GroupConsensusStateChanged { .. } => EventType::Consensus,
 
+            Event::Membership(_) => EventType::Node,
+
             Event::Custom { .. } => EventType::Custom,
         }
     }
@@ -547,7 +552,8 @@ impl Event {
             | Event::GlobalLeaderChanged { .. }
             | Event::GroupLeaderChanged { .. }
             | Event::GlobalConsensusStateChanged { .. }
-            | Event::GroupConsensusStateChanged { .. } => EventPriority::High,
+            | Event::GroupConsensusStateChanged { .. }
+            | Event::Membership(_) => EventPriority::High,
 
             Event::StreamCreated { .. }
             | Event::StreamDeleted { .. }
