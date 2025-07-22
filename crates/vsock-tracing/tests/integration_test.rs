@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use proven_logger_vsock::{
+    use proven_vsock_tracing::{
         LogLevel,
         client::{VsockLoggerConfig, VsockSubscriber},
         server::{ChannelLogProcessor, VsockLogServerBuilder},

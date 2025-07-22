@@ -1,5 +1,5 @@
 [package]
-name = "proven-logger-vsock"
+name = "proven-vsock-tracing"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

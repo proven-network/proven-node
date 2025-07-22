@@ -136,5 +136,5 @@ pub enum Error {
 
     /// Logger VSOCK error.
     #[error(transparent)]
-    LoggerVsock(#[from] proven_logger_vsock::Error),
+    LoggerVsock(#[from] proven_vsock_tracing::Error),
 }

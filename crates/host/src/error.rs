@@ -53,5 +53,5 @@ pub enum Error {
     VsockRpcCac(#[from] proven_vsock_cac::Error),
 
     #[error(transparent)]
-    LoggerVsock(#[from] proven_logger_vsock::Error),
+    LoggerVsock(#[from] proven_vsock_tracing::Error),
 }

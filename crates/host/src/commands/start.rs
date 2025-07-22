@@ -14,9 +14,9 @@ use axum::routing::any;
 use nix::unistd::Uid;
 use proven_bootable::Bootable;
 use proven_http_insecure::InsecureHttpServer;
-use proven_logger_vsock::server::{StdoutLogProcessor, VsockLogServerBuilder};
 use proven_vsock_cac::{CacClient, InitializeRequest};
 use proven_vsock_proxy::Proxy;
+use proven_vsock_tracing::server::{StdoutLogProcessor, VsockLogServerBuilder};
 use tokio::signal::unix::{SignalKind, signal};
 use tracing::{error, info};
 
@@ -58,7 +58,7 @@ pub async fn start(args: StartArgs) -> Result<()> {
     tokio::time::sleep(std::time::Duration::from_secs(30)).await;
 
     // Enclave (vsock-based) logging
-    // The new logger-vsock server listens on the host side
+    // The new vsock-tracing server listens on the host side
     #[cfg(target_os = "linux")]
     let log_addr = tokio_vsock::VsockAddr::new(tokio_vsock::VMADDR_CID_ANY, 5555);
 

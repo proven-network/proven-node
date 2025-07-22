@@ -41,7 +41,6 @@ members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
-    "crates/logger-vsock",
     "crates/messaging",
     "crates/messaging-engine",
     "crates/messaging-memory",
@@ -84,6 +83,7 @@ members = [
     "crates/vsock-fuse",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
+    "crates/vsock-tracing",
 ]
 default-members = [
     "crates/applications",
@@ -118,7 +118,6 @@ default-members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
-    "crates/logger-vsock",
     "crates/messaging",
     "crates/messaging-engine",
     "crates/messaging-memory",
@@ -161,6 +160,7 @@ default-members = [
     "crates/vsock-fuse",
     "crates/vsock-proxy",
     "crates/vsock-rpc",
+    "crates/vsock-tracing",
 ]
 
 [workspace.dependencies]
@@ -465,7 +465,6 @@ proven-local-cli = { path = "crates/local-cli" }
 proven-local-tui = { path = "crates/local-tui" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
-proven-logger-vsock = { path = "crates/logger-vsock" }
 proven-messaging = { path = "crates/messaging" }
 proven-messaging-engine = { path = "crates/messaging-engine" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
@@ -509,6 +508,7 @@ proven-vsock-cac = { path = "crates/vsock-cac" }
 proven-vsock-fuse = { path = "crates/vsock-fuse" }
 proven-vsock-proxy = { path = "crates/vsock-proxy" }
 proven-vsock-rpc = { path = "crates/vsock-rpc" }
+proven-vsock-tracing = { path = "crates/vsock-tracing" }
 public-suffix = "0.1.3"
 quinn = { version = "0.11.8", default-features = false }
 quote = "1.0.40"

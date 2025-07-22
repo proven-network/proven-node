@@ -18,7 +18,7 @@ mod speedtest;
 use bootstrap::Bootstrap;
 use error::{Error, Result};
 use node::EnclaveNode;
-use proven_logger_vsock::client::{VsockLoggerConfig, VsockSubscriber};
+use proven_vsock_tracing::client::{VsockLoggerConfig, VsockSubscriber};
 
 use std::sync::Arc;
 

@@ -2,7 +2,7 @@ use crate::ConnectArgs;
 use crate::error::{Error, Result};
 use crate::nitro::NitroCli;
 
-use proven_logger_vsock::server::run_stdout_collector;
+use proven_vsock_tracing::server::run_stdout_collector;
 use tracing::info;
 
 pub async fn connect(_args: ConnectArgs) -> Result<()> {
@@ -10,7 +10,7 @@ pub async fn connect(_args: ConnectArgs) -> Result<()> {
         return Err(Error::NoRunningEnclave);
     }
 
-    // Note: The new logger-vsock server listens on the host side
+    // Note: The new vsock-tracing server listens on the host side
     // The enclave sends logs TO the host, so we bind to VMADDR_CID_ANY
     #[cfg(target_os = "linux")]
     let addr = tokio_vsock::VsockAddr::new(tokio_vsock::VMADDR_CID_ANY, 5555);
