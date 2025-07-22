@@ -3,11 +3,10 @@ use crate::consensus::global::types::GroupInfo;
 use crate::consensus::global::{GlobalConsensusLayer, GlobalRequest};
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::event::{EventHandler, EventPriority};
-use crate::services::membership::{ClusterFormationState, MembershipEvent};
+use crate::services::membership::MembershipEvent;
 use proven_logger::{debug, error, info, warn};
-use proven_storage::{LogStorage, StorageAdaptor, StorageManager, StorageNamespace};
+use proven_storage::{StorageAdaptor, StorageManager};
 use proven_topology::{NodeId, TopologyAdaptor, TopologyManager};
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -25,12 +24,8 @@ where
     node_id: NodeId,
     /// Reference to global consensus layer
     consensus_layer: ConsensusLayer<S>,
-    /// Storage manager to check for persisted state
-    storage_manager: Arc<StorageManager<S>>,
     /// Topology manager to get node information
     topology_manager: Option<Arc<TopologyManager<G>>>,
-    /// Track if we've already initialized
-    initialized: Arc<RwLock<bool>>,
 }
 
 impl<G, S> MembershipEventSubscriber<G, S>
@@ -42,29 +37,14 @@ where
     pub fn new(
         node_id: NodeId,
         consensus_layer: ConsensusLayer<S>,
-        storage_manager: Arc<StorageManager<S>>,
+        _storage_manager: Arc<StorageManager<S>>,
         topology_manager: Option<Arc<TopologyManager<G>>>,
     ) -> Self {
         Self {
             node_id,
             consensus_layer,
-            storage_manager,
             topology_manager,
-            initialized: Arc::new(RwLock::new(false)),
         }
-    }
-
-    /// Check if we have persisted consensus state
-    async fn has_persisted_state(&self) -> bool {
-        let consensus_storage = self.storage_manager.consensus_storage();
-        let namespace = StorageNamespace::new("global_logs");
-
-        // Check for any log entries
-        if let Ok(Some(_)) = consensus_storage.bounds(&namespace).await {
-            return true;
-        }
-
-        false
     }
 }
 
@@ -91,25 +71,18 @@ where
                     coordinator
                 );
 
-                // Check if already initialized
-                {
-                    let mut init_guard = self.initialized.write().await;
-                    if *init_guard {
-                        debug!("Already initialized, skipping");
-                        return;
-                    }
-                    *init_guard = true;
-                }
-
                 // Check if we have a consensus layer
                 let consensus_guard = self.consensus_layer.read().await;
                 if let Some(consensus) = consensus_guard.as_ref() {
-                    let has_persisted_state = self.has_persisted_state().await;
-
-                    if !has_persisted_state {
-                        // Fresh cluster - initialize if we're the coordinator
+                    // Check if Raft is already initialized
+                    if consensus.is_initialized().await {
+                        info!("Raft is already initialized, skipping initialization");
+                    } else {
+                        // Not initialized - initialize if we're the coordinator
                         if self.node_id == coordinator {
-                            info!("We are the coordinator, initializing Raft cluster");
+                            info!(
+                                "We are the coordinator and Raft is not initialized, initializing Raft cluster"
+                            );
 
                             // Get actual node information from topology manager
                             let mut raft_members = std::collections::BTreeMap::new();
@@ -138,15 +111,30 @@ where
                             }
 
                             info!("Successfully initialized Raft cluster");
+
+                            // For single-node clusters, wait for the node to become leader
+                            if members.len() == 1 {
+                                let start = std::time::Instant::now();
+                                let timeout = std::time::Duration::from_secs(5);
+
+                                loop {
+                                    if consensus.is_leader().await {
+                                        info!("Single node became leader after initialization");
+                                        break;
+                                    }
+
+                                    if start.elapsed() > timeout {
+                                        error!("Timeout waiting for single node to become leader");
+                                        return;
+                                    }
+
+                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                }
+                            }
                         } else {
                             info!("Not the coordinator, waiting for Raft sync");
                         }
-                    } else {
-                        info!("Has persisted state, Raft will resume automatically");
                     }
-
-                    // Wait for cluster to stabilize
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
                     // Now handle default group creation
                     // Check if default group already exists

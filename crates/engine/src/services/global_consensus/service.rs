@@ -220,14 +220,7 @@ where
             )
             .await?;
 
-            // Handle persisted state if any
-            if self.has_persisted_state().await {
-                info!("Resuming from persisted state");
-                let state = layer.state();
-                if let Err(e) = callbacks.on_state_synchronized(state).await {
-                    error!("State sync callback failed: {e}");
-                }
-            }
+            // The consensus layer will handle resuming from persisted state automatically
         }
 
         // Register membership event subscriber
@@ -485,6 +478,45 @@ where
         *state == ServiceState::Running
     }
 
+    /// Check if global consensus is ready (has initialized Raft layer and knows the leader)
+    pub async fn is_ready(&self) -> ConsensusResult<Option<NodeId>> {
+        // Check if consensus layer is initialized
+        let consensus_guard = self.consensus_layer.read().await;
+        let _consensus = match consensus_guard.as_ref() {
+            Some(c) => c,
+            None => return Ok(None),
+        };
+
+        // For single-node clusters, we can check metrics directly
+        // For multi-node clusters, we'd need to check cluster exists
+        let topology_manager = match self.topology_manager.as_ref() {
+            Some(tm) => tm,
+            None => return Ok(None),
+        };
+
+        // Check if we're in a single-node topology
+        let peers = topology_manager.get_all_peers().await;
+        if peers.is_empty() {
+            // Single node - check our own Raft metrics
+            let metrics_guard = self.raft_metrics_rx.read().await;
+            if let Some(metrics_rx) = metrics_guard.as_ref() {
+                let metrics = metrics_rx.borrow();
+                // Return the current leader if one exists
+                Ok(metrics.current_leader.clone())
+            } else {
+                // Metrics not available yet
+                Ok(None)
+            }
+        } else {
+            // Multi-node - use the existing check_cluster_exists logic
+            match self.check_cluster_exists().await {
+                Ok(Some((leader, _members))) => Ok(Some(leader)),
+                Ok(None) => Ok(None),
+                Err(_) => Ok(None), // Not ready yet
+            }
+        }
+    }
+
     /// Get current global consensus members
     pub async fn get_members(&self) -> Vec<NodeId> {
         // Use the stored metrics receiver
@@ -499,33 +531,6 @@ where
             // Consensus layer not initialized yet
             vec![]
         }
-    }
-
-    /// Check if we have persisted consensus state
-    pub async fn has_persisted_state(&self) -> bool {
-        // Check if we have a vote or committed index in storage
-        let consensus_storage = self.storage_manager.consensus_storage();
-        let namespace = StorageNamespace::new("global_logs");
-
-        // Check for vote
-        if let Ok(Some(_)) = consensus_storage.get_metadata(&namespace, "vote").await {
-            return true;
-        }
-
-        // Check for committed
-        if let Ok(Some(_)) = consensus_storage
-            .get_metadata(&namespace, "committed")
-            .await
-        {
-            return true;
-        }
-
-        // Check for log entries
-        if let Ok(Some(_)) = consensus_storage.bounds(&namespace).await {
-            return true;
-        }
-
-        false
     }
 
     /// Resume consensus from persisted state

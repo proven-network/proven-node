@@ -223,6 +223,11 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
     pub fn metrics(&self) -> tokio::sync::watch::Receiver<RaftMetrics<GroupTypeConfig>> {
         self.raft.metrics()
     }
+
+    /// Check if Raft has been initialized
+    pub async fn is_initialized(&self) -> bool {
+        self.raft.is_initialized().await.unwrap_or(false)
+    }
 }
 
 #[async_trait::async_trait]

@@ -190,11 +190,32 @@ where
         }
         info!("Global consensus will initialize via membership events");
 
-        // 3. Wait for default group to be created
+        // 3. Wait for global consensus to have a leader
+        info!("Waiting for global consensus leader election...");
+        let start = std::time::Instant::now();
+        let timeout = Duration::from_secs(30);
+
+        loop {
+            if let Some(leader) = self.routing_service.get_global_leader().await {
+                info!("Global consensus leader elected: {leader}");
+                break;
+            }
+
+            if start.elapsed() > timeout {
+                return Err(Error::with_context(
+                    ErrorKind::Timeout,
+                    format!("Timeout waiting for global consensus leader after {timeout:?}"),
+                ));
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        // 4. Wait for default group to be created
         // This ensures the engine is ready to handle stream operations
         self.wait_for_default_group(Duration::from_secs(30)).await?;
 
-        // 4. Update state
+        // 5. Update state
         {
             let mut state = self.state.write().await;
             *state = EngineState::Running;

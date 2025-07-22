@@ -236,14 +236,12 @@ where
         );
 
         // Initialize the group (we already checked that we're a member)
-        // Check if we have persisted state for this group
-        let has_persisted_state = self.has_persisted_state(group_id).await;
+        // Check if Raft is already initialized for this group
+        let is_initialized = layer.is_initialized().await;
 
-        info!(
-            "Group {group_id:?} initialization check - has_persisted_state: {has_persisted_state}"
-        );
+        info!("Group {group_id:?} initialization check - is_initialized: {is_initialized}");
 
-        if !has_persisted_state {
+        if !is_initialized {
             // Fresh start - only ONE node should initialize to avoid election storms
             info!(
                 "No persisted state found for group {group_id}, checking if we should initialize"
@@ -322,38 +320,11 @@ where
                 // Don't initialize - just start up and wait for the leader to contact us
             }
         } else {
-            // Resuming from persisted state
-            info!("Group {group_id} resuming from persisted state - skipping initialization");
+            // Already initialized
+            info!("Group {group_id} is already initialized - skipping initialization");
         }
 
         Ok(())
-    }
-
-    /// Check if we have persisted consensus state for a group
-    async fn has_persisted_state(&self, group_id: ConsensusGroupId) -> bool {
-        // Check if we have a vote or committed index in storage
-        let consensus_storage = self.storage_manager.consensus_storage();
-        let namespace = StorageNamespace::new(format!("group_{}_logs", group_id.value()));
-
-        // Check for vote
-        if let Ok(Some(_)) = consensus_storage.get_metadata(&namespace, "vote").await {
-            return true;
-        }
-
-        // Check for committed
-        if let Ok(Some(_)) = consensus_storage
-            .get_metadata(&namespace, "committed")
-            .await
-        {
-            return true;
-        }
-
-        // Check for log entries
-        if let Ok(Some(_)) = consensus_storage.bounds(&namespace).await {
-            return true;
-        }
-
-        false
     }
 
     /// Register message handlers

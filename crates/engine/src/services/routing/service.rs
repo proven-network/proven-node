@@ -11,7 +11,9 @@ use tokio::task::JoinHandle;
 use crate::foundation::ConsensusGroupId;
 use crate::services::event::{EventBus, EventHandler};
 use crate::services::routing::events::RoutingEvent;
-use crate::services::routing::subscribers::{GlobalConsensusSubscriber, GroupConsensusSubscriber};
+use crate::services::routing::subscribers::{
+    GlobalConsensusSubscriber, GroupConsensusSubscriber, MembershipSubscriber,
+};
 use proven_topology::NodeId;
 
 use super::balancer::LoadBalancer;
@@ -144,11 +146,16 @@ impl RoutingService {
         let group_subscriber =
             GroupConsensusSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
 
+        let membership_subscriber = MembershipSubscriber::new(self.routing_table.clone());
+
         // Subscribe to global consensus events
         self.event_bus.subscribe(global_subscriber).await;
 
         // Subscribe to group consensus events
         self.event_bus.subscribe(group_subscriber).await;
+
+        // Subscribe to membership events
+        self.event_bus.subscribe(membership_subscriber).await;
 
         info!("RoutingService: Registered subscribers for consensus events");
 

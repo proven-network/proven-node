@@ -182,6 +182,11 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         self.raft.current_leader().await == Some(self.node_id.clone())
     }
 
+    /// Check if Raft has been initialized
+    pub async fn is_initialized(&self) -> bool {
+        self.raft.is_initialized().await.unwrap_or(false)
+    }
+
     /// Create a new global consensus layer
     pub async fn new<NF>(
         node_id: NodeId,

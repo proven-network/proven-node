@@ -317,7 +317,6 @@ where
             .set_start_order(vec![
                 "event".to_string(),
                 "monitoring".to_string(),
-                "membership".to_string(),
                 "routing".to_string(), // Start routing before consensus services
                 "stream".to_string(),  // Start stream service before consensus
                 "group_consensus".to_string(), // Start group_consensus before global_consensus
@@ -326,6 +325,7 @@ where
                 "client".to_string(),
                 "migration".to_string(),
                 "lifecycle".to_string(),
+                "membership".to_string(), // Start membership last to kick off cluster formation
             ])
             .await;
 
