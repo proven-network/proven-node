@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use proven_logger::{debug, error, info, warn};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 
 use super::health::{HealthChecker, HealthReport};
 use super::shutdown::{ShutdownCoordinator, ShutdownOptions};
@@ -192,7 +192,7 @@ impl LifecycleService {
         let mut tasks = self.background_tasks.write().await;
         for task in tasks.drain(..) {
             if let Err(e) = task.await {
-                warn!("Error stopping background task: {e}");
+                warn!("Error stopping background task: {}", e);
             }
         }
 
@@ -252,11 +252,11 @@ impl LifecycleService {
                     .await
             }
             ClusterFormationStrategy::JoinExisting { target_node } => {
-                info!("Joining existing cluster via node: {target_node}");
+                info!("Joining existing cluster via node: {}", target_node);
                 self.startup_coordinator.join_cluster(target_node).await
             }
             ClusterFormationStrategy::AutoDiscovery { timeout } => {
-                info!("Auto-discovering cluster with timeout: {timeout:?}");
+                info!("Auto-discovering cluster with timeout: {:?}", timeout);
                 self.startup_coordinator
                     .auto_discover_cluster(timeout)
                     .await
@@ -355,7 +355,7 @@ impl LifecycleService {
                 tokio::select! {
                     _ = interval_timer.tick() => {
                         if let Err(e) = health_checker.check_all_components(&components).await {
-                            error!("Health check failed: {e}");
+                            error!("Health check failed: {}", e);
                         }
                     }
                     _ = shutdown.notified() => {

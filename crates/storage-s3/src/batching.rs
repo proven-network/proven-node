@@ -1,7 +1,6 @@
 //! Batching system for S3 storage to optimize write performance
 
 use bytes::Bytes;
-use proven_logger::{debug, warn};
 use proven_storage::StorageNamespace;
 use std::{
     collections::HashMap,
@@ -10,6 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, mpsc, oneshot};
+use tracing::{debug, warn};
 
 use crate::config::BatchConfig;
 
@@ -181,15 +181,14 @@ async fn batch_worker(
 /// Flush a batch to the upload queue
 async fn flush_batch(batch: LogBatch, upload_tx: &mpsc::Sender<LogBatch>) {
     debug!(
-        // TODO: Add this back in if we support fields
-        // namespace = ?batch.namespace,
-        // entries = batch.entries.len(),
-        // size = batch.total_size,
+        namespace = ?batch.namespace,
+        entries = batch.entries.len(),
+        size = batch.total_size,
         "Flushing batch"
     );
 
     if let Err(e) = upload_tx.send(batch).await {
-        warn!("Failed to send batch to upload queue: {e}");
+        warn!("Failed to send batch to upload queue: {}", e);
     }
 }
 
@@ -238,7 +237,7 @@ async fn upload_worker<F, Fut>(
     F: Fn(LogBatch) -> Fut,
     Fut: std::future::Future<Output = Result<(), String>>,
 {
-    debug!("Upload worker {id} started");
+    debug!("Upload worker {} started", id);
 
     loop {
         // Get next batch
@@ -248,15 +247,15 @@ async fn upload_worker<F, Fut>(
         };
 
         let Some(batch) = batch else {
-            debug!("Upload worker {id} shutting down");
+            debug!("Upload worker {} shutting down", id);
             break;
         };
 
         debug!(
-            "Worker {} uploading batch: namespace={:?}, entries={}",
-            id,
-            batch.namespace,
-            batch.entries.len()
+            worker = id,
+            namespace = ?batch.namespace,
+            entries = batch.entries.len(),
+            "Worker uploading batch"
         );
 
         // Upload the batch

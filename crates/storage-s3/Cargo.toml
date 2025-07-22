@@ -23,7 +23,6 @@ lru = { workspace = true }
 md5 = { workspace = true }
 miniz_oxide = { workspace = true }
 prometheus = { workspace = true }
-proven-logger.workspace = true
 proven-storage = { workspace = true }
 proven-vsock-rpc = { workspace = true }
 rand = { workspace = true }
@@ -42,7 +41,6 @@ uuid = { workspace = true }
 # path = "src/bin/wal-server.rs"
 
 [dev-dependencies]
-proven-logger-macros.workspace = true
 tempfile = { workspace = true }
 tokio = { workspace = true }
 tracing-subscriber = { workspace = true }

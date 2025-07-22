@@ -5,15 +5,20 @@
 
 use proven_engine::EngineState;
 use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
-use proven_logger_macros::logged_tokio_test;
 use std::collections::HashMap;
 use std::time::Duration;
 
 mod common;
 use common::test_cluster::{TestCluster, TransportType};
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_stream_with_default_group() {
+    // Initialize tracing for debugging
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info,proven_engine::services::global_consensus=debug,proven_engine::services::group_consensus=debug")
+        .with_test_writer()
+        .try_init();
+
     // Create a single-node test cluster
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, node_infos) = cluster.add_nodes(1).await;

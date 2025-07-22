@@ -5,9 +5,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::join_all;
-use proven_logger::{debug, info, warn};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use proven_network::NetworkManager;
@@ -98,7 +98,7 @@ where
 
         for round in 0..self.config.max_discovery_rounds {
             if start_time.elapsed() > self.config.discovery_timeout {
-                warn!("Discovery timeout reached after {round} rounds");
+                warn!("Discovery timeout reached after {} rounds", round);
                 break;
             }
 
@@ -162,15 +162,15 @@ where
                         Some((peer_id, response))
                     }
                     Ok(Ok(_)) => {
-                        warn!("Unexpected response type from {peer_id}");
+                        warn!("Unexpected response type from {}", peer_id);
                         None
                     }
                     Ok(Err(e)) => {
-                        debug!("Failed to query {peer_id}: {e}");
+                        debug!("Failed to query {}: {}", peer_id, e);
                         None
                     }
                     Err(_) => {
-                        debug!("Query to {peer_id} timed out");
+                        debug!("Query to {} timed out", peer_id);
                         None
                     }
                 }
@@ -241,7 +241,7 @@ where
                 .unwrap();
 
             if let Some(leader) = leader {
-                info!("Found active cluster with leader {leader}");
+                info!("Found active cluster with leader {}", leader);
                 return Ok(Some(DiscoveryResult::JoinExistingCluster {
                     leader,
                     members,
@@ -276,7 +276,7 @@ where
 
         if !forming_clusters.is_empty() {
             let (coordinator, formation_id) = forming_clusters[0].clone();
-            info!("Found forming cluster with coordinator {coordinator}");
+            info!("Found forming cluster with coordinator {}", coordinator);
             return Ok(Some(DiscoveryResult::JoinFormingCluster {
                 coordinator,
                 formation_id,
@@ -333,7 +333,7 @@ where
                 online_peers: peers_without_us,
             }))
         } else {
-            info!("Node {coordinator} will coordinate cluster formation");
+            info!("Node {} will coordinate cluster formation", coordinator);
             Ok(Some(DiscoveryResult::WaitForCoordinator {
                 coordinator: coordinator.clone(),
                 online_peers: online_nodes,

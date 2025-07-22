@@ -1,14 +1,11 @@
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
-use proven_logger::{StdoutLogger, init};
 use serde_json::Value;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize logger for better logging
-    let logger = Arc::new(StdoutLogger::new());
-    init(logger).expect("Failed to initialize logger");
+    // Initialize tracing for better logging
+    tracing_subscriber::fmt::init();
 
     // Create a temporary directory for storing Bitcoin Core data
     let temp_dir = tempfile::tempdir()?;

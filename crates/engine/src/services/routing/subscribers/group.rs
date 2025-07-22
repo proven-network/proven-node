@@ -1,8 +1,8 @@
 //! Group consensus event subscriber for routing service
 
 use async_trait::async_trait;
-use proven_logger::{debug, error, info};
 use std::sync::Arc;
+use tracing::{debug, error, info};
 
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::event::{EventHandler, EventPriority};
@@ -38,7 +38,10 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
         match event {
             GroupConsensusEvent::StateSynchronized { group_id } => {
                 // This is a critical synchronous event
-                debug!("GroupConsensusSubscriber: Group {group_id:?} state synchronized");
+                debug!(
+                    "GroupConsensusSubscriber: Group {:?} state synchronized",
+                    group_id
+                );
             }
 
             GroupConsensusEvent::StreamCreated {
@@ -47,7 +50,8 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
             } => {
                 // Synchronously handle stream creation
                 debug!(
-                    "GroupConsensusSubscriber: Stream {stream_name} created in group {group_id:?}"
+                    "GroupConsensusSubscriber: Stream {} created in group {:?}",
+                    stream_name, group_id
                 );
 
                 // The routing table should already have this info from global consensus
@@ -60,7 +64,8 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
             } => {
                 // Synchronously handle stream removal
                 debug!(
-                    "GroupConsensusSubscriber: Stream {stream_name} removed from group {group_id:?}"
+                    "GroupConsensusSubscriber: Stream {} removed from group {:?}",
+                    stream_name, group_id
                 );
             }
 
@@ -70,7 +75,8 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
                 let message_count = data.message_count;
                 // This can be async - just for metrics/monitoring
                 debug!(
-                    "GroupConsensusSubscriber: {message_count} messages appended to {stream_name} in group {group_id:?}"
+                    "GroupConsensusSubscriber: {} messages appended to {} in group {:?}",
+                    message_count, stream_name, group_id
                 );
             }
 
@@ -80,7 +86,8 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
                 let removed_members = data.removed_members;
                 // Update group membership in routing table
                 info!(
-                    "GroupConsensusSubscriber: Group {group_id:?} membership changed - added: {added_members:?}, removed: {removed_members:?}"
+                    "GroupConsensusSubscriber: Group {:?} membership changed - added: {:?}, removed: {:?}",
+                    group_id, added_members, removed_members
                 );
 
                 if let Ok(Some(mut route)) = self.routing_table.get_group_route(group_id).await {
@@ -105,7 +112,7 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
                     if was_local && !is_member {
                         // We were removed from the group
                         route.location = if route.members.is_empty() {
-                            error!("Group {group_id:?} has no members after update");
+                            error!("Group {:?} has no members after update", group_id);
                             GroupLocation::Remote // Fallback
                         } else {
                             GroupLocation::Remote
@@ -118,7 +125,7 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
                     route.last_updated = std::time::SystemTime::now();
 
                     if let Err(e) = self.routing_table.update_group_route(group_id, route).await {
-                        error!("Failed to update group {group_id:?} membership: {e}");
+                        error!("Failed to update group {:?} membership: {}", group_id, e);
                     }
                 }
             }
@@ -130,7 +137,8 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
             } => {
                 // Update group leader
                 debug!(
-                    "GroupConsensusSubscriber: Group {group_id:?} leader changed to {new_leader:?}"
+                    "GroupConsensusSubscriber: Group {:?} leader changed to {:?}",
+                    group_id, new_leader
                 );
 
                 // Only track leader for local groups (where we participate in consensus)
@@ -142,9 +150,12 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
                     route.last_updated = std::time::SystemTime::now();
 
                     if let Err(e) = self.routing_table.update_group_route(group_id, route).await {
-                        error!("Failed to update group {group_id:?} leader: {e}");
+                        error!("Failed to update group {:?} leader: {}", group_id, e);
                     } else {
-                        info!("Updated leader for group {group_id:?} to {new_leader:?}");
+                        info!(
+                            "Updated leader for group {:?} to {:?}",
+                            group_id, new_leader
+                        );
                     }
                 }
             }

@@ -7,12 +7,12 @@ use crate::transport::connection::{ConnectionPool, PoolConfig, ResponseSender};
 use bytes::Bytes;
 use dashmap::DashMap;
 use futures::stream::Stream;
-use proven_logger::debug;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tokio_stream::StreamExt;
+use tracing::{debug, instrument};
 use uuid::Uuid;
 
 /// Configuration for the RPC client.
@@ -149,7 +149,7 @@ impl RpcClient {
     /// # Errors
     ///
     /// Returns an error if the request fails or the response is invalid.
-    // #[instrument(skip(self, message))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, message))]
     pub async fn request<M>(&self, message: M) -> Result<M::Response>
     where
         M: RpcMessage + TryInto<Bytes>,
@@ -166,7 +166,7 @@ impl RpcClient {
     /// # Errors
     ///
     /// Returns an error if the request fails or the response is invalid.
-    // #[instrument(skip(self, message))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, message))]
     pub async fn request_with_options<M>(
         &self,
         message: M,
@@ -181,7 +181,10 @@ impl RpcClient {
         let request_id = Uuid::new_v4();
         let message_id = message.message_id();
 
-        debug!("Sending request {request_id} with message_id: {message_id}");
+        debug!(
+            "Sending request {} with message_id: {}",
+            request_id, message_id
+        );
 
         // Convert message to bytes
         let payload: Bytes = message.try_into().map_err(|e: M::Error| {
@@ -268,7 +271,7 @@ impl RpcClient {
     /// # Errors
     ///
     /// Returns an error if the request fails or the response is invalid.
-    // #[instrument(skip(self, message))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, message))]
     pub async fn request_stream<M>(
         &self,
         message: M,
@@ -282,7 +285,10 @@ impl RpcClient {
         let request_id = Uuid::new_v4();
         let message_id = message.message_id();
 
-        debug!("Starting request stream {request_id} with message_id: {message_id}");
+        debug!(
+            "Starting request stream {} with message_id: {}",
+            request_id, message_id
+        );
 
         // Convert message to bytes
         let payload: Bytes = message.try_into().map_err(|e: M::Error| {
@@ -355,15 +361,14 @@ impl RpcClient {
     /// # Errors
     ///
     /// Returns an error if the request fails or the response is invalid.
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
-    #[allow(clippy::unused_async)]
+    #[instrument(skip(self))]
     pub async fn bidi_stream<M>(&self) -> Result<(mpsc::Sender<M>, mpsc::Receiver<M::Response>)>
     where
         M: RpcMessage,
     {
         let stream_id = Uuid::new_v4();
 
-        debug!("Starting bidirectional stream {stream_id}");
+        debug!("Starting bidirectional stream {}", stream_id);
 
         // Create channels
         let (request_tx, _request_rx) = mpsc::channel(32);
@@ -382,7 +387,7 @@ impl RpcClient {
     /// # Errors
     ///
     /// Returns an error if the request fails or the response is invalid.
-    // #[instrument(skip(self, message))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, message))]
     pub async fn send_one_way<M>(&self, message: M) -> Result<()>
     where
         M: RpcMessage + TryInto<Bytes>,
@@ -390,7 +395,7 @@ impl RpcClient {
     {
         let message_id = message.message_id();
 
-        debug!("Sending one-way message with message_id: {message_id}");
+        debug!("Sending one-way message with message_id: {}", message_id);
 
         // Convert message to bytes
         let payload: Bytes = message.try_into().map_err(|e: M::Error| {

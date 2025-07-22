@@ -2,14 +2,11 @@ use std::path::PathBuf;
 
 use proven_bootable::Bootable;
 use proven_ethereum_reth::{EthereumNetwork, RethNode, RethNodeOptions};
-use proven_logger::{StdoutLogger, info, init};
-use std::sync::Arc;
-
+use tracing::info;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize logger for better logging
-    let logger = Arc::new(StdoutLogger::new());
-    init(logger).expect("Failed to initialize logger");
+    // Initialize tracing for better logging
+    tracing_subscriber::fmt::init();
 
     info!("Starting Reth node...");
     // Create and start the node

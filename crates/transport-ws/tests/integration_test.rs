@@ -14,20 +14,19 @@ use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use futures::StreamExt;
 use proven_attestation_mock::MockAttestor;
-use proven_logger::{error, info};
-use proven_logger_macros::logged_tokio_test;
 use proven_topology::{Node, NodeId, TopologyManager, Version};
 use proven_topology_mock::MockTopologyAdaptor;
 use proven_transport::{HttpIntegratedTransport, Transport};
 use proven_transport_ws::{WebsocketConfig, WebsocketTransport};
 use proven_util::port_allocator::allocate_port;
 use tower_http::cors::CorsLayer;
+use tracing::{error, info};
 
 /// Start an Axum server with the WebSocket transport router
 async fn start_server(router: Router, port: u16) -> Result<tokio::task::JoinHandle<()>, String> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
 
-    info!("Binding server to {addr}");
+    info!("Binding server to {}", addr);
 
     let app = router.layer(CorsLayer::very_permissive());
 
@@ -35,20 +34,25 @@ async fn start_server(router: Router, port: u16) -> Result<tokio::task::JoinHand
         .await
         .map_err(|e| format!("Failed to bind TCP listener: {e}"))?;
 
-    info!("Server bound successfully to {addr}");
+    info!("Server bound successfully to {}", addr);
 
     let handle = tokio::spawn(async move {
-        info!("Starting to serve on {addr}");
+        info!("Starting to serve on {}", addr);
         if let Err(e) = axum::serve(listener, app).await {
-            error!("Server failed: {e}");
+            error!("Server failed: {}", e);
         }
     });
 
     Ok(handle)
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_websocket_transport_basic() {
+    // Initialize tracing
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+
     // Create two nodes with deterministic keys
     let node1_key = SigningKey::from_bytes(&[1u8; 32]);
     let node1_id = NodeId::from(node1_key.verifying_key());
@@ -58,8 +62,8 @@ async fn test_websocket_transport_basic() {
     let node2_id = NodeId::from(node2_key.verifying_key());
     let node2_port = allocate_port();
 
-    info!("Node 1: {node1_id} on port {node1_port}");
-    info!("Node 2: {node2_id} on port {node2_port}");
+    info!("Node 1: {} on port {}", node1_id, node1_port);
+    info!("Node 2: {} on port {}", node2_id, node2_port);
 
     // Create mock governance with both nodes
     let attestor = MockAttestor::new();
@@ -145,13 +149,19 @@ async fn test_websocket_transport_basic() {
             Ok(resp) => {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                info!("Health check for {node_id} on port {port}: status={status}, body={body}");
+                info!(
+                    "Health check for {} on port {}: status={}, body={}",
+                    node_id, port, status, body
+                );
                 if !status.is_success() {
                     panic!("Health check failed for port {port}: status={status}");
                 }
             }
             Err(e) => {
-                error!("Failed to check health for {node_id} on port {port}: {e}");
+                error!(
+                    "Failed to check health for {} on port {}: {}",
+                    node_id, port, e
+                );
                 panic!("Server health check failed on port {port}: {e}");
             }
         }
@@ -205,8 +215,14 @@ async fn test_websocket_transport_basic() {
     let test_payload = Bytes::from("Hello from node 1!");
     let test_message_type = "test.message";
 
-    info!("Attempting to send message from node 1 ({node1_id}) to node 2 ({node2_id})");
-    info!("Payload: {test_payload:?}, Message type: {test_message_type}");
+    info!(
+        "Attempting to send message from node 1 ({}) to node 2 ({})",
+        node1_id, node2_id
+    );
+    info!(
+        "Payload: {:?}, Message type: {}",
+        test_payload, test_message_type
+    );
 
     info!("About to call send_envelope...");
     let send_future = transport1.send_envelope(&node2_id, &test_payload, test_message_type, None);
@@ -238,8 +254,13 @@ async fn test_websocket_transport_basic() {
     info!("WebSocket transport basic test completed");
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_websocket_transport_connection_failure() {
+    // Initialize tracing
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+
     // Create node with deterministic key
     let node1_key = SigningKey::from_bytes(&[3u8; 32]);
     let node1_id = NodeId::from(node1_key.verifying_key());
@@ -250,8 +271,8 @@ async fn test_websocket_transport_connection_failure() {
     let node2_id = NodeId::from(node2_key.verifying_key());
     let node2_port = 19999; // Non-existent port
 
-    info!("Node 1: {node1_id} on port {node1_port}");
-    info!("Node 2 (non-existent): {node2_id} on port {node2_port}");
+    info!("Node 1: {} on port {}", node1_id, node1_port);
+    info!("Node 2 (non-existent): {} on port {}", node2_id, node2_port);
 
     // Create mock governance with both nodes
     let attestor = MockAttestor::new();

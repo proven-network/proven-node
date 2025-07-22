@@ -9,8 +9,8 @@ use deno_graph::{NpmLoadError, NpmResolvePkgReqsResult};
 use deno_npm::NpmSystemInfo;
 use deno_npm::registry::{NpmPackageInfo, NpmRegistryApi, NpmRegistryPackageInfoLoadError};
 use deno_semver::package::{PackageNv, PackageReq};
-use proven_logger::{debug, error};
 use reqwest::Client;
+use tracing::{debug, error};
 use url::Url;
 
 /// Cached package information with timestamp for TTL.
@@ -106,7 +106,7 @@ impl CodePackageNpmResolver {
             cache.retain(|name, cached_info| {
                 let should_keep = !cached_info.is_expired(ttl);
                 if !should_keep {
-                    debug!("Removing expired cache entry for {name}");
+                    debug!("Removing expired cache entry for {}", name);
                 }
                 should_keep
             });
@@ -182,9 +182,9 @@ impl NpmRegistryApi for CodePackageNpmResolver {
             let cache = self.cache.read().await;
             if let Some(cached_info) = cache.get(name) {
                 if cached_info.is_expired(self.cache_ttl) {
-                    debug!("Cached package info for {name} has expired");
+                    debug!("Cached package info for {} has expired", name);
                 } else {
-                    debug!("Using cached package info for {name}");
+                    debug!("Using cached package info for {}", name);
                     return Ok(cached_info.info.clone());
                 }
             }
@@ -260,7 +260,7 @@ impl NpmResolver for CodePackageNpmResolver {
     fn load_and_cache_npm_package_info(&self, package_name: &str) {
         // For now, just log that we would pre-load this package
         // In a production implementation, you might use a background task queue
-        debug!("Would pre-load package info for {package_name}");
+        debug!("Would pre-load package info for {}", package_name);
     }
 
     /// Resolves package version requirements.
@@ -273,7 +273,10 @@ impl NpmResolver for CodePackageNpmResolver {
 
         for package_req in package_reqs {
             let result = self.resolve_package_req(package_req).await.map_err(|e| {
-                error!("Failed to resolve package requirement {package_req}: {e:?}");
+                error!(
+                    "Failed to resolve package requirement {}: {:?}",
+                    package_req, e
+                );
                 e
             });
             results.push(result);

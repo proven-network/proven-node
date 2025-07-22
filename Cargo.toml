@@ -42,9 +42,7 @@ members = [
     "crates/locks",
     "crates/locks-memory",
     "crates/logger",
-    "crates/logger-file",
     "crates/logger-macros",
-    "crates/logger-viewer",
     "crates/logger-vsock",
     "crates/messaging",
     "crates/messaging-engine",
@@ -87,7 +85,7 @@ members = [
     "crates/vsock-cac",
     "crates/vsock-fuse",
     "crates/vsock-proxy",
-    "crates/vsock-rpc",
+    "crates/vsock-rpc", "crates/logger-libsql",
 ]
 default-members = [
     "crates/applications",
@@ -123,9 +121,7 @@ default-members = [
     "crates/locks",
     "crates/locks-memory",
     "crates/logger",
-    "crates/logger-file",
     "crates/logger-macros",
-    "crates/logger-viewer",
     "crates/logger-vsock",
     "crates/messaging",
     "crates/messaging-engine",
@@ -474,9 +470,8 @@ proven-local-tui = { path = "crates/local-tui" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
 proven-logger = { path = "crates/logger", features = ["log-compat", "release-max-level-info", "tracing-compat"] }
-proven-logger-file = { path = "crates/logger-file" }
+proven-logger-libsql = { path = "crates/logger-libsql" }
 proven-logger-macros = { path = "crates/logger-macros" }
-proven-logger-viewer = { path = "crates/logger-viewer" }
 proven-logger-vsock = { path = "crates/logger-vsock" }
 proven-messaging = { path = "crates/messaging" }
 proven-messaging-engine = { path = "crates/messaging-engine" }

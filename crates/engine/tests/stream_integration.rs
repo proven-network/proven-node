@@ -8,17 +8,28 @@
 
 use proven_engine::EngineState;
 use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
-use proven_logger_macros::logged_tokio_test;
 use std::collections::HashMap;
 use std::num::NonZero;
 use std::time::Duration;
 use tokio_stream::StreamExt;
+use tracing::Level;
+use tracing_subscriber::EnvFilter;
 
 mod common;
 use common::test_cluster::{TestCluster, TransportType};
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_stream_operations() {
+    // Initialize logging with reduced OpenRaft verbosity
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap()),
+        )
+        .try_init();
+
     // Create a 3-node test cluster
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, node_infos) = cluster.add_nodes(3).await;
@@ -207,8 +218,14 @@ async fn test_stream_operations() {
     }
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_ephemeral_stream() {
+    // Initialize tracing
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info")
+        .with_test_writer()
+        .try_init();
+
     // Create a single node for simplicity
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _node_infos) = cluster.add_nodes(1).await;
@@ -262,8 +279,13 @@ async fn test_ephemeral_stream() {
     }
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_stream_not_found() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info")
+        .with_test_writer()
+        .try_init();
+
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(1).await;
 
@@ -286,8 +308,14 @@ async fn test_stream_not_found() {
     }
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_stream_reading() {
+    // Initialize tracing
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info")
+        .with_test_writer()
+        .try_init();
+
     // Create a single node for simplicity
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _node_infos) = cluster.add_nodes(1).await;

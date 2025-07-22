@@ -14,6 +14,7 @@ strip-ansi-escapes.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-proven-logger.workspace = true
+tracing.workspace = true
 url.workspace = true
 [dev-dependencies]
+tracing-subscriber.workspace = true

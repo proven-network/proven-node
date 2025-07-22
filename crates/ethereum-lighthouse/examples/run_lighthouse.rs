@@ -3,14 +3,11 @@ use std::path::PathBuf;
 use proven_bootable::Bootable;
 use proven_ethereum_lighthouse::{EthereumNetwork, LighthouseNode, LighthouseNodeOptions};
 use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOptions};
-use proven_logger::{StdoutLogger, info, init};
-use std::sync::Arc;
-
+use tracing::info;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize logger for better logging
-    let logger = Arc::new(StdoutLogger::new());
-    init(logger).expect("Failed to initialize logger");
+    // Initialize tracing for better logging
+    tracing_subscriber::fmt::init();
 
     info!("Starting Reth node...");
     let reth_node = RethNode::new(RethNodeOptions {
@@ -62,7 +59,7 @@ async fn fetch_external_ip() -> String {
 
     let ip_address = json_response["ip"].as_str().unwrap().to_string();
 
-    info!("External IP detected: {ip_address}");
+    info!("External IP detected: {}", ip_address);
 
     ip_address
 }

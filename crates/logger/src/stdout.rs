@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
 /// Simple logger that writes to stdout
-#[derive(Debug)]
 pub struct StdoutLogger {
     context: Context,
     /// Minimum log level

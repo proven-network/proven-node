@@ -18,7 +18,6 @@ use proven_applications::{ApplicationManagement, ApplicationManager};
 use proven_core::BootstrapUpgrade;
 use proven_identity::IdentityManager;
 use proven_locks_memory::MemoryLockManager;
-use proven_logger::info;
 use proven_messaging::stream::Stream;
 use proven_messaging_engine::consumer::EngineMessagingConsumerOptions;
 use proven_messaging_engine::service::EngineMessagingServiceOptions;
@@ -35,6 +34,7 @@ use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_engine::{EngineStore, EngineStore1, EngineStore2, EngineStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_topology::TopologyAdaptor;
+use tracing::info;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 

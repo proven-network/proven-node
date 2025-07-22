@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use proven_logger::info;
 use proven_topology::NodeId;
 
 use crate::{
@@ -38,7 +37,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         &self,
         state: &crate::consensus::global::state::GlobalState,
     ) -> ConsensusResult<()> {
-        info!(
+        tracing::info!(
             "Global state synchronized - publishing snapshot for node {}",
             self.node_id
         );
@@ -95,7 +94,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
 
     async fn on_group_dissolved(&self, group_id: ConsensusGroupId) -> ConsensusResult<()> {
         // TODO: Handle group dissolution
-        info!("Group dissolved: {:?}", group_id);
+        tracing::info!("Group dissolved: {:?}", group_id);
 
         // Publish event
         if let Some(ref event_bus) = self.event_bus {
@@ -142,9 +141,10 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         added_members: &[NodeId],
         removed_members: &[NodeId],
     ) -> ConsensusResult<()> {
-        info!(
+        tracing::info!(
             "Global consensus membership changed: added {:?}, removed {:?}",
-            added_members, removed_members
+            added_members,
+            removed_members
         );
 
         // Publish event

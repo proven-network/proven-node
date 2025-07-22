@@ -17,21 +17,16 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
 
-use proven_logger::{error, info, warn};
+use tracing::{error, info, warn};
 use url::Url;
 
 /// Message sent from `NodeHandle` back to `NodeManager` when a node finishes
 #[derive(Debug)]
 pub enum NodeManagerMessage {
-    /// Node has finished execution
     NodeFinished {
-        /// Node identifier
         id: TuiNodeId,
-        /// Node name
         name: String,
-        /// Final status of the node
         final_status: NodeStatus,
-        /// Specializations of the node
         specializations: HashSet<proven_topology::NodeSpecialization>,
     },
 }
@@ -40,22 +35,22 @@ pub enum NodeManagerMessage {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)] // TODO: Box NodeHandle
 pub enum NodeRecord {
-    /// Node that is currently running
     Running(NodeHandle),
-    /// Node that has finished running
     Stopped {
-        /// Node name
+        _id: TuiNodeId,
         name: String,
-        /// Final status of the node
         final_status: NodeStatus,
-        /// Specializations of the node
         specializations: HashSet<proven_topology::NodeSpecialization>,
+        _stopped_at: std::time::Instant,
     },
 }
 
 /// Handle to a running node with its metadata and command processing
 #[derive(Debug)]
 pub struct NodeHandle {
+    /// Node identifier
+    pub _id: TuiNodeId,
+
     /// Display name (publicly accessible for TUI display)
     pub name: String,
 
@@ -94,7 +89,7 @@ impl NodeHandle {
         {
             Ok(runtime) => Some(runtime),
             Err(e) => {
-                error!("Failed to create runtime for node {name}: {e}");
+                error!("Failed to create runtime for node {}: {}", name, e);
                 None
             }
         };
@@ -121,6 +116,7 @@ impl NodeHandle {
         });
 
         Self {
+            _id: id,
             name,
             config,
             specializations,
@@ -130,10 +126,6 @@ impl NodeHandle {
     }
 
     /// Send a command to this node's command processor
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the command channel is disconnected
     pub fn send_command(
         &self,
         operation: NodeOperation,
@@ -142,7 +134,6 @@ impl NodeHandle {
     }
 
     /// Get the current status of the node (synchronous - no async/runtime needed)
-    #[must_use]
     pub fn get_status(&self) -> NodeStatus {
         self.status.read().clone()
     }
@@ -170,7 +161,7 @@ impl NodeHandle {
         {
             Ok(runtime) => runtime,
             Err(e) => {
-                error!("Failed to create command runtime for node {name}: {e}");
+                error!("Failed to create command runtime for node {}: {}", name, e);
                 return;
             }
         };
@@ -178,7 +169,7 @@ impl NodeHandle {
         // Create node instance using the Node's built-in state management
         let mut node = LocalNode::new(config.clone());
 
-        info!("Started command processor for node {name} ({id})");
+        info!("Started command processor for node {} ({})", name, id);
 
         // Use recv_timeout to periodically sync status
         loop {
@@ -193,7 +184,8 @@ impl NodeHandle {
                     let current_status = status.read().clone();
                     if matches!(current_status, NodeStatus::Failed(_) | NodeStatus::Stopped) {
                         info!(
-                            "Node {name} ({id}) is in terminal state {current_status:?}, shutting down command processor"
+                            "Node {} ({}) is in terminal state {:?}, shutting down command processor",
+                            name, id, current_status
                         );
                         break;
                     }
@@ -248,13 +240,16 @@ impl NodeHandle {
             {
                 let current_status = status.read().clone();
                 if matches!(current_status, NodeStatus::Failed(_)) {
-                    info!("Node {name} ({id}) has failed, shutting down command processor");
+                    info!(
+                        "Node {} ({}) has failed, shutting down command processor",
+                        name, id
+                    );
                     break;
                 }
             }
         }
 
-        info!("Command processor for node {name} ({id}) shutting down");
+        info!("Command processor for node {} ({}) shutting down", name, id);
 
         // Send completion message to NodeManager
         let final_status = status.read().clone();
@@ -266,7 +261,7 @@ impl NodeHandle {
         };
 
         if let Err(e) = completion_sender.send(completion_message) {
-            warn!("Failed to send completion message for node {name}: {e}");
+            warn!("Failed to send completion message for node {}: {}", name, e);
         }
 
         runtime.shutdown_timeout(Duration::from_secs(5));
@@ -310,7 +305,10 @@ impl NodeHandle {
         let current_status = runtime.block_on(node.status());
         match current_status {
             NodeStatus::Starting | NodeStatus::Running => {
-                info!("Node {name} ({id}) is already starting/running, ignoring start command");
+                info!(
+                    "Node {} ({}) is already starting/running, ignoring start command",
+                    name, id
+                );
                 // Update our status to match the node's actual status
                 {
                     let mut status_guard = status.write();
@@ -344,7 +342,7 @@ impl NodeHandle {
 
         // Add to governance
         if let Err(e) = governance.add_node(topology_node) {
-            error!("Failed to add node to governance: {e}");
+            error!("Failed to add node to governance: {}", e);
             // Update status to failed
             {
                 let mut status_guard = status.write();
@@ -357,7 +355,7 @@ impl NodeHandle {
         let start_result = runtime.block_on(async { node.start().await });
 
         if let Err(e) = start_result {
-            error!("Failed to start node {name} ({id}): {e}");
+            error!("Failed to start node {} ({}): {}", name, id, e);
             {
                 let mut status_guard = status.write();
                 *status_guard = NodeStatus::Failed(format!("Start failed: {e}"));
@@ -365,7 +363,7 @@ impl NodeHandle {
             return;
         }
 
-        info!("Node {name} ({id}) start command completed");
+        info!("Node {} ({}) start command completed", name, id);
 
         // Sync status with actual node after start operation to ensure UI reflects true state
         Self::sync_node_status(runtime, node, status);
@@ -391,7 +389,10 @@ impl NodeHandle {
             let current_status = node.status().await;
             match current_status {
                 NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Stopping => {
-                    info!("Node {name} ({id}) is not running, ignoring stop command");
+                    info!(
+                        "Node {} ({}) is not running, ignoring stop command",
+                        name, id
+                    );
                     return Ok(current_status);
                 }
                 _ => {}
@@ -400,14 +401,14 @@ impl NodeHandle {
             // Remove from governance before stopping
             let public_key = node.config().node_key.verifying_key();
             if let Err(e) = governance.remove_node(public_key) {
-                warn!("Failed to remove node {id} from governance: {e}");
+                warn!("Failed to remove node {} from governance: {}", id, e);
             }
 
             // Stop the node using its built-in stop method
             let stop_result = node.stop().await;
 
             if let Err(e) = stop_result {
-                error!("Failed to stop node {name} ({id}): {e}");
+                error!("Failed to stop node {} ({}): {}", name, id, e);
                 return Err(e);
             }
 
@@ -419,14 +420,14 @@ impl NodeHandle {
         // Update status based on result
         match result {
             Ok(final_status) => {
-                info!("Node {name} ({id}) stop completed successfully");
+                info!("Node {} ({}) stop completed successfully", name, id);
                 {
                     let mut status_guard = status.write();
                     *status_guard = final_status;
                 }
             }
             Err(e) => {
-                error!("Failed to stop node {name} ({id}): {e}");
+                error!("Failed to stop node {} ({}): {}", name, id, e);
                 {
                     let mut status_guard = status.write();
                     *status_guard = NodeStatus::Failed(format!("Stop failed: {e}"));
@@ -437,7 +438,6 @@ impl NodeHandle {
 }
 
 /// Create a default node configuration with deterministic key generation
-#[must_use]
 pub fn create_node_config(
     id: TuiNodeId,
     name: &str,
@@ -445,7 +445,7 @@ pub fn create_node_config(
     session_id: &str,
 ) -> proven_local::NodeConfig<proven_topology_mock::MockTopologyAdaptor> {
     let main_port = allocate_port().unwrap_or_else(|e| {
-        error!("Failed to allocate port for node {name}: {e}");
+        error!("Failed to allocate port for node {}: {}", name, e);
         3000 // Fallback port
     });
 
@@ -456,12 +456,7 @@ pub fn create_node_config(
 }
 
 /// Build a complete node configuration
-///
-/// # Panics
-///
-/// Panics if any URL parsing fails
 #[allow(clippy::too_many_lines)]
-#[must_use]
 pub fn build_node_config(
     name: &str,
     main_port: u16,

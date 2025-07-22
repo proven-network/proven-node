@@ -12,8 +12,7 @@ tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-proven-logger.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-proven-logger-macros.workspace = true
 tracing-subscriber = "0.3"

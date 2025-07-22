@@ -6,7 +6,6 @@
 use std::time::Duration;
 use tempfile::TempDir;
 
-use proven_logger_macros::logged_tokio_test;
 use proven_vsock_fuse::{
     BlobId, StorageTier, TierHint,
     config::{ColdTierConfig, Config, HotTierConfig},
@@ -160,9 +159,13 @@ async fn create_test_bucket(endpoint: &str, bucket: &str) -> anyhow::Result<()> 
     Ok(())
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 #[ignore = "Requires LocalStack to be running"]
 async fn test_cold_tier_storage() -> anyhow::Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+
     let localstack = LocalStackConfig::default();
     setup_localstack_env(&localstack);
 
@@ -215,9 +218,13 @@ async fn test_cold_tier_storage() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 #[ignore = "Requires LocalStack to be running"]
 async fn test_multipart_upload() -> anyhow::Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+
     let localstack = LocalStackConfig::default();
     setup_localstack_env(&localstack);
 
@@ -265,9 +272,13 @@ async fn test_multipart_upload() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 #[ignore = "Requires LocalStack to be running"]
 async fn test_cold_tier_caching() -> anyhow::Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+
     let localstack = LocalStackConfig::default();
     setup_localstack_env(&localstack);
 
@@ -326,9 +337,13 @@ async fn test_cold_tier_caching() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 #[ignore = "Requires LocalStack to be running"]
 async fn test_s3_failure_recovery() -> anyhow::Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+
     let localstack = LocalStackConfig::default();
     setup_localstack_env(&localstack);
 
@@ -397,9 +412,13 @@ async fn test_s3_failure_recovery() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 #[ignore = "Requires LocalStack to be running"]
 async fn test_concurrent_migrations() -> anyhow::Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .try_init();
+
     let localstack = LocalStackConfig::default();
     setup_localstack_env(&localstack);
 
@@ -479,9 +498,13 @@ async fn test_concurrent_migrations() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 #[ignore = "Requires LocalStack to be running"]
 async fn test_encryption_with_s3() -> anyhow::Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
+
     let localstack = LocalStackConfig::default();
     setup_localstack_env(&localstack);
 

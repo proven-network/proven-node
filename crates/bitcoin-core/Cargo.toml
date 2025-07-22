@@ -13,10 +13,10 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-proven-logger.workspace = true
+tracing.workspace = true
 url.workspace = true
 which.workspace = true
 
 [dev-dependencies]
-proven-logger-macros.workspace = true
 tempfile.workspace = true
+tracing-subscriber.workspace = true

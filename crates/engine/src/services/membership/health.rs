@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use proven_logger::{debug, error, info, warn};
 use tokio::sync::RwLock;
 use tokio::time::{interval, timeout};
+use tracing::{debug, error, info, warn};
 
 use proven_network::NetworkManager;
 use proven_topology::{NodeId, TopologyAdaptor};
@@ -63,7 +63,7 @@ where
             tokio::select! {
                 _ = check_interval.tick() => {
                     if let Err(e) = self.check_all_members(&membership_view, &event_bus).await {
-                        warn!("Health check round failed: {e}");
+                        warn!("Health check round failed: {}", e);
                     }
                 }
                 _ = cancellation_token.cancelled() => {
@@ -146,7 +146,7 @@ where
                     health_updates.insert(node_id, HealthCheckResult::Failed);
                 }
                 Err(e) => {
-                    warn!("Health check task failed: {e}");
+                    warn!("Health check task failed: {}", e);
                 }
             }
         }
@@ -187,7 +187,7 @@ where
                         // Update status if needed
                         match member.status {
                             NodeStatus::Unreachable { .. } => {
-                                info!("Node {node_id} is back online");
+                                info!("Node {} is back online", node_id);
                                 member.status = NodeStatus::Online;
                             }
                             NodeStatus::Online => {

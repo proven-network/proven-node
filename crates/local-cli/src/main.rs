@@ -13,11 +13,10 @@ use ed25519_dalek::SigningKey;
 use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
 use proven_local::{NodeConfig, run_node};
-use proven_logger::{StdoutLogger, info, init};
 use proven_topology::Version;
 use proven_topology_mock::MockTopologyAdaptor;
-use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
+use tracing::info;
 use url::Url;
 
 /// CLI-specific error type
@@ -536,9 +535,8 @@ async fn create_node_config(args: Args) -> Result<NodeConfig<MockTopologyAdaptor
 
 #[tokio::main(worker_threads = 8)]
 async fn main() -> Result<(), Error> {
-    // Initialize proven logger
-    let logger = Arc::new(StdoutLogger::new());
-    init(logger).expect("Failed to initialize logger");
+    // Initialize tracing for better logging
+    tracing_subscriber::fmt::init();
 
     let args = Args::parse();
     let config = create_node_config(args).await?;

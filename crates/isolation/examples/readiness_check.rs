@@ -8,15 +8,14 @@
 //! The server will delay its startup to show the readiness check mechanism in action.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use proven_isolation::{IsolatedApplication, ReadyCheckInfo};
-use proven_logger::{StdoutLogger, info, init};
 use reqwest::StatusCode;
 use tokio::process::Command;
+use tracing::info;
 
 /// The port that the server will listen on
 const SERVER_PORT: u16 = 8080;
@@ -102,9 +101,8 @@ impl IsolatedApplication for ReadinessCheckServer {
 
 #[tokio::main]
 async fn main() {
-    // Initialize logger
-    let logger = Arc::new(StdoutLogger::new());
-    init(logger).expect("Failed to initialize logger");
+    // Initialize tracing with defaults
+    tracing_subscriber::fmt().init();
 
     info!("🚀 Starting readiness check example");
     info!("This example demonstrates waiting for a process to become ready before continuing");
@@ -147,7 +145,7 @@ async fn main() {
 
     // The spawn method will already have waited for the server to be ready
     // using our is_ready_check implementation
-    info!("✅ Server process is now ready! (took {elapsed:?})");
+    info!("✅ Server process is now ready! (took {:?})", elapsed);
     info!("Server is running with PID: {:?}", process.pid());
 
     // Wait a bit before shutting down

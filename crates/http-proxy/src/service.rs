@@ -7,9 +7,9 @@ use crate::{DeserializeError, SERVICE_NAME, SerializeError};
 
 use async_trait::async_trait;
 use proven_bootable::Bootable;
-use proven_logger::{error, info};
 use proven_messaging::service::Service;
 use proven_messaging::stream::InitializedStream;
+use tracing::{error, info};
 
 type MessagingService<S> =
     <S as InitializedStream<Request, DeserializeError, SerializeError>>::Service<
@@ -70,7 +70,7 @@ where
             )
             .await
             .map_err(|e| {
-                error!("HTTP proxy service setup failed: {e}");
+                error!("HTTP proxy service setup failed: {}", e);
                 Error::Service(e.to_string())
             })?;
 
@@ -92,7 +92,7 @@ where
         info!("http proxy service starting...");
 
         self.service.start().await.map_err(|e| {
-            error!("HTTP proxy service setup failed: {e}");
+            error!("HTTP proxy service setup failed: {}", e);
             Box::new(Error::Service(e.to_string()))
         })?;
 
@@ -104,7 +104,7 @@ where
         info!("http proxy service shutting down...");
 
         self.service.shutdown().await.map_err(|e| {
-            error!("HTTP proxy service shutdown failed: {e}");
+            error!("HTTP proxy service shutdown failed: {}", e);
             Box::new(Error::Service(e.to_string()))
         })?;
 

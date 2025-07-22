@@ -10,9 +10,9 @@
 //! - Encrypted blocks are stored in parallel
 //! - This reduces latency for large file operations
 
-use proven_logger::{debug, error, info};
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
+use tracing::{debug, error, info, instrument};
 
 use crate::{
     BlobId, DirectoryId, FileId, FileMetadata, TierHint,
@@ -192,7 +192,8 @@ impl FuseAsyncHandler {
                         reply,
                     } => {
                         info!(
-                            "Handling ReadFile operation: file_id={file_id:?}, offset={offset}, size={size}"
+                            "Handling ReadFile operation: file_id={:?}, offset={}, size={}",
+                            file_id, offset, size
                         );
                         let result = handler.handle_read_file(file_id, offset, size).await;
                         info!(
@@ -243,7 +244,7 @@ impl FuseAsyncHandler {
                         let _ = reply.send(result);
                     }
                     FuseOperation::ListDirectory { dir_id, reply } => {
-                        info!("Handling ListDirectory operation for {dir_id:?}");
+                        info!("Handling ListDirectory operation for {:?}", dir_id);
                         let result = handler.handle_list_directory(dir_id).await;
                         info!(
                             "ListDirectory result: {} entries",
@@ -295,7 +296,7 @@ impl FuseAsyncHandler {
         info!("FUSE async handler stopped");
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_lookup(
         &self,
         parent_id: DirectoryId,
@@ -311,12 +312,12 @@ impl FuseAsyncHandler {
         result
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_get_metadata(&self, file_id: FileId) -> Result<Option<FileMetadata>> {
         self.metadata.get_metadata(&file_id).await
     }
 
-    // #[instrument(skip(self, metadata))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, metadata))]
     async fn handle_create_file(
         &self,
         parent_id: DirectoryId,
@@ -326,7 +327,7 @@ impl FuseAsyncHandler {
         self.metadata.create_file(&parent_id, name, metadata).await
     }
 
-    // #[instrument(skip(self, metadata))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, metadata))]
     async fn handle_create_directory(
         &self,
         parent_id: DirectoryId,
@@ -338,7 +339,7 @@ impl FuseAsyncHandler {
             .await
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_read_file(&self, file_id: FileId, offset: u64, size: u32) -> Result<Vec<u8>> {
         // Load metadata to get block information
         let metadata = self.metadata.get_metadata(&file_id).await?.ok_or_else(|| {
@@ -386,7 +387,7 @@ impl FuseAsyncHandler {
         Ok(result)
     }
 
-    // #[instrument(skip(self, data))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, data))]
     async fn handle_write_file(
         &self,
         file_id: FileId,
@@ -591,7 +592,10 @@ impl FuseAsyncHandler {
             written = data.len();
 
             let elapsed = start_time.elapsed();
-            debug!("Streaming write completed in {elapsed:?} for {num_blocks} blocks");
+            debug!(
+                "Streaming write completed in {:?} for {} blocks",
+                elapsed, num_blocks
+            );
 
             // Update metadata with new block locations
             for (block_num, blob_id, encrypted_len) in block_updates {
@@ -615,7 +619,7 @@ impl FuseAsyncHandler {
         } else {
             // Use the original sequential approach for small writes
             for block_num in start_block..=end_block {
-                debug!("Processing block {block_num}");
+                debug!("Processing block {}", block_num);
                 let block_start = block_num * self.block_size as u64;
                 let block_end = block_start + self.block_size as u64;
 
@@ -717,22 +721,22 @@ impl FuseAsyncHandler {
         Ok(written)
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_delete_file(&self, parent_id: DirectoryId, name: &[u8]) -> Result<()> {
         self.metadata.delete_file(&parent_id, name).await
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_delete_directory(&self, parent_id: DirectoryId, name: &[u8]) -> Result<()> {
         self.metadata.delete_directory(&parent_id, name).await
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_list_directory(&self, dir_id: DirectoryId) -> Result<Vec<DirectoryEntry>> {
         self.metadata.list_directory(&dir_id).await
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_rename(
         &self,
         old_parent: DirectoryId,
@@ -745,7 +749,7 @@ impl FuseAsyncHandler {
             .await
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_get_stats(&self) -> Result<crate::storage::StorageStats> {
         // Get local metadata statistics
         let metadata_stats = self.metadata.get_stats().await;
@@ -775,14 +779,14 @@ impl FuseAsyncHandler {
         })
     }
 
-    // #[instrument(skip(self, metadata))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, metadata))]
     async fn handle_update_metadata(&self, file_id: FileId, metadata: FileMetadata) -> Result<()> {
         self.metadata
             .update_metadata_direct(&file_id, metadata)
             .await
     }
 
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     async fn handle_flush_file(&self, _file_id: FileId) -> Result<()> {
         // For now, we write through, so nothing to flush
         Ok(())

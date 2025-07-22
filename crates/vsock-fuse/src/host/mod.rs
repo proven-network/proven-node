@@ -3,11 +3,11 @@
 //! This module contains all the components that run on the host system,
 //! including the storage backend and RPC server.
 
-use proven_logger::{debug, error, info};
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
+use tracing::error;
 
 use crate::{config::Config, error::Result, storage::BlobStorage};
 
@@ -87,7 +87,7 @@ impl HostService {
 
         let _server_handle = tokio::spawn(async move {
             if let Err(e) = server.serve().await {
-                error!("RPC server error: {e}");
+                error!("RPC server error: {}", e);
             }
         });
 
@@ -120,7 +120,7 @@ impl HostService {
             let mut scheduler = self.migration_scheduler.lock().await;
             let scan_interval = Duration::from_secs(300); // Scan every 5 minutes
             scheduler.start(scan_interval).await?;
-            info!(
+            tracing::info!(
                 "Started migration scheduler with {}s scan interval",
                 scan_interval.as_secs()
             );
@@ -133,9 +133,9 @@ impl HostService {
             loop {
                 interval.tick().await;
                 if let Err(e) = storage.flush().await {
-                    error!("Failed to flush storage: {e}");
+                    tracing::error!("Failed to flush storage: {}", e);
                 }
-                debug!("Storage cleanup completed");
+                tracing::debug!("Storage cleanup completed");
             }
         });
 
@@ -150,7 +150,7 @@ impl HostService {
                 // Collect storage stats
                 match storage.get_stats().await {
                     Ok(stats) => {
-                        info!(
+                        tracing::info!(
                             "Storage stats - Hot tier: {}/{} bytes ({:.1}% full), Cold tier: {}/{} bytes",
                             stats.hot_tier.used_bytes,
                             stats.hot_tier.total_bytes,
@@ -161,7 +161,7 @@ impl HostService {
                         );
                     }
                     Err(e) => {
-                        error!("Failed to get storage stats: {e}");
+                        tracing::error!("Failed to get storage stats: {}", e);
                     }
                 }
 
@@ -171,7 +171,7 @@ impl HostService {
                 let queue_size = scheduler.get_queue_size().await;
                 drop(scheduler);
 
-                info!(
+                tracing::info!(
                     "Migration stats - Total: {}, Success: {}, Failed: {}, Queue: {}",
                     migration_stats.total_migrations,
                     migration_stats.successful_migrations,

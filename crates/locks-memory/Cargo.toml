@@ -8,9 +8,8 @@ async-trait.workspace = true
 proven-locks.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-proven-logger.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-proven-logger-macros.workspace = true
 assert_matches.workspace = true
 uuid.workspace = true

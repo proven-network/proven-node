@@ -18,11 +18,11 @@ use std::sync::{Arc, LazyLock};
 
 use async_trait::async_trait;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
-use proven_logger::{debug, error, info, trace, warn};
 use regex::Regex;
 use serde_json::json;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tracing::{debug, error, info, trace, warn};
 
 static AGGREGATOR_CONFIG_PATH: &str =
     "/apps/radix-gateway/v1.9.2/DataAggregator/appsettings.Production.json";
@@ -56,21 +56,21 @@ impl IsolatedApplication for RadixAggregatorApp {
             let label = caps.get(1).map_or("unkw", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {
-                "trce" => trace!("{message}"),
-                "dbug" => debug!("{message}"),
-                "info" => info!("{message}"),
-                "warn" => warn!("{message}"),
-                "fail" => error!("{message}"),
-                "crit" => error!("{message}"),
-                _ => error!("{line}"),
+                "trce" => trace!("{}", message),
+                "dbug" => debug!("{}", message),
+                "info" => info!("{}", message),
+                "warn" => warn!("{}", message),
+                "fail" => error!("{}", message),
+                "crit" => error!("{}", message),
+                _ => error!("{}", line),
             }
         } else {
-            error!("{line}");
+            error!("{}", line);
         }
     }
 
     fn handle_stderr(&self, line: &str) {
-        error!("{line}");
+        error!(target: "radix-aggregator", "{}", line);
     }
 
     async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {
@@ -301,7 +301,7 @@ impl RadixAggregator {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                info!("{line}");
+                info!("{}", line);
             }
         });
 
@@ -310,7 +310,7 @@ impl RadixAggregator {
             let mut lines = reader.lines();
 
             while let Ok(Some(line)) = lines.next_line().await {
-                info!("{line}");
+                info!("{}", line);
             }
         });
 

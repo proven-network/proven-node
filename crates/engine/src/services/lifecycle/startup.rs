@@ -3,8 +3,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use proven_logger::{debug, info, warn};
 use tokio::sync::RwLock;
+use tracing::{debug, info, warn};
 
 use proven_topology::NodeId;
 
@@ -78,7 +78,7 @@ impl StartupCoordinator {
         name: &str,
         _options: &StartupOptions,
     ) -> LifecycleResult<()> {
-        debug!("Starting component: {name}");
+        debug!("Starting component: {}", name);
 
         // Check dependencies first
         self.check_dependencies(components, name).await?;
@@ -96,7 +96,7 @@ impl StartupCoordinator {
                 Ok(()) => {
                     self.update_component_state(components, name, ComponentState::Running)
                         .await?;
-                    info!("Component {name} started successfully");
+                    info!("Component {} started successfully", name);
                     return Ok(());
                 }
                 Err(e) => {
@@ -109,7 +109,10 @@ impl StartupCoordinator {
                         )));
                     }
 
-                    warn!("Component {name} startup attempt {attempts} failed: {e}");
+                    warn!(
+                        "Component {} startup attempt {} failed: {}",
+                        name, attempts, e
+                    );
                     tokio::time::sleep(delay).await;
 
                     // Exponential backoff
@@ -222,14 +225,14 @@ impl StartupCoordinator {
 
     /// Join existing cluster
     pub async fn join_cluster(&self, target_node: NodeId) -> LifecycleResult<()> {
-        info!("Joining cluster via node: {target_node}");
+        info!("Joining cluster via node: {}", target_node);
         // In a real implementation, this would join an existing cluster
         Ok(())
     }
 
     /// Auto-discover cluster
     pub async fn auto_discover_cluster(&self, timeout: Duration) -> LifecycleResult<()> {
-        info!("Auto-discovering cluster with timeout: {timeout:?}");
+        info!("Auto-discovering cluster with timeout: {:?}", timeout);
         // In a real implementation, this would perform discovery
         Ok(())
     }

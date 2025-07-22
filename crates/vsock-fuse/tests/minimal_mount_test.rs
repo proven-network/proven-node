@@ -2,7 +2,6 @@
 
 #![allow(clippy::field_reassign_with_default)]
 
-use proven_logger_macros::logged_tokio_test;
 use proven_vsock_fuse::{
     config::{Config, HotTierConfig, RpcConfig},
     enclave::EnclaveServiceBuilder,
@@ -12,13 +11,20 @@ use proven_vsock_fuse::{
 use std::time::Duration;
 use tempfile::TempDir;
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "Debug test"]
 async fn test_minimal_mount() -> anyhow::Result<()> {
     // Disable AWS metadata service to avoid timeouts
     unsafe {
         std::env::set_var("AWS_EC2_METADATA_DISABLED", "true");
     }
+
+    // Initialize logging with more detail
+    let _ = tracing_subscriber::fmt()
+        .with_target(false)
+        .with_level(true)
+        .with_max_level(tracing::Level::DEBUG)
+        .try_init();
 
     eprintln!("=== Starting minimal mount test ===");
 

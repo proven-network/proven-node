@@ -6,7 +6,6 @@ use tokio::sync::RwLock;
 use crate::{
     error::ConsensusResult, foundation::types::ConsensusGroupId, services::stream::StreamName,
 };
-use proven_logger::{error, info};
 use proven_topology::NodeId;
 
 use super::{
@@ -29,9 +28,9 @@ impl GlobalCallbackDispatcher {
     /// Handle state synchronization after replay completes
     pub async fn dispatch_state_sync(&self, state: &GlobalState) {
         if let Err(e) = self.callbacks.on_state_synchronized(state).await {
-            error!("State sync callback failed: {e}");
+            tracing::error!("State sync callback failed: {}", e);
         } else {
-            info!("State synchronized - replay complete");
+            tracing::info!("State synchronized - replay complete");
         }
     }
 
@@ -46,7 +45,7 @@ impl GlobalCallbackDispatcher {
             .on_membership_changed(added_members, removed_members)
             .await
         {
-            error!("Membership change callback failed: {e}");
+            tracing::error!("Membership change callback failed: {}", e);
         }
     }
 
@@ -77,25 +76,25 @@ impl GlobalCallbackDispatcher {
                     .on_stream_created(name, config, *group_id)
                     .await
                 {
-                    error!("Stream creation callback failed: {e}");
+                    tracing::error!("Stream creation callback failed: {}", e);
                 }
             }
 
             (GlobalRequest::DeleteStream { name }, GlobalResponse::StreamDeleted { .. }) => {
                 if let Err(e) = self.callbacks.on_stream_deleted(name).await {
-                    error!("Stream deletion callback failed: {e}");
+                    tracing::error!("Stream deletion callback failed: {}", e);
                 }
             }
 
             (GlobalRequest::CreateGroup { info }, GlobalResponse::GroupCreated { .. }) => {
                 if let Err(e) = self.callbacks.on_group_created(info.id, info).await {
-                    error!("Group creation callback failed: {e}");
+                    tracing::error!("Group creation callback failed: {}", e);
                 }
             }
 
             (GlobalRequest::DissolveGroup { id }, GlobalResponse::GroupDissolved { .. }) => {
                 if let Err(e) = self.callbacks.on_group_dissolved(*id).await {
-                    error!("Group dissolution callback failed: {e}");
+                    tracing::error!("Group dissolution callback failed: {}", e);
                 }
             }
 

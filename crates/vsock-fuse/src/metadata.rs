@@ -14,7 +14,6 @@ pub use snapshot::{MetadataSnapshot, SnapshotManager};
 
 use lru::LruCache;
 use parking_lot::RwLock;
-use proven_logger::debug;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -335,7 +334,7 @@ impl EncryptedMetadataStore {
     pub async fn load_directory(&self, dir_id: DirectoryId) -> Result<Vec<DirEntry>> {
         // Check cache
         if let Some(entries) = self.cache.write().directories.get(&dir_id) {
-            debug!(
+            tracing::debug!(
                 "Directory {:?} found in cache with {} entries",
                 dir_id,
                 entries.len()
@@ -343,7 +342,7 @@ impl EncryptedMetadataStore {
             return Ok(entries.clone());
         }
 
-        debug!("Directory {dir_id:?} not in cache, loading from storage");
+        tracing::debug!("Directory {:?} not in cache, loading from storage", dir_id);
         // Load from storage
         let blob_id = BlobId::from_file_id(dir_id.as_file_id(), BlobType::Directory);
 

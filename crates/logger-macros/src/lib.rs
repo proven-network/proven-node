@@ -135,7 +135,7 @@ pub fn logged_test(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// }
 /// ```
 #[proc_macro_attribute]
-pub fn logged_tokio_test(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn logged_tokio_test(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemFn);
 
     let test_name = &input.sig.ident;
@@ -145,16 +145,8 @@ pub fn logged_tokio_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     let sig = &input.sig;
     let body = &input.block;
 
-    // Parse the attributes to pass through to tokio::test
-    let tokio_attrs = if attr.is_empty() {
-        quote! { #[tokio::test] }
-    } else {
-        let attr_tokens = proc_macro2::TokenStream::from(attr);
-        quote! { #[tokio::test(#attr_tokens)] }
-    };
-
     let result = quote! {
-        #tokio_attrs
+        #[tokio::test]
         #(#attrs)*
         #vis #sig {
             use ::proven_logger::test_support::TestLogGuard;

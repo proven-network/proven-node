@@ -46,9 +46,9 @@ pub mod linux {
     use crate::error::Error;
 
     use futures::{TryFutureExt, stream::TryStreamExt};
-    use proven_logger::info;
     use rtnetlink::LinkUnspec;
     use tokio::process::Command;
+    use tracing::info;
 
     /// Brings up the loopback interface (disabled by default in enclave).
     pub async fn bring_up_loopback() -> Result<()> {

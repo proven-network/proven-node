@@ -1,18 +1,16 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use proven_bootable::Bootable;
-use proven_logger::{StdoutLogger, info, init};
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use radix_common::network::NetworkDefinition;
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize proven logger
-    let logger = Arc::new(StdoutLogger::new());
-    init(logger).expect("Failed to initialize logger");
+    // Initialize tracing for better logging
+    tracing_subscriber::fmt::init();
 
     println!("Starting Postgres...");
     let postgres = Postgres::new(PostgresOptions {
@@ -78,7 +76,7 @@ async fn fetch_external_ip() -> String {
 
     let ip_address = json_response["ip"].as_str().unwrap().to_string();
 
-    info!("External IP detected: {ip_address}");
+    info!("External IP detected: {}", ip_address);
 
     ip_address
 }

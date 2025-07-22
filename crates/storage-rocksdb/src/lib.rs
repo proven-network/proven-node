@@ -4,7 +4,6 @@ pub mod config;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_logger::{debug, info};
 use proven_storage::{LogStorage, StorageAdaptor, StorageError, StorageNamespace, StorageResult};
 use rocksdb::{
     BoundColumnFamily, ColumnFamilyDescriptor, DBWithThreadMode, IteratorMode, MultiThreaded,
@@ -538,7 +537,7 @@ impl Drop for RocksDbStorage {
         // Check if this is the last reference to the database
         // Arc::strong_count is 1 when this is the last reference being dropped
         if Arc::strong_count(&self.db) == 1 {
-            debug!("RocksDbStorage being dropped - this is the last reference");
+            tracing::debug!("RocksDbStorage being dropped - this is the last reference");
             // RocksDB will automatically flush and close when the Arc<DB> is dropped
             // This serves as a safety net to ensure proper cleanup
         }
@@ -551,7 +550,7 @@ impl Drop for RocksDbStorage {
 #[async_trait]
 impl StorageAdaptor for RocksDbStorage {
     async fn shutdown(&self) -> StorageResult<()> {
-        info!(
+        tracing::info!(
             "Shutting down RocksDB storage, current Arc strong count: {}",
             Arc::strong_count(&self.db)
         );
@@ -564,7 +563,7 @@ impl StorageAdaptor for RocksDbStorage {
         // Clear the log bounds cache to release any references
         self.log_bounds.write().await.clear();
 
-        info!(
+        tracing::info!(
             "RocksDB storage shutdown complete, Arc strong count: {}",
             Arc::strong_count(&self.db)
         );

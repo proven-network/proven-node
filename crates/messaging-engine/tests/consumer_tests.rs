@@ -9,8 +9,6 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_bootable::Bootable;
 use proven_engine::{EngineBuilder, EngineConfig};
-use proven_logger::info;
-use proven_logger_macros::logged_test;
 use proven_messaging::consumer::Consumer;
 use proven_messaging::consumer_handler::ConsumerHandler;
 use proven_messaging::stream::{InitializedStream, Stream};
@@ -25,6 +23,8 @@ use proven_transport_memory::MemoryTransport;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, timeout};
+use tracing::info;
+use tracing_test::traced_test;
 
 /// Simple error type for test handlers
 #[derive(Debug)]
@@ -198,7 +198,7 @@ async fn create_test_engine()
     engine.client()
 }
 
-#[logged_test]
+#[traced_test]
 #[tokio::test]
 async fn test_basic_consumer_processing() {
     let client = create_test_engine().await;
@@ -273,7 +273,7 @@ async fn test_basic_consumer_processing() {
         .expect("Failed to shutdown consumer");
 }
 
-#[logged_test]
+#[traced_test]
 #[tokio::test]
 async fn test_consumer_starting_from_sequence() {
     let client = create_test_engine().await;
@@ -339,7 +339,7 @@ async fn test_consumer_starting_from_sequence() {
         .expect("Failed to shutdown consumer");
 }
 
-#[logged_test]
+#[traced_test]
 #[tokio::test]
 async fn test_consumer_catches_up_with_live_stream() {
     let client = create_test_engine().await;
@@ -417,7 +417,7 @@ async fn test_consumer_catches_up_with_live_stream() {
         .expect("Failed to shutdown consumer");
 }
 
-#[logged_test]
+#[traced_test]
 #[tokio::test]
 async fn test_multiple_consumers_same_stream() {
     let client = create_test_engine().await;
@@ -492,7 +492,7 @@ async fn test_multiple_consumers_same_stream() {
         .expect("Failed to shutdown consumer2");
 }
 
-#[logged_test]
+#[traced_test]
 #[tokio::test]
 async fn test_consumer_error_recovery() {
     let client = create_test_engine().await;
@@ -574,7 +574,7 @@ async fn test_consumer_error_recovery() {
         .expect("Failed to shutdown consumer");
 }
 
-#[logged_test]
+#[traced_test]
 #[tokio::test]
 async fn test_consumer_shutdown_and_restart() {
     let client = create_test_engine().await;
@@ -683,7 +683,7 @@ async fn test_consumer_shutdown_and_restart() {
         .expect("Failed to shutdown consumer");
 }
 
-#[logged_test]
+#[traced_test]
 #[tokio::test]
 async fn test_slow_consumer() {
     let client = create_test_engine().await;

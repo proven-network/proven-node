@@ -9,9 +9,9 @@ use super::Bootstrap;
 use crate::error::Error;
 
 use proven_bootable::Bootable;
-use proven_logger::info;
 use proven_postgres::{Postgres, PostgresOptions};
 use proven_topology::{NodeSpecialization, TopologyAdaptor};
+use tracing::info;
 
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";

@@ -1,8 +1,8 @@
 //! Global consensus event subscriber for routing service
 
 use async_trait::async_trait;
-use proven_logger::{debug, error, info, warn};
 use std::sync::Arc;
+use tracing::{debug, error, info, warn};
 
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::event::{EventHandler, EventPriority};
@@ -141,18 +141,24 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
 
                 // Update the routing table
                 if let Err(e) = self.routing_table.update_group_route(group_id, route).await {
-                    error!("Failed to update route for new group {group_id:?}: {e}");
+                    error!("Failed to update route for new group {:?}: {}", group_id, e);
                 } else {
-                    info!("Added route for group {group_id:?} (location: {location:?})");
+                    info!(
+                        "Added route for group {:?} (location: {:?})",
+                        group_id, location
+                    );
                 }
             }
 
             GlobalConsensusEvent::GroupDissolved { group_id } => {
                 // Remove group from routing table
-                info!("GlobalConsensusSubscriber: Group {group_id:?} dissolved");
+                info!("GlobalConsensusSubscriber: Group {:?} dissolved", group_id);
 
                 if let Err(e) = self.routing_table.remove_group_route(group_id).await {
-                    error!("Failed to remove route for dissolved group {group_id:?}: {e}");
+                    error!(
+                        "Failed to remove route for dissolved group {:?}: {}",
+                        group_id, e
+                    );
                 }
             }
 
@@ -163,7 +169,8 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
             } => {
                 // Update stream count for the group
                 debug!(
-                    "GlobalConsensusSubscriber: Stream {stream_name} created in group {group_id:?}"
+                    "GlobalConsensusSubscriber: Stream {} created in group {:?}",
+                    stream_name, group_id
                 );
 
                 // Create stream route
@@ -181,7 +188,7 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
                     .update_stream_route(stream_name.to_string(), stream_route)
                     .await
                 {
-                    error!("Failed to create stream route for {stream_name}: {e}");
+                    error!("Failed to create stream route for {}: {}", stream_name, e);
                 }
 
                 // Update stream count for the group
@@ -190,13 +197,16 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
                     route.last_updated = std::time::SystemTime::now();
 
                     if let Err(e) = self.routing_table.update_group_route(group_id, route).await {
-                        error!("Failed to update stream count for group {group_id:?}: {e}");
+                        error!(
+                            "Failed to update stream count for group {:?}: {}",
+                            group_id, e
+                        );
                     }
                 }
             }
 
             GlobalConsensusEvent::StreamDeleted { stream_name } => {
-                debug!("GlobalConsensusSubscriber: Stream {stream_name} deleted");
+                debug!("GlobalConsensusSubscriber: Stream {} deleted", stream_name);
 
                 // Get the stream route to find which group it belonged to
                 if let Ok(Some(stream_route)) = self
@@ -212,7 +222,7 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
                         .remove_stream_route(stream_name.as_str())
                         .await
                     {
-                        error!("Failed to remove stream route for {stream_name}: {e}");
+                        error!("Failed to remove stream route for {}: {}", stream_name, e);
                     }
 
                     // Update stream count for the group
@@ -223,7 +233,10 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
 
                         if let Err(e) = self.routing_table.update_group_route(group_id, route).await
                         {
-                            error!("Failed to update stream count for group {group_id:?}: {e}");
+                            error!(
+                                "Failed to update stream count for group {:?}: {}",
+                                group_id, e
+                            );
                         }
                     }
                 }
@@ -235,7 +248,8 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
             } => {
                 // Update group memberships
                 info!(
-                    "GlobalConsensusSubscriber: Membership changed - added: {added_members:?}, removed: {removed_members:?}"
+                    "GlobalConsensusSubscriber: Membership changed - added: {:?}, removed: {:?}",
+                    added_members, removed_members
                 );
 
                 // This might affect multiple groups, so we'd need to query which groups
@@ -249,7 +263,10 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
                     self.routing_table
                         .update_global_leader(Some(leader.clone()))
                         .await;
-                    info!("GlobalConsensusSubscriber: Updated global leader to {leader}");
+                    info!(
+                        "GlobalConsensusSubscriber: Updated global leader to {}",
+                        leader
+                    );
                 }
             }
         }

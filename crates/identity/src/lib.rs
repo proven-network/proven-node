@@ -27,7 +27,6 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use proven_bootable::Bootable;
 use proven_locks::LockManager;
-use proven_logger::{debug, error, info, warn};
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::consumer::Consumer;
 use proven_messaging::service::Service;
@@ -299,7 +298,10 @@ where
                 .await
             {
                 Ok(Some(guard)) => {
-                    info!("Acquired identity service leadership on attempt {attempt}");
+                    tracing::info!(
+                        "Acquired identity service leadership on attempt {}",
+                        attempt
+                    );
 
                     // Store the leadership guard
                     {
@@ -316,7 +318,7 @@ where
                     return Ok(());
                 }
                 Ok(None) => {
-                    debug!("Another node holds identity service leadership");
+                    tracing::debug!("Another node holds identity service leadership");
                     return Ok(());
                 }
                 Err(e) => {
@@ -333,14 +335,20 @@ where
                         );
                         let total_delay = delay + jitter;
 
-                        warn!(
-                            "Failed to acquire identity service leadership on attempt {attempt} ({max_attempts}), retrying in {total_delay:?}: {e:?}"
+                        tracing::warn!(
+                            "Failed to acquire identity service leadership on attempt {} ({}), retrying in {:?}: {:?}",
+                            attempt,
+                            max_attempts,
+                            total_delay,
+                            e
                         );
 
                         tokio::time::sleep(total_delay).await;
                     } else {
-                        error!(
-                            "Failed to acquire identity service leadership after {max_attempts} attempts: {e:?}"
+                        tracing::error!(
+                            "Failed to acquire identity service leadership after {} attempts: {:?}",
+                            max_attempts,
+                            e
                         );
                         return Err(Error::Service(format!(
                             "Leadership acquisition failed after {max_attempts} attempts: {e}"
@@ -381,7 +389,7 @@ where
         let _ = self.service.set(service);
         let _ = self.handler.set(handler);
 
-        info!("Identity service started as leader");
+        tracing::info!("Identity service started as leader");
         Ok(())
     }
 
@@ -399,7 +407,7 @@ where
             Self::leadership_monitor_task(leadership_guard, lock_manager).await;
         });
 
-        debug!("Started identity service leadership monitor");
+        tracing::debug!("Started identity service leadership monitor");
         *monitor_guard = Some(handle);
     }
 
@@ -421,7 +429,7 @@ where
             };
 
             if !still_leader {
-                warn!("Lost identity service leadership");
+                tracing::warn!("Lost identity service leadership");
 
                 // Try to reacquire leadership
                 match lock_manager
@@ -429,16 +437,16 @@ where
                     .await
                 {
                     Ok(Some(new_guard)) => {
-                        info!("Reacquired identity service leadership");
+                        tracing::info!("Reacquired identity service leadership");
                         let mut guard = leadership_guard.lock().await;
                         *guard = Some(new_guard);
                         // Note: Service is already running, no need to restart
                     }
                     Ok(None) => {
-                        debug!("Another node still holds identity service leadership");
+                        tracing::debug!("Another node still holds identity service leadership");
                     }
                     Err(e) => {
-                        error!("Failed to reacquire identity service leadership: {e:?}");
+                        tracing::error!("Failed to reacquire identity service leadership: {:?}", e);
                     }
                 }
             }
@@ -486,7 +494,10 @@ where
             match client.request(command.clone()).await {
                 Ok(ClientResponseType::Response(response)) => {
                     if attempt > 1 {
-                        info!("Command executed successfully via client on attempt {attempt}");
+                        tracing::info!(
+                            "Command executed successfully via client on attempt {}",
+                            attempt
+                        );
                     }
                     return Ok(response);
                 }
@@ -507,14 +518,20 @@ where
                         );
                         let total_delay = delay + jitter;
 
-                        warn!(
-                            "Command execution failed via client on attempt {attempt} ({max_attempts}), retrying in {total_delay:?}: {e:?}"
+                        tracing::warn!(
+                            "Command execution failed via client on attempt {} ({}), retrying in {:?}: {:?}",
+                            attempt,
+                            max_attempts,
+                            total_delay,
+                            e
                         );
 
                         tokio::time::sleep(total_delay).await;
                     } else {
-                        error!(
-                            "Command execution failed via client after {max_attempts} attempts: {e:?}"
+                        tracing::error!(
+                            "Command execution failed via client after {} attempts: {:?}",
+                            max_attempts,
+                            e
                         );
                         return Err(Error::Client(e.to_string()));
                     }

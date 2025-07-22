@@ -1,14 +1,19 @@
 //! Simplified integration tests for the consensus engine using TestCluster
 
 use proven_engine::EngineState;
-use proven_logger_macros::logged_tokio_test;
 use std::time::Duration;
 
 mod common;
 use common::test_cluster::{TestCluster, TransportType};
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_engine_start_stop() {
+    // Initialize tracing for debugging
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=debug,proven_network=debug")
+        .with_test_writer()
+        .try_init();
+
     // Create test cluster
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -50,7 +55,7 @@ async fn test_engine_start_stop() {
     assert_eq!(health.state, EngineState::Stopped);
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_three_node_cluster() {
     let mut cluster = TestCluster::new(TransportType::Tcp);
 

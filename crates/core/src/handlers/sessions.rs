@@ -11,13 +11,13 @@ use headers::Origin;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_identity::IdentityManagement;
-use proven_logger::info;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::{
     CreateAnonymousSessionOptions, CreateManagementSessionOptions, SessionManagement,
 };
 use proven_topology::TopologyAdaptor;
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(TryFromMultipart)]
@@ -83,7 +83,7 @@ where
             .body(Body::from(attestation_document))
             .unwrap(),
         Err(e) => {
-            info!("Error creating session: {e:?}");
+            info!("Error creating session: {:?}", e);
             Response::builder()
                 .status(400)
                 .body("Error creating session".into())
@@ -147,7 +147,7 @@ where
             .body(Body::from(attestation_document))
             .unwrap(),
         Err(e) => {
-            info!("Error creating management session: {e:?}");
+            info!("Error creating management session: {:?}", e);
             Response::builder()
                 .status(400)
                 .body("Error creating management session".into())

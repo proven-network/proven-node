@@ -14,12 +14,12 @@ use proven_bootable::Bootable;
 use proven_http_proxy::{
     HttpProxyClient, HttpProxyClientOptions, HttpProxyService, HttpProxyServiceOptions,
 };
-use proven_logger::info;
 use proven_messaging::stream::Stream;
 use proven_messaging_engine::client::EngineMessagingClientOptions;
 use proven_messaging_engine::service::EngineMessagingServiceOptions;
 use proven_messaging_engine::stream::{EngineStream, EngineStreamOptions};
 use proven_topology::{NodeSpecialization, TopologyAdaptor};
+use tracing::info;
 use url::Url;
 
 #[allow(clippy::cognitive_complexity)]

@@ -5,7 +5,6 @@
 
 use bytes::Bytes;
 use ed25519_dalek::VerifyingKey;
-use proven_logger::warn;
 use proven_topology::NodeId;
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -14,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
+use tracing::warn;
 
 use proven_attestation::{AttestationParams, Attestor};
 use proven_topology::TopologyAdaptor;
@@ -259,7 +259,10 @@ where
                     .await
             }
             VerificationMessage::VerificationFailed { reason, .. } => {
-                warn!("Received verification failure from connection {connection_id}: {reason}");
+                warn!(
+                    "Received verification failure from connection {}: {}",
+                    connection_id, reason
+                );
                 self.mark_connection_failed(connection_id, reason).await;
                 Ok(None)
             }

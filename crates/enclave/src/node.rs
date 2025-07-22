@@ -11,7 +11,6 @@ use proven_external_fs::ExternalFs;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
-use proven_logger::info;
 use proven_postgres::Postgres;
 use proven_radix_aggregator::RadixAggregator;
 use proven_radix_gateway::RadixGateway;
@@ -23,6 +22,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::info;
 
 pub type EnclaveNodeCore = Core<
     NsmAttestor,

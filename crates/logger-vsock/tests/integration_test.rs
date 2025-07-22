@@ -52,7 +52,7 @@ mod tests {
 
         // Send some logs
         for i in 0..10 {
-            proven_logger::info!("Test log message {i}");
+            proven_logger::info!("Test log message {}", i);
         }
 
         // Wait for batches to be sent

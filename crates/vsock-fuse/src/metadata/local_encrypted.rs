@@ -4,8 +4,8 @@
 //! syncs to the host for durability. Directory structures and file metadata
 //! are kept in memory for fast access without RPC round trips.
 
-use proven_logger::{debug, info};
 use std::sync::Arc;
+use tracing::{debug, info};
 
 use crate::{
     DirectoryId, FileId, FileMetadata,

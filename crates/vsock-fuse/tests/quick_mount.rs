@@ -2,7 +2,6 @@
 
 #![allow(clippy::field_reassign_with_default)]
 
-use proven_logger_macros::logged_tokio_test;
 use proven_vsock_fuse::{
     config::{Config, HotTierConfig, RpcConfig},
     enclave::EnclaveServiceBuilder,
@@ -12,8 +11,13 @@ use proven_vsock_fuse::{
 use std::{fs, time::Duration};
 use tempfile::TempDir;
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_quick_mount() -> anyhow::Result<()> {
+    // Initialize logging
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .try_init();
+
     println!("Starting quick mount test...");
 
     // Create temporary directories

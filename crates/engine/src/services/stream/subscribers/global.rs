@@ -1,8 +1,8 @@
 //! Global consensus event subscriber for stream service
 
 use async_trait::async_trait;
-use proven_logger::{debug, error, info};
 use std::sync::Arc;
+use tracing::{debug, error, info};
 
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::event::{EventHandler, EventPriority};
@@ -108,12 +108,18 @@ where
                 config,
                 group_id,
             } => {
-                info!("StreamSubscriber: Stream {stream_name} created in group {group_id:?}");
+                info!(
+                    "StreamSubscriber: Stream {} created in group {:?}",
+                    stream_name, group_id
+                );
 
                 // Always try to create the stream - the stream service will only
                 // actually persist it if we're a member of the group.
                 // This simplifies the logic and removes cross-service dependencies.
-                info!("StreamSubscriber: Creating stream {stream_name} in group {group_id:?}");
+                info!(
+                    "StreamSubscriber: Creating stream {} in group {:?}",
+                    stream_name, group_id
+                );
 
                 match self
                     .stream_service
@@ -121,26 +127,35 @@ where
                     .await
                 {
                     Ok(_) => {
-                        info!("Successfully created stream {stream_name} in group {group_id:?}");
+                        info!(
+                            "Successfully created stream {} in group {:?}",
+                            stream_name, group_id
+                        );
                     }
                     Err(e) if e.to_string().contains("already exists") => {
                         // Stream already exists - this is fine during replay
-                        debug!("Stream {stream_name} already exists in group {group_id:?}");
+                        debug!(
+                            "Stream {} already exists in group {:?}",
+                            stream_name, group_id
+                        );
                     }
                     Err(e) => {
-                        error!("Failed to create stream {stream_name} in group {group_id:?}: {e}");
+                        error!(
+                            "Failed to create stream {} in group {:?}: {}",
+                            stream_name, group_id, e
+                        );
                     }
                 }
             }
 
             GlobalConsensusEvent::StreamDeleted { stream_name } => {
-                info!("StreamSubscriber: Stream {stream_name} deleted");
+                info!("StreamSubscriber: Stream {} deleted", stream_name);
 
                 // Delete the stream from our local storage if we have it
                 if let Err(e) = self.stream_service.delete_stream(&stream_name).await {
                     // It's ok if the stream doesn't exist locally
                     if !e.to_string().contains("not found") {
-                        error!("Failed to delete stream {stream_name}: {e}");
+                        error!("Failed to delete stream {}: {}", stream_name, e);
                     }
                 }
             }
@@ -152,7 +167,10 @@ where
 
             GlobalConsensusEvent::GroupDissolved { group_id } => {
                 // When a group is dissolved, we should clean up its streams
-                info!("StreamSubscriber: Group {group_id:?} dissolved, cleaning up streams");
+                info!(
+                    "StreamSubscriber: Group {:?} dissolved, cleaning up streams",
+                    group_id
+                );
 
                 // TODO: We might want to add a method to StreamService to delete all streams
                 // belonging to a specific group

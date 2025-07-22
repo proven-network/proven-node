@@ -7,10 +7,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_bootable::Bootable;
-use proven_logger::{debug, warn};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::{debug, warn};
 
 use proven_messaging::consumer::{Consumer, ConsumerError, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
@@ -205,7 +205,7 @@ where
         {
             Ok(Ok(msgs)) => msgs,
             Ok(Err(e)) => {
-                warn!("Consumer failed to get initial stream messages: {e:?}");
+                warn!("Consumer failed to get initial stream messages: {:?}", e);
                 0 // Default to 0 messages if we can't get count
             }
             Err(_) => {
@@ -234,7 +234,7 @@ where
                     ).await {
                         Ok(Ok(msgs)) => msgs,
                         Ok(Err(e)) => {
-                            warn!("Consumer failed to get stream messages: {e:?}");
+                            warn!("Consumer failed to get stream messages: {:?}", e);
                             continue;
                         }
                         Err(_) => {
@@ -254,15 +254,15 @@ where
                         ).await {
                             Ok(Ok(Some(msg))) => msg,
                             Ok(Ok(None)) => {
-                                debug!("Message {last_checked_seq} not found in stream, skipping");
+                                debug!("Message {} not found in stream, skipping", last_checked_seq);
                                 continue;
                             }
                             Ok(Err(e)) => {
-                                warn!("Consumer failed to get message {last_checked_seq}: {e:?}");
+                                warn!("Consumer failed to get message {}: {:?}", last_checked_seq, e);
                                 continue;
                             }
                             Err(_) => {
-                                warn!("Consumer get message {last_checked_seq} timed out");
+                                warn!("Consumer get message {} timed out", last_checked_seq);
                                 continue;
                             }
                         };
@@ -270,7 +270,8 @@ where
                         // Process the message
                         if let Err(e) = handler.handle(msg, last_checked_seq).await {
                             warn!(
-                                "Consumer handler error at sequence {last_checked_seq}: {e:?}"
+                                "Consumer handler error at sequence {}: {:?}",
+                                last_checked_seq, e
                             );
                         }
 
@@ -289,7 +290,8 @@ where
                         if !caught_up && last_checked_seq >= current_stream_msgs {
                             caught_up = true;
                             debug!(
-                                "Consumer caught up after processing {msgs_processed} messages"
+                                "Consumer caught up after processing {} messages",
+                                msgs_processed
                             );
                             let _ = handler.on_caught_up().await;
                         }
@@ -298,7 +300,10 @@ where
             }
         }
 
-        debug!("Consumer shutting down after processing {msgs_processed} messages");
+        debug!(
+            "Consumer shutting down after processing {} messages",
+            msgs_processed
+        );
         Ok(())
     }
 }
@@ -338,7 +343,10 @@ where
                 Self::process_messages(stream, handler, current_seq, start_sequence, shutdown_token)
                     .await
             {
-                warn!("Consumer '{consumer_name}' message processing error: {e:?}");
+                warn!(
+                    "Consumer '{}' message processing error: {:?}",
+                    consumer_name, e
+                );
             }
         });
 

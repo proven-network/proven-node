@@ -19,7 +19,7 @@ use crate::services::{
     pubsub::PubSubService,
     routing::RoutingService,
 };
-use proven_logger::{error, info};
+use tracing::{error, info};
 
 use super::config::EngineConfig;
 use super::coordinator::ServiceCoordinator;

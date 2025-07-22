@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use nix::sys::signal::Signal;
-use proven_logger::{info, warn};
 
 /// Information needed for readiness checks
 #[derive(Clone)]
@@ -37,13 +36,13 @@ pub trait IsolatedApplication: Send + Sync + 'static {
     /// Handles a line of output from stderr
     fn handle_stderr(&self, line: &str) {
         let name = self.name().to_string();
-        warn!("[{name}] {line}");
+        tracing::warn!("[{}] {}", name, line);
     }
 
     /// Handles a line of output from stdout
     fn handle_stdout(&self, line: &str) {
         let name = self.name().to_string();
-        info!("[{name}] {line}");
+        tracing::info!("[{}] {}", name, line);
     }
 
     /// Performs a readiness check for the application

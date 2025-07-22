@@ -8,12 +8,12 @@ use bytes::Bytes;
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_identity::IdentityManagement;
-use proven_logger::error;
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 use proven_topology::TopologyAdaptor;
 use serde::Deserialize;
+use tracing::error;
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -57,7 +57,7 @@ where
                 .unwrap();
         }
         Err(e) => {
-            error!("Error getting session: {e:?}");
+            error!("Error getting session: {:?}", e);
             return Response::builder()
                 .status(401)
                 .body(Body::from("Invalid session"))
@@ -79,7 +79,7 @@ where
             Response::builder().body(body).unwrap()
         }
         Err(e) => {
-            error!("Error: {e:?}");
+            error!("Error: {:?}", e);
             Response::builder()
                 .status(400)
                 .body(format!("Error: {e:?}").into())
@@ -120,7 +120,7 @@ where
                 .unwrap();
         }
         Err(e) => {
-            error!("Error getting management session: {e:?}");
+            error!("Error getting management session: {:?}", e);
             return Response::builder()
                 .status(401)
                 .body(Body::from("Invalid management session"))
@@ -142,7 +142,7 @@ where
             Response::builder().body(body).unwrap()
         }
         Err(e) => {
-            error!("Error: {e:?}");
+            error!("Error: {:?}", e);
             Response::builder()
                 .status(400)
                 .body(format!("Error: {e:?}").into())

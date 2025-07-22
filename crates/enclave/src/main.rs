@@ -23,7 +23,6 @@ use proven_logger_vsock::client::{VsockLogger, VsockLoggerConfig};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use proven_logger::{error, info};
 use proven_vsock_cac::{
     CacServer, InitializeRequest, InitializeResponse, ShutdownResponse, commands::ShutdownRequest,
     server::CacCommandHandler,
@@ -31,6 +30,7 @@ use proven_vsock_cac::{
 use tokio::sync::RwLock;
 #[cfg(target_os = "linux")]
 use tokio_vsock::{VMADDR_CID_ANY, VsockAddr};
+use tracing::{error, info};
 use tracing_panic::panic_hook;
 
 /// Enclave command handler state
@@ -80,7 +80,7 @@ impl CacCommandHandler for EnclaveHandler {
                 })
             }
             Err(e) => {
-                error!("Failed to start enclave: {e:?}");
+                error!("Failed to start enclave: {:?}", e);
                 Ok(InitializeResponse {
                     success: false,
                     error: Some(format!("Failed to start enclave: {e}")),
@@ -150,7 +150,7 @@ async fn main() -> Result<()> {
     // Start serving
     info!("Starting enclave CAC server on port 1024");
     if let Err(e) = server.serve().await {
-        error!("CAC server error: {e:?}");
+        error!("CAC server error: {:?}", e);
     }
 
     Ok(())

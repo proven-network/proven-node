@@ -4,7 +4,6 @@
 
 #![allow(clippy::field_reassign_with_default)]
 
-use proven_logger_macros::logged_tokio_test;
 use proven_vsock_fuse::{
     config::{Config, HotTierConfig, RpcConfig},
     enclave::EnclaveServiceBuilder,
@@ -24,13 +23,19 @@ use tokio::sync::oneshot;
 const MOUNT_CHECK_RETRIES: u32 = 20;
 const MOUNT_CHECK_DELAY_MS: u64 = 100;
 
-#[logged_tokio_test]
+#[tokio::test]
 #[ignore = "Requires FUSE to be installed and may need elevated permissions"]
 async fn test_fuse_filesystem() -> anyhow::Result<()> {
     // Disable AWS metadata service to avoid timeouts
     unsafe {
         std::env::set_var("AWS_EC2_METADATA_DISABLED", "true");
     }
+
+    // Initialize logging
+    let _ = tracing_subscriber::fmt()
+        .with_target(false)
+        .with_level(true)
+        .try_init();
 
     // Create temporary directories
     let storage_dir = TempDir::new()?;
@@ -79,19 +84,19 @@ async fn test_fuse_filesystem() -> anyhow::Result<()> {
     let (shutdown_tx, _shutdown_rx) = oneshot::channel();
 
     // Mount filesystem
-    proven_logger::info!("Mounting FUSE filesystem at {mount_path:?}");
+    tracing::info!("Mounting FUSE filesystem at {:?}", mount_path);
     let _fuse_handle = match enclave_service.mount(&mount_path) {
         Ok(handle) => {
-            proven_logger::info!("Mount call succeeded");
+            tracing::info!("Mount call succeeded");
             handle
         }
         Err(e) => {
-            proven_logger::error!("Mount call failed: {e:?}");
+            tracing::error!("Mount call failed: {:?}", e);
             return Err(e.into());
         }
     };
 
-    proven_logger::info!("Giving mount time to initialize...");
+    tracing::info!("Giving mount time to initialize...");
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
     // Wait for mount to complete
@@ -112,39 +117,34 @@ async fn test_fuse_filesystem() -> anyhow::Result<()> {
 
 /// Wait for the filesystem to be mounted
 async fn wait_for_mount(mount_path: &Path) -> anyhow::Result<()> {
-    proven_logger::info!("Waiting for mount at {mount_path:?}");
+    tracing::info!("Waiting for mount at {:?}", mount_path);
     for i in 0..MOUNT_CHECK_RETRIES {
         // Check if we can stat the mount point
         match tokio::fs::metadata(mount_path).await {
             Ok(metadata) if metadata.is_dir() => {
-                proven_logger::debug!("Mount point exists and is directory at attempt {}", i + 1);
+                tracing::debug!("Mount point exists and is directory at attempt {}", i + 1);
                 // Try to list directory to ensure it's really mounted
                 match tokio::fs::read_dir(mount_path).await {
                     Ok(_) => {
-                        proven_logger::info!("Mount point is ready");
+                        tracing::info!("Mount point is ready");
                         return Ok(());
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                         // This might mean it's mounted but empty, which is OK
-                        proven_logger::info!("Mount point is ready (empty)");
+                        tracing::info!("Mount point is ready (empty)");
                         return Ok(());
                     }
                     Err(e) => {
-                        proven_logger::debug!(
-                            "Mount check {}: {} (kind: {:?})",
-                            i + 1,
-                            e,
-                            e.kind()
-                        );
+                        tracing::debug!("Mount check {}: {} (kind: {:?})", i + 1, e, e.kind());
                     }
                 }
             }
             Ok(_) => {
-                proven_logger::debug!("Mount point is ready (empty)");
+                tracing::debug!("Mount point is ready (empty)");
                 return Ok(());
             }
             Err(e) => {
-                proven_logger::debug!(
+                tracing::debug!(
                     "Mount not ready yet ({}): {} (kind: {:?})",
                     i + 1,
                     e,
@@ -163,91 +163,91 @@ async fn wait_for_mount(mount_path: &Path) -> anyhow::Result<()> {
 
 /// Run filesystem operations tests
 async fn run_filesystem_tests(mount_path: &Path) -> anyhow::Result<()> {
-    proven_logger::info!("Running filesystem tests");
+    tracing::info!("Running filesystem tests");
 
     // Test 1: Create and write to a file
     let test_file = mount_path.join("test.txt");
     let test_data = b"Hello from FUSE!";
 
-    proven_logger::info!("Test 1: Writing file");
+    tracing::info!("Test 1: Writing file");
     let mut file = File::create(&test_file)?;
     file.write_all(test_data)?;
     file.sync_all()?;
     drop(file);
 
     // Test 2: Read the file back
-    proven_logger::info!("Test 2: Reading file");
+    tracing::info!("Test 2: Reading file");
     let mut file = File::open(&test_file)?;
     let mut read_data = Vec::new();
     file.read_to_end(&mut read_data)?;
     assert_eq!(read_data, test_data);
-    proven_logger::info!("✓ Read data matches written data");
+    tracing::info!("✓ Read data matches written data");
 
     // Test 3: Get file metadata
-    proven_logger::info!("Test 3: Getting file metadata");
+    tracing::info!("Test 3: Getting file metadata");
     let metadata = fs::metadata(&test_file)?;
     assert_eq!(metadata.len(), test_data.len() as u64);
     assert!(metadata.is_file());
-    proven_logger::info!("✓ File metadata is correct");
+    tracing::info!("✓ File metadata is correct");
 
     // Test 4: Create a directory
-    proven_logger::info!("Test 4: Creating directory");
+    tracing::info!("Test 4: Creating directory");
     let test_dir = mount_path.join("testdir");
     fs::create_dir(&test_dir)?;
     assert!(test_dir.exists());
     assert!(fs::metadata(&test_dir)?.is_dir());
-    proven_logger::info!("✓ Directory created successfully");
+    tracing::info!("✓ Directory created successfully");
 
     // Test 5: Create file in subdirectory
-    proven_logger::info!("Test 5: Creating file in subdirectory");
+    tracing::info!("Test 5: Creating file in subdirectory");
     let nested_file = test_dir.join("nested.txt");
     fs::write(&nested_file, b"Nested file content")?;
     assert_eq!(fs::read(&nested_file)?, b"Nested file content");
-    proven_logger::info!("✓ Nested file operations work");
+    tracing::info!("✓ Nested file operations work");
 
     // Test 6: List directory contents
-    proven_logger::info!("Test 6: Listing directory contents");
+    tracing::info!("Test 6: Listing directory contents");
     let entries: Vec<_> = fs::read_dir(mount_path)?
         .filter_map(Result::ok)
         .map(|e| e.file_name())
         .collect();
     assert!(entries.iter().any(|name| name == "test.txt"));
     assert!(entries.iter().any(|name| name == "testdir"));
-    proven_logger::info!("✓ Directory listing works");
+    tracing::info!("✓ Directory listing works");
 
     // Test 7: Rename file
-    proven_logger::info!("Test 7: Renaming file");
+    tracing::info!("Test 7: Renaming file");
     let renamed_file = mount_path.join("renamed.txt");
     fs::rename(&test_file, &renamed_file)?;
     assert!(!test_file.exists());
     assert!(renamed_file.exists());
     assert_eq!(fs::read(&renamed_file)?, test_data);
-    proven_logger::info!("✓ File rename works");
+    tracing::info!("✓ File rename works");
 
     // Test 8: Delete file
-    proven_logger::info!("Test 8: Deleting file");
+    tracing::info!("Test 8: Deleting file");
     fs::remove_file(&renamed_file)?;
     assert!(!renamed_file.exists());
-    proven_logger::info!("✓ File deletion works");
+    tracing::info!("✓ File deletion works");
 
     // Test 9: Remove directory (should fail if not empty)
-    proven_logger::info!("Test 9: Testing directory removal");
+    tracing::info!("Test 9: Testing directory removal");
     match fs::remove_dir(&test_dir) {
         Err(e) => {
-            proven_logger::info!("✓ Directory removal correctly failed (not empty): {e:?}");
+            tracing::info!("✓ Directory removal correctly failed (not empty): {:?}", e);
         }
         Ok(_) => panic!("Expected directory removal to fail when directory is not empty"),
     }
 
     // Test 10: Remove nested file and then directory
-    proven_logger::info!("Test 10: Removing nested file and directory");
+    tracing::info!("Test 10: Removing nested file and directory");
     fs::remove_file(&nested_file)?;
     fs::remove_dir(&test_dir)?;
     assert!(!test_dir.exists());
-    proven_logger::info!("✓ Directory removal works");
+    tracing::info!("✓ Directory removal works");
 
     // Test 11: Large file operations
-    proven_logger::info!("Test 11: Testing large file operations");
+    tracing::info!("Test 11: Testing large file operations");
     let large_file = mount_path.join("large.bin");
     let large_data = vec![0xAB; 1024 * 1024]; // 1MB
     fs::write(&large_file, &large_data)?;
@@ -255,10 +255,10 @@ async fn run_filesystem_tests(mount_path: &Path) -> anyhow::Result<()> {
     assert_eq!(read_large.len(), large_data.len());
     assert_eq!(read_large, large_data);
     fs::remove_file(&large_file)?;
-    proven_logger::info!("✓ Large file operations work");
+    tracing::info!("✓ Large file operations work");
 
     // Test 12: Multiple concurrent operations
-    proven_logger::info!("Test 12: Testing concurrent operations");
+    tracing::info!("Test 12: Testing concurrent operations");
     let handles: Vec<_> = (0..5)
         .map(|i| {
             let mount_path = mount_path.to_path_buf();
@@ -276,13 +276,13 @@ async fn run_filesystem_tests(mount_path: &Path) -> anyhow::Result<()> {
         let content = handle.await??;
         assert_eq!(content, format!("Content {i}"));
     }
-    proven_logger::info!("✓ Concurrent operations work");
+    tracing::info!("✓ Concurrent operations work");
 
-    proven_logger::info!("All filesystem tests passed!");
+    tracing::info!("All filesystem tests passed!");
     Ok(())
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 #[ignore] // This test requires proper permissions
 async fn test_fuse_permissions() -> anyhow::Result<()> {
     // This test would verify file permissions, ownership, etc.

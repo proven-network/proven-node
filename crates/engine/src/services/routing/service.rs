@@ -4,9 +4,9 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
-use proven_logger::{debug, error, info, warn};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use tracing::{debug, error, info, warn};
 
 use crate::foundation::ConsensusGroupId;
 use crate::services::event::{EventBus, EventHandler};
@@ -181,7 +181,7 @@ impl RoutingService {
         let mut tasks = self.background_tasks.write().await;
         for task in tasks.drain(..) {
             if let Err(e) = task.await {
-                warn!("Error stopping routing task: {e}");
+                warn!("Error stopping routing task: {}", e);
             }
         }
 
@@ -456,7 +456,10 @@ impl RoutingService {
                 group_id, route.stream_count
             );
         } else {
-            warn!("Attempted to increment stream count for non-existent group {group_id:?}");
+            warn!(
+                "Attempted to increment stream count for non-existent group {:?}",
+                group_id
+            );
         }
 
         Ok(())
@@ -478,10 +481,16 @@ impl RoutingService {
                     group_id, route.stream_count
                 );
             } else {
-                warn!("Attempted to decrement stream count below 0 for group {group_id:?}");
+                warn!(
+                    "Attempted to decrement stream count below 0 for group {:?}",
+                    group_id
+                );
             }
         } else {
-            warn!("Attempted to decrement stream count for non-existent group {group_id:?}");
+            warn!(
+                "Attempted to decrement stream count for non-existent group {:?}",
+                group_id
+            );
         }
 
         Ok(())
@@ -528,7 +537,7 @@ impl RoutingService {
                                 };
 
                                 if let Err(e) = load_balancer.update_load(group_id, load_info).await {
-                                    error!("Failed to update load for group {group_id:?}: {e}");
+                                    error!("Failed to update load for group {:?}: {}", group_id, e);
                                 }
                             }
                         }

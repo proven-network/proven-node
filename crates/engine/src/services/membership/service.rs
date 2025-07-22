@@ -5,10 +5,10 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use async_trait::async_trait;
-use proven_logger::{debug, error, info, warn};
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use proven_network::NetworkManager;
@@ -170,18 +170,18 @@ where
                 self.coordinate_cluster_formation(online_peers).await?;
             }
             DiscoveryResult::WaitForCoordinator { coordinator, .. } => {
-                info!("Waiting for coordinator {coordinator} to form cluster");
+                info!("Waiting for coordinator {} to form cluster", coordinator);
                 self.wait_for_formation(coordinator).await?;
             }
             DiscoveryResult::JoinExistingCluster { leader, members } => {
-                info!("Joining existing cluster with leader {leader}");
+                info!("Joining existing cluster with leader {}", leader);
                 self.join_existing_cluster(leader, members).await?;
             }
             DiscoveryResult::JoinFormingCluster {
                 coordinator,
                 formation_id,
             } => {
-                info!("Joining forming cluster coordinated by {coordinator}");
+                info!("Joining forming cluster coordinated by {}", coordinator);
                 self.join_forming_cluster(coordinator, formation_id).await?;
             }
         }
@@ -274,10 +274,10 @@ where
                     accepted: false,
                     rejection_reason,
                 })) => {
-                    warn!("Node {peer_id} rejected proposal: {rejection_reason:?}");
+                    warn!("Node {} rejected proposal: {:?}", peer_id, rejection_reason);
                 }
                 Err(e) => {
-                    warn!("Failed to propose to {peer_id}: {e}");
+                    warn!("Failed to propose to {}: {}", peer_id, e);
                 }
                 _ => {}
             }
@@ -285,7 +285,7 @@ where
 
         // Check if we have enough acceptances
         if acceptances >= self.config.formation.min_cluster_size.saturating_sub(1) {
-            info!("Cluster formation accepted by {acceptances} nodes");
+            info!("Cluster formation accepted by {} nodes", acceptances);
             self.finalize_cluster_formation(proposed_members).await?;
         } else {
             warn!(
@@ -574,7 +574,7 @@ where
                     member.status = NodeStatus::Offline {
                         since_ms: now_timestamp(),
                     };
-                    info!("Marked node {sender} as offline due to graceful shutdown");
+                    info!("Marked node {} as offline due to graceful shutdown", sender);
                 }
                 drop(view);
 
@@ -636,7 +636,7 @@ where
         let service = self.clone();
         self.task_tracker.spawn(async move {
             if let Err(e) = service.handle_discovery_and_formation().await {
-                error!("Discovery and formation failed: {e}");
+                error!("Discovery and formation failed: {}", e);
             }
         });
 
@@ -697,7 +697,7 @@ where
                         .service_request(node_id.clone(), msg, Duration::from_millis(100))
                         .await
                     {
-                        debug!("Failed to send shutdown announcement to {node_id}: {e}");
+                        debug!("Failed to send shutdown announcement to {}: {}", node_id, e);
                     }
                 });
             }

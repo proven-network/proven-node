@@ -14,7 +14,6 @@ pub use error::{Error, Result};
 use std::path::PathBuf;
 use std::process::Stdio;
 
-use proven_logger::{info, warn};
 use rand::distributions::Alphanumeric;
 use rand::{Rng, thread_rng};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -22,6 +21,7 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::{info, warn};
 
 static CONF_FILENAME: &str = "gocryptfs.conf";
 static MNT_DIR: &str = "/mnt";
@@ -180,7 +180,7 @@ impl ExternalFs {
                 let mut lines = reader.lines();
 
                 while let Ok(Some(line)) = lines.next_line().await {
-                    info!("{line}");
+                    info!("{}", line);
                 }
             });
 
@@ -190,7 +190,7 @@ impl ExternalFs {
                 let mut lines = reader.lines();
 
                 while let Ok(Some(line)) = lines.next_line().await {
-                    warn!("{line}");
+                    warn!("{}", line);
                 }
             });
 
@@ -217,8 +217,8 @@ impl ExternalFs {
                     // log output
                     match output {
                         Ok(output) if output.status.success() => info!("gocryptfs umount successful"),
-                        Ok(output) => warn!("gocryptfs failed: {output:?}"),
-                        Err(e) => warn!("gocryptfs failed: {e:?}"),
+                        Ok(output) => warn!("gocryptfs failed: {:?}", output),
+                        Err(e) => warn!("gocryptfs failed: {:?}", e),
                     }
 
                     cmd.wait()
@@ -265,7 +265,7 @@ impl ExternalFs {
             .output()
             .await;
 
-        info!("{cmd:?}");
+        info!("{:?}", cmd);
 
         match cmd {
             Ok(output) if output.status.success() => Ok(()),
@@ -287,7 +287,7 @@ impl ExternalFs {
             .output()
             .await;
 
-        info!("{cmd:?}");
+        info!("{:?}", cmd);
 
         match cmd {
             Ok(output) if output.status.success() => Ok(()),

@@ -1,10 +1,10 @@
 //! Type-safe event bus implementation
 
-use proven_logger::{debug, error, info};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{debug, error, info};
 
 use super::traits::{
     ClosureHandler, EventHandler, EventPriority, ServiceEvent, TypeErasedHandler,
@@ -78,7 +78,7 @@ impl EventBus {
         let type_id = TypeId::of::<E>();
         let event_name = event.event_name();
 
-        debug!("Publishing event: {event_name}");
+        debug!("Publishing event: {}", event_name);
 
         // Update stats
         {
@@ -98,7 +98,7 @@ impl EventBus {
 
         if let Some(event_handlers) = handlers {
             let handler_count = event_handlers.len();
-            debug!("Dispatching {event_name} to {handler_count} handlers");
+            debug!("Dispatching {} to {} handlers", event_name, handler_count);
 
             // Update handler invocation stats
             {
@@ -120,7 +120,7 @@ impl EventBus {
 
             // Handle critical priority handlers synchronously
             for handler in critical_handlers {
-                debug!("Handling {event_name} synchronously (Critical priority)");
+                debug!("Handling {} synchronously (Critical priority)", event_name);
                 handler.handle_any(Box::new(event.clone())).await;
             }
 
@@ -131,7 +131,10 @@ impl EventBus {
                 let event_name = event_name.to_string();
                 let priority = handler.priority();
 
-                debug!("Handling {event_name} asynchronously (priority: {priority:?})");
+                debug!(
+                    "Handling {} asynchronously (priority: {:?})",
+                    event_name, priority
+                );
 
                 tokio::spawn(async move {
                     if let Err(e) = tokio::spawn(async move {
@@ -139,12 +142,12 @@ impl EventBus {
                     })
                     .await
                     {
-                        error!("Handler panicked while processing {event_name}: {e:?}");
+                        error!("Handler panicked while processing {}: {:?}", event_name, e);
                     }
                 });
             }
         } else {
-            debug!("No handlers registered for event: {event_name}");
+            debug!("No handlers registered for event: {}", event_name);
         }
     }
 

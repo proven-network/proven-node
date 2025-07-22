@@ -1,44 +1,31 @@
-//! Proven Node TUI - Terminal User Interface for managing multiple local nodes
-#![warn(missing_docs)]
-#![warn(clippy::all)]
-#![warn(clippy::pedantic)]
-#![warn(clippy::nursery)]
-#![allow(clippy::redundant_pub_crate)]
-
-mod app;
-mod ip_allocator;
-mod logs_categorizer;
-mod logs_formatter;
-mod logs_viewer;
-mod logs_writer;
-mod messages;
-mod node_id;
-mod node_manager;
-mod rpc_client;
-mod ui;
-
-use app::App;
+//! Binary entry point for SQL-based TUI
 
 use anyhow::Result;
-use proven_logger::{info, warn};
+use proven_logger::info;
+use proven_logger_libsql::{LibsqlLogger, LibsqlLoggerConfig};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use tracing::{Level, info, warn};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Set up signal handling for graceful shutdown
     let shutdown_requested = Arc::new(AtomicBool::new(false));
     setup_signal_handlers(shutdown_requested.clone())?;
 
-    // Create the application synchronously
-    let mut app = App::new();
+    // Create SQL logger first
+    let logger = LibsqlLogger::new(LibsqlLoggerConfig::default()).await?;
 
-    // Set up the log writer as the global logger
-    let log_writer = app.get_log_writer();
-    proven_logger::init(Arc::new(log_writer)).expect("Failed to initialize logger");
+    // Initialize the global logger
+    proven_logger::init(logger.clone()).expect("Failed to initialize logger");
 
-    info!("Starting Proven Node TUI");
+    // Create the application with the logger
+    let mut app = proven_local_tui::app::App::new(logger);
+
+    info!("Starting Proven Node TUI with SQL-based logging");
 
     // Pass the shutdown flag to the app
     app.set_shutdown_flag(shutdown_requested);
@@ -66,11 +53,23 @@ fn setup_signal_handlers(shutdown_requested: Arc<AtomicBool>) -> Result<()> {
                     break;
                 }
                 _ => {
-                    warn!("Received unexpected signal: {sig}");
+                    eprintln!("Received unexpected signal: {sig}");
                 }
             }
         }
     });
 
     Ok(())
+}
+
+/// Set up tracing/logging with integrated log writer
+fn setup_logging(log_writer: logs_writer::LogWriter) {
+    // Create integrated tracing layer (LogWriter implements Layer trait)
+    // Set up the subscriber to capture all log levels - filtering is done in the TUI
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::LevelFilter::from_level(
+            Level::TRACE, // Capture all levels, let TUI filter them
+        ))
+        .with(log_writer)
+        .init();
 }

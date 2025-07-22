@@ -6,12 +6,12 @@ use dashmap::DashMap;
 use futures::stream::{SplitSink, SplitStream};
 use futures::{SinkExt, StreamExt};
 use parking_lot::RwLock;
-use proven_logger::{debug, error, warn};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Semaphore, oneshot};
 use tokio::time::{interval, timeout};
 use tokio_util::codec::Framed;
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 /// Type alias for response sender channel.
@@ -337,7 +337,7 @@ impl ConnectionPool {
                                             }
                                         }
                                         Err(e) => {
-                                            error!("Failed to decode response: {e}");
+                                            error!("Failed to decode response: {}", e);
                                         }
                                     }
                                 }
@@ -357,7 +357,7 @@ impl ConnectionPool {
                                             }
                                         }
                                         Err(e) => {
-                                            error!("Failed to decode stream frame: {e}");
+                                            error!("Failed to decode stream frame: {}", e);
                                         }
                                     }
                                 }
@@ -372,7 +372,7 @@ impl ConnectionPool {
                                             }
                                         }
                                         Err(e) => {
-                                            error!("Failed to decode stream end frame: {e}");
+                                            error!("Failed to decode stream end frame: {}", e);
                                         }
                                     }
                                 }
@@ -384,20 +384,20 @@ impl ConnectionPool {
                                             debug!("Connection {} received error for request_id: {}", conn.id, request_id);
                                             // Check if it's for a streaming request
                                             if let Some(streaming_tx) = streaming_requests.get(&request_id) {
-                                                debug!("Found streaming request for {request_id}, forwarding error");
+                                                debug!("Found streaming request for {}, forwarding error", request_id);
                                                 // Send the error envelope (client will convert to error)
                                                 let _ = streaming_tx.send(response).await;
                                                 // Remove the streaming request
                                                 streaming_requests.remove(&request_id);
                                             } else if let Some((_, sender)) = pending_requests.remove(&request_id) {
-                                                debug!("Found pending request for {request_id}, sending error response");
+                                                debug!("Found pending request for {}, sending error response", request_id);
                                                 let _ = sender.send(Ok(response));
                                             } else {
-                                                warn!("Received error for unknown request: {request_id}");
+                                                warn!("Received error for unknown request: {}", request_id);
                                             }
                                         }
                                         Err(e) => {
-                                            error!("Failed to decode error frame: {e}");
+                                            error!("Failed to decode error frame: {}", e);
                                         }
                                     }
                                 }
@@ -407,7 +407,7 @@ impl ConnectionPool {
                             }
                         }
                         Some(Err(e)) => {
-                            error!("Stream error: {e}");
+                            error!("Stream error: {}", e);
                             break;
                         }
                         None => {
@@ -474,7 +474,7 @@ impl ConnectionPool {
                             connections.push(conn);
                         }
                         Err(e) => {
-                            warn!("Failed to create idle connection: {e}");
+                            warn!("Failed to create idle connection: {}", e);
                             break;
                         }
                     }

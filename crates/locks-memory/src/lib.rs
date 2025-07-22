@@ -9,10 +9,10 @@ pub use error::Error;
 
 use async_trait::async_trait;
 use proven_locks::{LockManager, LockManager1, LockManager2, LockManager3, LockStatus};
-use proven_logger::{debug, warn};
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::{debug, instrument};
 
 /// In-memory (single node) implementation of locks for local development.
 #[derive(Clone, Debug)]
@@ -60,6 +60,7 @@ pub struct MemoryLockGuard {
 
 impl Drop for MemoryLockGuard {
     #[allow(clippy::cognitive_complexity)]
+    #[instrument(skip(self), fields(key = %self.key))]
     fn drop(&mut self) {
         debug!("Dropping MemoryLockGuard, attempting release.");
         if let Ok(mut locked_map) = self.locks_map.try_lock() {
@@ -73,9 +74,7 @@ impl Drop for MemoryLockGuard {
                 );
             }
         } else {
-            warn!(
-                "Failed to acquire map's mutex (try_lock) in MemoryLockGuard::drop. Lock may not be immediately released by this guard's action."
-            );
+            tracing::warn!(key = %self.key, "Failed to acquire map's mutex (try_lock) in MemoryLockGuard::drop. Lock may not be immediately released by this guard's action.");
         }
     }
 }
@@ -85,20 +84,22 @@ impl LockManager for MemoryLockManager {
     type Error = Error;
     type Guard = MemoryLockGuard;
 
+    #[instrument(skip(self), fields(key = %resource_id))]
     async fn check(&self, resource_id: String) -> Result<LockStatus, Self::Error> {
         let key = self.get_full_key(&resource_id);
         let locked_map = self.locks.lock().await;
 
         // If key exists, it's held by self (no expiration logic)
         if locked_map.contains(&key) {
-            debug!("Lock for key '{key}' is HeldBySelf.");
+            debug!("Lock for key '{}' is HeldBySelf.", key);
             Ok(LockStatus::HeldBySelf)
         } else {
-            debug!("No lock found for key '{key}', status is Free.");
+            debug!("No lock found for key '{}', status is Free.", key);
             Ok(LockStatus::Free)
         }
     }
 
+    #[instrument(skip(self), fields(key = %resource_id))]
     async fn lock(&self, resource_id: String) -> Result<Self::Guard, Self::Error> {
         let key = self.get_full_key(&resource_id);
         let poll_interval = tokio::time::Duration::from_millis(50); // How often to retry
@@ -107,7 +108,7 @@ impl LockManager for MemoryLockManager {
             let mut locked_map = self.locks.lock().await;
             if !locked_map.contains(&key) {
                 // Lock is free, acquire it
-                debug!("Acquiring new lock for key '{key}' (lock operation).");
+                debug!("Acquiring new lock for key '{}' (lock operation).", key);
                 locked_map.insert(key.clone());
                 return Ok(MemoryLockGuard {
                     locks_map: Arc::clone(&self.locks),
@@ -116,22 +117,23 @@ impl LockManager for MemoryLockManager {
             }
             // Drop MutexGuard to release lock on map, before sleeping
             drop(locked_map);
-            debug!("Lock for key '{key}' is currently held. Waiting...");
+            debug!("Lock for key '{}' is currently held. Waiting...", key);
             tokio::time::sleep(poll_interval).await;
         }
     }
 
+    #[instrument(skip(self), fields(key = %resource_id))]
     async fn try_lock(&self, resource_id: String) -> Result<Option<Self::Guard>, Self::Error> {
         let key = self.get_full_key(&resource_id);
         let mut locked_map = self.locks.lock().await;
 
         if locked_map.contains(&key) {
             // Lock is held
-            debug!("try_lock failed for key '{key}': Held.");
+            debug!("try_lock failed for key '{}': Held.", key);
             Ok(None)
         } else {
             // Lock is free, acquire it.
-            debug!("try_lock: acquiring new lock for key '{key}'.");
+            debug!("try_lock: acquiring new lock for key '{}'.", key);
             locked_map.insert(key.clone());
             drop(locked_map);
             Ok(Some(MemoryLockGuard {
@@ -233,12 +235,12 @@ mod tests {
 
         // Spawn a task that attempts to lock the same key. It should wait.
         let lock_task = tokio::spawn(async move {
-            debug!("Task attempting to lock '{lock_key_clone}'");
+            debug!("Task attempting to lock '{}'", lock_key_clone);
             let _guard2 = manager_clone
                 .lock(lock_key_clone.clone())
                 .await
                 .expect("Second lock failed in task");
-            debug!("Task acquired lock for '{lock_key_clone}'");
+            debug!("Task acquired lock for '{}'", lock_key_clone);
             // Guard2 will be dropped when task finishes
         });
 
@@ -253,7 +255,7 @@ mod tests {
             "Lock should be held by guard1 while task waits"
         );
 
-        debug!("Dropping guard1 for '{lock_key}'");
+        debug!("Dropping guard1 for '{}'", lock_key);
         drop(guard1); // Release the first lock
 
         // The task should now be able to acquire the lock

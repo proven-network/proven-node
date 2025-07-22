@@ -35,10 +35,8 @@ static LOGGER: OnceCell<Arc<dyn Logger>> = OnceCell::new();
 /// This should be called once at application startup.
 /// Subsequent calls will return an error.
 #[inline]
-pub fn init(logger: Arc<dyn Logger>) -> Result<(), Box<dyn std::error::Error>> {
-    LOGGER
-        .set(logger)
-        .map_err(|_| "Logger already initialized".into())
+pub fn init(logger: Arc<dyn Logger>) -> Result<(), Arc<dyn Logger>> {
+    LOGGER.set(logger)
 }
 
 /// Get the global logger if initialized

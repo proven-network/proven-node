@@ -6,8 +6,6 @@ use std::time::Duration;
 use ed25519_dalek::SigningKey;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
-use proven_logger::info;
-use proven_logger_macros::logged_tokio_test;
 use proven_network::{NetworkManager, ServiceMessage};
 use proven_topology::{Node, NodeId, TopologyManager, Version};
 use proven_topology_mock::MockTopologyAdaptor;
@@ -15,6 +13,7 @@ use proven_transport::{Config as TransportConfig, Transport};
 use proven_transport_tcp::{TcpConfig, TcpTransport};
 use proven_util::port_allocator::allocate_port;
 use serde::{Deserialize, Serialize};
+use tracing::info;
 
 /// Test service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,8 +35,13 @@ impl ServiceMessage for TestServiceMessage {
     }
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_simple_request_reply() {
+    // Initialize tracing
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::INFO)
+        .try_init();
+
     // Create two nodes with deterministic keys
     let node1_key = SigningKey::from_bytes(&[5u8; 32]);
     let node1_id = NodeId::from(node1_key.verifying_key());
@@ -47,8 +51,8 @@ async fn test_simple_request_reply() {
     let node2_id = NodeId::from(node2_key.verifying_key());
     let node2_port = allocate_port();
 
-    info!("Node 1: {node1_id} on port {node1_port}");
-    info!("Node 2: {node2_id} on port {node2_port}");
+    info!("Node 1: {} on port {}", node1_id, node1_port);
+    info!("Node 2: {} on port {}", node2_id, node2_port);
 
     // Create mock governance with both nodes
     let attestor = MockAttestor::new();
@@ -129,8 +133,8 @@ async fn test_simple_request_reply() {
     info!("Starting transports");
     let addr1 = transport1.start().await.unwrap();
     let addr2 = transport2.start().await.unwrap();
-    info!("Transport 1 listening on {addr1}");
-    info!("Transport 2 listening on {addr2}");
+    info!("Transport 1 listening on {}", addr1);
+    info!("Transport 2 listening on {}", addr2);
 
     // Create network managers
     let network1 = Arc::new(NetworkManager::new(
@@ -173,7 +177,7 @@ async fn test_simple_request_reply() {
         .register_service::<TestServiceMessage, _>(move |sender, message| {
             let handler_called = handler_called_clone.clone();
             Box::pin(async move {
-                info!("Handler called! Sender: {sender}, Message: {message:?}");
+                info!("Handler called! Sender: {}, Message: {:?}", sender, message);
                 *handler_called.lock().await = true;
 
                 match message {
@@ -200,7 +204,7 @@ async fn test_simple_request_reply() {
         message: "Hello from node1".to_string(),
     };
 
-    info!("Sending request from {node1_id} to {node2_id}");
+    info!("Sending request from {} to {}", node1_id, node2_id);
 
     let response_result = network1
         .service_request(
@@ -213,7 +217,7 @@ async fn test_simple_request_reply() {
     // Check results
     match response_result {
         Ok(response) => {
-            info!("Got response: {response:?}");
+            info!("Got response: {:?}", response);
             match response {
                 TestServiceResponse::Response { id, reply } => {
                     assert_eq!(id, 42);

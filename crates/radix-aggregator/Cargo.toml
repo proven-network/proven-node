@@ -14,10 +14,10 @@ serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-proven-logger.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-proven-logger-macros.workspace = true
 proven-postgres.workspace = true
 proven-radix-node.workspace = true
 radix-common.workspace = true
+tracing-subscriber.workspace = true

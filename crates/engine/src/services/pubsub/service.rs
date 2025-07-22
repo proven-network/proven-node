@@ -3,12 +3,12 @@
 use base64::Engine as _;
 use base64::engine::general_purpose;
 use bytes::Bytes;
-use proven_logger::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use tokio::sync::{RwLock, mpsc, oneshot};
 use tokio::time::timeout;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use proven_topology::NodeId;
@@ -343,7 +343,7 @@ where
                 if let Some(_network) = &self.network {
                     // In a real implementation, we'd send via the network service
                     // For now, this is a placeholder
-                    debug!("Would send PubSub message to {node_id}");
+                    debug!("Would send PubSub message to {}", node_id);
                 }
             }
         }
@@ -482,7 +482,7 @@ where
                     );
                 }
                 Err(e) => {
-                    warn!("Failed to refresh stream mappings: {e}");
+                    warn!("Failed to refresh stream mappings: {}", e);
                     return Err(PubSubError::Internal(format!(
                         "Failed to refresh mappings: {e}"
                     )));

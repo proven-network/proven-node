@@ -4,13 +4,23 @@ mod common;
 
 use common::test_cluster::TestCluster;
 use proven_engine::foundation::types::ConsensusGroupId;
-use proven_logger::info;
-use proven_logger_macros::logged_tokio_test;
 use std::num::NonZero;
 use std::time::Duration;
+use tracing::{Level, info};
+use tracing_subscriber::EnvFilter;
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_cluster_persistence_across_restarts() {
+    // Initialize logging with reduced OpenRaft verbosity
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap()),
+        )
+        .try_init();
+
     let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
     info!("=== Phase 1: Starting initial cluster ===");
@@ -22,7 +32,7 @@ async fn test_cluster_persistence_across_restarts() {
     let node_id_2 = node_infos[1].node_id.clone();
     let node_id_3 = node_infos[2].node_id.clone();
 
-    info!("Created nodes: {node_id_1}, {node_id_2}, {node_id_3}");
+    info!("Created nodes: {}, {}, {}", node_id_1, node_id_2, node_id_3);
 
     // Wait for cluster formation
     cluster
@@ -70,7 +80,7 @@ async fn test_cluster_persistence_across_restarts() {
             .group_state(group_id)
             .await
             .expect("Failed to get group state");
-        info!("Node {i} group state: {state:?}");
+        info!("Node {} group state: {:?}", i, state);
     }
 
     // Stop all engines gracefully using TestCluster's method
@@ -119,7 +129,7 @@ async fn test_cluster_persistence_across_restarts() {
 
     match result {
         Ok(Some(stream_info)) => {
-            info!("Successfully found persisted stream: {stream_info:?}");
+            info!("Successfully found persisted stream: {:?}", stream_info);
             // The stream exists, which proves some level of persistence
         }
         Ok(None) => {
@@ -127,7 +137,10 @@ async fn test_cluster_persistence_across_restarts() {
         }
         Err(e) => {
             // This is expected if node IDs changed - the stream would be on different nodes
-            info!("Could not read stream (expected if node IDs changed): {e}");
+            info!(
+                "Could not read stream (expected if node IDs changed): {}",
+                e
+            );
 
             // This shouldn't happen now that we're using the same node IDs
             panic!("Stream not found after restart - persistence test failed");
@@ -140,13 +153,13 @@ async fn test_cluster_persistence_across_restarts() {
     for (i, engine) in engines.iter().enumerate() {
         match engine.group_state(group_id).await {
             Ok(state) => {
-                info!("Node {i} group state after restart: {state:?}");
+                info!("Node {} group state after restart: {:?}", i, state);
                 if state.is_member {
                     member_count += 1;
                 }
             }
             Err(e) => {
-                info!("Node {i} not in group: {e}");
+                info!("Node {} not in group: {}", i, e);
             }
         }
     }
@@ -155,7 +168,7 @@ async fn test_cluster_persistence_across_restarts() {
         member_count > 0,
         "At least one node should be in the consensus group"
     );
-    info!("Consensus group reformed with {member_count} members");
+    info!("Consensus group reformed with {} members", member_count);
 
     // Test writing new data to verify the cluster is functional
     info!("Testing new writes after restart");
@@ -182,9 +195,17 @@ async fn test_cluster_persistence_across_restarts() {
     info!("=== Persistence test completed successfully ===");
 }
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_single_node_persistence() {
     // Initialize logging with reduced OpenRaft verbosity
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap()),
+        )
+        .try_init();
 
     let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
@@ -193,7 +214,7 @@ async fn test_single_node_persistence() {
     let (mut engines, node_infos) = cluster.add_nodes_with_rocksdb(1).await;
 
     let node_id = node_infos[0].node_id.clone();
-    info!("Created node: {node_id}");
+    info!("Created node: {}", node_id);
 
     // Wait for the node to initialize
     tokio::time::sleep(Duration::from_secs(2)).await;

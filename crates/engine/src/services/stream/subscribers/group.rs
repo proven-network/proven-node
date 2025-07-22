@@ -1,9 +1,9 @@
 //! Group consensus event subscriber for stream service
 
 use async_trait::async_trait;
-use proven_logger::{debug, error, info};
 use std::num::NonZero;
 use std::sync::Arc;
+use tracing::{debug, error, info};
 
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::event::{EventHandler, EventPriority};
@@ -52,7 +52,8 @@ where
                 let stream_name = data.stream_name;
                 let message_count = data.message_count;
                 debug!(
-                    "StreamSubscriber: {message_count} messages appended to stream {stream_name} in group {group_id:?}"
+                    "StreamSubscriber: {} messages appended to stream {} in group {:?}",
+                    message_count, stream_name, group_id
                 );
 
                 // Note: The actual message persistence is handled by the group consensus
@@ -70,7 +71,10 @@ where
             } => {
                 // This is emitted by group consensus when a stream is initialized
                 // The actual stream creation is triggered by GlobalConsensusEvent
-                debug!("StreamSubscriber: Stream {stream_name} initialized in group {group_id:?}");
+                debug!(
+                    "StreamSubscriber: Stream {} initialized in group {:?}",
+                    stream_name, group_id
+                );
             }
 
             GroupConsensusEvent::StreamRemoved {
@@ -78,17 +82,20 @@ where
                 stream_name,
             } => {
                 // Stream removal at the group level
-                debug!("StreamSubscriber: Stream {stream_name} removed from group {group_id:?}");
+                debug!(
+                    "StreamSubscriber: Stream {} removed from group {:?}",
+                    stream_name, group_id
+                );
             }
 
             GroupConsensusEvent::StateSynchronized { group_id } => {
-                debug!("StreamSubscriber: Group {group_id:?} state synchronized");
+                debug!("StreamSubscriber: Group {:?} state synchronized", group_id);
             }
 
             GroupConsensusEvent::MembershipChanged(data) => {
                 let group_id = data.group_id;
                 // Group membership changes might affect stream availability
-                debug!("StreamSubscriber: Group {group_id:?} membership changed");
+                debug!("StreamSubscriber: Group {:?} membership changed", group_id);
             }
 
             GroupConsensusEvent::LeaderChanged {
@@ -97,7 +104,10 @@ where
                 ..
             } => {
                 // Leader changes might affect write availability
-                debug!("StreamSubscriber: Group {group_id:?} leader changed to {new_leader:?}");
+                debug!(
+                    "StreamSubscriber: Group {:?} leader changed to {:?}",
+                    group_id, new_leader
+                );
             }
 
             GroupConsensusEvent::MessagesToPersist(data) => {
@@ -130,12 +140,14 @@ where
                             // Stream metadata is updated by group consensus callbacks
 
                             info!(
-                                "Successfully persisted {message_count} messages to stream {stream_name} storage (last_seq: {last_seq})"
+                                "Successfully persisted {} messages to stream {} storage (last_seq: {})",
+                                message_count, stream_name, last_seq
                             );
                         }
                         Err(e) => {
                             error!(
-                                "Failed to persist {message_count} messages to stream {stream_name} storage: {e}"
+                                "Failed to persist {} messages to stream {} storage: {}",
+                                message_count, stream_name, e
                             );
                         }
                     }

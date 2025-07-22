@@ -4,14 +4,26 @@ mod common;
 
 use common::test_cluster::{TestCluster, TransportType};
 use proven_engine::foundation::types::ConsensusGroupId;
-use proven_logger_macros::logged_tokio_test;
 use std::time::Duration;
+use tracing::Level;
+use tracing_subscriber::EnvFilter;
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_global_consensus_expansion() {
+    // Initialize logging with reduced OpenRaft verbosity
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap())
+                .add_directive("proven_topology=error".parse().unwrap()),
+        )
+        .try_init();
+
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    proven_logger::info!("=== Phase 1: Starting 3-node cluster ===");
+    tracing::info!("=== Phase 1: Starting 3-node cluster ===");
 
     // Start with 3 nodes
     let (mut engines, mut node_infos) = cluster.add_nodes(3).await;
@@ -20,7 +32,12 @@ async fn test_global_consensus_expansion() {
     let node_id_2 = node_infos[1].node_id.clone();
     let node_id_3 = node_infos[2].node_id.clone();
 
-    proven_logger::info!("Created initial nodes: {node_id_1}, {node_id_2}, {node_id_3}");
+    tracing::info!(
+        "Created initial nodes: {}, {}, {}",
+        node_id_1,
+        node_id_2,
+        node_id_3
+    );
 
     // Wait for cluster formation and groups
     cluster
@@ -35,7 +52,7 @@ async fn test_global_consensus_expansion() {
     for (i, engine) in engines.iter().enumerate() {
         match engine.group_state(group_id).await {
             Ok(state) => {
-                proven_logger::info!(
+                tracing::info!(
                     "Node {} group state: leader={:?}, term={}, members={:?}",
                     i,
                     state.leader,
@@ -53,7 +70,7 @@ async fn test_global_consensus_expansion() {
 
     assert_eq!(initial_members.len(), 3, "Should have 3 members initially");
 
-    proven_logger::info!("=== Phase 2: Adding 4th node to expand global consensus ===");
+    tracing::info!("=== Phase 2: Adding 4th node to expand global consensus ===");
 
     // Add a 4th node
     let (new_engines, new_node_infos) = cluster.add_nodes(1).await;
@@ -62,7 +79,7 @@ async fn test_global_consensus_expansion() {
     engines.extend(new_engines);
     node_infos.extend(new_node_infos);
 
-    proven_logger::info!("Added new node: {node_id_4}");
+    tracing::info!("Added new node: {}", node_id_4);
 
     // Give time for the new node to join global consensus
     tokio::time::sleep(Duration::from_secs(10)).await;
@@ -74,7 +91,7 @@ async fn test_global_consensus_expansion() {
     for (i, engine) in engines.iter().enumerate() {
         match engine.group_state(group_id).await {
             Ok(state) => {
-                proven_logger::info!(
+                tracing::info!(
                     "Node {} after expansion: leader={:?}, term={}, members={:?}",
                     i,
                     state.leader,
@@ -84,16 +101,16 @@ async fn test_global_consensus_expansion() {
 
                 // All nodes should see the same leader
                 if let Some(leader) = &state.leader {
-                    proven_logger::info!("Node {i} sees leader: {leader}");
+                    tracing::info!("Node {} sees leader: {}", i, leader);
                 }
             }
             Err(e) => {
-                proven_logger::warn!("Node {i} not yet in group (expected for new node): {e}");
+                tracing::warn!("Node {} not yet in group (expected for new node): {}", i, e);
             }
         }
     }
 
-    proven_logger::info!("=== Phase 3: Creating stream to verify consensus works ===");
+    tracing::info!("=== Phase 3: Creating stream to verify consensus works ===");
 
     // Create a stream to verify the cluster is functional
     let stream_name = "test_expansion_stream";
@@ -117,27 +134,38 @@ async fn test_global_consensus_expansion() {
             .expect("Failed to publish message");
     }
 
-    proven_logger::info!("Successfully created stream and published messages after expansion");
+    tracing::info!("Successfully created stream and published messages after expansion");
 
     // Clean up
     for mut engine in engines {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    proven_logger::info!("=== Global consensus expansion test completed successfully ===");
+    tracing::info!("=== Global consensus expansion test completed successfully ===");
 }
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_single_node_to_cluster() {
+    // Initialize logging
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap())
+                .add_directive("proven_topology=error".parse().unwrap()),
+        )
+        .try_init();
+
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    proven_logger::info!("=== Phase 1: Starting single node ===");
+    tracing::info!("=== Phase 1: Starting single node ===");
 
     // Start with just 1 node
     let (mut engines, mut node_infos) = cluster.add_nodes(1).await;
     let node_id_1 = node_infos[0].node_id.clone();
 
-    proven_logger::info!("Created single node: {node_id_1}");
+    tracing::info!("Created single node: {}", node_id_1);
 
     // Give time for single node to initialize
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -146,7 +174,7 @@ async fn test_single_node_to_cluster() {
     let group_id = ConsensusGroupId::new(1);
     match engines[0].group_state(group_id).await {
         Ok(state) => {
-            proven_logger::info!(
+            tracing::info!(
                 "Single node state: leader={:?}, term={}, is_member={}",
                 state.leader,
                 state.term,
@@ -162,7 +190,7 @@ async fn test_single_node_to_cluster() {
         Err(e) => panic!("Failed to get single node state: {e}"),
     }
 
-    proven_logger::info!("=== Phase 2: Adding second node ===");
+    tracing::info!("=== Phase 2: Adding second node ===");
 
     // Add a second node
     let (new_engines, new_node_infos) = cluster.add_nodes(1).await;
@@ -171,7 +199,7 @@ async fn test_single_node_to_cluster() {
     engines.extend(new_engines);
     node_infos.extend(new_node_infos);
 
-    proven_logger::info!("Added second node: {node_id_2}");
+    tracing::info!("Added second node: {}", node_id_2);
 
     // Wait for nodes to form consensus
     tokio::time::sleep(Duration::from_secs(10)).await;
@@ -180,7 +208,7 @@ async fn test_single_node_to_cluster() {
     for (i, engine) in engines.iter().enumerate() {
         match engine.group_state(group_id).await {
             Ok(state) => {
-                proven_logger::info!(
+                tracing::info!(
                     "Node {} state: leader={:?}, term={}, is_member={}",
                     i,
                     state.leader,
@@ -189,12 +217,12 @@ async fn test_single_node_to_cluster() {
                 );
             }
             Err(e) => {
-                proven_logger::warn!("Node {i} not in group yet: {e}");
+                tracing::warn!("Node {} not in group yet: {}", i, e);
             }
         }
     }
 
-    proven_logger::info!("=== Phase 3: Adding third node to form proper cluster ===");
+    tracing::info!("=== Phase 3: Adding third node to form proper cluster ===");
 
     // Add a third node
     let (new_engines, new_node_infos) = cluster.add_nodes(1).await;
@@ -203,7 +231,7 @@ async fn test_single_node_to_cluster() {
     engines.extend(new_engines);
     node_infos.extend(new_node_infos);
 
-    proven_logger::info!("Added third node: {node_id_3}");
+    tracing::info!("Added third node: {}", node_id_3);
 
     // Wait for 3-node cluster formation
     cluster
@@ -216,7 +244,7 @@ async fn test_single_node_to_cluster() {
     for (i, engine) in engines.iter().enumerate() {
         match engine.group_state(group_id).await {
             Ok(state) => {
-                proven_logger::info!(
+                tracing::info!(
                     "Node {} final state: leader={:?}, term={}, members={:?}",
                     i,
                     state.leader,
@@ -233,25 +261,34 @@ async fn test_single_node_to_cluster() {
     }
 
     assert_eq!(leaders.len(), 1, "All nodes should agree on one leader");
-    proven_logger::info!("All nodes agree on leader: {:?}", leaders.iter().next());
+    tracing::info!("All nodes agree on leader: {:?}", leaders.iter().next());
 
     // Clean up
     for mut engine in engines {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    proven_logger::info!("=== Single node to cluster expansion test completed successfully ===");
+    tracing::info!("=== Single node to cluster expansion test completed successfully ===");
 }
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_rolling_node_addition() {
     // Test adding multiple nodes one at a time
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap())
+                .add_directive("proven_topology=error".parse().unwrap()),
+        )
+        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let mut engines = Vec::new();
     let mut node_infos = Vec::new();
 
-    proven_logger::info!("=== Starting with 2 nodes ===");
+    tracing::info!("=== Starting with 2 nodes ===");
 
     // Start with 2 nodes
     let (initial_engines, initial_node_infos) = cluster.add_nodes(2).await;
@@ -263,13 +300,13 @@ async fn test_rolling_node_addition() {
 
     // Add nodes one at a time
     for node_num in 3..=5 {
-        proven_logger::info!("=== Adding node {node_num} ===");
+        tracing::info!("=== Adding node {} ===", node_num);
 
         let (new_engines, new_node_infos) = cluster.add_nodes(1).await;
         engines.extend(new_engines);
         node_infos.extend(new_node_infos);
 
-        proven_logger::info!(
+        tracing::info!(
             "Added node {}: {}",
             node_num,
             node_infos[node_num - 1].node_id
@@ -291,7 +328,7 @@ async fn test_rolling_node_addition() {
                 Ok(members) => {
                     if !members.is_empty() {
                         active_nodes += 1;
-                        proven_logger::info!(
+                        tracing::info!(
                             "After adding node {}, node {} is part of global consensus with {} total members",
                             node_num,
                             i,
@@ -300,16 +337,20 @@ async fn test_rolling_node_addition() {
                     }
                 }
                 Err(e) => {
-                    proven_logger::warn!("Node {i} failed to get global consensus members: {e}");
+                    tracing::warn!("Node {} failed to get global consensus members: {}", i, e);
                 }
             }
         }
 
-        proven_logger::info!("Active nodes after adding node {node_num}: {active_nodes}");
+        tracing::info!(
+            "Active nodes after adding node {}: {}",
+            node_num,
+            active_nodes
+        );
     }
 
     // Final verification - all 5 nodes should be operational
-    proven_logger::info!("=== Final verification of 5-node cluster ===");
+    tracing::info!("=== Final verification of 5-node cluster ===");
 
     // Give extra time for all membership changes to propagate
     tokio::time::sleep(Duration::from_secs(10)).await;
@@ -320,7 +361,7 @@ async fn test_rolling_node_addition() {
     for (i, engine) in engines.iter().enumerate() {
         match engine.global_consensus_members().await {
             Ok(members) => {
-                proven_logger::info!(
+                tracing::info!(
                     "Node {} final: sees {} global consensus members: {:?}",
                     i,
                     members.len(),
@@ -332,7 +373,7 @@ async fn test_rolling_node_addition() {
                 }
             }
             Err(e) => {
-                proven_logger::warn!("Node {i} failed to get global consensus members: {e}");
+                tracing::warn!("Node {} failed to get global consensus members: {}", i, e);
             }
         }
     }
@@ -352,5 +393,5 @@ async fn test_rolling_node_addition() {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    proven_logger::info!("=== Rolling node addition test completed successfully ===");
+    tracing::info!("=== Rolling node addition test completed successfully ===");
 }

@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::Stream;
-use proven_logger::debug;
+use tracing::debug;
 
 use crate::error::MessagingEngineError;
 use proven_messaging::subscription_responder::{SubscriptionResponder, UsedSubscriptionResponder};

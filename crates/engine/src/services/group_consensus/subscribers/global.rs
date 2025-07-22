@@ -1,8 +1,8 @@
 //! Global consensus event subscriber for group consensus service
 
 use async_trait::async_trait;
-use proven_logger::{debug, error, info};
 use std::sync::Arc;
+use tracing::{debug, error, info};
 
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::event::{EventHandler, EventPriority};
@@ -131,7 +131,8 @@ where
                 // Check if this node is a member of the group
                 if members.contains(&self.local_node_id) {
                     info!(
-                        "GroupConsensusSubscriber: Creating local group {group_id:?} with members: {members:?}"
+                        "GroupConsensusSubscriber: Creating local group {:?} with members: {:?}",
+                        group_id, members
                     );
 
                     if let Err(e) = self
@@ -139,13 +140,14 @@ where
                         .create_group(group_id, members.clone())
                         .await
                     {
-                        error!("Failed to create local group {group_id:?}: {e}");
+                        error!("Failed to create local group {:?}: {}", group_id, e);
                     } else {
-                        info!("Successfully created local group {group_id:?}");
+                        info!("Successfully created local group {:?}", group_id);
                     }
                 } else {
                     debug!(
-                        "GroupConsensusSubscriber: Not a member of group {group_id:?}, skipping creation"
+                        "GroupConsensusSubscriber: Not a member of group {:?}, skipping creation",
+                        group_id
                     );
                 }
             }
@@ -156,7 +158,8 @@ where
                     && groups.contains(&group_id)
                 {
                     info!(
-                        "GroupConsensusSubscriber: Group {group_id:?} dissolved - would remove local instance"
+                        "GroupConsensusSubscriber: Group {:?} dissolved - would remove local instance",
+                        group_id
                     );
 
                     // TODO: Add dissolve_group method to GroupConsensusService
@@ -174,7 +177,8 @@ where
                     && groups.contains(&group_id)
                 {
                     info!(
-                        "GroupConsensusSubscriber: Initializing stream {stream_name} in local group {group_id:?}"
+                        "GroupConsensusSubscriber: Initializing stream {} in local group {:?}",
+                        stream_name, group_id
                     );
 
                     // Initialize the stream in group consensus
@@ -191,18 +195,21 @@ where
                     {
                         Ok(_) => {
                             debug!(
-                                "Successfully initialized stream {stream_name} in group {group_id:?}"
+                                "Successfully initialized stream {} in group {:?}",
+                                stream_name, group_id
                             );
                         }
                         Err(e) if e.is_not_leader() => {
                             // Not the leader - this is expected and fine
                             debug!(
-                                "Not the leader for group {group_id:?}, stream {stream_name} will be initialized by leader"
+                                "Not the leader for group {:?}, stream {} will be initialized by leader",
+                                group_id, stream_name
                             );
                         }
                         Err(e) => {
                             error!(
-                                "Failed to initialize stream {stream_name} in group {group_id:?}: {e}"
+                                "Failed to initialize stream {} in group {:?}: {}",
+                                stream_name, group_id, e
                             );
                         }
                     }
@@ -211,7 +218,10 @@ where
 
             GlobalConsensusEvent::StreamDeleted { stream_name } => {
                 // Stream deletion is handled at the global level
-                debug!("GroupConsensusSubscriber: Stream {stream_name} deleted globally");
+                debug!(
+                    "GroupConsensusSubscriber: Stream {} deleted globally",
+                    stream_name
+                );
             }
 
             GlobalConsensusEvent::MembershipChanged { .. } => {

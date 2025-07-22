@@ -14,12 +14,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_bootable::Bootable;
-use proven_logger::{debug, error};
 use proven_messaging::service::{Service, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
 use tokio::sync::{Mutex, broadcast};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::{debug, error};
 
 /// Options for the in-memory subscriber (there are none).
 #[derive(Clone, Debug)]
@@ -120,7 +120,7 @@ where
                             );
 
                             if let Err(e) = handler.handle(request.payload, responder).await {
-                                error!("error handling service request: {e}");
+                                error!("error handling service request: {}", e);
                             }
 
                             let mut seq = last_seq.lock().await;
@@ -134,7 +134,7 @@ where
                             break;
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
-                            error!("Service request receiver lagged by {n} messages.");
+                            error!("Service request receiver lagged by {} messages.", n);
                         }
                     }
                 }

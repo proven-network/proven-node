@@ -1,8 +1,8 @@
 //! Membership event subscriber for routing service
 
 use async_trait::async_trait;
-use proven_logger::info;
 use std::sync::Arc;
+use tracing::info;
 
 use crate::services::event::{EventHandler, EventPriority};
 use crate::services::membership::events::MembershipEvent;

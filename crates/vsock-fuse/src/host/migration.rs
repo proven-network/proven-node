@@ -9,7 +9,6 @@ use tokio::sync::{Mutex, mpsc};
 use tokio::time;
 
 use crate::{BlobId, error::Result};
-use proven_logger::{error, info};
 
 use super::{
     policy::{PolicyDecision, PolicyEngine},
@@ -93,11 +92,11 @@ impl MigrationScheduler {
                             &cold_tier,
                             &queue,
                         ).await {
-                            error!("Migration scan failed: {e}");
+                            tracing::error!("Migration scan failed: {}", e);
                         }
                     }
                     _ = shutdown_rx.recv() => {
-                        info!("Migration scanner shutting down");
+                        tracing::info!("Migration scanner shutting down");
                         break;
                     }
                 }
@@ -112,7 +111,7 @@ impl MigrationScheduler {
             let stats = self.stats.clone();
 
             tokio::spawn(async move {
-                info!("Migration worker {i} started");
+                tracing::info!("Migration worker {} started", i);
 
                 loop {
                     // Get next task
@@ -133,7 +132,11 @@ impl MigrationScheduler {
                                 Self::update_stats(&stats, &task, true, bytes, duration).await;
                             }
                             Err(e) => {
-                                error!("Migration failed for blob {:?}: {}", task.blob_id, e);
+                                tracing::error!(
+                                    "Migration failed for blob {:?}: {}",
+                                    task.blob_id,
+                                    e
+                                );
 
                                 Self::update_stats(&stats, &task, false, 0, Duration::from_secs(0))
                                     .await;
@@ -221,9 +224,10 @@ impl MigrationScheduler {
                 // Delete from hot tier
                 hot_tier.delete(&task.blob_id).await?;
 
-                info!(
+                tracing::info!(
                     "Migrated blob {:?} to cold tier ({} bytes)",
-                    task.blob_id, size
+                    task.blob_id,
+                    size
                 );
 
                 Ok(size)
@@ -240,9 +244,10 @@ impl MigrationScheduler {
                 // For now, we'll delete to save space
                 cold_tier.delete(&task.blob_id).await?;
 
-                info!(
+                tracing::info!(
                     "Migrated blob {:?} to hot tier ({} bytes)",
-                    task.blob_id, size
+                    task.blob_id,
+                    size
                 );
 
                 Ok(size)
@@ -251,7 +256,7 @@ impl MigrationScheduler {
                 // Just delete from hot tier (assumes it exists in cold)
                 hot_tier.delete(&task.blob_id).await?;
 
-                info!("Deleted blob {:?} from hot tier", task.blob_id);
+                tracing::info!("Deleted blob {:?} from hot tier", task.blob_id);
 
                 Ok(0)
             }

@@ -9,9 +9,8 @@ bytes.workspace = true
 proven-storage.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
-proven-logger.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-proven-logger-macros.workspace = true
 tokio.workspace = true
 tracing-subscriber = "0.3"

@@ -19,10 +19,10 @@ use axum::Router;
 use parking_lot::RwLock;
 use proven_bootable::Bootable;
 use proven_http::HttpServer;
-use proven_logger::info;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower::Service;
+use tracing::info;
 
 /// Simple non-secure HTTP server.
 #[derive(Clone)]
@@ -100,7 +100,7 @@ impl Bootable for InsecureHttpServer {
         self.task_tracker.spawn(async move {
             tokio::select! {
                 e = axum::serve(listener, router.into_make_service()).into_future() => {
-                    info!("http server exited {e:?}");
+                    info!("http server exited {:?}", e);
                 }
                 () = shutdown_token.cancelled() => {}
             };

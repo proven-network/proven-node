@@ -10,10 +10,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use proven_logger::debug;
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::service_responder::ServiceResponder;
 use reqwest::Client;
+use tracing::debug;
 
 /// A service handler that proxies HTTP requests to a target service.
 #[derive(Clone, Debug)]

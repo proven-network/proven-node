@@ -3,8 +3,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use proven_logger::{debug, error, info, warn};
 use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
 
 use super::service::ComponentRegistry;
 use super::types::*;
@@ -160,7 +160,7 @@ impl ShutdownCoordinator {
         name: &str,
         options: &ShutdownOptions,
     ) -> LifecycleResult<()> {
-        debug!("Stopping component: {name}");
+        debug!("Stopping component: {}", name);
 
         // Update state to shutting down
         self.update_component_state(components, name, ComponentState::ShuttingDown)
@@ -178,16 +178,16 @@ impl ShutdownCoordinator {
                 match result {
                     Ok(()) => {
                         self.update_component_state(components, name, ComponentState::Stopped).await?;
-                        info!("Component {name} stopped successfully");
+                        info!("Component {} stopped successfully", name);
                         Ok(())
                     }
                     Err(e) => {
                         if options.force {
-                            warn!("Component {name} shutdown failed: {e}, forcing");
+                            warn!("Component {} shutdown failed: {}, forcing", name, e);
                             self.update_component_state(components, name, ComponentState::Stopped).await?;
                             Ok(())
                         } else {
-                            error!("Component {name} shutdown failed: {e}");
+                            error!("Component {} shutdown failed: {}", name, e);
                             self.update_component_state(components, name, ComponentState::Failed).await?;
                             Err(e)
                         }
@@ -196,7 +196,7 @@ impl ShutdownCoordinator {
             }
             _ = tokio::time::sleep(options.timeout / 4) => {
                 if options.force {
-                    warn!("Component {name} shutdown timeout, forcing");
+                    warn!("Component {} shutdown timeout, forcing", name);
                     self.update_component_state(components, name, ComponentState::Stopped).await?;
                     Ok(())
                 } else {
@@ -238,7 +238,7 @@ impl ShutdownCoordinator {
         let registry = components.read().await;
         for (name, component) in &registry.components {
             if component.state == ComponentState::Running {
-                debug!("Saving state for component: {name}");
+                debug!("Saving state for component: {}", name);
                 // In a real implementation, this would save component state
             }
         }

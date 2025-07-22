@@ -5,12 +5,12 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_logger::{debug, error};
 use proven_vsock_rpc::{
     HandlerResponse, MessagePattern, RpcHandler, RpcServer as VsockRpcServer, ServerConfig,
     error::HandlerError,
 };
 use std::sync::Arc;
+use tracing::{debug, error};
 
 use crate::{
     error::{Result, VsockFuseError as Error},
@@ -90,7 +90,7 @@ impl RpcHandler for StorageHandler {
                 let response = self.handle_delete_blob(request).await.map_err(|e| {
                     proven_vsock_rpc::Error::Handler(HandlerError::Internal(e.to_string()))
                 })?;
-                debug!("Delete response: {response:?}");
+                debug!("Delete response: {:?}", response);
                 let response_bytes: Bytes = response.try_into().map_err(|e| {
                     proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
                         "Failed to encode response: {e}"
@@ -126,7 +126,7 @@ impl RpcHandler for StorageHandler {
                 let response = self.handle_get_stats(request).await.map_err(|e| {
                     proven_vsock_rpc::Error::Handler(HandlerError::Internal(e.to_string()))
                 })?;
-                debug!("Generated stats response: {response:?}");
+                debug!("Generated stats response: {:?}", response);
                 let response_bytes: Bytes = response.try_into().map_err(|e| {
                     proven_vsock_rpc::Error::Handler(HandlerError::Internal(format!(
                         "Failed to encode response: {e}"
@@ -156,7 +156,7 @@ impl RpcHandler for StorageHandler {
                 Ok(HandlerResponse::Single(response_bytes))
             }
             _ => {
-                error!("Unknown message type: {message_id}");
+                error!("Unknown message type: {}", message_id);
                 Err(proven_vsock_rpc::Error::Handler(HandlerError::NotFound(
                     format!("Unknown message type: {message_id}"),
                 )))
@@ -178,7 +178,7 @@ impl RpcHandler for StorageHandler {
         #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
         #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
     ) {
-        debug!("Client disconnected: {addr:?}");
+        debug!("Client disconnected: {:?}", addr);
     }
 }
 

@@ -4,16 +4,25 @@ mod common;
 
 use common::test_cluster::{TestCluster, TransportType};
 use proven_engine::foundation::types::ConsensusGroupId;
-use proven_logger_macros::logged_tokio_test;
 use std::time::Duration;
+use tracing::Level;
+use tracing_subscriber::EnvFilter;
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_raft_leader_election() {
     // Test that Raft properly elects leaders and handles leader changes
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap()),
+        )
+        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    proven_logger::info!("=== Starting 3-node cluster for leader election test ===");
+    tracing::info!("=== Starting 3-node cluster for leader election test ===");
 
     let (engines, node_infos) = cluster.add_nodes(3).await;
 
@@ -37,14 +46,14 @@ async fn test_raft_leader_election() {
             if state.leader.as_ref() == Some(&node_infos[i].node_id) {
                 leader_engine_idx = Some(i);
             }
-            proven_logger::info!("Node {} sees leader: {} (term: {})", i, leader, state.term);
+            tracing::info!("Node {} sees leader: {} (term: {})", i, leader, state.term);
         }
     }
 
     let leader = current_leader.expect("Should have a leader");
     let leader_idx = leader_engine_idx.expect("Should find leader engine");
 
-    proven_logger::info!("Current leader is node {leader_idx} ({leader})");
+    tracing::info!("Current leader is node {} ({})", leader_idx, leader);
 
     // Store the current term
     let initial_term = engines[leader_idx]
@@ -53,14 +62,14 @@ async fn test_raft_leader_election() {
         .expect("Failed to get leader state")
         .term;
 
-    proven_logger::info!("=== Stopping current leader to trigger new election ===");
+    tracing::info!("=== Stopping current leader to trigger new election ===");
 
     // Stop the leader
     let mut engines_vec: Vec<_> = engines.into_iter().collect();
     let mut stopped_leader = engines_vec.remove(leader_idx);
     stopped_leader.stop().await.expect("Failed to stop leader");
 
-    proven_logger::info!("Leader stopped, waiting for new election...");
+    tracing::info!("Leader stopped, waiting for new election...");
 
     // Wait for new leader election
     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -75,7 +84,7 @@ async fn test_raft_leader_election() {
         {
             new_leaders.insert(new_leader.clone());
             new_term = state.term;
-            proven_logger::info!(
+            tracing::info!(
                 "Remaining node {} sees new leader: {} (term: {})",
                 i,
                 new_leader,
@@ -96,23 +105,31 @@ async fn test_raft_leader_election() {
         "Should have elected a different leader"
     );
 
-    proven_logger::info!("New leader elected: {new_leader} (term: {new_term})");
+    tracing::info!("New leader elected: {} (term: {})", new_leader, new_term);
 
     // Clean up remaining engines
     for mut engine in engines_vec {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    proven_logger::info!("=== Leader election test completed successfully ===");
+    tracing::info!("=== Leader election test completed successfully ===");
 }
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_raft_membership_change() {
     // Test Raft membership changes through the proper Raft protocol
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap()),
+        )
+        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    proven_logger::info!("=== Starting 3-node cluster ===");
+    tracing::info!("=== Starting 3-node cluster ===");
 
     let (mut engines, mut node_infos) = cluster.add_nodes(3).await;
 
@@ -130,7 +147,7 @@ async fn test_raft_membership_change() {
         initial_members.insert(info.node_id.clone());
     }
 
-    proven_logger::info!("Initial members: {initial_members:?}");
+    tracing::info!("Initial members: {:?}", initial_members);
 
     // TODO: In a real implementation, we would need to:
     // 1. Add a new node to the topology
@@ -138,7 +155,7 @@ async fn test_raft_membership_change() {
     // 3. Wait for the membership change to be committed
     // 4. Verify the new node is added to the consensus group
 
-    proven_logger::info!("=== Adding new node through proper channels ===");
+    tracing::info!("=== Adding new node through proper channels ===");
 
     // Add a new node
     let (new_engines, new_node_infos) = cluster.add_nodes(1).await;
@@ -146,7 +163,7 @@ async fn test_raft_membership_change() {
     node_infos.extend(new_node_infos);
 
     let new_node_id = node_infos[3].node_id.clone();
-    proven_logger::info!("Added new node: {new_node_id}");
+    tracing::info!("Added new node: {}", new_node_id);
 
     // In the current implementation, the new node needs to be added
     // to global consensus membership through the topology manager
@@ -157,7 +174,7 @@ async fn test_raft_membership_change() {
     // Verify membership state
     for (i, engine) in engines.iter().enumerate() {
         if let Ok(state) = engine.group_state(group_id).await {
-            proven_logger::info!(
+            tracing::info!(
                 "Node {} membership view: leader={:?}, members={:?}",
                 i,
                 state.leader,
@@ -176,23 +193,31 @@ async fn test_raft_membership_change() {
         .await
         .expect("Failed to create stream after membership change");
 
-    proven_logger::info!("Successfully created stream after membership change");
+    tracing::info!("Successfully created stream after membership change");
 
     // Clean up
     for mut engine in engines {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    proven_logger::info!("=== Membership change test completed successfully ===");
+    tracing::info!("=== Membership change test completed successfully ===");
 }
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_split_brain_prevention() {
     // Test that Raft prevents split-brain scenarios
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=warn".parse().unwrap()),
+        )
+        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    proven_logger::info!("=== Starting 5-node cluster for split-brain test ===");
+    tracing::info!("=== Starting 5-node cluster for split-brain test ===");
 
     let (engines, node_infos) = cluster.add_nodes(5).await;
 
@@ -211,7 +236,7 @@ async fn test_split_brain_prevention() {
             && state.leader.as_ref() == Some(&node_infos[i].node_id)
         {
             _leader_idx = Some(i);
-            proven_logger::info!("Found leader at index {}: {}", i, node_infos[i].node_id);
+            tracing::info!("Found leader at index {}: {}", i, node_infos[i].node_id);
             break;
         }
     }
@@ -219,7 +244,7 @@ async fn test_split_brain_prevention() {
     // Convert to mutable vector for manipulation
     let mut engines_vec: Vec<_> = engines.into_iter().collect();
 
-    proven_logger::info!("=== Simulating network partition ===");
+    tracing::info!("=== Simulating network partition ===");
 
     // Create two partitions:
     // Partition A: 2 nodes (minority) - indices 0, 1
@@ -236,10 +261,10 @@ async fn test_split_brain_prevention() {
         let mut engine = engines_vec.remove(0);
         engine.stop().await.expect("Failed to stop engine");
         stopped_engines.push(engine);
-        proven_logger::info!("Stopped node {i} for partition");
+        tracing::info!("Stopped node {} for partition", i);
     }
 
-    proven_logger::info!("Created partition: 2 nodes stopped, 3 nodes running");
+    tracing::info!("Created partition: 2 nodes stopped, 3 nodes running");
 
     // Wait for the majority partition to elect a new leader if needed
     tokio::time::sleep(Duration::from_secs(8)).await;
@@ -256,7 +281,7 @@ async fn test_split_brain_prevention() {
             if state.is_member {
                 can_operate = true;
             }
-            proven_logger::info!(
+            tracing::info!(
                 "Majority partition node {} state: leader={:?}, can operate",
                 i + partition_a_count,
                 leader
@@ -288,7 +313,7 @@ async fn test_split_brain_prevention() {
             result.is_ok(),
             "Majority partition should be able to create streams"
         );
-        proven_logger::info!("Majority partition successfully created a stream");
+        tracing::info!("Majority partition successfully created a stream");
     }
 
     // The minority partition (stopped nodes) cannot form consensus or elect a leader
@@ -299,16 +324,24 @@ async fn test_split_brain_prevention() {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    proven_logger::info!("=== Split-brain prevention test completed successfully ===");
+    tracing::info!("=== Split-brain prevention test completed successfully ===");
 }
 
-#[logged_tokio_test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_deterministic_initialization() {
     // Test that only the node with lowest ID initializes the cluster
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive(Level::INFO.into())
+                .add_directive("proven_engine=debug".parse().unwrap())
+                .add_directive("openraft=error".parse().unwrap()),
+        )
+        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    proven_logger::info!("=== Starting 3 nodes simultaneously ===");
+    tracing::info!("=== Starting 3 nodes simultaneously ===");
 
     // Start 3 nodes at once
     let (engines, node_infos) = cluster.add_nodes(3).await;
@@ -318,7 +351,7 @@ async fn test_deterministic_initialization() {
     sorted_ids.sort();
 
     let expected_initializer = &sorted_ids[0];
-    proven_logger::info!("Expected initializer (lowest ID): {expected_initializer}");
+    tracing::info!("Expected initializer (lowest ID): {}", expected_initializer);
 
     // Wait for initialization
     cluster
@@ -337,7 +370,7 @@ async fn test_deterministic_initialization() {
                 leaders.insert(leader.clone());
             }
             terms.insert(state.term);
-            proven_logger::info!(
+            tracing::info!(
                 "Node {} ({}): term={}, leader={:?}",
                 i,
                 node_infos[i].node_id,
@@ -350,7 +383,7 @@ async fn test_deterministic_initialization() {
     assert_eq!(leaders.len(), 1, "All nodes should agree on one leader");
     assert_eq!(terms.len(), 1, "All nodes should be on the same term");
 
-    proven_logger::info!(
+    tracing::info!(
         "Consensus formed successfully with leader: {:?}",
         leaders.iter().next()
     );
@@ -360,5 +393,5 @@ async fn test_deterministic_initialization() {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    proven_logger::info!("=== Deterministic initialization test completed successfully ===");
+    tracing::info!("=== Deterministic initialization test completed successfully ===");
 }

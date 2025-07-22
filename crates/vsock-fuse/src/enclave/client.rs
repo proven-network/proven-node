@@ -4,7 +4,6 @@
 //! with the host-side storage service over VSOCK.
 
 use async_trait::async_trait;
-use proven_logger::warn;
 use std::sync::Arc;
 
 use crate::{
@@ -36,7 +35,11 @@ impl EnclaveStorageClient {
         #[cfg(not(target_os = "linux"))]
         let addr = {
             if host_cid != 2 && host_cid != 3 {
-                warn!("CID {host_cid} ignored on non-Linux platform, using localhost:{host_port}");
+                tracing::warn!(
+                    "CID {} ignored on non-Linux platform, using localhost:{}",
+                    host_cid,
+                    host_port
+                );
             }
             std::net::SocketAddr::from(([127, 0, 0, 1], host_port as u16))
         };

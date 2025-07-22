@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use proven_logger::{debug, warn};
 use tokio::sync::RwLock;
+use tracing::{debug, warn};
 
 use crate::foundation::ConsensusGroupId;
 
@@ -108,10 +108,16 @@ impl LoadBalancer {
 
         // Check if best group is overloaded
         if best_score > self.thresholds.high_load {
-            warn!("All available groups are highly loaded (best score: {best_score})");
+            warn!(
+                "All available groups are highly loaded (best score: {})",
+                best_score
+            );
         }
 
-        debug!("Selected least loaded group {best_group:?} with score {best_score}");
+        debug!(
+            "Selected least loaded group {:?} with score {}",
+            best_group, best_score
+        );
 
         Ok(best_group)
     }
@@ -126,7 +132,7 @@ impl LoadBalancer {
         state.last_index = (state.last_index + 1) % available_groups.len();
         let selected = available_groups[state.last_index];
 
-        debug!("Selected group {selected:?} using round-robin");
+        debug!("Selected group {:?} using round-robin", selected);
         Ok(selected)
     }
 
@@ -144,7 +150,7 @@ impl LoadBalancer {
         let index = hash % available_groups.len();
         let selected = available_groups[index];
 
-        debug!("Selected group {selected:?} using hash-based routing");
+        debug!("Selected group {:?} using hash-based routing", selected);
         Ok(selected)
     }
 

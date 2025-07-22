@@ -1,11 +1,11 @@
 //! WAL client implementation for S3 storage
 
 use bytes::Bytes;
-use proven_logger::{debug, info};
 use proven_storage::{StorageError, StorageNamespace, StorageResult};
 use proven_vsock_rpc::RpcClient;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
+use tracing::{debug, info};
 
 use super::commands::*;
 use crate::config::WalConfig;
@@ -85,7 +85,7 @@ impl WalClient {
             .map_err(|e| StorageError::Backend(format!("WAL request failed: {e}")))?;
 
         if response.success {
-            debug!("WAL append successful for batch {batch_id}");
+            debug!("WAL append successful for batch {}", batch_id);
             Ok(())
         } else {
             // Restore pending size on error
@@ -162,7 +162,7 @@ impl WalClient {
             .map_err(|e| StorageError::Backend(format!("WAL metadata request failed: {e}")))?;
 
         if response.success {
-            debug!("WAL metadata set successful for key {key}");
+            debug!("WAL metadata set successful for key {}", key);
             Ok(())
         } else {
             Err(StorageError::Backend(

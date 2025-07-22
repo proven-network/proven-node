@@ -15,9 +15,9 @@ use std::thread;
 use std::time::Duration;
 
 use deno_core::ModuleSpecifier;
-use proven_logger::error;
 use rustyscript::{ExtensionOptions, WebOptions};
 use tokio::sync::oneshot;
+use tracing::error;
 
 pub struct OptionsParser;
 

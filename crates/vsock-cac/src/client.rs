@@ -2,8 +2,8 @@
 
 use crate::commands::{InitializeRequest, InitializeResponse, ShutdownRequest, ShutdownResponse};
 use crate::error::Result;
-use proven_logger::debug;
 use proven_vsock_rpc::RpcClient;
+use tracing::{debug, instrument};
 
 /// Client for sending CAC commands to the enclave.
 pub struct CacClient {
@@ -34,7 +34,7 @@ impl CacClient {
     ///
     /// # Errors
     /// Returns an error if the command fails or the response is invalid.
-    // #[instrument(skip(self, request))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, request))]
     pub async fn initialize(&self, request: InitializeRequest) -> Result<InitializeResponse> {
         debug!("Sending initialize request");
 
@@ -46,7 +46,7 @@ impl CacClient {
     ///
     /// # Errors
     /// Returns an error if the command fails or the response is invalid.
-    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self))]
     pub async fn shutdown(&self) -> Result<ShutdownResponse> {
         self.shutdown_with_options(ShutdownRequest::default()).await
     }
@@ -55,7 +55,7 @@ impl CacClient {
     ///
     /// # Errors
     /// Returns an error if the command fails or the response is invalid.
-    // #[instrument(skip(self, request))] // TODO: Add this back in if we support instrument
+    #[instrument(skip(self, request))]
     pub async fn shutdown_with_options(
         &self,
         request: ShutdownRequest,

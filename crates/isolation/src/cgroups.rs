@@ -3,16 +3,15 @@
 //! This module provides functionality for setting up cgroups v2
 //! memory controllers for isolated processes.
 
-use proven_logger::warn;
-
-#[cfg(target_os = "linux")]
-use proven_logger::{debug, error};
 #[cfg(target_os = "linux")]
 use std::fs;
 #[cfg(target_os = "linux")]
 use std::io::ErrorKind;
 #[cfg(target_os = "linux")]
 use std::path::{Path, PathBuf};
+use tracing::warn;
+#[cfg(target_os = "linux")]
+use tracing::{debug, error, info};
 
 #[cfg(target_os = "linux")]
 use crate::error::Error;

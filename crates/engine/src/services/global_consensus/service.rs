@@ -13,7 +13,7 @@ use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
-use proven_logger::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, warn};
 
 use super::{
     callbacks::GlobalConsensusCallbacksImpl,
@@ -219,8 +219,6 @@ where
                 self.network_manager.clone(),
             )
             .await?;
-
-            // The consensus layer will handle resuming from persisted state automatically
         }
 
         // Register membership event subscriber
@@ -255,20 +253,20 @@ where
         };
 
         if let Some(token) = cancellation_token {
-            debug!("Signaling cancellation to background tasks");
+            tracing::debug!("Signaling cancellation to background tasks");
             token.cancel();
         }
 
         if let Some(tracker) = task_tracker {
-            debug!("Waiting for background tasks to complete");
+            tracing::debug!("Waiting for background tasks to complete");
             tracker.close();
 
             match tokio::time::timeout(std::time::Duration::from_secs(5), tracker.wait()).await {
                 Ok(()) => {
-                    debug!("All background tasks completed successfully");
+                    tracing::debug!("All background tasks completed successfully");
                 }
                 Err(_) => {
-                    warn!("Background tasks did not complete within 5 seconds timeout");
+                    tracing::warn!("Background tasks did not complete within 5 seconds timeout");
                 }
             }
         }
@@ -288,13 +286,13 @@ where
             // Shutdown the Raft instance to release all resources with timeout
             match tokio::time::timeout(std::time::Duration::from_secs(5), layer.shutdown()).await {
                 Ok(Ok(())) => {
-                    debug!("Global Raft instance shut down successfully");
+                    tracing::debug!("Global Raft instance shut down successfully");
                 }
                 Ok(Err(e)) => {
-                    error!("Failed to shutdown global Raft instance: {e}");
+                    tracing::error!("Failed to shutdown global Raft instance: {}", e);
                 }
                 Err(_) => {
-                    error!("Timeout while shutting down global Raft instance");
+                    tracing::error!("Timeout while shutting down global Raft instance");
                 }
             }
         }
@@ -302,21 +300,21 @@ where
         // Clear the consensus layer to release all references
         *consensus_layer = None;
         drop(consensus_layer);
-        debug!("Consensus layer cleared and lock released");
+        tracing::debug!("Consensus layer cleared and lock released");
 
         use super::messages::GlobalConsensusMessage;
-        debug!("Unregistering global consensus service handler");
+        tracing::debug!("Unregistering global consensus service handler");
         if let Err(e) = self
             .network_manager
             .unregister_service::<GlobalConsensusMessage>()
             .await
         {
-            warn!("Failed to unregister global consensus service: {e}");
+            tracing::warn!("Failed to unregister global consensus service: {}", e);
         } else {
-            debug!("Global consensus service handler unregistered");
+            tracing::debug!("Global consensus service handler unregistered");
         }
 
-        debug!("GlobalConsensusService stop completed");
+        tracing::debug!("GlobalConsensusService stop completed");
         Ok(())
     }
 
@@ -535,11 +533,11 @@ where
 
     /// Resume consensus from persisted state
     pub async fn resume_from_persisted_state(&self) -> ConsensusResult<()> {
-        info!("Resuming global consensus from persisted state");
+        tracing::info!("Resuming global consensus from persisted state");
 
         // Check if already initialized
         if self.consensus_layer.read().await.is_some() {
-            debug!("Global consensus layer already initialized");
+            tracing::debug!("Global consensus layer already initialized");
             return Ok(());
         }
 
@@ -590,7 +588,7 @@ where
         };
         self.event_bus.publish(event).await;
 
-        info!("Successfully resumed global consensus from persisted state");
+        tracing::info!("Successfully resumed global consensus from persisted state");
         Ok(())
     }
 
@@ -615,8 +613,9 @@ where
                             current_term = metrics.current_term;
 
                             if let Some(new_leader) = &current_leader {
-                                info!(
-                                    "Global consensus leader changed: {old_leader:?} -> {new_leader} (term {current_term})"
+                                tracing::info!(
+                                    "Global consensus leader changed: {:?} -> {} (term {})",
+                                    old_leader, new_leader, current_term
                                 );
 
                                 // Publish event
@@ -634,7 +633,7 @@ where
                 }
             }
 
-            debug!("Leader monitoring task stopped");
+            tracing::debug!("Leader monitoring task stopped");
         });
     }
 
@@ -651,15 +650,15 @@ where
         // Get all peers
         let peers = topology_manager.get_all_peers().await;
         if peers.is_empty() {
-            info!("No peers found, no existing cluster");
+            tracing::info!("No peers found, no existing cluster");
             return Ok(None);
         }
 
-        info!("Checking {} peers for existing cluster", peers.len());
+        tracing::info!("Checking {} peers for existing cluster", peers.len());
 
         // Query each peer
         for peer in peers {
-            debug!("Querying peer {} for cluster status", peer.node_id);
+            tracing::debug!("Querying peer {} for cluster status", peer.node_id);
 
             let request = GlobalConsensusMessage::CheckClusterExists(CheckClusterExistsRequest {
                 node_id: self.node_id.clone(),
@@ -672,7 +671,7 @@ where
             {
                 Ok(GlobalConsensusResponse::CheckClusterExists(response)) => {
                     if response.cluster_exists {
-                        info!(
+                        tracing::info!(
                             "Peer {} reports cluster exists with leader {:?} and {} members",
                             peer.node_id,
                             response.current_leader,
@@ -686,16 +685,16 @@ where
                     }
                 }
                 Err(e) => {
-                    debug!("Failed to query peer {}: {}", peer.node_id, e);
+                    tracing::debug!("Failed to query peer {}: {}", peer.node_id, e);
                     // Continue to next peer
                 }
                 _ => {
-                    warn!("Unexpected response from peer {}", peer.node_id);
+                    tracing::warn!("Unexpected response from peer {}", peer.node_id);
                 }
             }
         }
 
-        info!("No existing cluster found after querying all peers");
+        tracing::info!("No existing cluster found after querying all peers");
         Ok(None)
     }
 
@@ -712,7 +711,7 @@ where
         let token = cancellation_token.clone();
 
         task_tracker.spawn(async move {
-            info!("Starting membership monitor for global consensus");
+            tracing::info!("Starting membership monitor for global consensus");
 
             // Wait for membership service to be available
             loop {
@@ -738,11 +737,11 @@ where
                             &membership_service,
                             &node_id,
                         ).await {
-                            error!("Failed to update Raft membership: {e}");
+                            tracing::error!("Failed to update Raft membership: {}", e);
                         }
                     }
                     _ = token.cancelled() => {
-                        info!("Membership monitor shutting down");
+                        tracing::info!("Membership monitor shutting down");
                         return;
                     }
                 }
@@ -768,7 +767,7 @@ where
         // Only the leader should propose membership changes
         let is_leader = consensus.is_leader().await;
         if !is_leader {
-            trace!("Not the leader, skipping membership update");
+            tracing::trace!("Not the leader, skipping membership update");
             return Ok(());
         }
 
@@ -802,11 +801,15 @@ where
 
         // Check if membership has changed
         if target_members == all_current {
-            debug!("No membership changes needed");
+            tracing::debug!("No membership changes needed");
             return Ok(());
         }
 
-        info!("Updating Raft membership. Current: {all_current:?}, Target: {target_members:?}");
+        tracing::info!(
+            "Updating Raft membership. Current: {:?}, Target: {:?}",
+            all_current,
+            target_members
+        );
 
         // Determine nodes to add and remove
         let nodes_to_add: Vec<NodeId> = target_members.difference(&all_current).cloned().collect();
@@ -815,7 +818,7 @@ where
 
         // First, add new nodes as learners
         for node_id in &nodes_to_add {
-            info!("Adding node {node_id} as learner");
+            tracing::info!("Adding node {} as learner", node_id);
 
             // Find the node info from membership
             let node_info = online_members
@@ -831,9 +834,9 @@ where
 
             // Add as learner
             match consensus.add_learner(node_id.clone(), node_info).await {
-                Ok(_) => info!("Successfully added {node_id} as learner"),
+                Ok(_) => tracing::info!("Successfully added {} as learner", node_id),
                 Err(e) => {
-                    warn!("Failed to add {node_id} as learner: {e}");
+                    tracing::warn!("Failed to add {} as learner: {}", node_id, e);
                     // Continue with other nodes
                 }
             }
@@ -841,7 +844,7 @@ where
 
         // Give learners time to catch up
         if !nodes_to_add.is_empty() {
-            info!("Waiting for learners to catch up...");
+            tracing::info!("Waiting for learners to catch up...");
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
 
@@ -858,14 +861,14 @@ where
 
         // Propose membership change
         if new_voters != current_voters {
-            info!("Proposing membership change: {new_voters:?}");
+            tracing::info!("Proposing membership change: {:?}", new_voters);
 
             match consensus.change_membership(new_voters.clone(), false).await {
                 Ok(_) => {
-                    info!("Successfully updated membership");
+                    tracing::info!("Successfully updated membership");
                 }
                 Err(e) => {
-                    error!("Failed to update membership: {e}");
+                    tracing::error!("Failed to update membership: {}", e);
                     return Err(e);
                 }
             }

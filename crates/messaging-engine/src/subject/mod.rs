@@ -10,8 +10,8 @@ use std::marker::PhantomData;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_logger::debug;
 use proven_messaging::subject::Subject;
+use tracing::debug;
 
 /// An engine messaging subject.
 pub struct EngineMessagingSubject<Tr, G, St, T, D, S>

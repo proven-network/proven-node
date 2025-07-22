@@ -4,7 +4,6 @@
 
 #![allow(clippy::field_reassign_with_default)]
 
-use proven_logger_macros::logged_tokio_test;
 use proven_vsock_fuse::{
     BlobId, TierHint,
     config::{Config, HotTierConfig, RpcConfig},
@@ -15,8 +14,14 @@ use proven_vsock_fuse::{
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_client_storage_operations() -> anyhow::Result<()> {
+    // Initialize logging
+    let _ = tracing_subscriber::fmt()
+        .with_target(false)
+        .with_level(true)
+        .try_init();
+
     // Create temporary directories
     let storage_dir = TempDir::new()?;
 
@@ -63,22 +68,22 @@ async fn test_client_storage_operations() -> anyhow::Result<()> {
     let storage_client = Arc::new(EnclaveStorageClient::from_client(Arc::new(rpc_client)));
 
     // Test 1: Store a data blob
-    proven_logger::info!("Test 1: Storing data blob");
+    tracing::info!("Test 1: Storing data blob");
     let blob_id = BlobId([42; 32]);
     let test_data = b"Hello from client test!".to_vec();
     storage_client
         .store_blob(blob_id, test_data.clone(), TierHint::PreferHot)
         .await?;
-    proven_logger::info!("✓ Data blob stored");
+    tracing::info!("✓ Data blob stored");
 
     // Test 2: Retrieve data blob
-    proven_logger::info!("Test 2: Retrieving data blob");
+    tracing::info!("Test 2: Retrieving data blob");
     let retrieved_blob = storage_client.get_blob(blob_id).await?;
     assert_eq!(retrieved_blob.data, test_data);
-    proven_logger::info!("✓ Data blob retrieved correctly");
+    tracing::info!("✓ Data blob retrieved correctly");
 
     // Test 3: Store multiple blobs
-    proven_logger::info!("Test 3: Storing multiple blobs");
+    tracing::info!("Test 3: Storing multiple blobs");
     let mut blob_ids = Vec::new();
     for i in 0..5 {
         let blob_id = BlobId([i; 32]);
@@ -88,52 +93,52 @@ async fn test_client_storage_operations() -> anyhow::Result<()> {
             .await?;
         blob_ids.push(blob_id);
     }
-    proven_logger::info!("✓ Multiple blobs stored");
+    tracing::info!("✓ Multiple blobs stored");
 
     // Test 4: List blobs
-    proven_logger::info!("Test 4: Listing blobs");
+    tracing::info!("Test 4: Listing blobs");
     let all_blobs = storage_client.list_blobs(None).await?;
     assert!(all_blobs.len() >= 6); // At least our test blobs
-    proven_logger::info!("✓ Found {} blobs", all_blobs.len());
+    tracing::info!("✓ Found {} blobs", all_blobs.len());
 
     // Test 5: List blobs with prefix
-    proven_logger::info!("Test 5: Listing blobs with prefix");
+    tracing::info!("Test 5: Listing blobs with prefix");
     let prefix_blobs = storage_client.list_blobs(Some(&[0])).await?;
     assert!(prefix_blobs.iter().any(|info| info.blob_id == blob_ids[0]));
-    proven_logger::info!("✓ Prefix filtering works");
+    tracing::info!("✓ Prefix filtering works");
 
     // Test 6: Get blob info
-    proven_logger::info!("Test 6: Checking blob info");
+    tracing::info!("Test 6: Checking blob info");
     let blob_info = all_blobs
         .iter()
         .find(|info| info.blob_id == blob_id)
         .expect("Should find our test blob");
     assert_eq!(blob_info.size, test_data.len() as u64);
-    proven_logger::info!("✓ Blob info is correct");
+    tracing::info!("✓ Blob info is correct");
 
     // Test 7: Storage stats
-    proven_logger::info!("Test 7: Getting storage stats");
+    tracing::info!("Test 7: Getting storage stats");
     let stats = storage_client.get_stats().await?;
     assert!(stats.hot_tier.used_bytes > 0);
     assert!(stats.hot_tier.file_count >= 6);
-    proven_logger::info!(
+    tracing::info!(
         "✓ Storage stats: {} bytes used, {} files",
         stats.hot_tier.used_bytes,
         stats.hot_tier.file_count
     );
 
     // Test 8: Delete blob
-    proven_logger::info!("Test 8: Deleting blob");
+    tracing::info!("Test 8: Deleting blob");
     storage_client.delete_blob(blob_id).await?;
 
     // Verify deletion
     match storage_client.get_blob(blob_id).await {
-        Err(_) => proven_logger::info!("✓ Blob successfully deleted"),
+        Err(_) => tracing::info!("✓ Blob successfully deleted"),
         Ok(_) => panic!("Blob should have been deleted"),
     }
 
     // Test 9: Large blob operations
-    proven_logger::info!("Test 9: Testing large blob operations");
+    tracing::info!("Test 9: Testing large blob operations");
     let large_blob_id = BlobId([99; 32]);
     let large_data = vec![0xAB; 1024 * 1024]; // 1MB
     storage_client
@@ -143,10 +148,10 @@ async fn test_client_storage_operations() -> anyhow::Result<()> {
     let retrieved_large = storage_client.get_blob(large_blob_id).await?;
     assert_eq!(retrieved_large.data.len(), large_data.len());
     storage_client.delete_blob(large_blob_id).await?;
-    proven_logger::info!("✓ Large blob operations work");
+    tracing::info!("✓ Large blob operations work");
 
     // Test 10: Concurrent operations
-    proven_logger::info!("Test 10: Testing concurrent operations");
+    tracing::info!("Test 10: Testing concurrent operations");
     let client = storage_client.clone();
     let handles: Vec<_> = (0..5)
         .map(|i| {
@@ -168,10 +173,10 @@ async fn test_client_storage_operations() -> anyhow::Result<()> {
         let data = handle.await??;
         assert_eq!(data, format!("Concurrent blob {i}").into_bytes());
     }
-    proven_logger::info!("✓ Concurrent operations work");
+    tracing::info!("✓ Concurrent operations work");
 
     // Cleanup
-    proven_logger::info!("Cleaning up remaining test blobs");
+    tracing::info!("Cleaning up remaining test blobs");
     for blob_id in blob_ids {
         let _ = storage_client.delete_blob(blob_id).await;
     }
@@ -179,6 +184,6 @@ async fn test_client_storage_operations() -> anyhow::Result<()> {
     // Shutdown
     host_service.stop().await?;
 
-    proven_logger::info!("\n✓ Client storage integration test completed successfully!");
+    tracing::info!("\n✓ Client storage integration test completed successfully!");
     Ok(())
 }

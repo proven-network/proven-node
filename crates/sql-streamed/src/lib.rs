@@ -24,7 +24,6 @@ use std::sync::{Arc, LazyLock};
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_bootable::Bootable;
-use proven_logger::debug;
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::service::Service;
 use proven_messaging::stream::{InitializedStream, Stream, Stream1, Stream2, Stream3};
@@ -32,6 +31,7 @@ use proven_sql::{SqlStore, SqlStore1, SqlStore2, SqlStore3};
 use proven_store::{Store, Store1, Store2, Store3};
 use service_handler::SqlServiceHandler;
 use tokio::sync::{Mutex, Notify, oneshot};
+use tracing::debug;
 
 type DeserializeError = ciborium::de::Error<std::io::Error>;
 type SerializeError = ciborium::ser::Error<std::io::Error>;
@@ -173,14 +173,14 @@ where
                     let startup_notify_arc = Arc::new(Notify::new());
                     entry.insert(startup_notify_arc.clone());
                     running_services.insert(stream_name.clone());
-                    debug!("Registered SQL service for stream '{stream_name}'");
+                    debug!("Registered SQL service for stream '{}'", stream_name);
 
                     // Store the notify so we can notify waiting connections when done
                     drop(starting_services);
                     drop(running_services);
 
                     // Start the service and apply migrations
-                    debug!("Starting SQL service for stream '{stream_name}'");
+                    debug!("Starting SQL service for stream '{}'", stream_name);
 
                     let handler = SqlServiceHandler::new(
                         applied_migrations.clone(),
@@ -220,7 +220,10 @@ where
                         Error::Service(e.to_string())
                     })?;
 
-                    debug!("Successfully started SQL service for stream '{stream_name}'");
+                    debug!(
+                        "Successfully started SQL service for stream '{}'",
+                        stream_name
+                    );
 
                     // Wait for the stream to catch up before applying migrations
                     caught_up_rx
@@ -260,10 +263,11 @@ where
             if let Some(notify) = starting_services.get(&stream_name) {
                 startup_notify = Some(notify.clone());
                 debug!(
-                    "SQL service already running for stream '{stream_name}' but still starting up, waiting..."
+                    "SQL service already running for stream '{}' but still starting up, waiting...",
+                    stream_name
                 );
             } else {
-                debug!("SQL service already running for stream '{stream_name}'");
+                debug!("SQL service already running for stream '{}'", stream_name);
             }
         }
 

@@ -14,7 +14,6 @@ use bytes::Bytes;
 use dashmap::DashMap;
 use futures::StreamExt;
 use proven_bootable::Bootable;
-use proven_logger::{debug, error, info, warn};
 use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::{Transport, TransportEnvelope};
@@ -22,6 +21,7 @@ use tokio::sync::{RwLock, oneshot};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 /// Pending request tracking
@@ -293,7 +293,7 @@ where
         };
 
         handlers.insert(service_id, Arc::new(typed_handler));
-        info!("Registered service handler for '{service_id}'");
+        info!("Registered service handler for '{}'", service_id);
         Ok(())
     }
 
@@ -306,10 +306,13 @@ where
 
         let mut handlers = self.service_handlers.write().await;
         if handlers.remove(service_id).is_some() {
-            info!("Unregistered service handler for '{service_id}'");
+            info!("Unregistered service handler for '{}'", service_id);
             Ok(())
         } else {
-            warn!("Attempted to unregister non-existent service '{service_id}'");
+            warn!(
+                "Attempted to unregister non-existent service '{}'",
+                service_id
+            );
             Ok(()) // Don't error on double-unregister
         }
     }
@@ -349,7 +352,8 @@ where
         }
 
         debug!(
-            "Sending request to {target} for service '{service_id}' with correlation_id {correlation_id}"
+            "Sending request to {} for service '{}' with correlation_id {}",
+            target, service_id, correlation_id
         );
 
         // Send the request via transport
@@ -413,7 +417,7 @@ where
                 )
                 .await
                 {
-                    error!("Error processing incoming message: {e}");
+                    error!("Error processing incoming message: {}", e);
                 }
             });
         }
@@ -437,16 +441,25 @@ where
 
         // Check if this is a response to a pending request
         if let Some(correlation_id) = correlation_id {
-            debug!("Received message with correlation_id {correlation_id} from {sender}");
+            debug!(
+                "Received message with correlation_id {} from {}",
+                correlation_id, sender
+            );
 
             let pending = pending_requests.read().await;
             if let Some((_, request)) = pending.remove(&correlation_id) {
-                debug!("Found pending request for correlation_id {correlation_id}");
+                debug!(
+                    "Found pending request for correlation_id {}",
+                    correlation_id
+                );
                 let _ = request.tx.send(payload_bytes);
                 return Ok(());
             }
 
-            debug!("No pending request found for correlation_id {correlation_id}");
+            debug!(
+                "No pending request found for correlation_id {}",
+                correlation_id
+            );
         }
 
         // Try to find a service handler
@@ -457,7 +470,10 @@ where
         };
 
         if let Some(handler) = handler {
-            debug!("Found handler for service '{service_id}', correlation_id: {correlation_id:?}");
+            debug!(
+                "Found handler for service '{}', correlation_id: {:?}",
+                service_id, correlation_id
+            );
 
             match handler
                 .handle(sender.clone(), payload_bytes, correlation_id)
@@ -466,7 +482,8 @@ where
                 Ok(Some(response_bytes)) => {
                     if let Some(corr_id) = correlation_id {
                         debug!(
-                            "Handler returned response, sending back to {sender} with correlation_id {corr_id}"
+                            "Handler returned response, sending back to {} with correlation_id {}",
+                            sender, corr_id
                         );
                         // Send response back with the same service_id and correlation_id
                         transport
@@ -479,12 +496,13 @@ where
                     // No response needed
                 }
                 Err(e) => {
-                    warn!("Service handler error: {e}");
+                    warn!("Service handler error: {}", e);
                 }
             }
         } else {
             warn!(
-                "No handler found for service '{service_id}', correlation_id: {correlation_id:?}"
+                "No handler found for service '{}', correlation_id: {:?}",
+                service_id, correlation_id
             );
         }
 

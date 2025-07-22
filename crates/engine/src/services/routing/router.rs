@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use proven_logger::debug;
+use tracing::debug;
 
 use crate::foundation::ConsensusGroupId;
 
@@ -58,7 +58,7 @@ impl OperationRouter {
             && let Ok(Some(route)) = self.routing_table.get_stream_route(stream_name).await
             && route.is_active
         {
-            debug!("Using sticky route for stream {stream_name}");
+            debug!("Using sticky route for stream {}", stream_name);
             return Ok(RouteDecision::RouteToGroup(route.group_id));
         }
 
@@ -84,7 +84,7 @@ impl OperationRouter {
             .select_group(healthy_groups.iter().map(|(id, _)| *id).collect())
             .await?;
 
-        debug!("Routing stream {stream_name} to group {group_id:?}");
+        debug!("Routing stream {} to group {:?}", stream_name, group_id);
         Ok(RouteDecision::RouteToGroup(group_id))
     }
 

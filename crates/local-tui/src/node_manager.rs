@@ -12,8 +12,8 @@ use std::sync::{Arc, mpsc};
 
 use parking_lot::RwLock;
 use proven_local::{NodeConfig, NodeStatus};
-use proven_logger::{error, info, warn};
 use proven_topology_mock::MockTopologyAdaptor;
+use tracing::{error, info, warn};
 
 // Type aliases to reduce complexity
 type NodeMap = Arc<RwLock<HashMap<TuiNodeId, NodeRecord>>>;
@@ -48,7 +48,7 @@ impl NodeManager {
     /// Create a new node manager
     #[must_use]
     pub fn new(governance: Arc<MockTopologyAdaptor>, session_id: String) -> Self {
-        info!("Created new NodeManager with session_id: {session_id}");
+        info!("Created new NodeManager with session_id: {}", session_id);
 
         let (completion_sender, completion_receiver) = mpsc::channel();
 
@@ -94,14 +94,15 @@ impl NodeManager {
                             specializations: Some(specializations),
                         }) {
                             error!(
-                                "Failed to send start command to running node {name} ({id}): {e}"
+                                "Failed to send start command to running node {} ({}): {}",
+                                name, id, e
                             );
                         }
                         return;
                     }
                     NodeRecord::Stopped { .. } => {
                         // Node was stopped, we'll replace it with a new running instance
-                        info!("Restarting previously stopped node {name}");
+                        info!("Restarting previously stopped node {}", name);
                     }
                 }
             }
@@ -132,7 +133,10 @@ impl NodeManager {
                     specializations: Some(specializations),
                 })
             {
-                error!("Failed to send start command to node {name} ({id}): {e}");
+                error!(
+                    "Failed to send start command to node {} ({}): {}",
+                    name, id, e
+                );
             }
         }
     }
@@ -146,7 +150,7 @@ impl NodeManager {
                 NodeRecord::Running(handle) => {
                     info!("Stopping node {}", id.full_pokemon_name());
                     if let Err(e) = handle.send_command(NodeOperation::Stop) {
-                        error!("Failed to send stop command to node {id}: {e}");
+                        error!("Failed to send stop command to node {}: {}", id, e);
                     }
                 }
                 NodeRecord::Stopped { .. } => {
@@ -154,7 +158,7 @@ impl NodeManager {
                 }
             }
         } else {
-            warn!("Attempted to stop non-existent node: {id}");
+            warn!("Attempted to stop non-existent node: {}", id);
         }
     }
 
@@ -167,7 +171,7 @@ impl NodeManager {
                 NodeRecord::Running(handle) => {
                     info!("Restarting node {}", id.full_pokemon_name());
                     if let Err(e) = handle.send_command(NodeOperation::Restart) {
-                        error!("Failed to send restart command to node {id}: {e}");
+                        error!("Failed to send restart command to node {}: {}", id, e);
                     }
                 }
                 NodeRecord::Stopped { .. } => {
@@ -178,7 +182,7 @@ impl NodeManager {
                 }
             }
         } else {
-            warn!("Attempted to restart non-existent node: {id}");
+            warn!("Attempted to restart non-existent node: {}", id);
         }
     }
 
@@ -199,7 +203,7 @@ impl NodeManager {
                             id.full_pokemon_name()
                         );
                         if let Err(e) = handle.send_command(NodeOperation::Shutdown) {
-                            error!("Failed to send shutdown command to node {id}: {e}");
+                            error!("Failed to send shutdown command to node {}: {}", id, e);
                         }
                     }
                     NodeRecord::Stopped { .. } => {
@@ -214,11 +218,6 @@ impl NodeManager {
 
     /// Get or allocate a persistent directory for a specialization
     /// This reuses existing directories that aren't currently in use by this session
-    ///
-    /// # Panics
-    ///
-    /// Panics if the `RwLock` is poisoned
-    #[must_use]
     pub fn get_persistent_directory(&self, specialization_prefix: &str) -> Option<u32> {
         let mut used_dirs = self.used_persistent_dirs.write();
 
@@ -298,7 +297,8 @@ impl NodeManager {
                 self.create_persistent_symlinks_with_tracking(id, specializations, &node_config)
         {
             error!(
-                "Failed to create persistent symlinks for node {name} ({id}): {e}. Continuing with temporary storage."
+                "Failed to create persistent symlinks for node {} ({}): {}. Continuing with temporary storage.",
+                name, id, e
             );
         }
 
@@ -322,8 +322,8 @@ impl NodeManager {
         fs::create_dir_all(&proven_dir)?;
 
         info!(
-            "Creating persistent symlinks in {} for specializations: {specializations:?}",
-            proven_dir.display()
+            "Creating persistent symlinks in {:?} for specializations: {:?}",
+            proven_dir, specializations
         );
 
         // Track directory assignments for this node
@@ -340,9 +340,8 @@ impl NodeManager {
                         )?;
                         assignments.push(("bitcoin-mainnet".to_string(), dir_num));
                         info!(
-                            "Bitcoin Mainnet data will persist at: {} (via symlink from {})",
-                            persistent_dir.display(),
-                            node_config.bitcoin_mainnet_store_dir.display()
+                            "Bitcoin Mainnet data will persist at: {:?} (via symlink from {:?})",
+                            persistent_dir, node_config.bitcoin_mainnet_store_dir
                         );
                     }
                 }
@@ -355,9 +354,8 @@ impl NodeManager {
                         )?;
                         assignments.push(("bitcoin-testnet".to_string(), dir_num));
                         info!(
-                            "Bitcoin Testnet data will persist at: {} (via symlink from {})",
-                            persistent_dir.display(),
-                            node_config.bitcoin_testnet_store_dir.display()
+                            "Bitcoin Testnet data will persist at: {:?} (via symlink from {:?})",
+                            persistent_dir, node_config.bitcoin_testnet_store_dir
                         );
                     }
                 }
@@ -378,10 +376,8 @@ impl NodeManager {
                         )?;
                         assignments.push(("ethereum-mainnet".to_string(), dir_num));
                         info!(
-                            "Ethereum Mainnet data will persist at: {} (consensus: {}, execution: {})",
-                            base_persistent_dir.display(),
-                            consensus_persistent_dir.display(),
-                            execution_persistent_dir.display()
+                            "Ethereum Mainnet data will persist at: {:?} (consensus: {:?}, execution: {:?})",
+                            base_persistent_dir, consensus_persistent_dir, execution_persistent_dir
                         );
                     }
                 }
@@ -402,10 +398,8 @@ impl NodeManager {
                         )?;
                         assignments.push(("ethereum-holesky".to_string(), dir_num));
                         info!(
-                            "Ethereum Holesky data will persist at: {} (consensus: {}, execution: {})",
-                            base_persistent_dir.display(),
-                            consensus_persistent_dir.display(),
-                            execution_persistent_dir.display()
+                            "Ethereum Holesky data will persist at: {:?} (consensus: {:?}, execution: {:?})",
+                            base_persistent_dir, consensus_persistent_dir, execution_persistent_dir
                         );
                     }
                 }
@@ -426,10 +420,8 @@ impl NodeManager {
                         )?;
                         assignments.push(("ethereum-sepolia".to_string(), dir_num));
                         info!(
-                            "Ethereum Sepolia data will persist at: {} (consensus: {}, execution: {})",
-                            base_persistent_dir.display(),
-                            consensus_persistent_dir.display(),
-                            execution_persistent_dir.display()
+                            "Ethereum Sepolia data will persist at: {:?} (consensus: {:?}, execution: {:?})",
+                            base_persistent_dir, consensus_persistent_dir, execution_persistent_dir
                         );
                     }
                 }
@@ -442,9 +434,8 @@ impl NodeManager {
                         )?;
                         assignments.push(("radix-mainnet".to_string(), dir_num));
                         info!(
-                            "Radix Mainnet data will persist at: {} (via symlink from {})",
-                            persistent_dir.display(),
-                            node_config.radix_mainnet_store_dir.display()
+                            "Radix Mainnet data will persist at: {:?} (via symlink from {:?})",
+                            persistent_dir, node_config.radix_mainnet_store_dir
                         );
                     }
                 }
@@ -457,9 +448,8 @@ impl NodeManager {
                         )?;
                         assignments.push(("radix-stokenet".to_string(), dir_num));
                         info!(
-                            "Radix Stokenet data will persist at: {} (via symlink from {})",
-                            persistent_dir.display(),
-                            node_config.radix_stokenet_store_dir.display()
+                            "Radix Stokenet data will persist at: {:?} (via symlink from {:?})",
+                            persistent_dir, node_config.radix_stokenet_store_dir
                         );
                     }
                 }
@@ -476,9 +466,8 @@ impl NodeManager {
             )?;
             assignments.push(("rocksdb".to_string(), dir_num));
             info!(
-                "RocksDB data will persist at: {} (via symlink from {})",
-                persistent_dir.display(),
-                node_config.rocksdb_store_dir.display()
+                "RocksDB data will persist at: {:?} (via symlink from {:?})",
+                persistent_dir, node_config.rocksdb_store_dir
             );
         }
 
@@ -518,25 +507,19 @@ impl NodeManager {
         // Create the symlink from session location to persistent location
         if let Err(e) = symlink(persistent_dir, session_dir) {
             warn!(
-                "Failed to create symlink from {} to {}: {e}",
-                session_dir.display(),
-                persistent_dir.display()
+                "Failed to create symlink from {:?} to {:?}: {}",
+                session_dir, persistent_dir, e
             );
             // If symlink fails, create the session directory normally
             fs::create_dir_all(session_dir)?;
         } else {
-            info!(
-                "Created symlink: {} -> {}",
-                session_dir.display(),
-                persistent_dir.display()
-            );
+            info!("Created symlink: {:?} -> {:?}", session_dir, persistent_dir);
         }
 
         Ok(())
     }
 
     /// Get the URL for a specific running node (matching governance origin exactly)
-    #[must_use]
     pub fn get_node_url(&self, node_id: TuiNodeId) -> Option<String> {
         let nodes = self.nodes.read();
 
@@ -561,7 +544,6 @@ impl NodeManager {
     /// Get current node information for UI display
     ///
     /// This method reads the status from either running or stopped nodes.
-    #[must_use]
     pub fn get_nodes_for_ui(&self) -> NodeUiInfo {
         // First, process any completion messages
         self.process_completion_messages();
@@ -594,7 +576,6 @@ impl NodeManager {
 
     /// Check if all nodes have been shut down (for shutdown coordination)
     #[allow(clippy::cognitive_complexity)]
-    #[must_use]
     pub fn is_shutdown_complete(&self) -> bool {
         // First, process any completion messages
         self.process_completion_messages();
@@ -637,7 +618,7 @@ impl NodeManager {
         drop(nodes);
 
         if running_nodes.is_empty() {
-            info!("Shutdown complete: all {total_nodes} nodes are stopped");
+            info!("Shutdown complete: all {} nodes are stopped", total_nodes);
             true
         } else {
             info!(
@@ -660,7 +641,7 @@ impl NodeManager {
                         final_status,
                         specializations,
                     } => {
-                        info!("Node {name} finished with status: {final_status}");
+                        info!("Node {} finished with status: {}", name, final_status);
 
                         // Release persistent directories used by this node
                         {
@@ -672,7 +653,8 @@ impl NodeManager {
                                         dir_num,
                                     );
                                     info!(
-                                        "Released persistent directory {specialization_prefix}-{dir_num} for stopped node {name}"
+                                        "Released persistent directory {}-{} for stopped node {}",
+                                        specialization_prefix, dir_num, name
                                     );
                                 }
                             }
@@ -683,9 +665,11 @@ impl NodeManager {
                             && matches!(record, NodeRecord::Running(_))
                         {
                             *record = NodeRecord::Stopped {
+                                _id: id,
                                 name,
                                 final_status,
                                 specializations,
+                                _stopped_at: std::time::Instant::now(),
                             };
                             info!(
                                 "Transitioned node {} to Stopped state",

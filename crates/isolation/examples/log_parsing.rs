@@ -12,11 +12,11 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use proven_isolation::{Error, IsolatedApplication, Result};
-use proven_logger::{StdoutLogger, debug, error, info, init, trace, warn};
-use std::sync::Arc;
 use tokio::fs;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use tracing::{Level, debug, error, info, trace, warn};
+use tracing_subscriber::FmtSubscriber;
 
 /// A simple application that emits logs at different levels
 #[derive(Clone)]
@@ -92,41 +92,41 @@ impl LoggerApp {
             let content = line.trim_start_matches("INFO:").trim();
             // Extract only the message portion after the timestamp
             if let Some(msg_start) = content.find(']') {
-                info!("{}", content[msg_start + 1..].trim());
+                info!(target: "isolated_app", "{}", content[msg_start+1..].trim());
             } else {
-                info!("{content}");
+                info!(target: "isolated_app", "{}", content);
             }
         } else if line.starts_with("DEBUG:") {
             let content = line.trim_start_matches("DEBUG:").trim();
             if let Some(msg_start) = content.find(']') {
-                debug!("{}", content[msg_start + 1..].trim());
+                debug!(target: "isolated_app", "{}", content[msg_start+1..].trim());
             } else {
-                debug!("{content}");
+                debug!(target: "isolated_app", "{}", content);
             }
         } else if line.starts_with("WARN:") {
             let content = line.trim_start_matches("WARN:").trim();
             if let Some(msg_start) = content.find(']') {
-                warn!("{}", content[msg_start + 1..].trim());
+                warn!(target: "isolated_app", "{}", content[msg_start+1..].trim());
             } else {
-                warn!("{content}");
+                warn!(target: "isolated_app", "{}", content);
             }
         } else if line.starts_with("ERROR:") {
             let content = line.trim_start_matches("ERROR:").trim();
             if let Some(msg_start) = content.find(']') {
-                error!("{}", content[msg_start + 1..].trim());
+                error!(target: "isolated_app", "{}", content[msg_start+1..].trim());
             } else {
-                error!("{content}");
+                error!(target: "isolated_app", "{}", content);
             }
         } else if line.starts_with("TRACE:") {
             let content = line.trim_start_matches("TRACE:").trim();
             if let Some(msg_start) = content.find(']') {
-                trace!("{}", content[msg_start + 1..].trim());
+                trace!(target: "isolated_app", "{}", content[msg_start+1..].trim());
             } else {
-                trace!("{content}");
+                trace!(target: "isolated_app", "{}", content);
             }
         } else {
             // For unrecognized log formats, just log as info
-            info!("{line}");
+            info!(target: "isolated_app", "{}", line);
         }
     }
 
@@ -137,12 +137,12 @@ impl LoggerApp {
             && let Some(end_bracket_pos) = line.find(']')
             && bracket_pos < end_bracket_pos
         {
-            warn!("{}", line[end_bracket_pos + 1..].trim());
+            warn!(target: "isolated_app_err", "{}", line[end_bracket_pos+1..].trim());
             return;
         }
 
         // If we couldn't parse it specially, just log the whole line
-        warn!("{line}");
+        warn!(target: "isolated_app_err", "{}", line);
     }
 
     /// Run the logger process directly
@@ -162,7 +162,7 @@ impl LoggerApp {
         cmd.stderr(std::process::Stdio::piped());
 
         // Run the process
-        info!("Spawning process: {cmd:?}");
+        info!("Spawning process: {:?}", cmd);
         let mut child = cmd
             .spawn()
             .map_err(|e| Error::Io("Failed to spawn logger process", e))?;
@@ -205,7 +205,7 @@ impl LoggerApp {
         let _ = stdout_task.await;
         let _ = stderr_task.await;
 
-        info!("Logger process completed with status: {status}");
+        info!("Logger process completed with status: {}", status);
 
         Ok(())
     }
@@ -250,9 +250,13 @@ impl IsolatedApplication for LoggerApp {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logger with maximum verbosity
-    let logger = Arc::new(StdoutLogger::new());
-    init(logger).expect("Failed to initialize logger");
+    // Initialize tracing with maximum verbosity
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::TRACE)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("Failed to set global default subscriber");
 
     // Set up temporary directory
     let temp_dir =

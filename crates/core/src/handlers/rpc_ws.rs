@@ -9,12 +9,12 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use proven_applications::ApplicationManagement;
 use proven_attestation::Attestor;
 use proven_identity::IdentityManagement;
-use proven_logger::{error, info};
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 use proven_topology::TopologyAdaptor;
 use serde::Deserialize;
+use tracing::{error, info};
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -23,7 +23,7 @@ pub struct SessionQuery {
 }
 
 async fn handle_socket_error(mut socket: WebSocket, reason: &str) {
-    error!("Error handling websocket: {reason}");
+    error!("Error handling websocket: {}", reason);
 
     socket
         .send(Message::Close(Some(CloseFrame {
@@ -66,7 +66,7 @@ where
             return ws.on_upgrade(|socket| handle_socket_error(socket, "Session not found"));
         }
         Err(e) => {
-            error!("Error getting session: {e:?}");
+            error!("Error getting session: {:?}", e);
             return ws.on_upgrade(|socket| handle_socket_error(socket, "Invalid session"));
         }
     };
@@ -111,7 +111,7 @@ where
                 .on_upgrade(|socket| handle_socket_error(socket, "Management session not found"));
         }
         Err(e) => {
-            error!("Error getting management session: {e:?}");
+            error!("Error getting management session: {:?}", e);
             return ws
                 .on_upgrade(|socket| handle_socket_error(socket, "Invalid management session"));
         }
@@ -145,7 +145,7 @@ async fn handle_socket<AM, IM, SM, RM>(
             match sender.send(Message::Binary(message)).await {
                 Ok(()) => {}
                 Err(e) => {
-                    error!("Error sending message: {e:?}");
+                    error!("Error sending message: {:?}", e);
                     break;
                 }
             }
@@ -160,7 +160,7 @@ async fn handle_socket<AM, IM, SM, RM>(
                         tx.send(response).await.ok();
                     }
                     Err(e) => {
-                        error!("Error handling RPC: {e:?}");
+                        error!("Error handling RPC: {:?}", e);
                         break;
                     }
                 },

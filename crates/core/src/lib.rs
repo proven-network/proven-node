@@ -32,7 +32,6 @@ use proven_applications::ApplicationManagement;
 use proven_bootable::Bootable;
 use proven_http::HttpServer;
 use proven_identity::IdentityManagement;
-use proven_logger::{error, info, warn};
 use proven_passkeys::PasskeyManagement;
 use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
@@ -40,6 +39,7 @@ use proven_topology::TopologyAdaptor;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::{error, info, warn};
 use url::Url;
 
 pub use rpc::{
@@ -202,7 +202,7 @@ where
     /// Build and install the complete router for the main hostname atomically
     async fn build_and_install_main_router(&self) -> Result<(), Error> {
         let mode = *self.mode.read().await;
-        info!("Building and installing router for mode: {mode:?}");
+        info!("Building and installing router for mode: {:?}", mode);
 
         let router = RouterBuilder::create_base_router(self.engine_router.clone());
 
@@ -220,9 +220,9 @@ where
         // Set the complete router atomically
         let fqdn = extract_hostname_from_origin(&self.origin)?;
 
-        info!("Installing router for hostname: {fqdn}");
+        info!("Installing router for hostname: {}", fqdn);
         RouterInstaller::install_router(&self.http_server, fqdn.clone(), router).await?;
-        info!("Router installation complete for hostname: {fqdn}");
+        info!("Router installation complete for hostname: {}", fqdn);
 
         Ok(())
     }

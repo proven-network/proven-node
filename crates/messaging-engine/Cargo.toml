@@ -24,7 +24,7 @@ bytes.workspace = true
 hex.workspace = true
 
 # Logging
-proven-logger.workspace = true
+tracing.workspace = true
 
 # Error handling
 thiserror.workspace = true
@@ -35,7 +35,6 @@ uuid.workspace = true
 paste.workspace = true
 
 [dev-dependencies]
-proven-logger-macros.workspace = true
 ed25519-dalek.workspace = true
 proven-attestation-mock.workspace = true
 proven-topology-mock.workspace = true
@@ -44,6 +43,7 @@ rand.workspace = true
 serial_test.workspace = true
 tempfile.workspace = true
 tracing-test.workspace = true
+tracing-subscriber.workspace = true
 serde_cbor.workspace = true
 proven-transport-memory.workspace = true
 proven-storage-memory.workspace = true

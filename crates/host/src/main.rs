@@ -22,14 +22,17 @@ use std::path::PathBuf;
 
 use cidr::Ipv4Cidr;
 use clap::{Parser, arg, command};
-use proven_logger::{StdoutLogger, init};
-use std::sync::Arc;
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main(worker_threads = 12)]
 async fn main() -> Result<()> {
     // Host-local logging
-    let logger = Arc::new(StdoutLogger::new());
-    init(logger).expect("Failed to initialize logger");
+    tracing::subscriber::set_global_default(
+        FmtSubscriber::builder()
+            .with_max_level(Level::TRACE)
+            .finish(),
+    )?;
 
     let cli = Cli::parse();
 

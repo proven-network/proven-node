@@ -3,9 +3,9 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use proven_logger::{error, info, warn};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
+use tracing::{error, info, warn};
 
 use crate::foundation::ConsensusGroupId;
 use proven_topology::NodeId;
@@ -139,7 +139,7 @@ impl MonitoringService {
         let mut tasks = self.monitoring_tasks.write().await;
         for task in tasks.drain(..) {
             if let Err(e) = task.await {
-                warn!("Error stopping monitoring task: {e}");
+                warn!("Error stopping monitoring task: {}", e);
             }
         }
 
@@ -307,7 +307,7 @@ impl MonitoringService {
                 tokio::select! {
                     _ = interval_timer.tick() => {
                         if let Err(e) = health_checker.check_now().await {
-                            error!("Health check failed: {e}");
+                            error!("Health check failed: {}", e);
                         }
                     }
                     _ = shutdown.notified() => {
@@ -333,7 +333,7 @@ impl MonitoringService {
                 tokio::select! {
                     _ = interval_timer.tick() => {
                         if let Err(e) = metrics_collector.update_metrics().await {
-                            error!("Metrics update failed: {e}");
+                            error!("Metrics update failed: {}", e);
                         }
                     }
                     _ = shutdown.notified() => {
@@ -359,7 +359,7 @@ impl MonitoringService {
                 tokio::select! {
                     _ = interval_timer.tick() => {
                         if let Err(e) = system_view.refresh().await {
-                            error!("System view refresh failed: {e}");
+                            error!("System view refresh failed: {}", e);
                         }
                     }
                     _ = shutdown.notified() => {

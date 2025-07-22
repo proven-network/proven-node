@@ -5,10 +5,13 @@ use common::test_cluster::{TestCluster, TransportType};
 use std::time::Duration;
 use tokio::time::timeout;
 
-use proven_logger_macros::logged_tokio_test;
-
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_default_group_creation() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info,proven_network=info")
+        .with_test_writer()
+        .try_init();
+
     // Create a single-node cluster
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -24,7 +27,7 @@ async fn test_default_group_creation() {
 
     // Check engine health
     let health = engine.health().await.expect("Failed to get health");
-    proven_logger::info!("Engine health: {health:?}");
+    tracing::info!("Engine health: {:?}", health);
 
     // Get the client to interact with the engine
     let client = engine.client();
@@ -43,16 +46,16 @@ async fn test_default_group_creation() {
 
     match create_result {
         Ok(Ok(_)) => {
-            proven_logger::info!("Successfully created stream - default group exists!");
+            tracing::info!("Successfully created stream - default group exists!");
         }
         Ok(Err(e)) => {
             // Check if the error is because consensus operations aren't implemented
-            proven_logger::warn!("Stream creation failed with: {e}");
+            tracing::warn!("Stream creation failed with: {}", e);
             if e.to_string().contains("not yet implemented") || e.to_string().contains("TODO") {
-                proven_logger::info!(
+                tracing::info!(
                     "This is expected - consensus operations aren't fully implemented yet"
                 );
-                proven_logger::info!(
+                tracing::info!(
                     "The key point is that the default group creation event was published"
                 );
             } else {
@@ -70,8 +73,13 @@ async fn test_default_group_creation() {
     engine.stop().await.expect("Failed to stop engine");
 }
 
-#[logged_tokio_test]
+#[tokio::test]
 async fn test_default_group_event_flow() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info,proven_engine::services::global_consensus=debug,proven_engine::services::group_consensus=debug")
+        .with_test_writer()
+        .try_init();
+
     // Create a single-node cluster
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -91,7 +99,7 @@ async fn test_default_group_event_flow() {
 
     // Check engine health
     let health = engine.health().await.expect("Failed to get health");
-    proven_logger::info!("Engine health after cluster formation: {health:?}");
+    tracing::info!("Engine health after cluster formation: {:?}", health);
 
     // Verify the flow happened by checking logs
     // In the logs we should see:

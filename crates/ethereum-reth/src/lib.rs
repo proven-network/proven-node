@@ -19,11 +19,11 @@ use std::sync::{Arc, LazyLock, RwLock};
 use async_trait::async_trait;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
-use proven_logger::{debug, error, info, trace, warn};
 use regex::Regex;
 use reqwest::Client;
 use strip_ansi_escapes::strip_str;
 use tokio::sync::Mutex;
+use tracing::{debug, error, info, trace, warn};
 use url::Url;
 
 // Rust log regexp
@@ -174,22 +174,22 @@ impl IsolatedApplication for RethApp {
             let message = caps.get(2).map_or(line, |m| m.as_str());
             *self.last_log_level.write().unwrap() = label.to_string();
             match label {
-                "DEBUG" => debug!("{message}"),
-                "ERROR" => error!("{message}"),
-                "INFO" => info!("{message}"),
-                "TRACE" => trace!("{message}"),
-                "WARN" => warn!("{message}"),
-                _ => error!("{line}"),
+                "DEBUG" => debug!(target: "reth", "{}", message),
+                "ERROR" => error!(target: "reth", "{}", message),
+                "INFO" => info!(target: "reth", "{}", message),
+                "TRACE" => trace!(target: "reth", "{}", message),
+                "WARN" => warn!(target: "reth", "{}", message),
+                _ => error!(target: "reth", "{}", line),
             }
         } else {
             // Use the last log level for continuation lines
             match self.last_log_level.read().unwrap().as_str() {
-                "DEBUG" => debug!("{line}"),
-                "ERROR" => error!("{line}"),
-                "INFO" => info!("{line}"),
-                "TRACE" => trace!("{line}"),
-                "WARN" => warn!("{line}"),
-                _ => error!("{line}"),
+                "DEBUG" => debug!(target: "reth", "{}", line),
+                "ERROR" => error!(target: "reth", "{}", line),
+                "INFO" => info!(target: "reth", "{}", line),
+                "TRACE" => trace!(target: "reth", "{}", line),
+                "WARN" => warn!(target: "reth", "{}", line),
+                _ => error!(target: "reth", "{}", line),
             }
         }
     }
