@@ -10920,20 +10920,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-logger-libsql"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "futures",
- "libsql",
- "parking_lot 0.12.4",
- "tokio",
- "tracing",
- "tracing-subscriber 0.3.19",
-]
-
-[[package]]
 name = "proven-logger-vsock"
 version = "0.1.0"
 dependencies = [

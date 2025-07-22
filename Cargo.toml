@@ -41,7 +41,6 @@ members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
-    "crates/logger-libsql",
     "crates/logger-vsock",
     "crates/messaging",
     "crates/messaging-engine",
@@ -119,7 +118,6 @@ default-members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
-    "crates/logger-libsql",
     "crates/logger-vsock",
     "crates/messaging",
     "crates/messaging-engine",
@@ -467,7 +465,6 @@ proven-local-cli = { path = "crates/local-cli" }
 proven-local-tui = { path = "crates/local-tui" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
-proven-logger-libsql = { path = "crates/logger-libsql" }
 proven-logger-vsock = { path = "crates/logger-vsock" }
 proven-messaging = { path = "crates/messaging" }
 proven-messaging-engine = { path = "crates/messaging-engine" }
