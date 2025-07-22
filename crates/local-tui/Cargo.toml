@@ -33,8 +33,6 @@ parking_lot.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 tracing-appender = "0.2"
-proven-logger-libsql.workspace = true
-libsql.workspace = true
 
 # Data handling
 chrono.workspace = true
@@ -42,6 +40,7 @@ serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 uuid.workspace = true
+rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
 
 # Error handling
 anyhow.workspace = true

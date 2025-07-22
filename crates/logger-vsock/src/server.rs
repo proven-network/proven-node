@@ -22,28 +22,30 @@ pub struct StdoutLogProcessor;
 #[async_trait::async_trait]
 impl LogProcessor for StdoutLogProcessor {
     async fn process_batch(&self, batch: LogBatch) -> Result<()> {
+        use std::fmt::Write;
+
         for entry in batch.entries {
             let mut output = format!("[{}] {:?} [{}]", entry.timestamp, entry.level, entry.target,);
 
             // Add node_id if present
             if let Some(ref node_id) = entry.node_id {
-                output.push_str(&format!(" <{}>", node_id));
+                write!(&mut output, " <{node_id}>").unwrap();
             }
 
             // Add component/span if present
             if let Some(ref component) = entry.component {
-                output.push_str(&format!(" [{}]", component));
+                write!(&mut output, " [{component}]").unwrap();
             }
 
             // Add message
-            output.push_str(&format!(" {}", entry.message));
+            write!(&mut output, " {}", entry.message).unwrap();
 
             // Add file:line if present
             if let (Some(file), Some(line)) = (&entry.file, entry.line) {
-                output.push_str(&format!(" @ {}:{}", file, line));
+                write!(&mut output, " @ {file}:{line}").unwrap();
             }
 
-            println!("{}", output);
+            println!("{output}");
         }
         Ok(())
     }

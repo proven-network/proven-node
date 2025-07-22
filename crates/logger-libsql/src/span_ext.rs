@@ -18,9 +18,5 @@ impl NodeSpanExt for Span {
 
 /// Helper to extract node_id from a span name
 pub fn extract_node_id_from_span_name(span_name: &str) -> Option<String> {
-    if span_name.starts_with("node:") {
-        Some(span_name[5..].to_string())
-    } else {
-        None
-    }
+    span_name.strip_prefix("node:").map(|s| s.to_string())
 }

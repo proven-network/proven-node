@@ -257,7 +257,7 @@ where
         // Extract span context
         let (node_id, component, trace_id, span_id, span_name) =
             if let Some(span) = ctx.current_span().id().and_then(|id| ctx.span(id)) {
-                let extensions = span.extensions();
+                let _extensions = span.extensions();
 
                 // Try to get values from span attributes
                 let node_id = "main".to_string();
@@ -325,7 +325,7 @@ impl<'a> tracing::field::Visit for MessageVisitor<'a> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
             use std::fmt::Write;
-            let _ = write!(self.0, "{:?}", value);
+            let _ = write!(self.0, "{value:?}");
         }
     }
 }
@@ -513,7 +513,7 @@ impl LogRow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::StreamExt;
+
     use tracing::{Level, error, info, span, warn};
     use tracing_subscriber::layer::SubscriberExt;
 

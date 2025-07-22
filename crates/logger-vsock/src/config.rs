@@ -56,7 +56,7 @@ impl VsockLoggerConfig {
     }
 }
 
-/// Builder for VsockLoggerConfig
+/// Builder for `VsockLoggerConfig`
 #[derive(Debug, Default)]
 pub struct VsockLoggerConfigBuilder {
     config: VsockLoggerConfig,

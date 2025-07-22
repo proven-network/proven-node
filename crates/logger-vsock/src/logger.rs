@@ -24,6 +24,7 @@ pub struct VsockSubscriber {
     /// Channel sender for log entries
     sender: mpsc::Sender<LogEntry>,
     /// Sequence counter for batches
+    #[allow(dead_code)] // Used through Arc clone in worker thread
     sequence: Arc<AtomicU64>,
 }
 
@@ -177,7 +178,7 @@ where
             level: level.into(),
             target: metadata.target().to_string(),
             message,
-            file: metadata.file().map(|s| s.to_string()),
+            file: metadata.file().map(ToString::to_string),
             line: metadata.line(),
             node_id,
             component,
@@ -221,7 +222,7 @@ impl<'a> tracing::field::Visit for MessageVisitor<'a> {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
         if field.name() == "message" {
             use std::fmt::Write;
-            let _ = write!(self.0, "{:?}", value);
+            let _ = write!(self.0, "{value:?}");
         }
     }
 }

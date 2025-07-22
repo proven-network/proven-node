@@ -158,6 +158,29 @@ pub fn pokemon_name_from_id(pokemon_id: u8) -> String {
         .collect()
 }
 
+/// Get Pokemon ID from pokemon name (inverse of `pokemon_name_from_id`)
+pub fn pokemon_id_from_name(name: &str) -> u8 {
+    // Special case for main thread
+    if name == "main" {
+        return 255;
+    }
+
+    // Try to find the pokemon by name
+    let kanto_pokemon = pokemon_rs::get_generation("Kanto", Some("en"));
+    let normalized_name = name.to_lowercase().replace('-', " ");
+
+    for (i, pokemon) in kanto_pokemon.iter().enumerate() {
+        if pokemon.to_lowercase() == normalized_name
+            || pokemon.to_lowercase().replace(' ', "-") == name.to_lowercase()
+        {
+            return u8::try_from(i).unwrap_or(0);
+        }
+    }
+
+    // Default to 0 if not found
+    0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

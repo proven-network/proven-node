@@ -1,321 +1,187 @@
-//! Simplified SQL-based log viewer for local-tui
-//!
-//! This module provides a much simpler log viewer that queries logs
-//! directly from the in-memory SQLite database without any serialization.
+//! SQL-based log viewing and filtering system
 
-use crate::messages::{LogLevel, MAIN_THREAD_NODE_ID, TuiNodeId};
+use crate::logs_writer::LogWriter;
+use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, TuiNodeId};
+
+use std::sync::Arc;
+use std::sync::mpsc;
+use std::thread;
+use std::time::{Duration, Instant};
+
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use libsql::Connection;
-use proven_logger_libsql::{LibsqlSubscriber, LogQuery, LogRow};
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{Mutex, mpsc};
-use tokio::time::interval;
-use tracing::Level;
+use parking_lot::{Mutex, RwLock};
+use rusqlite::{Connection, params_from_iter, types::Value};
+use tracing::debug;
 
-/// Convert TUI log level to logger level
-fn tui_level_to_logger_level(level: LogLevel) -> Level {
-    match level {
-        LogLevel::Error => Level::ERROR,
-        LogLevel::Warn => Level::WARN,
-        LogLevel::Info => Level::INFO,
-        LogLevel::Debug => Level::DEBUG,
-        LogLevel::Trace => Level::TRACE,
-    }
-}
-
-/// Convert logger level to TUI log level
-fn logger_level_to_tui_level(level: Level) -> LogLevel {
-    match level {
-        Level::ERROR => LogLevel::Error,
-        Level::WARN => LogLevel::Warn,
-        Level::INFO => LogLevel::Info,
-        Level::DEBUG => LogLevel::Debug,
-        Level::TRACE => LogLevel::Trace,
-    }
-}
-
-/// Convert node ID for display
-fn format_node_id(node_id: &str) -> TuiNodeId {
-    if node_id == "main" {
-        MAIN_THREAD_NODE_ID
-    } else {
-        // Parse the node ID as execution order
-        node_id
-            .parse::<u8>()
-            .map(|order| TuiNodeId::with_values(order, order))
-            .unwrap_or(MAIN_THREAD_NODE_ID)
-    }
-}
-
-/// Log viewer state
-pub struct LogViewerState {
-    /// Current log level filter
-    pub level_filter: LogLevel,
-    /// Current node filter
-    pub node_filter: Option<TuiNodeId>,
-    /// Current viewport size
-    pub viewport_size: usize,
-    /// Current scroll offset
-    pub scroll_offset: usize,
-    /// Whether auto-scroll is enabled
-    pub auto_scroll: bool,
-    /// Last seen log ID (for auto-scroll)
-    pub last_log_id: Option<i64>,
-    /// Cached log count for the current filter
-    pub total_logs: usize,
-}
-
-impl Default for LogViewerState {
-    fn default() -> Self {
-        Self {
-            level_filter: LogLevel::Info,
-            node_filter: None,
-            viewport_size: 50,
-            scroll_offset: 0,
-            auto_scroll: true,
-            last_log_id: None,
-            total_logs: 0,
-        }
-    }
-}
-
-/// Log entry for display
+/// Request sent from UI thread to background log thread
 #[derive(Debug, Clone)]
-pub struct DisplayLogEntry {
-    pub id: i64,
-    pub timestamp: DateTime<Utc>,
-    pub level: LogLevel,
-    pub node_id: TuiNodeId,
-    pub component: String,
-    pub target: Option<String>,
-    pub message: String,
-}
-
-impl From<LogRow> for DisplayLogEntry {
-    fn from(row: LogRow) -> Self {
-        Self {
-            id: row.id,
-            timestamp: row.timestamp,
-            level: logger_level_to_tui_level(row.level),
-            node_id: format_node_id(&row.node_id),
-            component: row.component,
-            target: row.target,
-            message: row.message,
-        }
-    }
-}
-
-/// SQL-based log viewer
-pub struct SqlLogViewer {
-    /// Connection to the logger database
-    connection: Arc<Mutex<Connection>>,
-    /// Current state
-    state: LogViewerState,
-}
-
-impl SqlLogViewer {
-    /// Create a new log viewer connected to the subscriber
-    pub fn new(subscriber: &LibsqlSubscriber) -> Self {
-        Self {
-            connection: subscriber.get_connection(),
-            state: LogViewerState::default(),
-        }
-    }
-
-    /// Update filters
-    pub fn set_filters(&mut self, level: LogLevel, node_filter: Option<TuiNodeId>) {
-        self.state.level_filter = level;
-        self.state.node_filter = node_filter;
-        // Reset scroll when filters change
-        self.state.scroll_offset = 0;
-    }
-
-    /// Update viewport size
-    pub fn set_viewport_size(&mut self, size: usize) {
-        self.state.viewport_size = size;
-    }
-
-    /// Enable/disable auto-scroll
-    pub fn set_auto_scroll(&mut self, enabled: bool) {
-        self.state.auto_scroll = enabled;
-    }
-
-    /// Scroll up by amount
-    pub fn scroll_up(&mut self, amount: usize) {
-        self.state.scroll_offset = self.state.scroll_offset.saturating_sub(amount);
-        self.state.auto_scroll = false;
-    }
-
+pub enum LogRequest {
+    /// Update filters and request refresh
+    UpdateFilters {
+        level: LogLevel,
+        node_filter: Option<TuiNodeId>,
+    },
+    /// Update viewport size when UI resizes
+    UpdateViewportSize { viewport_size: usize },
+    /// Scroll commands
+    ScrollUp { amount: usize },
+    /// Scroll up by viewport size
+    ScrollUpByViewportSize,
     /// Scroll down by amount
-    pub fn scroll_down(&mut self, amount: usize) {
-        let max_offset = self
-            .state
-            .total_logs
-            .saturating_sub(self.state.viewport_size);
-        self.state.scroll_offset = (self.state.scroll_offset + amount).min(max_offset);
-
-        // Re-enable auto-scroll if we're at the bottom
-        if self.state.scroll_offset >= max_offset {
-            self.state.auto_scroll = true;
-        }
-    }
-
+    ScrollDown { amount: usize },
+    /// Scroll down by viewport size
+    ScrollDownByViewportSize,
     /// Scroll to top
-    pub fn scroll_to_top(&mut self) {
-        self.state.scroll_offset = 0;
-        self.state.auto_scroll = false;
-    }
-
+    ScrollToTop,
     /// Scroll to bottom
-    pub fn scroll_to_bottom(&mut self) {
-        let max_offset = self
-            .state
-            .total_logs
-            .saturating_sub(self.state.viewport_size);
-        self.state.scroll_offset = max_offset;
-        self.state.auto_scroll = true;
+    ScrollToBottom,
+    /// Request initial data load
+    RequestInitialData,
+    /// Shutdown the background thread
+    Shutdown,
+}
+
+/// Response sent from background log thread to UI thread
+#[derive(Debug, Clone)]
+pub enum LogResponse {
+    /// Full viewport update with logs for display
+    ViewportUpdate {
+        logs: Vec<LogEntry>,
+        total_filtered_lines: usize,
+        scroll_position: usize,
+    },
+    /// Error occurred
+    Error { message: String },
+}
+
+/// SQL query builder for log filtering
+struct LogQuery {
+    level_filter: Option<LogLevel>,
+    node_filter: Option<TuiNodeId>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+impl LogQuery {
+    const fn new() -> Self {
+        Self {
+            level_filter: None,
+            node_filter: None,
+            limit: None,
+            offset: None,
+        }
     }
 
-    /// Build query from current state
-    fn build_query(&self) -> LogQuery {
-        let mut query = LogQuery::new()
-            .with_min_level(tui_level_to_logger_level(self.state.level_filter))
-            .limit(self.state.viewport_size);
+    const fn with_level(mut self, level: LogLevel) -> Self {
+        self.level_filter = Some(level);
+        self
+    }
 
-        // Add node filter
-        if let Some(node_filter) = &self.state.node_filter {
-            let node_id = if *node_filter == MAIN_THREAD_NODE_ID {
+    const fn with_node(mut self, node_id: Option<TuiNodeId>) -> Self {
+        self.node_filter = node_id;
+        self
+    }
+
+    const fn limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    const fn offset(mut self, offset: usize) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Build SQL query and parameters
+    fn build_sql(&self) -> (String, Vec<Value>) {
+        let mut sql = String::from(
+            "SELECT id, timestamp, level, node_id, message, target, execution_order FROM logs",
+        );
+        let mut params = Vec::new();
+        let mut conditions = Vec::new();
+
+        // Level filter
+        if let Some(level) = &self.level_filter {
+            let levels = match level {
+                LogLevel::Error => vec!["ERROR"],
+                LogLevel::Warn => vec!["ERROR", "WARN"],
+                LogLevel::Info => vec!["ERROR", "WARN", "INFO"],
+                LogLevel::Debug => vec!["ERROR", "WARN", "INFO", "DEBUG"],
+                LogLevel::Trace => vec!["ERROR", "WARN", "INFO", "DEBUG", "TRACE"],
+            };
+            let placeholders = levels.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            conditions.push(format!("level IN ({placeholders})"));
+            for level_str in levels {
+                params.push(Value::Text(level_str.to_string()));
+            }
+        }
+
+        // Node filter
+        if let Some(node_id) = &self.node_filter {
+            conditions.push("node_id = ?".to_string());
+            let node_id_str = if *node_id == crate::messages::MAIN_THREAD_NODE_ID {
                 "main".to_string()
             } else {
-                node_filter.execution_order().to_string()
+                format!("{}-{}", node_id.execution_order(), node_id.pokemon_name())
             };
-            query = query.with_node(node_id);
+            params.push(Value::Text(node_id_str));
         }
 
-        // Add offset for scrolling
-        if !self.state.auto_scroll {
-            query = query.offset(self.state.scroll_offset);
+        // Add WHERE clause if needed
+        if !conditions.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conditions.join(" AND "));
         }
 
-        query
-    }
+        // Order by timestamp descending (newest first)
+        sql.push_str(" ORDER BY timestamp DESC, id DESC");
 
-    /// Get logs for display
-    pub async fn get_logs(&mut self) -> Result<Vec<DisplayLogEntry>> {
-        let conn = self.connection.lock().await;
-
-        // First, get the total count
-        let count_query = self.build_count_query();
-        let mut count_result = conn.query(&count_query.0, count_query.1).await?;
-
-        if let Some(row) = count_result.next().await? {
-            self.state.total_logs = row.get::<i64>(0)? as usize;
+        // Limit and offset
+        if let Some(limit) = self.limit {
+            sql.push_str(" LIMIT ?");
+            params.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
         }
 
-        // Build and execute the main query
-        let query = self.build_query();
-        let (sql, params) = query.build_sql();
-
-        let mut rows = conn.query(&sql, params).await?;
-        let mut logs = Vec::new();
-
-        while let Some(row) = rows.next().await? {
-            let log_row = LogRow::from_row(row)?;
-
-            // Track last log ID for auto-scroll
-            if self.state.auto_scroll && logs.is_empty() {
-                self.state.last_log_id = Some(log_row.id);
-            }
-
-            logs.push(DisplayLogEntry::from(log_row));
+        if let Some(offset) = self.offset {
+            sql.push_str(" OFFSET ?");
+            params.push(Value::Integer(i64::try_from(offset).unwrap_or(i64::MAX)));
         }
 
-        // Reverse to show newest at bottom
-        logs.reverse();
-
-        Ok(logs)
-    }
-
-    /// Get new logs for auto-scroll
-    pub async fn get_new_logs(&mut self) -> Result<Vec<DisplayLogEntry>> {
-        if !self.state.auto_scroll || self.state.last_log_id.is_none() {
-            return Ok(Vec::new());
-        }
-
-        let conn = self.connection.lock().await;
-
-        // Query for logs newer than last_log_id
-        let mut query = LogQuery::new()
-            .with_min_level(tui_level_to_logger_level(self.state.level_filter))
-            .after_id(self.state.last_log_id.unwrap());
-
-        // Add node filter
-        if let Some(node_filter) = &self.state.node_filter {
-            let node_id = if *node_filter == MAIN_THREAD_NODE_ID {
-                "main".to_string()
-            } else {
-                node_filter.execution_order().to_string()
-            };
-            query = query.with_node(node_id);
-        }
-
-        let (sql, params) = query.build_sql();
-        let mut rows = conn.query(&sql, params).await?;
-        let mut new_logs = Vec::new();
-
-        while let Some(row) = rows.next().await? {
-            let log_row = LogRow::from_row(row)?;
-
-            // Update last log ID
-            if log_row.id > self.state.last_log_id.unwrap_or(0) {
-                self.state.last_log_id = Some(log_row.id);
-            }
-
-            new_logs.push(DisplayLogEntry::from(log_row));
-        }
-
-        // Update total count
-        self.state.total_logs += new_logs.len();
-
-        // Reverse to show newest at bottom
-        new_logs.reverse();
-
-        Ok(new_logs)
+        (sql, params)
     }
 
     /// Build count query
-    fn build_count_query(&self) -> (String, Vec<libsql::Value>) {
+    fn build_count_sql(&self) -> (String, Vec<Value>) {
         let mut sql = String::from("SELECT COUNT(*) FROM logs");
         let mut params = Vec::new();
         let mut conditions = Vec::new();
 
         // Level filter
-        let level = tui_level_to_logger_level(self.state.level_filter);
-        let levels = match level {
-            Level::ERROR => vec!["ERROR"],
-            Level::WARN => vec!["ERROR", "WARN"],
-            Level::INFO => vec!["ERROR", "WARN", "INFO"],
-            Level::DEBUG => vec!["ERROR", "WARN", "INFO", "DEBUG"],
-            Level::TRACE => vec!["ERROR", "WARN", "INFO", "DEBUG", "TRACE"],
-        };
-
-        let placeholders = levels.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        conditions.push(format!("level IN ({})", placeholders));
-        for level in levels {
-            params.push(libsql::Value::Text(level.to_string()));
+        if let Some(level) = &self.level_filter {
+            let levels = match level {
+                LogLevel::Error => vec!["ERROR"],
+                LogLevel::Warn => vec!["ERROR", "WARN"],
+                LogLevel::Info => vec!["ERROR", "WARN", "INFO"],
+                LogLevel::Debug => vec!["ERROR", "WARN", "INFO", "DEBUG"],
+                LogLevel::Trace => vec!["ERROR", "WARN", "INFO", "DEBUG", "TRACE"],
+            };
+            let placeholders = levels.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            conditions.push(format!("level IN ({placeholders})"));
+            for level_str in levels {
+                params.push(Value::Text(level_str.to_string()));
+            }
         }
 
         // Node filter
-        if let Some(node_filter) = &self.state.node_filter {
-            let node_id = if *node_filter == MAIN_THREAD_NODE_ID {
+        if let Some(node_id) = &self.node_filter {
+            conditions.push("node_id = ?".to_string());
+            let node_id_str = if *node_id == crate::messages::MAIN_THREAD_NODE_ID {
                 "main".to_string()
             } else {
-                node_filter.execution_order().to_string()
+                format!("{}-{}", node_id.execution_order(), node_id.pokemon_name())
             };
-            conditions.push("node_id = ?".to_string());
-            params.push(libsql::Value::Text(node_id));
+            params.push(Value::Text(node_id_str));
         }
 
         // Add WHERE clause if needed
@@ -328,112 +194,719 @@ impl SqlLogViewer {
     }
 }
 
-/// Background log viewer that runs in a separate task
-pub struct BackgroundLogViewer {
-    viewer: SqlLogViewer,
-    update_interval: Duration,
+/// Filtered log state maintained by background thread
+struct FilteredLogState {
+    /// Current filters
+    level_filter: LogLevel,
+    node_filter: Option<TuiNodeId>,
+    /// Current viewport position and size
+    scroll_position: usize,
+    viewport_size: usize,
+    /// Total filtered count (cached)
+    total_filtered_count: usize,
+    /// Whether auto-scroll is enabled
+    auto_scroll_enabled: bool,
+    /// Anchor log ID - the ID of the first log in the viewport when not auto-scrolling
+    viewport_anchor_id: Option<i64>,
 }
 
-impl BackgroundLogViewer {
-    /// Create a new background viewer
-    pub fn new(subscriber: &LibsqlSubscriber) -> Self {
+impl FilteredLogState {
+    const fn new() -> Self {
         Self {
-            viewer: SqlLogViewer::new(subscriber),
-            update_interval: Duration::from_millis(100),
+            level_filter: LogLevel::Info,
+            node_filter: None,
+            scroll_position: 0,
+            viewport_size: 50,
+            total_filtered_count: 0,
+            auto_scroll_enabled: true,
+            viewport_anchor_id: None,
         }
     }
 
-    /// Run the background viewer
-    pub async fn run(
-        mut self,
-        mut request_rx: mpsc::UnboundedReceiver<ViewerRequest>,
-        response_tx: mpsc::UnboundedSender<ViewerResponse>,
-    ) {
-        let mut ticker = interval(self.update_interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    /// Get maximum scroll position based on current filtered logs and viewport size
+    const fn max_scroll_position(&self) -> usize {
+        self.total_filtered_count.saturating_sub(self.viewport_size)
+    }
 
+    /// Scroll up (towards older logs) - disables auto-scroll
+    fn scroll_up(&mut self, amount: usize) {
+        let max_scroll = self.max_scroll_position();
+        if max_scroll > 0 {
+            self.scroll_position = (self.scroll_position + amount).min(max_scroll);
+            // User scrolled up manually - disable auto-scroll
+            self.auto_scroll_enabled = false;
+            // Clear anchor so it gets recalculated on next viewport fetch
+            self.viewport_anchor_id = None;
+        }
+    }
+
+    fn scroll_up_by_viewport_size(&mut self) {
+        self.scroll_up(self.viewport_size);
+    }
+
+    /// Scroll down (towards newer logs) - re-enables auto-scroll if at bottom
+    #[allow(clippy::missing_const_for_fn)]
+    fn scroll_down(&mut self, amount: usize) {
+        if self.scroll_position >= amount {
+            self.scroll_position -= amount;
+        } else {
+            self.scroll_position = 0;
+        }
+
+        // Re-enable auto-scroll if user scrolled back to bottom
+        if self.scroll_position == 0 {
+            self.auto_scroll_enabled = true;
+        } else {
+            // Still scrolled, clear anchor so it gets recalculated
+        }
+        self.viewport_anchor_id = None;
+    }
+
+    fn scroll_down_by_viewport_size(&mut self) {
+        self.scroll_down(self.viewport_size);
+    }
+
+    /// Scroll to top (oldest logs) - disables auto-scroll
+    #[allow(clippy::missing_const_for_fn)]
+    fn scroll_to_top(&mut self) {
+        let max_scroll = self.max_scroll_position();
+        if max_scroll > 0 {
+            self.scroll_position = max_scroll;
+        }
+        // User explicitly went to top - disable auto-scroll
+        self.auto_scroll_enabled = false;
+        self.viewport_anchor_id = None;
+    }
+
+    /// Scroll to bottom (newest logs) - enables auto-scroll
+    #[allow(clippy::missing_const_for_fn)]
+    fn scroll_to_bottom(&mut self) {
+        self.scroll_position = 0;
+        // User explicitly went to bottom - enable auto-scroll
+        self.auto_scroll_enabled = true;
+        // Clear anchor when auto-scrolling
+        self.viewport_anchor_id = None;
+    }
+}
+
+/// Background log monitoring and filtering system
+struct LogWorker {
+    connection: Arc<Mutex<Connection>>,
+    state: FilteredLogState,
+    last_check: Instant,
+    last_log_id: Option<i64>,
+}
+
+impl LogWorker {
+    fn new(connection: Arc<Mutex<Connection>>) -> Self {
+        Self {
+            connection,
+            state: FilteredLogState::new(),
+            last_check: Instant::now(),
+            last_log_id: None,
+        }
+    }
+
+    /// Get filtered logs for the current viewport
+    #[allow(clippy::significant_drop_in_scrutinee)]
+    #[allow(clippy::significant_drop_tightening)]
+    fn get_viewport_logs(&mut self) -> Result<Vec<LogEntry>> {
+        let query = LogQuery::new()
+            .with_level(self.state.level_filter)
+            .with_node(self.state.node_filter)
+            .limit(self.state.viewport_size)
+            .offset(self.state.scroll_position);
+
+        let (sql, params) = query.build_sql();
+
+        let conn = self.connection.lock();
+        let mut stmt = conn.prepare(&sql)?;
+
+        let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
+            let timestamp_micros: i64 = row.get(1)?;
+            let level_str: String = row.get(2)?;
+            let node_id_str: String = row.get(3)?;
+            let message: String = row.get(4)?;
+            let target: Option<String> = row.get(5)?;
+
+            let timestamp =
+                DateTime::from_timestamp_micros(timestamp_micros).unwrap_or_else(Utc::now);
+
+            let level = match level_str.as_str() {
+                "ERROR" => LogLevel::Error,
+                "WARN" => LogLevel::Warn,
+                "DEBUG" => LogLevel::Debug,
+                "TRACE" => LogLevel::Trace,
+                _ => LogLevel::Info, // Default for unknown levels (including "INFO")
+            };
+
+            // Parse node_id from string
+            let node_id = if node_id_str == "main" {
+                MAIN_THREAD_NODE_ID
+            } else {
+                // Parse from format like "1-pikachu"
+                let parts: Vec<&str> = node_id_str.split('-').collect();
+                if parts.len() >= 2 {
+                    parts[0]
+                        .parse::<u8>()
+                        .map_or(MAIN_THREAD_NODE_ID, |execution_order| {
+                            let pokemon_id = crate::node_id::pokemon_id_from_name(parts[1]);
+                            TuiNodeId::with_values(execution_order, pokemon_id)
+                        })
+                } else {
+                    MAIN_THREAD_NODE_ID
+                }
+            };
+
+            Ok(LogEntry {
+                node_id,
+                level,
+                message,
+                timestamp,
+                target,
+            })
+        })?;
+
+        let mut entries = Vec::new();
+        for entry in rows {
+            entries.push(entry?);
+        }
+
+        // Reverse entries to show oldest first (since we queried newest first)
+        entries.reverse();
+
+        // When not auto-scrolling and we don't have an anchor yet, set it to the first visible log
+        if !self.state.auto_scroll_enabled
+            && self.state.viewport_anchor_id.is_none()
+            && !entries.is_empty()
+        {
+            // Get the ID of the first log in our viewport
+            let first_log_query = LogQuery::new()
+                .with_level(self.state.level_filter)
+                .with_node(self.state.node_filter)
+                .limit(1)
+                .offset(self.state.scroll_position);
+
+            let (first_sql, first_params) = first_log_query.build_sql();
+            let first_sql = first_sql.replace(
+                "SELECT id, timestamp, level, node_id, message, target, execution_order",
+                "SELECT id",
+            );
+
+            let mut first_stmt = conn.prepare(&first_sql)?;
+            if let Ok(first_id) = first_stmt
+                .query_row(params_from_iter(first_params.iter()), |row| {
+                    row.get::<_, i64>(0)
+                })
+            {
+                self.state.viewport_anchor_id = Some(first_id);
+            }
+        }
+
+        // Track the last log ID we've seen
+        if !entries.is_empty() {
+            // Get the max ID from the current result set
+            let max_id_query = LogQuery::new()
+                .with_level(self.state.level_filter)
+                .with_node(self.state.node_filter);
+
+            let (sql, params) = max_id_query.build_sql();
+            let sql = sql.replace(
+                "SELECT id, timestamp, level, node_id, message, target, execution_order",
+                "SELECT MAX(id)",
+            );
+
+            let mut stmt = conn.prepare(&sql)?;
+            let max_id: Option<i64> =
+                stmt.query_row(params_from_iter(params.iter()), |row| row.get(0))?;
+            self.last_log_id = max_id;
+        }
+
+        Ok(entries)
+    }
+
+    /// Get total count of filtered logs
+    #[allow(clippy::significant_drop_in_scrutinee)]
+    #[allow(clippy::significant_drop_tightening)]
+    fn get_filtered_count(&self) -> Result<usize> {
+        let conn = self.connection.lock();
+
+        let query = LogQuery::new()
+            .with_level(self.state.level_filter)
+            .with_node(self.state.node_filter);
+
+        let (sql, params) = query.build_count_sql();
+        let mut stmt = conn.prepare(&sql)?;
+        let count: i64 = stmt.query_row(params_from_iter(params.iter()), |row| row.get(0))?;
+
+        Ok(usize::try_from(count).unwrap_or(usize::MAX))
+    }
+
+    /// Check if there are new logs
+    #[allow(clippy::significant_drop_in_scrutinee)]
+    #[allow(clippy::significant_drop_tightening)]
+    fn check_for_updates(&mut self) -> Result<bool> {
+        let conn = self.connection.lock();
+
+        // Check if there are any new logs since last check
+        let mut stmt = conn.prepare("SELECT MAX(id) FROM logs")?;
+        let current_max_id: Option<i64> = stmt.query_row([], |row| row.get(0))?;
+
+        drop(stmt);
+        drop(conn);
+
+        // Update filtered count
+        self.state.total_filtered_count = self.get_filtered_count()?;
+
+        // Check if we have new logs
+        let has_updates = match (self.last_log_id, current_max_id) {
+            (Some(last), Some(current)) => current > last,
+            (None, Some(_)) => true,
+            _ => false,
+        };
+
+        if has_updates {
+            if self.state.auto_scroll_enabled {
+                // Auto-scroll to bottom to show new logs
+                self.state.scroll_position = 0;
+            } else if let Some(anchor_id) = self.state.viewport_anchor_id {
+                // Maintain position by adjusting scroll offset based on how many logs are before our anchor
+                let conn = self.connection.lock();
+
+                // Count logs older than our anchor
+                let mut count_sql = String::from("SELECT COUNT(*) FROM logs WHERE id < ?");
+                let mut params = vec![Value::Integer(anchor_id)];
+                let mut conditions = Vec::new();
+
+                // Add filters
+                let levels = match self.state.level_filter {
+                    LogLevel::Error => vec!["ERROR"],
+                    LogLevel::Warn => vec!["ERROR", "WARN"],
+                    LogLevel::Info => vec!["ERROR", "WARN", "INFO"],
+                    LogLevel::Debug => vec!["ERROR", "WARN", "INFO", "DEBUG"],
+                    LogLevel::Trace => vec!["ERROR", "WARN", "INFO", "DEBUG", "TRACE"],
+                };
+                let placeholders = levels.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                conditions.push(format!("level IN ({placeholders})"));
+                for level_str in levels {
+                    params.push(Value::Text(level_str.to_string()));
+                }
+
+                if let Some(node_id) = &self.state.node_filter {
+                    conditions.push("node_id = ?".to_string());
+                    let node_id_str = if *node_id == crate::messages::MAIN_THREAD_NODE_ID {
+                        "main".to_string()
+                    } else {
+                        format!("{}-{}", node_id.execution_order(), node_id.pokemon_name())
+                    };
+                    params.push(Value::Text(node_id_str));
+                }
+
+                if !conditions.is_empty() {
+                    count_sql.push_str(" AND ");
+                    count_sql.push_str(&conditions.join(" AND "));
+                }
+
+                let mut stmt = conn.prepare(&count_sql)?;
+                let older_count: i64 =
+                    stmt.query_row(params_from_iter(params.iter()), |row| row.get(0))?;
+
+                // Update scroll position to maintain view
+                self.state.scroll_position = self.state.total_filtered_count.saturating_sub(
+                    usize::try_from(older_count).unwrap_or(0) + self.state.viewport_size,
+                );
+            } else if !self.state.auto_scroll_enabled {
+                // We're in manual scroll mode but don't have an anchor yet
+                // This can happen when new logs come in before the viewport is fetched
+                // Don't change scroll position - it will be recalculated when viewport is fetched
+            }
+        }
+
+        Ok(has_updates)
+    }
+
+    fn handle_request(&mut self, request: &LogRequest) -> Result<Option<LogResponse>> {
+        match request {
+            LogRequest::UpdateFilters { level, node_filter } => {
+                self.state.level_filter = *level;
+                self.state.node_filter = *node_filter;
+                self.state.total_filtered_count = self.get_filtered_count()?;
+
+                // Reset scroll to bottom when filters change
+                self.state.scroll_position = 0;
+                self.state.auto_scroll_enabled = true;
+                self.state.viewport_anchor_id = None;
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.get_viewport_logs()?,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::UpdateViewportSize { viewport_size } => {
+                self.state.viewport_size = *viewport_size;
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.get_viewport_logs()?,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::ScrollUp { amount } => {
+                self.state.scroll_up(*amount);
+
+                // Get the viewport and let it set the anchor if needed
+                let logs = self.get_viewport_logs()?;
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::ScrollUpByViewportSize => {
+                self.state.scroll_up_by_viewport_size();
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.get_viewport_logs()?,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::ScrollDown { amount } => {
+                self.state.scroll_down(*amount);
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.get_viewport_logs()?,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::ScrollDownByViewportSize => {
+                self.state.scroll_down_by_viewport_size();
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.get_viewport_logs()?,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::ScrollToTop => {
+                self.state.scroll_to_top();
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.get_viewport_logs()?,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::ScrollToBottom => {
+                self.state.scroll_to_bottom();
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.get_viewport_logs()?,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::RequestInitialData => {
+                self.state.total_filtered_count = self.get_filtered_count()?;
+
+                Ok(Some(LogResponse::ViewportUpdate {
+                    logs: self.get_viewport_logs()?,
+                    total_filtered_lines: self.state.total_filtered_count,
+                    scroll_position: self.state.scroll_position,
+                }))
+            }
+            LogRequest::Shutdown => Ok(None), // Handled by main loop
+        }
+    }
+
+    fn run(mut self, receiver: &mpsc::Receiver<LogRequest>, sender: &mpsc::Sender<LogResponse>) {
         loop {
-            tokio::select! {
-                // Handle requests
-                Some(request) = request_rx.recv() => {
-                    match request {
-                        ViewerRequest::SetFilters { level, node_filter } => {
-                            self.viewer.set_filters(level, node_filter);
-                            if let Ok(logs) = self.viewer.get_logs().await {
-                                let _ = response_tx.send(ViewerResponse::Logs(logs));
+            // Handle requests with a short timeout
+            match receiver.recv_timeout(Duration::from_millis(100)) {
+                Ok(LogRequest::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Ok(request) => {
+                    match self.handle_request(&request) {
+                        Ok(Some(response)) => {
+                            if sender.send(response).is_err() {
+                                break; // UI thread disconnected
                             }
                         }
-                        ViewerRequest::SetViewportSize(size) => {
-                            self.viewer.set_viewport_size(size);
-                        }
-                        ViewerRequest::ScrollUp(amount) => {
-                            self.viewer.scroll_up(amount);
-                            if let Ok(logs) = self.viewer.get_logs().await {
-                                let _ = response_tx.send(ViewerResponse::Logs(logs));
-                            }
-                        }
-                        ViewerRequest::ScrollDown(amount) => {
-                            self.viewer.scroll_down(amount);
-                            if let Ok(logs) = self.viewer.get_logs().await {
-                                let _ = response_tx.send(ViewerResponse::Logs(logs));
-                            }
-                        }
-                        ViewerRequest::ScrollToTop => {
-                            self.viewer.scroll_to_top();
-                            if let Ok(logs) = self.viewer.get_logs().await {
-                                let _ = response_tx.send(ViewerResponse::Logs(logs));
-                            }
-                        }
-                        ViewerRequest::ScrollToBottom => {
-                            self.viewer.scroll_to_bottom();
-                            if let Ok(logs) = self.viewer.get_logs().await {
-                                let _ = response_tx.send(ViewerResponse::Logs(logs));
-                            }
-                        }
-                        ViewerRequest::Refresh => {
-                            if let Ok(logs) = self.viewer.get_logs().await {
-                                let _ = response_tx.send(ViewerResponse::Logs(logs));
+                        Ok(None) => {} // No response needed
+                        Err(e) => {
+                            let error_response = LogResponse::Error {
+                                message: format!("Worker error: {e}"),
+                            };
+                            if sender.send(error_response).is_err() {
+                                break;
                             }
                         }
                     }
                 }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    // Check for updates during timeout
+                    if self.last_check.elapsed() >= Duration::from_millis(100) {
+                        self.last_check = Instant::now();
 
-                // Auto-update for new logs
-                _ = ticker.tick() => {
-                    if self.viewer.state.auto_scroll {
-                        if let Ok(new_logs) = self.viewer.get_new_logs().await {
-                            if !new_logs.is_empty() {
-                                let _ = response_tx.send(ViewerResponse::NewLogs(new_logs));
+                        match self.check_for_updates() {
+                            Ok(true) => {
+                                // New logs available, send update
+                                match self.get_viewport_logs() {
+                                    Ok(logs) => {
+                                        let update = LogResponse::ViewportUpdate {
+                                            logs,
+                                            total_filtered_lines: self.state.total_filtered_count,
+                                            scroll_position: self.state.scroll_position,
+                                        };
+                                        if sender.send(update).is_err() {
+                                            break;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        let error_response = LogResponse::Error {
+                                            message: format!("Error getting viewport logs: {e}"),
+                                        };
+                                        if sender.send(error_response).is_err() {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(false) => {} // No updates
+                            Err(e) => {
+                                debug!("Error checking for updates: {}", e);
                             }
                         }
                     }
                 }
-
-                // Channel closed
-                else => break,
             }
         }
     }
 }
 
-/// Viewer requests
-#[derive(Debug)]
-pub enum ViewerRequest {
-    SetFilters {
-        level: LogLevel,
-        node_filter: Option<TuiNodeId>,
-    },
-    SetViewportSize(usize),
-    ScrollUp(usize),
-    ScrollDown(usize),
-    ScrollToTop,
-    ScrollToBottom,
-    Refresh,
+/// High-performance log reader that uses a background thread for push-based log updates
+pub struct LogReader {
+    /// Channel to send requests to background thread
+    request_sender: mpsc::Sender<LogRequest>,
+    /// Channel to receive responses from background thread
+    response_receiver: mpsc::Receiver<LogResponse>,
+    /// Current filters (cached for UI queries)
+    current_level_filter: Arc<RwLock<LogLevel>>,
+    current_node_filter: Arc<RwLock<Option<TuiNodeId>>>,
+    /// Background thread handle
+    _worker_thread: thread::JoinHandle<()>,
 }
 
-/// Viewer responses
-#[derive(Debug)]
-pub enum ViewerResponse {
-    Logs(Vec<DisplayLogEntry>),
-    NewLogs(Vec<DisplayLogEntry>),
+impl LogReader {
+    /// Create a new log reader with shared database connection
+    pub fn new_from_writer(log_writer: &LogWriter) -> Self {
+        let (request_sender, request_receiver) = mpsc::channel();
+        let (response_sender, response_receiver) = mpsc::channel();
+
+        let connection = log_writer.get_connection();
+        let worker = LogWorker::new(connection);
+
+        let worker_thread = thread::spawn(move || {
+            worker.run(&request_receiver, &response_sender);
+        });
+
+        Self {
+            request_sender,
+            response_receiver,
+            current_level_filter: Arc::new(RwLock::new(LogLevel::Info)),
+            current_node_filter: Arc::new(RwLock::new(None)),
+            _worker_thread: worker_thread,
+        }
+    }
+
+    /// Set the current log level filter
+    pub fn set_level_filter(&self, level: LogLevel) {
+        *self.current_level_filter.write() = level;
+        let _ = self.request_sender.send(LogRequest::UpdateFilters {
+            level,
+            node_filter: *self.current_node_filter.read(),
+        });
+    }
+
+    /// Get the current log level filter
+    pub fn get_level_filter(&self) -> LogLevel {
+        *self.current_level_filter.read()
+    }
+
+    /// Set the current node filter
+    pub fn set_node_filter(&self, node_id: Option<TuiNodeId>) {
+        *self.current_node_filter.write() = node_id;
+        let _ = self.request_sender.send(LogRequest::UpdateFilters {
+            level: *self.current_level_filter.read(),
+            node_filter: node_id,
+        });
+    }
+
+    /// Update viewport size (when UI is resized)
+    pub fn update_viewport_size(&self, viewport_size: usize) {
+        let _ = self
+            .request_sender
+            .send(LogRequest::UpdateViewportSize { viewport_size });
+    }
+
+    /// Scroll up by amount
+    pub fn scroll_up(&self, amount: usize) {
+        let _ = self.request_sender.send(LogRequest::ScrollUp { amount });
+    }
+
+    /// Scroll up by viewport size
+    pub fn scroll_up_by_viewport_size(&self) {
+        let _ = self.request_sender.send(LogRequest::ScrollUpByViewportSize);
+    }
+
+    /// Scroll down by amount
+    pub fn scroll_down(&self, amount: usize) {
+        let _ = self.request_sender.send(LogRequest::ScrollDown { amount });
+    }
+
+    /// Scroll down by viewport size
+    pub fn scroll_down_by_viewport_size(&self) {
+        let _ = self
+            .request_sender
+            .send(LogRequest::ScrollDownByViewportSize);
+    }
+
+    /// Scroll to top (oldest logs)
+    pub fn scroll_to_top(&self) {
+        let _ = self.request_sender.send(LogRequest::ScrollToTop);
+    }
+
+    /// Scroll to bottom (newest logs)
+    pub fn scroll_to_bottom(&self) {
+        let _ = self.request_sender.send(LogRequest::ScrollToBottom);
+    }
+
+    /// Request initial data load
+    pub fn request_initial_data(&self) {
+        let _ = self.request_sender.send(LogRequest::RequestInitialData);
+    }
+
+    /// Get any available responses (non-blocking)
+    pub fn try_get_response(&self) -> Option<LogResponse> {
+        self.response_receiver.try_recv().ok()
+    }
+}
+
+impl Drop for LogReader {
+    fn drop(&mut self) {
+        let _ = self.request_sender.send(LogRequest::Shutdown);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::logs_writer::LogWriter;
+    use chrono::Utc;
+    use tempfile::TempDir;
+
+    fn create_test_config() -> std::path::PathBuf {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        temp_dir.path().to_path_buf()
+    }
+
+    fn create_test_log_entry() -> LogEntry {
+        LogEntry {
+            node_id: TuiNodeId::new(),
+            level: LogLevel::Info,
+            message: "Test log message".to_string(),
+            timestamp: Utc::now(),
+            target: Some("test".to_string()),
+        }
+    }
+
+    fn reset_node_id_state() {
+        #[cfg(test)]
+        crate::node_id::TuiNodeId::reset_global_state();
+    }
+
+    #[test]
+    fn test_log_reader_sql() {
+        reset_node_id_state();
+        let base_dir = create_test_config();
+        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
+
+        // Write a test entry
+        let entry = create_test_log_entry();
+        writer.add_log(entry);
+
+        // Give async writer time to process
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        // Test LogReader with SQL
+        let reader = LogReader::new_from_writer(&writer);
+
+        // Request initial data
+        reader.request_initial_data();
+
+        // Wait a bit for background thread to process
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Check for response
+        if let Some(response) = reader.try_get_response() {
+            match response {
+                LogResponse::ViewportUpdate { logs, .. } => {
+                    assert!(!logs.is_empty());
+                    assert!(logs[0].message.contains("Test log message"));
+                }
+                LogResponse::Error { message } => {
+                    panic!("Expected ViewportUpdate response, got error: {message}");
+                }
+            }
+        } else {
+            panic!("No response received from background thread");
+        }
+    }
+
+    #[test]
+    fn test_level_filtering_sql() {
+        reset_node_id_state();
+        let base_dir = create_test_config();
+        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
+
+        // Write entries with different levels
+        let mut info_entry = create_test_log_entry();
+        info_entry.level = LogLevel::Info;
+        info_entry.message = "Info message".to_string();
+
+        let mut error_entry = create_test_log_entry();
+        error_entry.level = LogLevel::Error;
+        error_entry.message = "Error message".to_string();
+
+        writer.add_log(info_entry);
+        writer.add_log(error_entry);
+
+        // Give async writer time to process
+        std::thread::sleep(std::time::Duration::from_millis(200));
+
+        // Test filtering to only show errors
+        let reader = LogReader::new_from_writer(&writer);
+        reader.set_level_filter(LogLevel::Error);
+
+        // Wait for filter update to process
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // Check for response
+        if let Some(response) = reader.try_get_response() {
+            match response {
+                LogResponse::ViewportUpdate { logs, .. } => {
+                    // Should only show error messages when filtering for Error level
+                    assert!(logs.iter().all(|log| matches!(log.level, LogLevel::Error)));
+                    assert!(logs.iter().any(|log| log.message.contains("Error message")));
+                }
+                LogResponse::Error { message } => {
+                    panic!("Expected ViewportUpdate response, got error: {message}");
+                }
+            }
+        } else {
+            panic!("No response received from background thread");
+        }
+    }
 }
