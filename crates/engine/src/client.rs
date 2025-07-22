@@ -64,6 +64,9 @@ where
     ///
     /// This method automatically selects an appropriate group for the stream
     /// based on the current node's group membership and load balancing.
+    ///
+    /// This operation is idempotent - if a stream already exists with the same
+    /// name, the operation will succeed silently.
     pub async fn create_stream(
         &self,
         name: String,
@@ -77,7 +80,16 @@ where
             config,
             group_id,
         };
-        self.client_service.submit_global_request(request).await
+
+        let response = self.client_service.submit_global_request(request).await?;
+
+        // Make the operation idempotent - if stream already exists, return success
+        match &response {
+            GlobalResponse::Error { message } if message.contains("already exists") => {
+                Ok(GlobalResponse::Success)
+            }
+            _ => Ok(response),
+        }
     }
 
     /// Delete a stream
