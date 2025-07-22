@@ -13,6 +13,7 @@ use fuser::{
     ReplyDirectory, ReplyEmpty, ReplyEntry, ReplyOpen, ReplyStatfs, ReplyWrite, Request, TimeOrNow,
 };
 use parking_lot::RwLock;
+use proven_logger::{debug, error, info};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
@@ -177,12 +178,12 @@ impl Filesystem for VsockFuseFs {
         _req: &Request<'_>,
         _config: &mut fuser::KernelConfig,
     ) -> Result<(), libc::c_int> {
-        tracing::info!("FUSE filesystem init called");
+        info!("FUSE filesystem init called");
         Ok(())
     }
 
     fn destroy(&mut self) {
-        tracing::info!("FUSE filesystem destroy called");
+        info!("FUSE filesystem destroy called");
     }
 
     fn statfs(&mut self, _req: &Request, _ino: u64, reply: ReplyStatfs) {
@@ -231,7 +232,7 @@ impl Filesystem for VsockFuseFs {
     }
 
     fn lookup(&mut self, _req: &Request, parent: u64, name: &OsStr, reply: ReplyEntry) {
-        tracing::debug!("FUSE lookup: parent={}, name={:?}", parent, name);
+        debug!("FUSE lookup: parent={parent}, name={name:?}");
         let name_bytes = name.as_bytes().to_vec();
 
         // Get parent directory ID
@@ -245,7 +246,7 @@ impl Filesystem for VsockFuseFs {
 
         // Send lookup request through channel
         let (tx, rx) = oneshot::channel();
-        tracing::info!("Sending Lookup operation to async handler");
+        info!("Sending Lookup operation to async handler");
         if self
             .operation_tx
             .send(FuseOperation::Lookup {
@@ -255,11 +256,11 @@ impl Filesystem for VsockFuseFs {
             })
             .is_err()
         {
-            tracing::error!("Failed to send Lookup operation");
+            error!("Failed to send Lookup operation");
             reply.error(libc::EIO);
             return;
         }
-        tracing::info!("Lookup operation sent, waiting for response");
+        info!("Lookup operation sent, waiting for response");
 
         // Wait for response
         match rx.blocking_recv() {
@@ -712,19 +713,19 @@ impl Filesystem for VsockFuseFs {
         offset: i64,
         mut reply: ReplyDirectory,
     ) {
-        tracing::info!("FUSE readdir: ino={}, offset={}", ino, offset);
+        info!("FUSE readdir: ino={ino}, offset={offset}");
 
         // Get directory ID
         let dir_id = match self.inode_map.read().get_file_id(ino) {
             Some(id) => DirectoryId(id),
             None => {
-                tracing::error!("Directory not found for inode {}", ino);
+                error!("Directory not found for inode {ino}");
                 reply.error(libc::ENOENT);
                 return;
             }
         };
 
-        tracing::info!("Sending ListDirectory operation for {:?}", dir_id);
+        info!("Sending ListDirectory operation for {dir_id:?}");
         // Send list directory request
         let (tx, rx) = oneshot::channel();
         if self
@@ -732,25 +733,25 @@ impl Filesystem for VsockFuseFs {
             .send(FuseOperation::ListDirectory { dir_id, reply: tx })
             .is_err()
         {
-            tracing::error!("Failed to send ListDirectory operation");
+            error!("Failed to send ListDirectory operation");
             reply.error(libc::EIO);
             return;
         }
 
-        tracing::info!("Waiting for ListDirectory response");
+        info!("Waiting for ListDirectory response");
         // Wait for response
         let entries = match rx.blocking_recv() {
             Ok(Ok(entries)) => {
-                tracing::info!("Got {} directory entries", entries.len());
+                info!("Got {} directory entries", entries.len());
                 entries
             }
             Err(e) => {
-                tracing::error!("Failed to receive directory entries: {:?}", e);
+                error!("Failed to receive directory entries: {e:?}");
                 reply.error(libc::EIO);
                 return;
             }
             Ok(Err(e)) => {
-                tracing::error!("Directory listing failed: {:?}", e);
+                error!("Directory listing failed: {e:?}");
                 reply.error(libc::EIO);
                 return;
             }
@@ -771,7 +772,7 @@ impl Filesystem for VsockFuseFs {
             }
         }
 
-        tracing::info!("Sending {} total entries for readdir", all_entries.len());
+        info!("Sending {} total entries for readdir", all_entries.len());
 
         // Send entries starting from offset
         for (i, (ino, file_type, name)) in all_entries.iter().enumerate().skip(offset as usize) {
@@ -779,7 +780,7 @@ impl Filesystem for VsockFuseFs {
                 break;
             }
         }
-        tracing::info!("READDIR completed successfully");
+        info!("READDIR completed successfully");
         reply.ok();
     }
 
@@ -798,13 +799,7 @@ impl Filesystem for VsockFuseFs {
         flags: i32,
         reply: ReplyCreate,
     ) {
-        tracing::info!(
-            "FUSE create: parent={}, name={:?}, mode={:o}, flags={:x}",
-            parent,
-            name,
-            mode,
-            flags
-        );
+        info!("FUSE create: parent={parent}, name={name:?}, mode={mode:o}, flags={flags:x}");
         let name_bytes = name.as_bytes().to_vec();
 
         // Get parent directory ID
@@ -836,7 +831,7 @@ impl Filesystem for VsockFuseFs {
 
         // Send create file request
         let (tx, rx) = oneshot::channel();
-        tracing::info!("Sending CreateFile operation to async handler");
+        info!("Sending CreateFile operation to async handler");
         if self
             .operation_tx
             .send(FuseOperation::CreateFile {

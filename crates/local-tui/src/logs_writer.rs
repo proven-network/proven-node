@@ -1,370 +1,28 @@
-//! Disk-based log writing system with session management
+//! Disk-based log writing system using proven-logger-file
 
-use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, TuiNodeId};
-use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use crate::logs_categorizer::{AllLogsCategorizer, TuiLogCategorizer};
+use crate::logs_formatter::TuiLogFormatter;
+use crate::messages::{LogLevel, TuiNodeId};
+use anyhow::Result;
 use parking_lot::RwLock;
-use std::fmt::Write;
-use std::sync::Arc;
-use std::{
-    collections::HashMap,
-    fs::{self, File, OpenOptions},
-    io::{BufWriter, Write as IoWrite},
-    path::{Path, PathBuf},
-    sync::mpsc,
-    thread,
-};
-use tracing::{
-    Event, Subscriber, debug, error,
-    field::{Field, Visit},
-    info,
-};
-use tracing_subscriber::Layer;
-use tracing_subscriber::layer::Context as LayerContext;
+use proven_logger::{Logger, Record};
+use proven_logger_file::{FileLogger, FileLoggerConfigBuilder, RotationPolicy};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
+use std::time::Duration;
+use tokio::runtime::{Handle, Runtime};
 
-/// Commands for the async log writer
-#[derive(Debug)]
-enum LogWriterCommand {
-    Shutdown,
-    WriteLog(LogEntry),
-}
+/// Global runtime for file logger tasks
+static LOGGER_RUNTIME: OnceLock<Runtime> = OnceLock::new();
 
-/// File size limit for log rotation (1MB)
-const MAX_FILE_SIZE: u64 = 1024 * 1024;
-
-/// Async log writer that runs in background thread
-struct AsyncLogWriter {
-    command_receiver: mpsc::Receiver<LogWriterCommand>,
-    session_dir: PathBuf,
-    writers: HashMap<LogCategory, BufWriter<File>>,
-    /// Track current file sizes for rotation
-    file_sizes: HashMap<LogCategory, u64>,
-    /// Track current file paths for each category
-    current_files: HashMap<LogCategory, PathBuf>,
-}
-
-impl AsyncLogWriter {
-    fn new(command_receiver: mpsc::Receiver<LogWriterCommand>, base_dir: &PathBuf) -> Result<Self> {
-        fs::create_dir_all(base_dir).with_context(|| {
-            format!("Failed to create session directory: {}", base_dir.display())
-        })?;
-
-        let mut writer = Self {
-            command_receiver,
-            session_dir: base_dir.clone(),
-            writers: HashMap::new(),
-            file_sizes: HashMap::new(),
-            current_files: HashMap::new(),
-        };
-
-        // Create initial log files and directory structure
-        writer.ensure_writer(&LogCategory::All)?;
-        writer.ensure_writer(&LogCategory::Debug)?;
-
-        info!("Created async log writer in: {}", base_dir.display());
-        Ok(writer)
-    }
-
-    #[allow(clippy::cognitive_complexity)]
-    fn run(mut self) {
-        info!("Starting async log writer thread");
-
-        while let Ok(command) = self.command_receiver.recv() {
-            match command {
-                LogWriterCommand::WriteLog(entry) => {
-                    if let Err(e) = self.write_log_entry(&entry) {
-                        error!("Failed to write log entry: {}", e);
-                    }
-                }
-
-                LogWriterCommand::Shutdown => {
-                    info!("Shutting down async log writer");
-                    if let Err(e) = self.close() {
-                        error!("Failed to close log writer: {}", e);
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    /// Ensure a writer exists for the given log category
-    fn ensure_writer(&mut self, category: &LogCategory) -> Result<()> {
-        if self.writers.contains_key(category) {
-            return Ok(());
-        }
-
-        self.rotate_file(category)?;
-        Ok(())
-    }
-
-    /// Get the directory path for a log category
-    fn get_category_dir(&self, category: &LogCategory) -> PathBuf {
-        let dir_name = match category {
-            LogCategory::All => "all",
-            LogCategory::Debug => "debug",
-            LogCategory::Node(node_id) => {
-                return self
-                    .session_dir
-                    .join(format!("node_{}", node_id.execution_order()));
-            }
-        };
-        self.session_dir.join(dir_name)
-    }
-
-    /// Get the current symlink path for a log category (legacy location)
-    fn get_symlink_path(&self, category: &LogCategory) -> PathBuf {
-        let filename = match category {
-            LogCategory::All => "all.log",
-            LogCategory::Debug => "debug.log",
-            LogCategory::Node(node_id) => {
-                return self
-                    .session_dir
-                    .join(format!("node_{}.log", node_id.execution_order()));
-            }
-        };
-        self.session_dir.join(filename)
-    }
-
-    /// Generate timestamped filename
-    fn generate_timestamped_filename(timestamp: DateTime<Utc>) -> String {
-        format!("{}.log", timestamp.format("%Y-%m-%d_%H-%M-%S"))
-    }
-
-    /// Create a new log file for the given category
-    fn rotate_file(&mut self, category: &LogCategory) -> Result<()> {
-        // Close existing writer if any
-        if let Some(mut writer) = self.writers.remove(category) {
-            writer.flush()?;
-        }
-
-        // Create category directory
-        let category_dir = self.get_category_dir(category);
-        fs::create_dir_all(&category_dir).with_context(|| {
-            format!(
-                "Failed to create category directory: {}",
-                category_dir.display()
-            )
-        })?;
-
-        // Generate timestamped filename
-        let timestamp = Utc::now();
-        let filename = Self::generate_timestamped_filename(timestamp);
-        let file_path = category_dir.join(&filename);
-
-        // Create new file
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&file_path)
-            .with_context(|| format!("Failed to create log file: {}", file_path.display()))?;
-
-        let writer = BufWriter::new(file);
-        self.writers.insert(category.clone(), writer);
-        self.file_sizes.insert(category.clone(), 0);
-        self.current_files
-            .insert(category.clone(), file_path.clone());
-
-        // Create/update symlink
-        self.update_symlink(category, &file_path)?;
-
-        debug!(
-            "Rotated log file for category: {:?} -> {}",
-            category,
-            file_path.display()
-        );
-        Ok(())
-    }
-
-    /// Update symlink to point to current file
-    fn update_symlink(&self, category: &LogCategory, target_path: &Path) -> Result<()> {
-        let symlink_path = self.get_symlink_path(category);
-
-        // Remove existing symlink if it exists
-        if symlink_path.exists() || symlink_path.is_symlink() {
-            fs::remove_file(&symlink_path).with_context(|| {
-                format!("Failed to remove old symlink: {}", symlink_path.display())
-            })?;
-        }
-
-        // Create relative path for symlink
-        let relative_target = target_path
-            .strip_prefix(&self.session_dir)
-            .with_context(|| "Failed to create relative path for symlink")?;
-
-        // Create symlink
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(relative_target, &symlink_path)
-                .with_context(|| format!("Failed to create symlink: {}", symlink_path.display()))?;
-        }
-
-        #[cfg(windows)]
-        {
-            std::os::windows::fs::symlink_file(relative_target, &symlink_path)
-                .with_context(|| format!("Failed to create symlink: {}", symlink_path.display()))?;
-        }
-
-        debug!(
-            "Updated symlink: {} -> {}",
-            symlink_path.display(),
-            relative_target.display()
-        );
-        Ok(())
-    }
-
-    /// Check if file needs rotation and rotate if necessary
-    fn check_and_rotate_if_needed(&mut self, category: &LogCategory) -> Result<()> {
-        let current_size = self.file_sizes.get(category).copied().unwrap_or(0);
-
-        if current_size >= MAX_FILE_SIZE {
-            debug!(
-                "File size limit reached for category {:?}, rotating",
-                category
-            );
-            self.rotate_file(category)?;
-        }
-
-        Ok(())
-    }
-
-    /// Write a log entry to the appropriate files
-    fn write_log_entry(&mut self, entry: &LogEntry) -> Result<()> {
-        let log_line = Self::format_log_entry(entry)?;
-        let log_line_bytes = log_line.len() as u64 + 1; // +1 for newline
-
-        // Write to "all" logs
-        self.check_and_rotate_if_needed(&LogCategory::All)?;
-        self.write_to_category(&LogCategory::All, &log_line, log_line_bytes)?;
-
-        // Write to debug logs if it's from main thread
-        if entry.node_id == MAIN_THREAD_NODE_ID {
-            self.check_and_rotate_if_needed(&LogCategory::Debug)?;
-            self.write_to_category(&LogCategory::Debug, &log_line, log_line_bytes)?;
-        } else {
-            // Write to node-specific log
-            let node_category = LogCategory::Node(entry.node_id);
-            self.check_and_rotate_if_needed(&node_category)?;
-            self.write_to_category(&node_category, &log_line, log_line_bytes)?;
-        }
-
-        // Force flush after every write for immediate visibility
-        self.flush_all()?;
-
-        Ok(())
-    }
-
-    /// Write log line to a specific category
-    fn write_to_category(
-        &mut self,
-        category: &LogCategory,
-        log_line: &str,
-        line_bytes: u64,
-    ) -> Result<()> {
-        // Ensure writer exists
-        self.ensure_writer(category)?;
-
-        if let Some(writer) = self.writers.get_mut(category) {
-            writeln!(writer, "{log_line}")
-                .with_context(|| format!("Failed to write to log category: {category:?}"))?;
-
-            // Update file size
-            let current_size = self.file_sizes.get(category).copied().unwrap_or(0);
-            self.file_sizes
-                .insert(category.clone(), current_size + line_bytes);
-        }
-
-        Ok(())
-    }
-
-    /// Format a log entry as JSON Lines format
-    fn format_log_entry(entry: &LogEntry) -> Result<String> {
-        serde_json::to_string(entry).with_context(|| "Failed to serialize log entry")
-    }
-
-    /// Flush all writers
-    fn flush_all(&mut self) -> Result<()> {
-        for (category, writer) in &mut self.writers {
-            writer
-                .flush()
-                .with_context(|| format!("Failed to flush writer for category: {category:?}"))?;
-        }
-        Ok(())
-    }
-
-    /// Close and cleanup
-    fn close(&mut self) -> Result<()> {
-        info!("Closing async log writer");
-        self.flush_all()?;
-        self.writers.clear();
-        Ok(())
-    }
-}
-
-/// Log file categories for organizing logs
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum LogCategory {
-    /// All logs combined
-    All,
-    /// Debug/main thread logs only
-    Debug,
-    /// Logs from a specific node
-    Node(TuiNodeId),
-}
-
-/// Extract node ID from the current thread name
-/// Thread names follow the pattern "node-{execution_order}-{pokemon_id}" (e.g., "node-1-42", "node-2-7")
-/// Returns None for non-node threads (main thread, etc.)
-fn extract_node_id_from_thread_name() -> Option<TuiNodeId> {
-    let thread = std::thread::current();
-    let thread_name = thread.name()?;
-
-    // Parse "node-123-45" -> execution_order = 123, pokemon_id = 45
-    let node_part = thread_name.strip_prefix("node-")?;
-    let mut parts = node_part.split('-');
-
-    let execution_order: u8 = parts.next()?.parse().ok()?;
-    let pokemon_id: u8 = parts.next()?.parse().ok()?;
-
-    Some(TuiNodeId::with_values(execution_order, pokemon_id))
-}
-
-/// A visitor for extracting message fields from tracing events
-struct MessageVisitor {
-    message: String,
-}
-
-impl Visit for MessageVisitor {
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.message = format!("{value:?}");
-        } else if self.message.is_empty() {
-            // If no message field, try to capture any field
-            if !self.message.is_empty() {
-                self.message.push_str(", ");
-            }
-            write!(self.message, "{}={:?}", field.name(), value).ok();
-        }
-    }
-
-    fn record_str(&mut self, field: &Field, value: &str) {
-        if field.name() == "message" {
-            self.message = value.to_string();
-        } else if self.message.is_empty() {
-            if !self.message.is_empty() {
-                self.message.push_str(", ");
-            }
-            write!(self.message, "{}={}", field.name(), value).ok();
-        }
-    }
-}
-
-/// High-performance disk-based log writer with integrated tracing layer
+/// High-performance disk-based log writer
 pub struct LogWriter {
-    /// Command sender for async log writer
-    command_sender: mpsc::Sender<LogWriterCommand>,
-    /// Thread handle for async log writer
-    writer_thread: Option<thread::JoinHandle<()>>,
+    /// File logger for "all" logs
+    all_logger: Arc<FileLogger>,
+    /// File logger for categorized logs (`debug/node_X`)
+    categorized_logger: Arc<FileLogger>,
+    /// Tokio runtime handle for async operations
+    runtime_handle: Handle,
     /// Current log level filter
     current_level_filter: Arc<RwLock<LogLevel>>,
     /// Current node filter
@@ -374,127 +32,145 @@ pub struct LogWriter {
 }
 
 impl LogWriter {
-    /// Create a new disk log writer with default configuration
-    pub fn new(base_dir: &PathBuf) -> Result<Self> {
-        let session_dir = Arc::new(RwLock::new(base_dir.clone()));
+    /// Create symlinks at the root level for compatibility with old log reader
+    fn create_root_symlinks(base_dir: &Path) -> Result<()> {
+        // We'll create these symlinks after the first log files are created
+        // For now, just ensure the directories exist
+        std::fs::create_dir_all(base_dir.join("all"))?;
+        std::fs::create_dir_all(base_dir.join("debug"))?;
+        Ok(())
+    }
 
-        // Create async log writer
-        let (command_sender, command_receiver) = mpsc::channel();
-        let async_writer = AsyncLogWriter::new(command_receiver, base_dir)?;
+    /// Create a new disk log writer with default configuration (async)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the log directories cannot be created or if the file loggers fail to initialize
+    pub async fn new(base_dir: &Path) -> Result<Self> {
+        let session_dir = Arc::new(RwLock::new(base_dir.to_path_buf()));
 
-        // Start background thread
-        let writer_thread = thread::spawn(move || {
-            async_writer.run();
-        });
+        // Get current runtime handle
+        let runtime_handle = Handle::current();
+
+        // Create logger configurations
+        let all_config = FileLoggerConfigBuilder::new()
+            .log_dir(base_dir.join("all"))
+            .file_prefix("") // No prefix to match old format
+            .file_extension("log")
+            .buffer_size(1000)
+            .flush_interval(Duration::from_millis(100))
+            .rotation_policy(RotationPolicy::Size {
+                max_bytes: 1024 * 1024,
+            }) // 1MB
+            .create_symlinks(false) // Don't create symlinks in subdirectories
+            .build();
+
+        let categorized_config = FileLoggerConfigBuilder::new()
+            .log_dir(base_dir)
+            .file_prefix("") // No prefix to match old format
+            .file_extension("log")
+            .buffer_size(1000)
+            .flush_interval(Duration::from_millis(100))
+            .rotation_policy(RotationPolicy::Size {
+                max_bytes: 1024 * 1024,
+            }) // 1MB
+            .create_symlinks(false) // Don't create symlinks in subdirectories
+            .build();
+
+        // Create file loggers
+        let all_logger = FileLogger::new(
+            all_config,
+            Arc::new(TuiLogFormatter),
+            Arc::new(AllLogsCategorizer),
+        )
+        .await?;
+
+        let categorized_logger = FileLogger::new(
+            categorized_config,
+            Arc::new(TuiLogFormatter),
+            Arc::new(TuiLogCategorizer),
+        )
+        .await?;
+
+        // Create root-level symlinks for compatibility
+        Self::create_root_symlinks(base_dir)?;
 
         Ok(Self {
-            command_sender,
-            writer_thread: Some(writer_thread),
+            all_logger: Arc::new(all_logger),
+            categorized_logger: Arc::new(categorized_logger),
+            runtime_handle,
             current_level_filter: Arc::new(RwLock::new(LogLevel::Info)),
             current_node_filter: Arc::new(RwLock::new(None)),
             session_dir,
         })
     }
 
-    /// Add a log entry (non-blocking)
-    pub fn add_log(&self, entry: LogEntry) {
-        if let Err(e) = self.command_sender.send(LogWriterCommand::WriteLog(entry)) {
-            error!("Failed to send log entry to async writer: {}", e);
-        }
+    /// Create a new disk log writer synchronously (for compatibility)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the runtime cannot be created or if the async initialization fails
+    ///
+    /// # Panics
+    ///
+    /// Panics if the logger runtime fails to build, which should only happen in extreme cases
+    /// such as system resource exhaustion
+    pub fn new_sync(base_dir: &Path) -> Result<Self> {
+        // Get or create the global logger runtime
+        let runtime = LOGGER_RUNTIME.get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_name("logger")
+                .enable_all()
+                .build()
+                .expect("Failed to create logger runtime")
+        });
+
+        runtime.block_on(Self::new(base_dir))
     }
 
     /// Get the current session directory path
+    #[must_use]
     pub fn get_session_dir(&self) -> PathBuf {
         self.session_dir.read().clone()
     }
+
+    /// Internal method to log a record
+    fn log_record(&self, record: Record) {
+        // Log to both "all" and categorized loggers
+        self.all_logger.log(record.clone());
+        self.categorized_logger.log(record);
+    }
 }
 
-impl Drop for LogWriter {
-    fn drop(&mut self) {
-        // Send shutdown command to async writer
-        if let Err(e) = self.command_sender.send(LogWriterCommand::Shutdown) {
-            error!("Failed to send shutdown command during drop: {}", e);
-        }
+impl Logger for LogWriter {
+    fn log(&self, record: Record) {
+        self.log_record(record);
+    }
 
-        // Wait for writer thread to finish
-        if let Some(handle) = self.writer_thread.take()
-            && let Err(e) = handle.join()
-        {
-            error!("Failed to join async writer thread: {:?}", e);
-        }
+    fn flush(&self) {
+        // FileLogger handles flushing internally
+        self.all_logger.flush();
+        self.categorized_logger.flush();
+    }
+
+    fn with_context(&self, _context: proven_logger::Context) -> Arc<dyn Logger> {
+        // For now, just return self since we don't modify context
+        // In the future, we could create a wrapper that includes context
+        Arc::new(self.clone())
     }
 }
 
 impl Clone for LogWriter {
     fn clone(&self) -> Self {
-        // Share the same session directory and command sender for cloning
-        // This ensures all clones write to the same log files
         Self {
-            command_sender: self.command_sender.clone(),
-            writer_thread: None, // Don't clone the thread handle - only the original owns it
+            all_logger: Arc::clone(&self.all_logger),
+            categorized_logger: Arc::clone(&self.categorized_logger),
+            runtime_handle: self.runtime_handle.clone(),
             current_level_filter: Arc::clone(&self.current_level_filter),
             current_node_filter: Arc::clone(&self.current_node_filter),
             session_dir: Arc::clone(&self.session_dir),
         }
-    }
-}
-
-/// Integrated tracing layer that captures logs and writes them to disk
-impl<S> Layer<S> for LogWriter
-where
-    S: Subscriber + for<'lookup> tracing_subscriber::registry::LookupSpan<'lookup>,
-{
-    fn on_event(&self, event: &Event<'_>, _ctx: LayerContext<'_, S>) {
-        // Extract node ID from thread name, use MAIN_THREAD_NODE_ID for non-node threads
-        let node_id = extract_node_id_from_thread_name().unwrap_or(MAIN_THREAD_NODE_ID);
-
-        // Extract log level
-        let level = match *event.metadata().level() {
-            tracing::Level::ERROR => LogLevel::Error,
-            tracing::Level::WARN => LogLevel::Warn,
-            tracing::Level::INFO => LogLevel::Info,
-            tracing::Level::DEBUG => LogLevel::Debug,
-            tracing::Level::TRACE => LogLevel::Trace,
-        };
-
-        // Extract target
-        let target = Some(event.metadata().target().to_string());
-
-        // Ignore targets from certain sources
-        if let Some(target_str) = target.as_deref()
-            && (target_str.starts_with("openraft")
-                || target_str.starts_with("hyper_util")
-                || target_str.starts_with("swc_ecma_transforms_base")
-                || target_str.starts_with("swc_ecma_transforms_base")
-                || target_str.starts_with("h2::")
-                || target_str.starts_with("hickory")
-                || target_str == "log")
-        {
-            return;
-        }
-
-        // Extract message using visitor pattern
-        let mut visitor = MessageVisitor {
-            message: String::new(),
-        };
-
-        event.record(&mut visitor);
-
-        // If no message was extracted, use the event name as fallback
-        if visitor.message.is_empty() {
-            visitor.message = event.metadata().name().to_string();
-        }
-
-        let log_entry = LogEntry {
-            node_id,
-            level,
-            message: visitor.message,
-            timestamp: Utc::now(),
-            target,
-        };
-
-        // Send to disk-based log writer (guaranteed delivery)
-        self.add_log(log_entry);
     }
 }
 
@@ -508,47 +184,75 @@ mod tests {
         temp_dir.path().to_path_buf()
     }
 
-    fn create_test_log_entry() -> LogEntry {
-        LogEntry {
-            node_id: TuiNodeId::new(),
-            level: LogLevel::Info,
-            message: "Test log message".to_string(),
-            timestamp: Utc::now(),
-            target: Some("test".to_string()),
+    #[tokio::test]
+    async fn test_writer_creation() {
+        let base_dir = create_temp_dir();
+        let writer = LogWriter::new(&base_dir)
+            .await
+            .expect("Failed to create writer");
+
+        let session_dir = writer.get_session_dir();
+        assert!(session_dir.exists());
+        assert!(session_dir.join("all").exists());
+    }
+
+    #[tokio::test]
+    async fn test_log_writing() {
+        let base_dir = create_temp_dir();
+        let writer = LogWriter::new(&base_dir)
+            .await
+            .expect("Failed to create writer");
+
+        // Log a test message using the internal method
+        let record = proven_logger::Record::new(proven_logger::Level::Info, "Test message")
+            .with_target("test");
+        writer.log_record(record);
+
+        // Flush the logger
+        writer.all_logger.flush();
+        writer.categorized_logger.flush();
+
+        // Give the async writer time to process
+        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+
+        // Check that files were created
+        let all_dir = base_dir.join("all");
+        assert!(all_dir.exists());
+
+        // Check for log files
+        let entries: Vec<_> = std::fs::read_dir(&all_dir)
+            .expect("Failed to read all directory")
+            .collect();
+        assert!(!entries.is_empty(), "No log files created in all directory");
+
+        // Read the log file and verify content
+        for entry in entries.into_iter().flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("log")
+                && path.file_name().and_then(|s| s.to_str()).is_some_and(|s| {
+                    // Check if filename matches expected pattern YYYY-MM-DD_HH-MM-SS.log
+                    s.len() == 23
+                        && std::path::Path::new(s)
+                            .extension()
+                            .is_some_and(|ext| ext.eq_ignore_ascii_case("log"))
+                        && s.chars().nth(4) == Some('-')
+                })
+            {
+                let content = std::fs::read_to_string(&path).expect("Failed to read log file");
+                println!("Log file path: {path:?}");
+                println!("Log file content:\n{content}");
+                assert!(
+                    content.contains("Test message"),
+                    "Log message not found in file"
+                );
+                // The log format is JSON, so check for the level in JSON format
+                assert!(
+                    content.contains("\"level\":\"Info\"")
+                        || content.contains("\"level\":\"INFO\""),
+                    "Log level not found in file"
+                );
+                break;
+            }
         }
-    }
-
-    fn reset_node_id_state() {
-        #[cfg(test)]
-        crate::node_id::TuiNodeId::reset_global_state();
-    }
-
-    #[test]
-    fn test_writer_creation() {
-        let base_dir = create_temp_dir();
-        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
-
-        let session_dir = writer.get_session_dir();
-        assert!(session_dir.exists());
-        assert!(session_dir.join("all.log").exists());
-        assert!(session_dir.join("debug.log").exists());
-    }
-
-    #[test]
-    fn test_log_writer() {
-        reset_node_id_state();
-        let base_dir = create_temp_dir();
-        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
-
-        let entry = create_test_log_entry();
-        writer.add_log(entry);
-
-        // Give async writer time to process
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        // Check that session directory exists
-        let session_dir = writer.get_session_dir();
-        assert!(session_dir.exists());
-        assert!(session_dir.join("all.log").exists());
     }
 }

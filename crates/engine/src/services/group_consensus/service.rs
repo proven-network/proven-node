@@ -4,6 +4,7 @@ use std::num::NonZero;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use proven_logger::{debug, error, info, warn};
 use proven_network::NetworkManager;
 use proven_storage::{
     ConsensusStorage, LogStorage, StorageAdaptor, StorageManager, StorageNamespace,
@@ -108,7 +109,7 @@ where
 
         self.event_bus.subscribe(subscriber).await;
 
-        tracing::info!("GroupConsensusService: Registered subscriber for GlobalConsensusEvents");
+        info!("GroupConsensusService: Registered subscriber for GlobalConsensusEvents");
 
         // Restore any existing groups from storage
         self.restore_persisted_groups().await?;
@@ -121,7 +122,7 @@ where
         // For now, we don't have a way to enumerate all persisted groups
         // This would require storage to keep track of which groups exist
         // The groups will be restored when the global state sync callback tries to create them
-        tracing::debug!("Checking for persisted groups to restore");
+        debug!("Checking for persisted groups to restore");
         Ok(())
     }
 
@@ -133,23 +134,13 @@ where
             // Shutdown the Raft instance to release all resources with timeout
             match tokio::time::timeout(std::time::Duration::from_secs(5), layer.shutdown()).await {
                 Ok(Ok(())) => {
-                    tracing::debug!(
-                        "Raft instance for group {:?} shut down successfully",
-                        group_id
-                    );
+                    debug!("Raft instance for group {group_id:?} shut down successfully");
                 }
                 Ok(Err(e)) => {
-                    tracing::error!(
-                        "Failed to shutdown Raft instance for group {:?}: {}",
-                        group_id,
-                        e
-                    );
+                    error!("Failed to shutdown Raft instance for group {group_id:?}: {e}");
                 }
                 Err(_) => {
-                    tracing::error!(
-                        "Timeout while shutting down Raft instance for group {:?}",
-                        group_id
-                    );
+                    error!("Timeout while shutting down Raft instance for group {group_id:?}");
                 }
             }
         }
@@ -164,9 +155,9 @@ where
             .unregister_service::<GroupConsensusMessage>()
             .await
         {
-            tracing::warn!("Failed to unregister group consensus service: {}", e);
+            warn!("Failed to unregister group consensus service: {e}");
         } else {
-            tracing::debug!("Group consensus service handler unregistered");
+            debug!("Group consensus service handler unregistered");
         }
 
         Ok(())
@@ -180,10 +171,9 @@ where
     ) -> ConsensusResult<()> {
         // Check if this node is a member of the group
         if !members.contains(&self.node_id) {
-            tracing::debug!(
+            debug!(
                 "Node {} is not a member of group {:?}, skipping creation",
-                self.node_id,
-                group_id
+                self.node_id, group_id
             );
             return Ok(());
         }
@@ -192,7 +182,7 @@ where
         {
             let groups = self.groups.read().await;
             if groups.contains_key(&group_id) {
-                tracing::debug!("Group {:?} already exists, skipping creation", group_id);
+                debug!("Group {group_id:?} already exists, skipping creation");
                 return Ok(());
             }
         }
@@ -249,17 +239,14 @@ where
         // Check if we have persisted state for this group
         let has_persisted_state = self.has_persisted_state(group_id).await;
 
-        tracing::info!(
-            "Group {:?} initialization check - has_persisted_state: {}",
-            group_id,
-            has_persisted_state
+        info!(
+            "Group {group_id:?} initialization check - has_persisted_state: {has_persisted_state}"
         );
 
         if !has_persisted_state {
             // Fresh start - only ONE node should initialize to avoid election storms
-            tracing::info!(
-                "No persisted state found for group {}, checking if we should initialize",
-                group_id
+            info!(
+                "No persisted state found for group {group_id}, checking if we should initialize"
             );
 
             // Sort members by ID to ensure deterministic selection
@@ -268,17 +255,16 @@ where
 
             // Only the first member (lowest ID) initializes the cluster
             if sorted_members.first() == Some(&self.node_id) {
-                tracing::info!(
+                info!(
                     "This node ({}) has the lowest ID in group {}, initializing cluster",
-                    self.node_id,
-                    group_id
+                    self.node_id, group_id
                 );
 
                 // Get member nodes from topology
                 let topology = match &self.topology_manager {
                     Some(tm) => tm,
                     None => {
-                        tracing::error!("No topology manager available for group {}", group_id);
+                        error!("No topology manager available for group {group_id}");
                         return Err(Error::with_context(
                             ErrorKind::Configuration,
                             format!("No topology manager available for group {group_id}"),
@@ -289,7 +275,7 @@ where
                 let all_nodes = match topology.provider().get_topology().await {
                     Ok(nodes) => nodes,
                     Err(e) => {
-                        tracing::error!("Failed to get topology for group {}: {}", group_id, e);
+                        error!("Failed to get topology for group {group_id}: {e}");
                         return Err(Error::with_context(
                             ErrorKind::Network,
                             format!("Failed to get topology: {e}"),
@@ -302,11 +288,7 @@ where
                     if let Some(node) = all_nodes.iter().find(|n| n.node_id == *member_id) {
                         raft_members.insert(member_id.clone(), node.clone());
                     } else {
-                        tracing::error!(
-                            "Member {} not found in topology for group {}",
-                            member_id,
-                            group_id
-                        );
+                        error!("Member {member_id} not found in topology for group {group_id}");
                         return Err(Error::with_context(
                             ErrorKind::Configuration,
                             format!(
@@ -316,7 +298,7 @@ where
                     }
                 }
 
-                tracing::info!(
+                info!(
                     "Initializing group {} Raft cluster with {} members",
                     group_id,
                     raft_members.len()
@@ -324,32 +306,24 @@ where
 
                 // Initialize the Raft cluster
                 if let Err(e) = layer.raft().initialize(raft_members).await {
-                    tracing::error!(
-                        "Failed to initialize group {} Raft cluster: {}",
-                        group_id,
-                        e
-                    );
+                    error!("Failed to initialize group {group_id} Raft cluster: {e}");
                     return Err(Error::with_context(
                         ErrorKind::Consensus,
                         format!("Failed to initialize group Raft: {e}"),
                     ));
                 }
 
-                tracing::info!("Successfully initialized group {} Raft cluster", group_id);
+                info!("Successfully initialized group {group_id} Raft cluster");
             } else {
-                tracing::info!(
+                info!(
                     "This node ({}) is not the initializer for group {}, waiting for leader contact",
-                    self.node_id,
-                    group_id
+                    self.node_id, group_id
                 );
                 // Don't initialize - just start up and wait for the leader to contact us
             }
         } else {
             // Resuming from persisted state
-            tracing::info!(
-                "Group {} resuming from persisted state - skipping initialization",
-                group_id
-            );
+            info!("Group {group_id} resuming from persisted state - skipping initialization");
         }
 
         Ok(())
@@ -620,9 +594,8 @@ where
                             current_term = metrics.current_term;
 
                             if let Some(new_leader) = &current_leader {
-                                tracing::info!(
-                                    "Group {} consensus leader changed: {:?} -> {} (term {})",
-                                    group_id_clone, old_leader, new_leader, current_term
+                                info!(
+                                    "Group {group_id_clone} consensus leader changed: {old_leader:?} -> {new_leader} (term {current_term})"
                                 );
 
                                 // Publish event
@@ -640,7 +613,7 @@ where
                 }
             }
 
-            tracing::debug!("Group {} leader monitoring task stopped", group_id_clone);
+            debug!("Group {group_id_clone} leader monitoring task stopped");
         });
     }
 }

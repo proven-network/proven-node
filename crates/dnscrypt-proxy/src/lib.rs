@@ -17,13 +17,13 @@ use std::process::Stdio;
 use aws_config::Region;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
+use proven_logger::{debug, error, info, warn};
 use regex::Regex;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info, warn};
 
 static CONFIG_TEMPLATE: &str = include_str!("../templates/dnscrypt-proxy.toml");
 
@@ -116,17 +116,17 @@ impl DnscryptProxy {
                         let label = caps.get(2).map_or("[UNKNOWN]", |m| m.as_str());
                         let message = caps.get(3).map_or(line.as_str(), |m| m.as_str());
                         match label {
-                            "[INFO]" => info!("{}", message),
-                            "[NOTICE]" => info!("{}", message),
-                            "[DEBUG]" => debug!("{}", message),
-                            "[WARNING]" => warn!("{}", message),
-                            "[CRITICAL]" => warn!("{}", message),
-                            "[ERROR]" => error!("{}", message),
-                            "[FATAL]" => error!("{}", message),
-                            _ => error!("{}", line),
+                            "[INFO]" => info!("{message}"),
+                            "[NOTICE]" => info!("{message}"),
+                            "[DEBUG]" => debug!("{message}"),
+                            "[WARNING]" => warn!("{message}"),
+                            "[CRITICAL]" => warn!("{message}"),
+                            "[ERROR]" => error!("{message}"),
+                            "[FATAL]" => error!("{message}"),
+                            _ => error!("{line}"),
                         }
                     } else {
-                        error!("{}", line);
+                        error!("{line}");
                     }
                 }
 

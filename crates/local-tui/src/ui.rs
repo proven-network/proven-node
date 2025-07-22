@@ -6,6 +6,7 @@ use proven_applications::Application;
 use std::collections::{HashMap, HashSet};
 
 use proven_local::NodeStatus;
+use proven_logger::debug;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -31,6 +32,7 @@ pub struct MouseState {
 
 impl MouseState {
     /// Create a new mouse state
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             is_down: false,
@@ -340,6 +342,7 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
 
 /// Create colored spans for a log entry with proper alignment and wrapping
 #[allow(clippy::too_many_lines)]
+#[must_use]
 pub fn create_colored_log_lines(
     entry: &'_ crate::messages::LogEntry,
     show_node_name: bool,
@@ -548,7 +551,7 @@ pub fn create_colored_log_lines(
 }
 
 /// Main UI rendering function
-pub fn render_ui<S: std::hash::BuildHasher>(
+pub fn render_ui<S: std::hash::BuildHasher, S2: std::hash::BuildHasher>(
     frame: &mut Frame,
     ui_state: &mut UiState,
     nodes: &HashMap<
@@ -556,7 +559,7 @@ pub fn render_ui<S: std::hash::BuildHasher>(
         (
             String,
             NodeStatus,
-            HashSet<proven_topology::NodeSpecialization>,
+            HashSet<proven_topology::NodeSpecialization, S2>,
         ),
         S,
     >,
@@ -625,7 +628,7 @@ fn render_header(frame: &mut Frame, area: ratatui::layout::Rect) {
 
 /// Render logs view
 #[allow(clippy::too_many_lines)]
-fn render_logs<S: std::hash::BuildHasher>(
+fn render_logs<S: std::hash::BuildHasher, S2: std::hash::BuildHasher>(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
     log_reader: &LogReader,
@@ -635,7 +638,7 @@ fn render_logs<S: std::hash::BuildHasher>(
         (
             String,
             NodeStatus,
-            HashSet<proven_topology::NodeSpecialization>,
+            HashSet<proven_topology::NodeSpecialization, S2>,
         ),
         S,
     >,
@@ -707,7 +710,7 @@ fn render_logs<S: std::hash::BuildHasher>(
             }
             LogResponse::Error { message } => {
                 // Log error but continue rendering
-                tracing::debug!("Log reader error: {}", message);
+                debug!("Log reader error: {message}");
             }
         }
     }
@@ -812,7 +815,7 @@ fn render_logs<S: std::hash::BuildHasher>(
 
 /// Render logs sidebar with node selection
 #[allow(clippy::too_many_lines)]
-fn render_logs_sidebar<S: std::hash::BuildHasher>(
+fn render_logs_sidebar<S: std::hash::BuildHasher, S2: std::hash::BuildHasher>(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
     ui_state: &mut UiState,
@@ -822,7 +825,7 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
         (
             String,
             NodeStatus,
-            HashSet<proven_topology::NodeSpecialization>,
+            HashSet<proven_topology::NodeSpecialization, S2>,
         ),
         S,
     >,
@@ -962,7 +965,7 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
 }
 
 /// Render footer with context-aware key hints
-fn render_footer<S: std::hash::BuildHasher>(
+fn render_footer<S: std::hash::BuildHasher, S2: std::hash::BuildHasher>(
     frame: &mut Frame,
     area: ratatui::layout::Rect,
     shutting_down: bool,
@@ -972,7 +975,7 @@ fn render_footer<S: std::hash::BuildHasher>(
         (
             String,
             NodeStatus,
-            HashSet<proven_topology::NodeSpecialization>,
+            HashSet<proven_topology::NodeSpecialization, S2>,
         ),
         S,
     >,

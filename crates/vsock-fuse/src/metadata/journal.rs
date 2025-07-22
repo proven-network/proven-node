@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use parking_lot::Mutex;
+use proven_logger::error;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -474,7 +475,7 @@ impl Drop for MetadataJournal {
     fn drop(&mut self) {
         // Ensure journal is flushed on drop
         if let Err(e) = self.sync() {
-            tracing::error!("Failed to flush journal on drop: {}", e);
+            error!("Failed to flush journal on drop: {e}");
         }
     }
 }

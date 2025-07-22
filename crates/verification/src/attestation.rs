@@ -2,9 +2,9 @@
 
 use bytes::Bytes;
 use proven_attestation::{AttestationParams, Attestor, Pcrs};
+use proven_logger::warn;
 use proven_topology::{TopologyAdaptor, Version};
 use std::{fmt::Debug, sync::Arc};
-use tracing::warn;
 
 use crate::error::{VerificationError, VerificationResult};
 

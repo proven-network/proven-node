@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
+use proven_logger::{debug, info};
 use tokio::sync::RwLock;
-use tracing::{debug, info};
 
 use crate::foundation::ConsensusGroupId;
 
@@ -55,7 +55,7 @@ impl RoutingTable {
             expires_at: SystemTime::now() + self.cache_ttl,
         };
         routes.insert(stream_name.clone(), entry);
-        info!("Updated route for stream {}", stream_name);
+        info!("Updated route for stream {stream_name}");
         Ok(())
     }
 
@@ -63,7 +63,7 @@ impl RoutingTable {
     pub async fn remove_stream_route(&self, stream_name: &str) -> RoutingResult<()> {
         let mut routes = self.stream_routes.write().await;
         routes.remove(stream_name);
-        info!("Removed route for stream {}", stream_name);
+        info!("Removed route for stream {stream_name}");
         Ok(())
     }
 
@@ -74,7 +74,7 @@ impl RoutingTable {
         if let Some(entry) = routes.get(stream_name) {
             // Check if expired
             if SystemTime::now() > entry.expires_at {
-                debug!("Route for stream {} has expired", stream_name);
+                debug!("Route for stream {stream_name} has expired");
                 drop(routes);
                 // Remove expired entry
                 let mut routes = self.stream_routes.write().await;
@@ -95,7 +95,7 @@ impl RoutingTable {
     ) -> RoutingResult<()> {
         let mut routes = self.group_routes.write().await;
         routes.insert(group_id, route);
-        debug!("Updated route for group {:?}", group_id);
+        debug!("Updated route for group {group_id:?}");
         Ok(())
     }
 
@@ -108,7 +108,7 @@ impl RoutingTable {
         let mut stream_routes = self.stream_routes.write().await;
         stream_routes.retain(|_, entry| entry.route.group_id != group_id);
 
-        info!("Removed route for group {:?}", group_id);
+        info!("Removed route for group {group_id:?}");
         Ok(())
     }
 
@@ -163,7 +163,7 @@ impl RoutingTable {
 
         let removed = before - routes.len();
         if removed > 0 {
-            debug!("Cleared {} expired routing entries", removed);
+            debug!("Cleared {removed} expired routing entries");
         }
 
         Ok(removed)
@@ -174,7 +174,7 @@ impl RoutingTable {
         let mut current_leader = self.global_leader.write().await;
         *current_leader = leader.clone();
         if let Some(ref leader_id) = leader {
-            info!("Updated global consensus leader to {}", leader_id);
+            info!("Updated global consensus leader to {leader_id}");
         } else {
             info!("Cleared global consensus leader");
         }

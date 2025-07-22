@@ -2,23 +2,20 @@
 
 use std::env;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use helios_ethereum::config::networks::Network;
+use proven_logger::{StdoutLogger, info, init};
 use proven_topology::adaptor::TopologyAdaptor;
 use proven_topology_governance::{GovernanceTopologyAdaptor, GovernanceTopologyAdaptorOptions};
-use tracing::info;
 
 #[tokio::main]
 async fn main() {
     // Load environment variables from .env file
     dotenv::dotenv().ok();
 
-    tracing::subscriber::set_global_default(
-        tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(tracing::Level::DEBUG)
-            .finish(),
-    )
-    .unwrap();
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     // Get environment variables with fallbacks
     let network = match env::var("HELIOS_NETWORK").unwrap().as_str() {
@@ -34,10 +31,10 @@ async fn main() {
     let version_governance_address = env::var("VERSION_GOVERNANCE_CONTRACT_ADDRESS").unwrap();
 
     info!("Using contract addresses:");
-    info!("Token: {}", token_address);
-    info!("Node Governance: {}", node_governance_address);
-    info!("Version Governance: {}", version_governance_address);
-    info!("Consensus RPC URL: {}", consensus_rpc);
+    info!("Token: {token_address}");
+    info!("Node Governance: {node_governance_address}");
+    info!("Version Governance: {version_governance_address}");
+    info!("Consensus RPC URL: {consensus_rpc}");
 
     // Construct the governance options
     let options = GovernanceTopologyAdaptorOptions {
@@ -68,7 +65,7 @@ async fn main() {
             }
         }
         Err(e) => {
-            info!("Error getting active versions: {:?}", e);
+            info!("Error getting active versions: {e:?}");
         }
     }
 
@@ -88,7 +85,7 @@ async fn main() {
             }
         }
         Err(e) => {
-            info!("Error getting network topology: {:?}", e);
+            info!("Error getting network topology: {e:?}");
         }
     }
 }

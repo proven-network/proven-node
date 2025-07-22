@@ -14,11 +14,11 @@ use axum::routing::any;
 use nix::unistd::Uid;
 use proven_bootable::Bootable;
 use proven_http_insecure::InsecureHttpServer;
+use proven_logger::{error, info};
 use proven_logger_vsock::server::{StdoutLogProcessor, VsockLogServerBuilder};
 use proven_vsock_cac::{CacClient, InitializeRequest};
 use proven_vsock_proxy::Proxy;
 use tokio::signal::unix::{SignalKind, signal};
-use tracing::{error, info};
 
 static ALLOCATOR_CONFIG_TEMPLATE: &str = include_str!("../../templates/allocator.yaml");
 
@@ -72,7 +72,7 @@ pub async fn start(args: StartArgs) -> Result<()> {
 
     let log_server_handle = tokio::spawn(async move {
         if let Err(e) = log_server.serve().await {
-            error!("Log server error: {}", e);
+            error!("Log server error: {e}");
         }
     });
 
@@ -106,8 +106,8 @@ pub async fn start(args: StartArgs) -> Result<()> {
             result = proxy_handle => {
                 match result {
                     Ok(Ok(())) => info!("proxy exited normally"),
-                    Ok(Err(e)) => error!("proxy error: {}", e),
-                    Err(e) => error!("proxy task error: {}", e),
+                    Ok(Err(e)) => error!("proxy error: {e}"),
+                    Err(e) => error!("proxy task error: {e}"),
                 }
             }
             else => {
@@ -206,7 +206,7 @@ async fn initialize_enclave(args: &StartArgs) -> Result<()> {
         })
         .await;
 
-    info!("initialize response: {:?}", res);
+    info!("initialize response: {res:?}");
 
     Ok(())
 }
@@ -220,7 +220,7 @@ async fn shutdown_enclave(#[cfg(target_os = "linux")] args: &StartArgs) -> Resul
     )?;
     let res = client.shutdown().await;
 
-    info!("shutdown response: {:?}", res);
+    info!("shutdown response: {res:?}");
 
     Ok(())
 }

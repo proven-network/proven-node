@@ -25,7 +25,8 @@ thiserror.workspace = true
 anyhow.workspace = true
 
 # Logging
-tracing.workspace = true
+proven-logger.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 tokio-test.workspace = true

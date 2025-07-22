@@ -1,12 +1,15 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
+use proven_logger::{StdoutLogger, init};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize tracing for better logging
-    tracing_subscriber::fmt::init();
+    // Initialize logger for better logging
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     // Create a directory for storing Bitcoin Core data
     // Note: For a persistent node, you might want to use a fixed directory instead of a temporary one

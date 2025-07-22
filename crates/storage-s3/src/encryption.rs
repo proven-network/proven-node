@@ -8,10 +8,10 @@ use base64::{Engine as _, engine::general_purpose};
 use bytes::{Bytes, BytesMut};
 use miniz_oxide::deflate::compress_to_vec;
 use miniz_oxide::inflate::decompress_to_vec;
+use proven_logger::{debug, trace};
 use proven_storage::{StorageError, StorageResult};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, trace};
 
 use crate::config::EncryptionConfig;
 

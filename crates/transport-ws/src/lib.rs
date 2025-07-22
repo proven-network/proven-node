@@ -13,6 +13,7 @@ use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use futures::{SinkExt, Stream, StreamExt};
 use proven_attestation::Attestor;
+use proven_logger::{debug, warn};
 use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::connection::ConnectionManager;
@@ -24,7 +25,6 @@ use std::sync::Arc;
 use tokio::sync::{RwLock, broadcast, mpsc};
 use tokio::time::{Duration, timeout};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
-use tracing::{debug, warn};
 use url::Url;
 
 /// WebSocket-specific configuration
@@ -113,10 +113,7 @@ where
         transport: Arc<Self>,
     ) {
         let connection_id = format!("ws-incoming-{}", uuid::Uuid::new_v4());
-        debug!(
-            "Handling incoming WebSocket connection with ID: {}",
-            connection_id
-        );
+        debug!("Handling incoming WebSocket connection with ID: {connection_id}");
 
         let (sender, receiver) = socket.split();
 
@@ -182,10 +179,10 @@ where
             )
             .await
         {
-            warn!("Failed to handle incoming WebSocket connection: {}", e);
+            warn!("Failed to handle incoming WebSocket connection: {e}");
         }
 
-        debug!("Incoming WebSocket connection {} completed", connection_id);
+        debug!("Incoming WebSocket connection {connection_id} completed");
     }
 
     /// Handle outgoing WebSocket connection - just provide I/O functions to the manager
@@ -196,10 +193,7 @@ where
         connection_manager: Arc<ConnectionManager<G, A>>,
         outgoing_rx: mpsc::Receiver<TransportEnvelope>,
     ) -> Result<(), TransportError> {
-        debug!(
-            "Starting outgoing WebSocket connection handling for: {}",
-            connection_id
-        );
+        debug!("Starting outgoing WebSocket connection handling for: {connection_id}");
 
         let (sender, receiver) = stream.split();
 
@@ -265,7 +259,7 @@ where
             )
             .await?;
 
-        debug!("Outgoing WebSocket connection {} completed", connection_id);
+        debug!("Outgoing WebSocket connection {connection_id} completed");
         Ok(())
     }
 
@@ -297,7 +291,7 @@ where
 
             match timeout(timeout_duration, connect_async(url.to_string())).await {
                 Ok(Ok((stream, _))) => {
-                    debug!("WebSocket connection established to {}", url);
+                    debug!("WebSocket connection established to {url}");
 
                     // Create channels for outgoing messages
                     let (outgoing_tx, outgoing_rx) = mpsc::channel(1000);
@@ -323,17 +317,14 @@ where
                         )
                         .await
                         {
-                            warn!("Outgoing WebSocket connection failed: {}", e);
+                            warn!("Outgoing WebSocket connection failed: {e}");
                         }
 
                         // Clean up the sender when connection ends
                         outgoing_senders.write().await.remove(&connection_id_clone);
                     });
 
-                    debug!(
-                        "WebSocket connection established and handlers started for {}",
-                        url
-                    );
+                    debug!("WebSocket connection established and handlers started for {url}");
                     return Ok(());
                 }
                 Ok(Err(e)) => {
@@ -403,10 +394,7 @@ where
             .await
             .contains_key(&connection_id)
         {
-            debug!(
-                "No existing connection, establishing one to {} at {}",
-                recipient, url
-            );
+            debug!("No existing connection, establishing one to {recipient} at {url}");
             self.connect_to_url(recipient.clone(), url).await?;
         }
 
@@ -423,7 +411,7 @@ where
             sender.send(envelope).await.map_err(|_| {
                 TransportError::connection_failed(recipient, "Connection channel closed")
             })?;
-            debug!("WebSocket message sent successfully to {}", recipient);
+            debug!("WebSocket message sent successfully to {recipient}");
             Ok(())
         } else {
             Err(TransportError::connection_failed(

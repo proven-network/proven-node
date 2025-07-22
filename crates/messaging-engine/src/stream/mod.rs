@@ -10,8 +10,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_engine::consensus::GroupResponse;
+use proven_logger::{info, warn};
 use tokio::sync::RwLock;
-use tracing::{info, warn};
 
 use proven_engine::{Client as EngineClient, StreamConfig};
 use proven_messaging::client::Client;
@@ -355,7 +355,7 @@ where
                     Ok(Some(message))
                 }
                 Err(e) => {
-                    warn!("Failed to deserialize message at seq {}: {:?}", seq, e);
+                    warn!("Failed to deserialize message at seq {seq}: {e:?}");
                     Ok(None)
                 }
             }

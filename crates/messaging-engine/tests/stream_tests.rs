@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use proven_engine::{EngineBuilder, EngineConfig, RetentionPolicy, StreamConfig};
+use proven_logger_macros::logged_test;
 use proven_messaging::stream::{InitializedStream, Stream};
 use proven_messaging_engine::stream::{EngineStream, EngineStreamOptions};
 use proven_network::NetworkManager;
@@ -14,7 +15,6 @@ use proven_topology::{Node as TopologyNode, NodeId, TopologyManager};
 use proven_topology_mock::MockTopologyAdaptor;
 use proven_transport_memory::MemoryTransport;
 use serde::{Deserialize, Serialize};
-use tracing_test::traced_test;
 
 /// Test message type
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -101,7 +101,7 @@ async fn create_test_engine()
     engine.client()
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_stream_creation_and_initialization() {
     let client = create_test_engine().await;
@@ -125,7 +125,7 @@ async fn test_stream_creation_and_initialization() {
     assert_eq!(messages, 0);
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_publish_and_retrieve_single_message() {
     let client = create_test_engine().await;
@@ -166,7 +166,7 @@ async fn test_publish_and_retrieve_single_message() {
     assert_eq!(count, 1);
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_publish_batch() {
     let client = create_test_engine().await;
@@ -204,7 +204,7 @@ async fn test_publish_batch() {
     assert_eq!(count, 5);
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_delete_message() {
     let client = create_test_engine().await;
@@ -246,7 +246,7 @@ async fn test_delete_message() {
     assert!(after_delete.is_none());
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_last_message() {
     let client = create_test_engine().await;
@@ -286,7 +286,7 @@ async fn test_last_message() {
     assert_eq!(last, Some(expected));
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_rollup() {
     let client = create_test_engine().await;
@@ -331,7 +331,7 @@ async fn test_rollup() {
     // But the current implementation just adds the rollup message
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_stream_with_custom_config() {
     let client = create_test_engine().await;
@@ -355,7 +355,7 @@ async fn test_stream_with_custom_config() {
     assert_eq!(initialized.name(), "test_config");
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_empty_batch_publish() {
     let client = create_test_engine().await;
@@ -380,7 +380,7 @@ async fn test_empty_batch_publish() {
     assert_eq!(count, 0);
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_concurrent_publish() {
     let client = create_test_engine().await;
@@ -428,7 +428,7 @@ async fn test_concurrent_publish() {
     assert_eq!(count, 5);
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_get_nonexistent_message() {
     let client = create_test_engine().await;
@@ -452,7 +452,7 @@ async fn test_get_nonexistent_message() {
     }
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_stream_persistence() {
     let client = create_test_engine().await;
@@ -492,7 +492,7 @@ async fn test_stream_persistence() {
     }
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_publish_with_metadata() {
     let client = create_test_engine().await;

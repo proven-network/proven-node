@@ -9,10 +9,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use proven_logger::{debug, error, warn};
 use proven_storage::{LogStorageStreaming, StorageAdaptor};
 use tokio::sync::RwLock;
 use tokio_stream::{Stream, StreamExt};
-use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -96,7 +96,7 @@ where
                     messages.push(msg);
                 }
                 Some(Err(e)) => {
-                    error!("Error reading from stream: {}", e);
+                    error!("Error reading from stream: {e}");
                     if messages.is_empty() {
                         return Err(e);
                     }
@@ -173,7 +173,7 @@ where
                     messages.push(msg);
                 }
                 Some(Err(e)) => {
-                    error!("Error continuing stream: {}", e);
+                    error!("Error continuing stream: {e}");
                     if messages.is_empty() {
                         drop(stream);
                         drop(sessions);
@@ -215,7 +215,7 @@ where
         let removed = self.sessions.write().await.remove(&session_id).is_some();
 
         if removed {
-            debug!("Cancelled streaming session {}", session_id);
+            debug!("Cancelled streaming session {session_id}");
             Ok(())
         } else {
             Err(Error::with_context(
@@ -242,7 +242,7 @@ where
         if !expired.is_empty() {
             let mut sessions = self.sessions.write().await;
             for id in expired {
-                warn!("Removing expired streaming session {}", id);
+                warn!("Removing expired streaming session {id}");
                 sessions.remove(&id);
             }
         }

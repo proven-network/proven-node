@@ -14,6 +14,7 @@ proven-http-insecure.workspace = true
 proven-vsock-proxy.workspace = true
 proven-vsock-rpc.workspace = true
 proven-vsock-cac.workspace = true
+proven-logger.workspace = true
 proven-logger-vsock = { path = "../logger-vsock" }
 serde.workspace = true
 serde_json.workspace = true
@@ -22,5 +23,3 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tokio-vsock.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true

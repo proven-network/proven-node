@@ -3,28 +3,19 @@
 mod common;
 
 use common::test_cluster::TestCluster;
+use proven_logger::info;
+use proven_logger_macros::logged_tokio_test;
 use std::time::Duration;
-use tracing::{Level, info};
-use tracing_subscriber::EnvFilter;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[logged_tokio_test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_rocksdb_storage_basic() {
-    // Initialize logging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap()),
-        )
-        .try_init();
-
     info!("=== Starting node with RocksDB storage ===");
     let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
     let (engines, node_infos) = cluster.add_nodes_with_rocksdb(1).await;
 
     let node_id = node_infos[0].node_id.clone();
-    info!("Created node: {}", node_id);
+    info!("Created node: {node_id}");
 
     // Wait for the node to initialize
     tokio::time::sleep(Duration::from_secs(2)).await;
@@ -39,7 +30,7 @@ async fn test_rocksdb_storage_basic() {
         .await
         .expect("Failed to create stream");
 
-    info!("Created stream: {}", stream_name);
+    info!("Created stream: {stream_name}");
 
     // Publish some messages
     for i in 1..=5 {
@@ -59,7 +50,7 @@ async fn test_rocksdb_storage_basic() {
         .expect("Failed to get stream info");
 
     assert!(stream_info.is_some(), "Stream should exist");
-    info!("Stream verified: {:?}", stream_info);
+    info!("Stream verified: {stream_info:?}");
 
     // Check storage files were created
     if let Some(storage_path) = cluster.get_node_storage_path(&node_id) {
@@ -87,17 +78,8 @@ async fn test_rocksdb_storage_basic() {
     info!("Test completed successfully - RocksDB storage is working");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+#[logged_tokio_test(flavor = "multi_thread", worker_threads = 3)]
 async fn test_rocksdb_multi_node() {
-    // Initialize logging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap()),
-        )
-        .try_init();
-
     info!("=== Starting 3-node cluster with RocksDB storage ===");
     let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 

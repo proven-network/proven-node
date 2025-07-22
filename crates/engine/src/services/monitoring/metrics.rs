@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use prometheus::{Counter, Gauge, HistogramOpts, Registry};
 use prometheus::{register_counter_with_registry, register_gauge_with_registry};
+use proven_logger::warn;
 
 use super::types::MonitoringError;
 use super::views::SystemView;
@@ -312,7 +313,7 @@ impl MetricsCollector {
     pub async fn start(&self) {
         // Initial metrics update
         if let Err(e) = self.update_metrics().await {
-            tracing::warn!("Failed to update initial metrics: {}", e);
+            warn!("Failed to update initial metrics: {e}");
         }
     }
 }

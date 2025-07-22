@@ -15,10 +15,10 @@ use std::sync::{Arc, LazyLock};
 use async_trait::async_trait;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
+use proven_logger::{debug, error, info, trace, warn};
 use regex::Regex;
 use serde_json::json;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, trace, warn};
 
 static GATEWAY_API_CONFIG_PATH: &str =
     "/apps/radix-gateway/v1.9.2/GatewayApi/appsettings.Production.json";
@@ -48,21 +48,21 @@ impl IsolatedApplication for RadixGatewayApp {
             let label = caps.get(1).map_or("unkw", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {
-                "trce" => trace!("{}", message),
-                "dbug" => debug!("{}", message),
-                "info" => info!("{}", message),
-                "warn" => warn!("{}", message),
-                "fail" => error!("{}", message),
-                "crit" => error!("{}", message),
-                _ => error!("{}", line),
+                "trce" => trace!("{message}"),
+                "dbug" => debug!("{message}"),
+                "info" => info!("{message}"),
+                "warn" => warn!("{message}"),
+                "fail" => error!("{message}"),
+                "crit" => error!("{message}"),
+                _ => error!("{line}"),
             }
         } else {
-            error!("{}", line);
+            error!("{line}");
         }
     }
 
     fn handle_stderr(&self, line: &str) {
-        error!(target: "radix-gateway", "{}", line);
+        error!("{line}");
     }
 
     async fn is_ready_check(&self, info: ReadyCheckInfo) -> bool {

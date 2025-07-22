@@ -6,12 +6,13 @@
 //! 3. Verifying that the isolated process can successfully connect to external sites
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use proven_isolation::{Error, IsolatedApplication, Result};
+use proven_logger::{StdoutLogger, debug, info, init};
 use tokio::fs;
 use tokio::time::Duration;
-use tracing::{debug, info};
 
 /// Application that makes an outbound HTTP request to example.com
 struct OutboundConnectivityTest {
@@ -95,8 +96,9 @@ impl IsolatedApplication for OutboundConnectivityTest {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing with defaults
-    tracing_subscriber::fmt::init();
+    // Initialize logger
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     info!("🚀 Starting outbound connectivity example");
     info!(

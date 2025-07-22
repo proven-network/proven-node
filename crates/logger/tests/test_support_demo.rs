@@ -51,7 +51,7 @@ mod tests {
 
         // Simulate some work
         for i in 0..3 {
-            debug!("Iteration {}", i);
+            debug!("Iteration {i}");
         }
 
         // Test passes, so mark it

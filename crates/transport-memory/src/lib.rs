@@ -17,10 +17,10 @@ use std::sync::{Arc, OnceLock};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::Stream;
+use proven_logger::debug;
 use proven_topology::NodeId;
 use proven_transport::{Error, Transport, TransportEnvelope};
 use tokio::sync::{Mutex, RwLock, mpsc};
-use tracing::debug;
 use uuid::Uuid;
 
 /// Type alias for the transport registry

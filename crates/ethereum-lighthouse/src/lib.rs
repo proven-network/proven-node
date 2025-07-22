@@ -18,10 +18,10 @@ use std::sync::{Arc, LazyLock, RwLock};
 use async_trait::async_trait;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
+use proven_logger::{debug, error, info, trace, warn};
 use reqwest::Client;
 use strip_ansi_escapes::strip_str;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, trace, warn};
 
 // Rust log regexp
 static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -203,22 +203,22 @@ impl IsolatedApplication for LighthouseApp {
             let message = caps.get(2).map_or(line, |m| m.as_str());
             *self.last_log_level.write().unwrap() = label.to_string();
             match label {
-                "DEBU" => debug!(target: "lighthouse", "{}", message),
-                "ERRO" => error!(target: "lighthouse", "{}", message),
-                "INFO" => info!(target: "lighthouse", "{}", message),
-                "TRAC" => trace!(target: "lighthouse", "{}", message),
-                "WARN" => warn!(target: "lighthouse", "{}", message),
-                _ => error!(target: "lighthouse", "{}", line),
+                "DEBU" => debug!("{message}"),
+                "ERRO" => error!("{message}"),
+                "INFO" => info!("{message}"),
+                "TRAC" => trace!("{message}"),
+                "WARN" => warn!("{message}"),
+                _ => error!("{line}"),
             }
         } else {
             // Use the last log level for continuation lines
             match self.last_log_level.read().unwrap().as_str() {
-                "DEBU" => debug!(target: "lighthouse", "{}", line),
-                "ERRO" => error!(target: "lighthouse", "{}", line),
-                "INFO" => info!(target: "lighthouse", "{}", line),
-                "TRAC" => trace!(target: "lighthouse", "{}", line),
-                "WARN" => warn!(target: "lighthouse", "{}", line),
-                _ => error!(target: "lighthouse", "{}", line),
+                "DEBU" => debug!("{line}"),
+                "ERRO" => error!("{line}"),
+                "INFO" => info!("{line}"),
+                "TRAC" => trace!("{line}"),
+                "WARN" => warn!("{line}"),
+                _ => error!("{line}"),
             }
         }
     }
@@ -243,7 +243,7 @@ impl IsolatedApplication for LighthouseApp {
         {
             if response.status() == 200 {
                 if let Ok(json) = response.json::<serde_json::Value>().await {
-                    debug!("Response from /lighthouse/syncing: {:?}", json);
+                    debug!("Response from /lighthouse/syncing: {json:?}");
                     if let Some(data) = json.get("data") {
                         if data.is_string() {
                             match data.as_str() {

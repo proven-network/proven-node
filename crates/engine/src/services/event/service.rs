@@ -1,11 +1,11 @@
 //! New type-safe event service implementation
 
 use async_trait::async_trait;
+use proven_logger::{error, info};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
@@ -76,7 +76,7 @@ impl EventService {
     /// Publish an event
     pub async fn publish<E: ServiceEvent>(&self, event: E) {
         if self.config.log_events {
-            info!("Publishing event: {:?}", event);
+            info!("Publishing event: {event:?}");
         }
         self.bus.publish(event).await;
     }
@@ -152,7 +152,7 @@ impl ServiceLifecycle for EventService {
         if let Some(handle) = self.stats_task.write().await.take()
             && let Err(e) = handle.await
         {
-            error!("Stats task error: {}", e);
+            error!("Stats task error: {e}");
         }
 
         *state = ServiceState::Stopped;

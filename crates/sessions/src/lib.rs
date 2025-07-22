@@ -14,9 +14,9 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use proven_attestation::{AttestationParams, Attestor};
+use proven_logger::info;
 use proven_store::{Store, Store1};
 use rand::thread_rng;
-use tracing::info;
 use uuid::Uuid;
 
 /// Options for creating a new `SessionManager`

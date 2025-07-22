@@ -10,11 +10,11 @@ pub mod wal;
 use async_trait::async_trait;
 use aws_sdk_s3::{Client as S3Client, primitives::ByteStream};
 use bytes::Bytes;
+use proven_logger::{debug, error, info, warn};
 use proven_storage::{LogStorage, StorageError, StorageNamespace, StorageResult};
 use std::{collections::HashMap, num::NonZero, sync::Arc};
 use tokio::sync::{RwLock, mpsc};
 use tokio_stream::Stream;
-use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Type aliases to reduce type complexity
@@ -67,7 +67,7 @@ impl S3Storage {
                 Some(Arc::new(client))
             }
             Err(e) => {
-                warn!("Failed to connect WAL client: {}. Running without WAL.", e);
+                warn!("Failed to connect WAL client: {e}. Running without WAL.");
                 None
             }
         };
@@ -81,7 +81,7 @@ impl S3Storage {
                         Some(Arc::new(handler))
                     }
                     Err(e) => {
-                        error!("Failed to initialize encryption: {}", e);
+                        error!("Failed to initialize encryption: {e}");
                         return Err(e);
                     }
                 }
@@ -130,13 +130,13 @@ impl S3Storage {
 
                             // Re-submit recovered entries using put_at since we have specific indices
                             if let Err(e) = storage.put_at(&namespace, converted_entries).await {
-                                error!("Failed to re-append recovered entries: {}", e);
+                                error!("Failed to re-append recovered entries: {e}");
                             }
                         }
                     }
                 }
                 Err(e) => {
-                    error!("WAL recovery failed: {}", e);
+                    error!("WAL recovery failed: {e}");
                 }
             }
         }
@@ -182,7 +182,7 @@ impl S3Storage {
                     match encryption.encrypt_for_wal(data).await {
                         Ok(enc_data) => encrypted.push((idx.get(), Bytes::from(enc_data))),
                         Err(e) => {
-                            error!("WAL encryption failed: {}", e);
+                            error!("WAL encryption failed: {e}");
                             Self::complete_batch_with_error(
                                 &mut batch,
                                 format!("Encryption failed: {e}"),
@@ -205,7 +205,7 @@ impl S3Storage {
                 .append_logs(&batch.namespace, &wal_entries, batch_id.clone())
                 .await
             {
-                error!("WAL write failed: {}", e);
+                error!("WAL write failed: {e}");
                 wal_timer.record();
                 Self::complete_batch_with_error(&mut batch, format!("WAL write failed: {e}"));
                 return Err("WAL write failed".to_string());
@@ -240,7 +240,7 @@ impl S3Storage {
                         encrypted
                     }
                     Err(e) => {
-                        error!("S3 encryption failed: {}", e);
+                        error!("S3 encryption failed: {e}");
                         upload_success = false;
                         break;
                     }
@@ -273,7 +273,7 @@ impl S3Storage {
                     self.cache.put(&batch.namespace, *index, data.clone()).await;
                 }
                 Err(e) => {
-                    error!("S3 upload failed for key {}: {}", key, e);
+                    error!("S3 upload failed for key {key}: {e}");
                     record_s3_upload(batch.namespace.as_str(), 0, false);
                     upload_success = false;
                     break;
@@ -288,7 +288,7 @@ impl S3Storage {
             // Confirm with WAL
             if let Some(wal) = &self.wal_client {
                 if let Err(e) = wal.confirm_batch(batch_id).await {
-                    warn!("Failed to confirm batch with WAL: {}", e);
+                    warn!("Failed to confirm batch with WAL: {e}");
                 }
 
                 // Update pending size
@@ -964,11 +964,11 @@ impl proven_storage::LogStorageWithDelete for S3Storage {
                 )
                 .await
             {
-                warn!("Failed to log delete operation to WAL: {}", e);
+                warn!("Failed to log delete operation to WAL: {e}");
             } else {
                 // Confirm the operation
                 if let Err(e) = wal.confirm_batch(operation_id).await {
-                    warn!("Failed to confirm delete operation with WAL: {}", e);
+                    warn!("Failed to confirm delete operation with WAL: {e}");
                 }
             }
         }
@@ -1100,7 +1100,7 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                                                     match enc.decrypt_from_s3(&data_bytes).await {
                                                         Ok(dec) => dec,
                                                         Err(e) => {
-                                                            tracing::warn!("Failed to decrypt index {}: {}", idx, e);
+                                                            warn!("Failed to decrypt index {idx}: {e}");
                                                             return None;
                                                         }
                                                     }
@@ -1111,7 +1111,7 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                                                 Some((idx, decrypted))
                                             }
                                             Err(e) => {
-                                                tracing::debug!("Failed to read body for index {}: {}", idx, e);
+                                                debug!("Failed to read body for index {idx}: {e}");
                                                 None
                                             }
                                         }
@@ -1123,11 +1123,11 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                                                     // Object not found, this is ok
                                                 }
                                                 _ => {
-                                                    tracing::warn!("S3 get failed for index {}: {}", idx, e);
+                                                    warn!("S3 get failed for index {idx}: {e}");
                                                 }
                                             }
                                         } else {
-                                            tracing::warn!("S3 get failed for index {}: {}", idx, e);
+                                            warn!("S3 get failed for index {idx}: {e}");
                                         }
                                         None
                                     }
@@ -1212,7 +1212,7 @@ impl S3Storage {
                                         match enc.decrypt_from_s3(&data_bytes).await {
                                             Ok(dec) => dec,
                                             Err(e) => {
-                                                tracing::warn!("Failed to decrypt index {}: {}", index, e);
+                                                warn!("Failed to decrypt index {index}: {e}");
                                                 return None;
                                             }
                                         }
@@ -1223,7 +1223,7 @@ impl S3Storage {
                                     Some((index, decrypted))
                                 }
                                 Err(e) => {
-                                    tracing::debug!("Failed to read body for index {}: {}", index, e);
+                                    debug!("Failed to read body for index {index}: {e}");
                                     None
                                 }
                             }
@@ -1235,11 +1235,11 @@ impl S3Storage {
                                         // Object not found, this is ok
                                     }
                                     _ => {
-                                        tracing::warn!("S3 get failed for index {}: {}", index, e);
+                                        warn!("S3 get failed for index {index}: {e}");
                                     }
                                 }
                             } else {
-                                tracing::warn!("S3 get failed for index {}: {}", index, e);
+                                warn!("S3 get failed for index {index}: {e}");
                             }
                             None
                         }

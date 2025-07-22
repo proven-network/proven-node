@@ -16,11 +16,12 @@ proven-transport.workspace = true
 proven-verification.workspace = true
 tokio = { workspace = true, features = ["net", "rt", "sync"] }
 tokio-tungstenite.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 proven-attestation-mock.workspace = true
 proven-network.workspace = true
 proven-topology-mock.workspace = true
@@ -30,4 +31,3 @@ reqwest.workspace = true
 serde = { workspace = true, features = ["derive"] }
 tokio-test.workspace = true
 tower-http = { workspace = true, features = ["cors"] }
-tracing-subscriber.workspace = true

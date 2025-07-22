@@ -18,9 +18,11 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 
 [dev-dependencies]
+futures.workspace = true
+proven-logger-macros.workspace = true
 proven-network.workspace = true
 proven-storage.workspace = true
 proven-storage-memory.workspace = true

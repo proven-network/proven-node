@@ -8,12 +8,12 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use proven_logger::error;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio::time::{Duration, Instant, sleep};
-use tracing::error;
 
 type WorkerMap<AS, PS, NS, ASS, PSS, NSS, FSS, RNV> =
     HashMap<String, Vec<Worker<AS, PS, NS, ASS, PSS, NSS, FSS, RNV>>>;

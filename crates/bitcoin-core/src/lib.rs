@@ -16,11 +16,11 @@ use std::sync::{Arc, LazyLock};
 use async_trait::async_trait;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
+use proven_logger::{debug, error, info};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
 use url::Url;
 
 static P2P_PORT: u16 = 18333;
@@ -125,12 +125,12 @@ impl IsolatedApplication for BitcoinCoreApp {
 
     fn handle_stderr(&self, line: &str) {
         let message = LOG_REGEX.replace(line, "").into_owned();
-        error!(target: "bitcoind", "{}", message);
+        error!("bitcoind: {message}");
     }
 
     fn handle_stdout(&self, line: &str) {
         let message = LOG_REGEX.replace(line, "").into_owned();
-        info!(target: "bitcoind", "{}", message);
+        info!("bitcoind: {message}");
     }
 
     fn name(&self) -> &'static str {

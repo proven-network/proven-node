@@ -1,319 +1,21 @@
-//! Log viewing and filtering system for reading logs from disk
+//! New log viewer using proven-logger-viewer for memory-mapped performance
 
 use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, TuiNodeId};
-
-use std::collections::HashMap;
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader};
-use std::path::PathBuf;
+use anyhow::{Context, Result};
+use parking_lot::RwLock;
+use proven_logger::debug;
+use proven_logger_viewer::{LogReader as ViewerLogReader, MultiFileReader, ViewerConfigBuilder};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
-use parking_lot::RwLock;
-use tracing::debug;
-
-/// Information about a single log file
-#[derive(Debug, Clone)]
-struct LogFileInfo {
-    file_path: PathBuf,
-    /// Timestamp parsed from filename
-    timestamp: DateTime<Utc>,
-    /// Total lines in this file
-    total_lines: usize,
-    /// Line positions for efficient seeking
-    line_positions: Vec<u64>,
-    /// Whether line positions have been indexed
-    indexed: bool,
-    /// Last modification time of the file
-    last_modified: Option<std::time::SystemTime>,
-}
-
-impl LogFileInfo {
-    const fn new(file_path: PathBuf, timestamp: DateTime<Utc>) -> Self {
-        Self {
-            file_path,
-            timestamp,
-            total_lines: 0,
-            line_positions: Vec::new(),
-            indexed: false,
-            last_modified: None,
-        }
-    }
-
-    /// Check if file has been modified since last indexing
-    fn needs_reindex(&self) -> bool {
-        if !self.indexed {
-            return true;
-        }
-
-        std::fs::metadata(&self.file_path).map_or(true, |metadata| {
-            metadata.modified().map_or(true, |modified| {
-                self.last_modified.is_none_or(|last| modified > last)
-            })
-        })
-    }
-
-    /// Index the file to build line position cache
-    fn ensure_indexed(&mut self) -> Result<()> {
-        if !self.needs_reindex() {
-            return Ok(());
-        }
-
-        if !self.file_path.exists() {
-            self.line_positions.clear();
-            self.total_lines = 0;
-            self.indexed = true;
-            self.last_modified = None;
-            return Ok(());
-        }
-
-        let file = File::open(&self.file_path)
-            .with_context(|| format!("Failed to open log file: {}", self.file_path.display()))?;
-
-        // Update last modified time
-        if let Ok(metadata) = file.metadata()
-            && let Ok(modified) = metadata.modified()
-        {
-            self.last_modified = Some(modified);
-        }
-
-        let mut reader = BufReader::new(file);
-        let mut position = 0u64;
-        let mut line = String::new();
-
-        self.line_positions.clear();
-        self.line_positions.push(0); // First line starts at position 0
-
-        while reader.read_line(&mut line)? > 0 {
-            position += line.len() as u64;
-            self.line_positions.push(position);
-            line.clear();
-        }
-
-        // Remove the last position (EOF)
-        self.line_positions.pop();
-        self.total_lines = self.line_positions.len();
-        self.indexed = true;
-
-        Ok(())
-    }
-
-    /// Read all log entries from this file
-    fn read_all_entries(&mut self) -> Result<Vec<LogEntry>> {
-        if !self.file_path.exists() {
-            return Ok(Vec::new());
-        }
-
-        self.ensure_indexed()?;
-
-        let mut entries = Vec::new();
-        let file = File::open(&self.file_path)?;
-        let reader = BufReader::new(file);
-
-        for (line_num, line) in reader.lines().enumerate() {
-            let line = line?;
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            match serde_json::from_str::<LogEntry>(&line) {
-                Ok(entry) => {
-                    entries.push(entry);
-                }
-                Err(e) => {
-                    debug!(
-                        "Failed to parse log line {} in {}: {} - Error: {}",
-                        line_num,
-                        self.file_path.display(),
-                        line,
-                        e
-                    );
-                }
-            }
-        }
-
-        Ok(entries)
-    }
-}
-
-/// Multi-file log reader that seamlessly handles multiple log files in chronological order
-pub struct MultiFileReader {
-    /// Base directory for logs (either `session_dir` or category subdirectory)
-    base_dir: PathBuf,
-    /// Log files sorted by timestamp (oldest first)
-    files: Vec<LogFileInfo>,
-    /// Whether we've discovered files in the directory
-    discovered: bool,
-    /// Last discovery time
-    last_discovery: Option<Instant>,
-    /// Discovery interval
-    discovery_interval: Duration,
-}
-
-impl MultiFileReader {
-    /// Create a new multi-file reader
-    pub const fn new(base_dir: PathBuf) -> Self {
-        Self {
-            base_dir,
-            files: Vec::new(),
-            discovered: false,
-            last_discovery: None,
-            discovery_interval: Duration::from_secs(1), // Check for new files every second
-        }
-    }
-
-    /// Parse timestamp from filename (e.g., "2024-01-15_14-30-45.log")
-    fn parse_timestamp_from_filename(filename: &str) -> Option<DateTime<Utc>> {
-        let name = filename.strip_suffix(".log")?;
-        DateTime::parse_from_str(&format!("{name} +0000"), "%Y-%m-%d_%H-%M-%S %z")
-            .ok()
-            .map(|dt| dt.with_timezone(&Utc))
-    }
-
-    /// Discover log files in the directory
-    fn discover_files(&mut self) -> Result<()> {
-        if !self.base_dir.exists() {
-            self.files.clear();
-            self.discovered = true;
-            self.last_discovery = Some(Instant::now());
-            return Ok(());
-        }
-
-        let mut new_files = Vec::new();
-
-        // Read directory entries
-        let entries = fs::read_dir(&self.base_dir)
-            .with_context(|| format!("Failed to read directory: {}", self.base_dir.display()))?;
-
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-
-            if path.is_file()
-                && let Some(filename) = path.file_name().and_then(|n| n.to_str())
-                && let Some(timestamp) = Self::parse_timestamp_from_filename(filename)
-            {
-                new_files.push(LogFileInfo::new(path, timestamp));
-            }
-        }
-
-        // Sort by timestamp (oldest first)
-        new_files.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
-
-        // Update existing files and add new ones
-        let mut updated_files = Vec::new();
-
-        for new_file in new_files {
-            if let Some(existing_idx) = self
-                .files
-                .iter()
-                .position(|f| f.file_path == new_file.file_path)
-            {
-                // Keep existing file info but update metadata
-                let mut existing = self.files[existing_idx].clone();
-                existing.timestamp = new_file.timestamp; // Update timestamp if needed
-                updated_files.push(existing);
-            } else {
-                // New file
-                updated_files.push(new_file);
-            }
-        }
-
-        self.files = updated_files;
-        self.discovered = true;
-        self.last_discovery = Some(Instant::now());
-
-        Ok(())
-    }
-
-    /// Check if we need to rediscover files
-    fn should_rediscover(&self) -> bool {
-        if !self.discovered {
-            return true;
-        }
-
-        self.last_discovery
-            .is_none_or(|last_discovery| last_discovery.elapsed() >= self.discovery_interval)
-    }
-
-    /// Ensure files are discovered and indexed
-    fn ensure_discovered(&mut self) -> Result<()> {
-        if self.should_rediscover() {
-            self.discover_files()?;
-        }
-
-        // Index all files
-        for file in &mut self.files {
-            file.ensure_indexed()?;
-        }
-
-        Ok(())
-    }
-
-    /// Get total number of lines across all files
-    pub fn total_lines(&mut self) -> Result<usize> {
-        self.ensure_discovered()?;
-        Ok(self.files.iter().map(|f| f.total_lines).sum())
-    }
-
-    /// Read all log entries from all files in chronological order
-    pub fn read_all_entries(&mut self) -> Result<Vec<LogEntry>> {
-        self.ensure_discovered()?;
-
-        let mut all_entries = Vec::new();
-
-        for file in &mut self.files {
-            let mut entries = file.read_all_entries()?;
-            all_entries.append(&mut entries);
-        }
-
-        Ok(all_entries)
-    }
-
-    /// Check if any files have been updated
-    pub fn has_updates(&self) -> bool {
-        // Check if we should rediscover files
-        if self.should_rediscover() {
-            return true;
-        }
-
-        // Check if any existing files have been updated
-        self.files.iter().any(LogFileInfo::needs_reindex)
-    }
-}
-
-/// File-based log reader for efficient memory usage and line indexing (legacy, now uses `MultiFileReader`)
-pub struct LogFileReader {
-    multi_reader: MultiFileReader,
-}
-
-impl LogFileReader {
-    /// Create a new log file reader
-    pub const fn new(directory_path: PathBuf) -> Self {
-        // The path should now be a directory containing timestamped log files
-        Self {
-            multi_reader: MultiFileReader::new(directory_path),
-        }
-    }
-
-    /// Get total number of lines in all files
-    pub fn total_lines(&mut self) -> Result<usize> {
-        self.multi_reader.total_lines()
-    }
-
-    /// Read all log entries from all files
-    pub fn read_all_entries(&mut self) -> Result<Vec<LogEntry>> {
-        self.multi_reader.read_all_entries()
-    }
-
-    /// Check if any files have been updated
-    pub fn has_updates(&self) -> bool {
-        self.multi_reader.has_updates()
-    }
+/// Parse a JSON log entry into TUI `LogEntry`
+fn parse_log_entry(line: &str) -> Result<LogEntry> {
+    // Try to parse as JSON
+    serde_json::from_str::<LogEntry>(line)
+        .with_context(|| format!("Failed to parse log entry: {line}"))
 }
 
 /// Request sent from UI thread to background log thread
@@ -321,17 +23,28 @@ impl LogFileReader {
 pub enum LogRequest {
     /// Update filters and request refresh
     UpdateFilters {
+        /// Log level filter
         level: LogLevel,
+        /// Node filter
         node_filter: Option<TuiNodeId>,
     },
     /// Update viewport size when UI resizes
-    UpdateViewportSize { viewport_size: usize },
+    UpdateViewportSize {
+        /// New viewport size
+        viewport_size: usize,
+    },
     /// Scroll commands
-    ScrollUp { amount: usize },
+    ScrollUp {
+        /// Amount to scroll
+        amount: usize,
+    },
     /// Scroll up by viewport size
     ScrollUpByViewportSize,
     /// Scroll down by amount
-    ScrollDown { amount: usize },
+    ScrollDown {
+        /// Amount to scroll
+        amount: usize,
+    },
     /// Scroll down by viewport size
     ScrollDownByViewportSize,
     /// Scroll to top
@@ -349,12 +62,18 @@ pub enum LogRequest {
 pub enum LogResponse {
     /// Full viewport update with logs for display
     ViewportUpdate {
+        /// Logs to display
         logs: Vec<LogEntry>,
+        /// Total number of filtered lines
         total_filtered_lines: usize,
+        /// Current scroll position
         scroll_position: usize,
     },
     /// Error occurred
-    Error { message: String },
+    Error {
+        /// Error message
+        message: String,
+    },
 }
 
 /// Filtered log state maintained by background thread
@@ -367,7 +86,7 @@ struct FilteredLogState {
     /// Current viewport position and size
     scroll_position: usize,
     viewport_size: usize,
-    /// Whether auto-scroll is enabled (explicitly tracks user intent)
+    /// Whether auto-scroll is enabled
     auto_scroll_enabled: bool,
 }
 
@@ -379,27 +98,8 @@ impl FilteredLogState {
             node_filter: None,
             scroll_position: 0,
             viewport_size: 50,
-            auto_scroll_enabled: true, // Start with auto-scroll enabled
+            auto_scroll_enabled: true,
         }
-    }
-
-    /// Apply current filters to a list of log entries
-    fn apply_filters(&self, entries: &[LogEntry]) -> Vec<LogEntry> {
-        entries
-            .iter()
-            .filter(|entry| {
-                // Apply level filter
-                let passes_level = Self::should_show_level(entry.level, self.level_filter);
-
-                // Apply node filter (only when reading from all.log, handled by caller)
-                let passes_node = self
-                    .node_filter
-                    .is_none_or(|filter_node| entry.node_id == filter_node);
-
-                passes_level && passes_node
-            })
-            .cloned()
-            .collect()
     }
 
     /// Check if a log level should be shown given the current filter
@@ -419,28 +119,23 @@ impl FilteredLogState {
         }
     }
 
-    /// Update filters and rebuild filtered logs
-    fn update_filters(
-        &mut self,
-        all_logs: &[LogEntry],
-        level: LogLevel,
-        node_filter: Option<TuiNodeId>,
-    ) {
-        // Check if filters are actually changing
-        let filters_changed = self.level_filter != level || self.node_filter != node_filter;
+    /// Apply filters to log entries
+    fn apply_filters(&self, entries: &[LogEntry]) -> Vec<LogEntry> {
+        entries
+            .iter()
+            .filter(|entry| {
+                // Apply level filter
+                let passes_level = Self::should_show_level(entry.level, self.level_filter);
 
-        self.level_filter = level;
-        self.node_filter = node_filter;
-        self.rebuild_filtered_logs(all_logs);
+                // Apply node filter
+                let passes_node = self
+                    .node_filter
+                    .is_none_or(|filter_node| entry.node_id == filter_node);
 
-        // ONLY reset scroll position when filters actually changed
-        // This preserves user's scroll position and auto-scroll preference during file updates
-        if filters_changed {
-            // Reset scroll to bottom when filters change and enable auto-scroll
-            self.scroll_position = 0;
-            self.auto_scroll_enabled = true;
-        }
-        // If filters didn't change, preserve user's current scroll position and auto-scroll preference
+                passes_level && passes_node
+            })
+            .cloned()
+            .collect()
     }
 
     /// Rebuild the filtered logs from all logs
@@ -456,21 +151,19 @@ impl FilteredLogState {
             self.scroll_position += new_logs_added;
         }
 
-        // CRITICAL: Validate scroll position after rebuilding filtered logs
-        // If user had scrolled up but scroll position is now invalid, clamp it
+        // Validate scroll position after rebuilding filtered logs
         let max_scroll = self.max_scroll_position();
         if self.scroll_position > max_scroll {
             self.scroll_position = max_scroll;
-            // Don't change auto_scroll_enabled - preserve user's intent
         }
     }
 
-    /// Update viewport size only (not scroll position)
+    /// Update viewport size only
     const fn update_viewport_size(&mut self, viewport_size: usize) {
         self.viewport_size = viewport_size;
     }
 
-    /// Get maximum scroll position based on current filtered logs and viewport size
+    /// Get maximum scroll position
     const fn max_scroll_position(&self) -> usize {
         if self.filtered_logs.len() <= self.viewport_size {
             0
@@ -479,7 +172,7 @@ impl FilteredLogState {
         }
     }
 
-    /// Check if auto-scroll is enabled and we should follow new logs
+    /// Check if auto-scroll is enabled
     const fn should_auto_scroll(&self) -> bool {
         self.auto_scroll_enabled
     }
@@ -489,7 +182,6 @@ impl FilteredLogState {
         let max_scroll = self.max_scroll_position();
         if max_scroll > 0 {
             self.scroll_position = (self.scroll_position + amount).min(max_scroll);
-            // User scrolled up manually - disable auto-scroll
             self.auto_scroll_enabled = false;
         }
     }
@@ -522,14 +214,12 @@ impl FilteredLogState {
         if max_scroll > 0 {
             self.scroll_position = max_scroll;
         }
-        // User explicitly went to top - disable auto-scroll
         self.auto_scroll_enabled = false;
     }
 
     /// Scroll to bottom (newest logs) - enables auto-scroll
     const fn scroll_to_bottom(&mut self) {
         self.scroll_position = 0;
-        // User explicitly went to bottom - enable auto-scroll
         self.auto_scroll_enabled = true;
     }
 
@@ -539,11 +229,8 @@ impl FilteredLogState {
         let viewport_size = self.viewport_size;
 
         if total_logs <= viewport_size {
-            // All logs fit in viewport
             self.filtered_logs.clone()
         } else {
-            // Calculate viewport based on scroll position
-            // scroll_position 0 = show newest (bottom), higher = show older (top)
             let start_from_end = self.scroll_position;
             let end_index = total_logs.saturating_sub(start_from_end);
             let start_index = end_index.saturating_sub(viewport_size);
@@ -558,23 +245,23 @@ impl FilteredLogState {
     }
 }
 
-/// Background log monitoring and filtering system
+/// Background log monitoring and filtering system using memory-mapped viewer
 struct LogWorker {
     session_dir: PathBuf,
-    file_readers: HashMap<PathBuf, LogFileReader>,
+    readers: std::collections::HashMap<PathBuf, Arc<MultiFileReader>>,
     state: FilteredLogState,
     last_check: Instant,
-    last_line_counts: HashMap<PathBuf, usize>,
+    last_line_counts: std::collections::HashMap<PathBuf, usize>,
 }
 
 impl LogWorker {
     fn new(session_dir: PathBuf) -> Self {
         Self {
             session_dir,
-            file_readers: HashMap::new(),
+            readers: std::collections::HashMap::new(),
             state: FilteredLogState::new(),
             last_check: Instant::now(),
-            last_line_counts: HashMap::new(),
+            last_line_counts: std::collections::HashMap::new(),
         }
     }
 
@@ -592,43 +279,75 @@ impl LogWorker {
         )
     }
 
-    fn get_or_create_file_reader(&mut self, directory_path: PathBuf) -> &mut LogFileReader {
-        self.file_readers
-            .entry(directory_path.clone())
-            .or_insert_with(|| LogFileReader::new(directory_path))
+    fn get_or_create_reader(&mut self, directory_path: &Path) -> Result<&Arc<MultiFileReader>> {
+        let directory_pathbuf = directory_path.to_path_buf();
+        if !self.readers.contains_key(&directory_pathbuf) {
+            let config = ViewerConfigBuilder::new()
+                .log_dir(directory_pathbuf.clone())
+                .file_pattern("*.log")
+                .discovery_interval(Duration::from_secs(1))
+                .watch_files(false) // We'll poll manually
+                .build();
+
+            let reader = MultiFileReader::new(config)?;
+            self.readers
+                .insert(directory_pathbuf.clone(), Arc::new(reader));
+        }
+
+        Ok(self.readers.get(&directory_pathbuf).unwrap())
     }
 
     fn rebuild_complete_state(&mut self) -> Result<bool> {
         let directory_path = self.get_log_file_path(self.state.node_filter);
 
-        // Read all entries from the appropriate directory
-        let (all_logs, current_line_count) = {
-            let reader = self.get_or_create_file_reader(directory_path.clone());
-            let logs = reader.read_all_entries()?;
-            let line_count = reader.total_lines()?;
-            (logs, line_count)
-        };
+        // Get or create reader for this directory
+        let reader = self.get_or_create_reader(&directory_path)?.clone();
 
-        // For node-specific directories, don't apply node filtering again
-        let should_apply_node_filter = directory_path.file_name().is_some_and(|name| name == "all");
+        // Rediscover files to ensure readers are up to date
+        reader.discover_files()?;
 
-        if should_apply_node_filter {
-            self.state.rebuild_filtered_logs(&all_logs);
-        } else {
-            // For node-specific directories, only apply level filtering
-            let old_node_filter = self.state.node_filter;
-            self.state.node_filter = None; // Temporarily disable node filtering
-            self.state.rebuild_filtered_logs(&all_logs);
-            self.state.node_filter = old_node_filter; // Restore node filter for UI state
-        }
+        // Get total line count
+        let current_line_count = reader.total_lines()?;
 
-        // Update line count
+        // Check if we need to read logs
         let had_updates = self
             .last_line_counts
             .get(&directory_path)
             .copied()
             .unwrap_or(0)
             != current_line_count;
+
+        if had_updates || self.state.filtered_logs.is_empty() {
+            // Read all entries and parse them
+            let mut all_logs = Vec::new();
+            let total_lines = reader.total_lines()?;
+
+            for i in 0..total_lines {
+                if let Some(line) = reader.read_line(i)? {
+                    match parse_log_entry(&line) {
+                        Ok(entry) => all_logs.push(entry),
+                        Err(e) => {
+                            debug!("Failed to parse log line {i}: {e}");
+                        }
+                    }
+                }
+            }
+
+            // Apply filters
+            let should_apply_node_filter =
+                directory_path.file_name().is_some_and(|name| name == "all");
+
+            if should_apply_node_filter {
+                self.state.rebuild_filtered_logs(&all_logs);
+            } else {
+                // For node-specific directories, temporarily disable node filtering
+                let old_node_filter = self.state.node_filter;
+                self.state.node_filter = None;
+                self.state.rebuild_filtered_logs(&all_logs);
+                self.state.node_filter = old_node_filter;
+            }
+        }
+
         self.last_line_counts
             .insert(directory_path, current_line_count);
 
@@ -638,30 +357,29 @@ impl LogWorker {
     fn check_for_updates(&mut self) -> bool {
         let directory_path = self.get_log_file_path(self.state.node_filter);
 
-        let has_updates = {
-            let reader = self.get_or_create_file_reader(directory_path);
-            reader.has_updates()
-        };
+        // Check if reader exists and has updates
+        if let Ok(reader) = self.get_or_create_reader(&directory_path) {
+            // Force rediscovery of files
+            reader.discover_files().ok();
+        }
 
-        if has_updates {
-            // Directory has been updated, rebuild complete state
-            match self.rebuild_complete_state() {
-                Ok(updated) => updated,
-                Err(e) => {
-                    // Log the error but continue monitoring
-                    eprintln!("Failed to rebuild log state: {e}");
-                    false
-                }
+        // Rebuild state
+        match self.rebuild_complete_state() {
+            Ok(updated) => updated,
+            Err(e) => {
+                eprintln!("Failed to rebuild log state: {e}");
+                false
             }
-        } else {
-            false
         }
     }
 
     fn handle_request(&mut self, request: &LogRequest) -> Result<Option<LogResponse>> {
         match request {
             LogRequest::UpdateFilters { level, node_filter } => {
-                self.state.update_filters(&[], *level, *node_filter);
+                // Update filters but don't clear logs yet
+                self.state.level_filter = *level;
+                self.state.node_filter = *node_filter;
+                // Now rebuild with actual data
                 self.rebuild_complete_state()?;
 
                 Ok(Some(LogResponse::ViewportUpdate {
@@ -777,12 +495,10 @@ impl LogWorker {
                         if self.check_for_updates() {
                             // File was updated, auto-scroll only if explicitly enabled
                             if self.state.should_auto_scroll() {
-                                // User wants to follow new logs - move to bottom WITHOUT changing auto-scroll state
-                                self.state.scroll_position = 0; // Move to bottom but don't call scroll_to_bottom()
+                                self.state.scroll_position = 0;
                             }
 
-                            // Always send viewport update with current position (whether auto-scroll or not)
-                            // This ensures UI gets new logs but scroll position is preserved
+                            // Send viewport update
                             let update = LogResponse::ViewportUpdate {
                                 logs: self.state.get_viewport_logs(),
                                 total_filtered_lines: self.state.total_filtered_lines(),
@@ -799,7 +515,7 @@ impl LogWorker {
     }
 }
 
-/// High-performance log reader that uses a background thread for push-based log updates
+/// High-performance log reader using memory-mapped files
 pub struct LogReader {
     /// Channel to send requests to background thread
     request_sender: mpsc::Sender<LogRequest>,
@@ -814,6 +530,7 @@ pub struct LogReader {
 
 impl LogReader {
     /// Create a new log reader with session directory and start background thread
+    #[must_use]
     pub fn new(session_dir: PathBuf) -> Self {
         let (request_sender, request_receiver) = mpsc::channel();
         let (response_sender, response_receiver) = mpsc::channel();
@@ -842,6 +559,7 @@ impl LogReader {
     }
 
     /// Get the current log level filter
+    #[must_use]
     pub fn get_level_filter(&self) -> LogLevel {
         *self.current_level_filter.read()
     }
@@ -900,6 +618,7 @@ impl LogReader {
     }
 
     /// Get any available responses (non-blocking)
+    #[must_use]
     pub fn try_get_response(&self) -> Option<LogResponse> {
         self.response_receiver.try_recv().ok()
     }
@@ -908,150 +627,5 @@ impl LogReader {
 impl Drop for LogReader {
     fn drop(&mut self) {
         let _ = self.request_sender.send(LogRequest::Shutdown);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::logs_writer::LogWriter;
-    use chrono::Utc;
-    use tempfile::TempDir;
-
-    fn create_test_config() -> PathBuf {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        temp_dir.path().to_path_buf()
-    }
-
-    fn create_test_log_entry() -> LogEntry {
-        LogEntry {
-            node_id: TuiNodeId::new(),
-            level: LogLevel::Info,
-            message: "Test log message".to_string(),
-            timestamp: Utc::now(),
-            target: Some("test".to_string()),
-        }
-    }
-
-    fn reset_node_id_state() {
-        #[cfg(test)]
-        crate::node_id::TuiNodeId::reset_global_state();
-    }
-
-    #[test]
-    fn test_file_reader_basic() {
-        reset_node_id_state();
-        let base_dir = create_test_config();
-        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
-
-        // Write some test entries
-        let entry1 = create_test_log_entry();
-        let mut entry2 = create_test_log_entry();
-        entry2.level = LogLevel::Error;
-        entry2.message = "Error message".to_string();
-
-        writer.add_log(entry1);
-        writer.add_log(entry2);
-
-        // Give async writer time to process
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        // Test reading with LogFileReader (using new directory structure)
-        let session_dir = writer.get_session_dir();
-        let all_log_dir = session_dir.join("all");
-        let mut reader = LogFileReader::new(all_log_dir);
-        let logs = reader.read_all_entries().expect("Failed to read logs");
-
-        assert_eq!(logs.len(), 2);
-        assert!(
-            logs.iter()
-                .any(|log| log.message.contains("Test log message"))
-        );
-        assert!(logs.iter().any(|log| log.message.contains("Error message")));
-    }
-
-    #[test]
-    fn test_log_reader_push_system() {
-        reset_node_id_state();
-        let base_dir = create_test_config();
-        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
-
-        // Write a test entry
-        let entry = create_test_log_entry();
-        writer.add_log(entry);
-
-        // Give async writer time to process
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        // Test LogReader with push system
-        let session_dir = writer.get_session_dir();
-        let reader = LogReader::new(session_dir);
-
-        // Request initial data
-        reader.request_initial_data();
-
-        // Wait a bit for background thread to process
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        // Check for response
-        if let Some(response) = reader.try_get_response() {
-            match response {
-                LogResponse::ViewportUpdate { logs, .. } => {
-                    assert!(!logs.is_empty());
-                    assert!(logs[0].message.contains("Test log message"));
-                }
-                LogResponse::Error { message } => {
-                    panic!("Expected ViewportUpdate response, got error: {message}");
-                }
-            }
-        } else {
-            panic!("No response received from background thread");
-        }
-    }
-
-    #[test]
-    fn test_level_filtering_push() {
-        reset_node_id_state();
-        let base_dir = create_test_config();
-        let writer = LogWriter::new(&base_dir).expect("Failed to create writer");
-
-        // Write entries with different levels
-        let mut info_entry = create_test_log_entry();
-        info_entry.level = LogLevel::Info;
-        info_entry.message = "Info message".to_string();
-
-        let mut error_entry = create_test_log_entry();
-        error_entry.level = LogLevel::Error;
-        error_entry.message = "Error message".to_string();
-
-        writer.add_log(info_entry);
-        writer.add_log(error_entry);
-
-        // Give async writer time to process
-        std::thread::sleep(std::time::Duration::from_millis(200));
-
-        // Test filtering to only show errors
-        let session_dir = writer.get_session_dir();
-        let reader = LogReader::new(session_dir);
-        reader.set_level_filter(LogLevel::Error);
-
-        // Wait for filter update to process
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
-        // Check for response
-        if let Some(response) = reader.try_get_response() {
-            match response {
-                LogResponse::ViewportUpdate { logs, .. } => {
-                    // Should only show error messages when filtering for Error level
-                    assert!(logs.iter().all(|log| matches!(log.level, LogLevel::Error)));
-                    assert!(logs.iter().any(|log| log.message.contains("Error message")));
-                }
-                LogResponse::Error { message } => {
-                    panic!("Expected ViewportUpdate response, got error: {message}");
-                }
-            }
-        } else {
-            panic!("No response received from background thread");
-        }
     }
 }

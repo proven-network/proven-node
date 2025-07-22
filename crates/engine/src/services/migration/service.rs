@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use proven_logger::{error, info, warn};
 use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
-use tracing::{error, info, warn};
 
 use crate::foundation::ConsensusGroupId;
 use proven_topology::NodeId;
@@ -155,7 +155,7 @@ impl MigrationService {
         let mut tasks = self.background_tasks.write().await;
         for task in tasks.drain(..) {
             if let Err(e) = task.await {
-                warn!("Error stopping migration task: {}", e);
+                warn!("Error stopping migration task: {e}");
             }
         }
 
@@ -183,10 +183,7 @@ impl MigrationService {
         }
         drop(active);
 
-        info!(
-            "Starting stream migration: {} from {:?} to {:?}",
-            stream_name, source_group, target_group
-        );
+        info!("Starting stream migration: {stream_name} from {source_group:?} to {target_group:?}");
 
         // Start migration
         let progress = self
@@ -248,10 +245,7 @@ impl MigrationService {
         }
         drop(active);
 
-        info!(
-            "Starting node migration: {} from {:?} to {:?}",
-            node_id, source_group, target_group
-        );
+        info!("Starting node migration: {node_id} from {source_group:?} to {target_group:?}");
 
         // Start migration
         let progress = self
@@ -397,7 +391,7 @@ impl MigrationService {
                             }
                             Ok(None) => {},
                             Err(e) => {
-                                error!("Rebalancing check failed: {}", e);
+                                error!("Rebalancing check failed: {e}");
                             }
                         }
                     }

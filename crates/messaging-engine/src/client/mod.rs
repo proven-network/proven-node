@@ -9,9 +9,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_logger::{debug, warn};
 use tokio::sync::{Mutex as TokioMutex, oneshot};
 use tokio::time::timeout;
-use tracing::{debug, warn};
 
 use proven_messaging::client::{Client, ClientError, ClientOptions, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
@@ -227,11 +227,11 @@ where
         // Wait for response with timeout
         match timeout(self.options.timeout, receiver).await {
             Ok(Ok(response)) => {
-                debug!("Received response for request {}", request_id);
+                debug!("Received response for request {request_id}");
                 Ok(response)
             }
             Ok(Err(_)) => {
-                warn!("Response channel closed for request {}", request_id);
+                warn!("Response channel closed for request {request_id}");
                 Err(EngineMessagingClientError::NoResponse)
             }
             Err(_) => {

@@ -4,12 +4,12 @@ use crate::commands::{InitializeRequest, InitializeResponse, ShutdownRequest, Sh
 use crate::error::Result;
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_logger::{debug, error, info};
 use proven_vsock_rpc::{
     HandlerResponse, MessagePattern, RpcHandler, RpcServer, ServerConfig, error::HandlerError,
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, instrument};
 
 /// Handler for CAC commands.
 pub struct CacHandler<H> {
@@ -57,7 +57,7 @@ impl<H: CacCommandHandler> CacHandler<H> {
 
 #[async_trait]
 impl<H: CacCommandHandler> RpcHandler for CacHandler<H> {
-    #[instrument(skip(self, message))]
+    // #[instrument(skip(self, message))] // TODO: Add this back in if we support instrument
     async fn handle_message(
         &self,
         message_id: &str,
@@ -96,7 +96,7 @@ impl<H: CacCommandHandler> RpcHandler for CacHandler<H> {
                         Ok(HandlerResponse::Single(response_bytes))
                     }
                     Err(e) => {
-                        error!("Initialize failed: {}", e);
+                        error!("Initialize failed: {e}");
                         let resp = InitializeResponse {
                             success: false,
                             error: Some(e.to_string()),
@@ -140,7 +140,7 @@ impl<H: CacCommandHandler> RpcHandler for CacHandler<H> {
                         Ok(HandlerResponse::Single(response_bytes))
                     }
                     Err(e) => {
-                        error!("Shutdown failed: {}", e);
+                        error!("Shutdown failed: {e}");
                         let resp = ShutdownResponse {
                             success: false,
                             message: Some(e.to_string()),
@@ -176,7 +176,7 @@ impl<H: CacCommandHandler> RpcHandler for CacHandler<H> {
         #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
         #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
     ) {
-        info!("CAC client disconnected from {:?}", addr);
+        info!("CAC client disconnected from {addr:?}");
     }
 }
 

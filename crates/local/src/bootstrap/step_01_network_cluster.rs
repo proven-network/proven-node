@@ -196,9 +196,6 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
     bootstrap.bootstrapping_core = Some(core);
 
-    // TODO: Do better cluster formation check
-    // Sleep to let cluster initialize
-    tokio::time::sleep(Duration::from_secs(3)).await;
-
+    // Engine::start() now properly waits for both default group and global consensus leader election
     Ok(())
 }

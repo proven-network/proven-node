@@ -10,6 +10,7 @@ use ed25519_dalek::SigningKey;
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
 use proven_engine::{Engine, EngineBuilder, EngineConfig};
+use proven_logger::info;
 use proven_network::NetworkManager;
 use proven_storage::{StorageAdaptor, StorageManager};
 use proven_storage_memory::MemoryStorage;
@@ -23,7 +24,6 @@ use proven_util::port_allocator::allocate_port;
 use rand::rngs::OsRng;
 use tempfile::TempDir;
 use tokio::sync::RwLock;
-use tracing::info;
 
 /// Transport type for test cluster
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -166,7 +166,7 @@ impl TestCluster {
             }
         }
 
-        info!("All {} nodes created and started successfully", count);
+        info!("All {count} nodes created and started successfully");
 
         (engines, node_infos)
     }
@@ -187,14 +187,11 @@ impl TestCluster {
         let node_id_str = node_id.to_string();
         let short_id = &node_id_str[..8];
 
-        info!(
-            "[Node-{}] Creating TCP node {} on port {}",
-            short_id, node_id, port
-        );
+        info!("[Node-{short_id}] Creating TCP node {node_id} on port {port}");
 
         // Add node to governance
         self.add_node_to_governance(&signing_key, port).await;
-        info!("[Node-{}] Added to governance with port {}", short_id, port);
+        info!("[Node-{short_id}] Added to governance with port {port}");
 
         // Create governance instance for this node
         let governance = self.governance.read().await.clone();
@@ -261,10 +258,7 @@ impl TestCluster {
             .start()
             .await
             .expect("Failed to start TCP transport");
-        info!(
-            "[Node-{}] TCP transport listening on {}",
-            short_id, actual_addr
-        );
+        info!("[Node-{short_id}] TCP transport listening on {actual_addr}");
 
         topology_manager
             .start()
@@ -328,20 +322,14 @@ impl TestCluster {
         let node_id_str = node_id.to_string();
         let short_id = &node_id_str[..8];
 
-        info!(
-            "[Node-{}] Creating TCP node {} on port {}",
-            short_id, node_id, port
-        );
+        info!("[Node-{short_id}] Creating TCP node {node_id} on port {port}");
 
         // Only add node to governance if it's not already there (i.e., no existing port)
         if existing_port.is_none() {
             self.add_node_to_governance(&signing_key, port).await;
-            info!("[Node-{}] Added to governance with port {}", short_id, port);
+            info!("[Node-{short_id}] Added to governance with port {port}");
         } else {
-            info!(
-                "[Node-{}] Already in governance, reusing port {}",
-                short_id, port
-            );
+            info!("[Node-{short_id}] Already in governance, reusing port {port}");
         }
 
         // Create governance instance for this node
@@ -397,7 +385,7 @@ impl TestCluster {
         };
 
         let storage_manager = if let Some(existing) = existing_manager {
-            info!("[Node-{}] Reusing existing storage manager", short_id);
+            info!("[Node-{short_id}] Reusing existing storage manager");
             existing
         } else {
             // Ensure the directory exists
@@ -414,7 +402,7 @@ impl TestCluster {
                 let mut managers = self.rocksdb_storage_managers.lock().unwrap();
                 managers.insert(node_key.clone(), storage_manager.clone());
             }
-            info!("[Node-{}] Created new storage manager", short_id);
+            info!("[Node-{short_id}] Created new storage manager");
             storage_manager
         };
 
@@ -434,10 +422,7 @@ impl TestCluster {
             .start()
             .await
             .expect("Failed to start TCP transport");
-        info!(
-            "[Node-{}] TCP transport listening on {}",
-            short_id, actual_addr
-        );
+        info!("[Node-{short_id}] TCP transport listening on {actual_addr}");
 
         topology_manager
             .start()
@@ -607,13 +592,13 @@ impl TestCluster {
             match engine.node_groups().await {
                 Ok(groups) => {
                     if groups.is_empty() {
-                        info!("Node {} has no groups", i);
+                        info!("Node {i} has no groups");
                     } else {
                         info!("Node {} is in {} groups", i, groups.len());
                     }
                 }
                 Err(e) => {
-                    info!("Node {} failed to get groups: {}", i, e);
+                    info!("Node {i} failed to get groups: {e}");
                 }
             }
         }
@@ -677,8 +662,7 @@ impl TestCluster {
 
             if members_found >= expected_members {
                 info!(
-                    "Group {:?} has {} members (expected {})",
-                    group_id, members_found, expected_members
+                    "Group {group_id:?} has {members_found} members (expected {expected_members})"
                 );
                 return Ok(());
             }
@@ -799,10 +783,7 @@ impl TestCluster {
             }
         }
 
-        info!(
-            "All {} RocksDB nodes created and started successfully",
-            count
-        );
+        info!("All {count} RocksDB nodes created and started successfully");
 
         (engines, node_infos)
     }
@@ -825,9 +806,9 @@ impl TestCluster {
             ));
         }
 
-        info!("Stopping engine at index {}", index);
+        info!("Stopping engine at index {index}");
         engines[index].stop().await?;
-        info!("Engine at index {} stopped successfully", index);
+        info!("Engine at index {index} stopped successfully");
         Ok(())
     }
 
@@ -849,9 +830,9 @@ impl TestCluster {
             ));
         }
 
-        info!("Starting engine at index {}", index);
+        info!("Starting engine at index {index}");
         engines[index].start().await?;
-        info!("Engine at index {} started successfully", index);
+        info!("Engine at index {index} started successfully");
         Ok(())
     }
 
@@ -867,7 +848,7 @@ impl TestCluster {
     {
         info!("Stopping all {} engines", engines.len());
         for (i, engine) in engines.iter_mut().enumerate() {
-            info!("Stopping engine {}", i);
+            info!("Stopping engine {i}");
             engine.stop().await?;
         }
         info!("All engines stopped successfully");
@@ -887,7 +868,7 @@ impl TestCluster {
         info!("Starting all {} engines", engines.len());
         let mut start_futures = Vec::new();
         for (i, engine) in engines.iter_mut().enumerate() {
-            info!("Preparing to start engine {}", i);
+            info!("Preparing to start engine {i}");
             start_futures.push(engine.start());
         }
 
@@ -931,7 +912,7 @@ impl TestCluster {
                 let nodes = engine.topology_manager().get_cached_nodes().await?;
                 if nodes.len() != expected_size {
                     all_see_size = false;
-                    tracing::debug!(
+                    proven_logger::debug!(
                         "Node {} sees {} nodes, expected {}",
                         i,
                         nodes.len(),
@@ -942,7 +923,7 @@ impl TestCluster {
             }
 
             if all_see_size {
-                tracing::info!("All nodes see {} nodes in topology", expected_size);
+                proven_logger::info!("All nodes see {expected_size} nodes in topology");
                 return Ok(());
             }
 

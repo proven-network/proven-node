@@ -9,6 +9,7 @@ use crate::{
     foundation::types::ConsensusGroupId, services::event::bus::EventBus,
     services::group_consensus::GroupConsensusEvent,
 };
+use proven_logger::{debug, info};
 use proven_storage::StorageAdaptor;
 use proven_topology::NodeId;
 
@@ -43,10 +44,9 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         group_id: ConsensusGroupId,
         _state: &GroupState,
     ) -> ConsensusResult<()> {
-        tracing::info!(
+        info!(
             "Group {:?} state synchronized on node {}",
-            group_id,
-            self.node_id
+            group_id, self.node_id
         );
 
         // Publish event
@@ -63,11 +63,9 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         group_id: ConsensusGroupId,
         stream_name: &str,
     ) -> ConsensusResult<()> {
-        tracing::info!(
+        info!(
             "Stream {} created in group {:?} on node {}",
-            stream_name,
-            group_id,
-            self.node_id
+            stream_name, group_id, self.node_id
         );
 
         // Group consensus doesn't publish stream creation events
@@ -81,11 +79,9 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         group_id: ConsensusGroupId,
         stream_name: &str,
     ) -> ConsensusResult<()> {
-        tracing::info!(
+        info!(
             "Stream {} removed from group {:?} on node {}",
-            stream_name,
-            group_id,
-            self.node_id
+            stream_name, group_id, self.node_id
         );
 
         // Group consensus doesn't publish stream deletion events
@@ -100,7 +96,7 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         stream_name: &str,
         entries: Arc<Vec<bytes::Bytes>>,
     ) -> ConsensusResult<()> {
-        tracing::debug!(
+        debug!(
             "Messages appended to stream {} in group {:?}, {} entries",
             stream_name,
             group_id,
@@ -141,11 +137,9 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         added_members: &[NodeId],
         removed_members: &[NodeId],
     ) -> ConsensusResult<()> {
-        tracing::info!(
+        info!(
             "Group {:?} membership changed - added: {:?}, removed: {:?}",
-            group_id,
-            added_members,
-            removed_members
+            group_id, added_members, removed_members
         );
 
         // Publish event

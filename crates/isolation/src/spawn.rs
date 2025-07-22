@@ -24,12 +24,12 @@ use std::time::Duration;
 
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
+use proven_logger::{debug, error, info, warn};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info, warn};
 
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 
@@ -670,7 +670,7 @@ impl IsolatedProcessSpawner {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
-        debug!("Spawning process: {:?}", cmd);
+        debug!("Spawning process: {cmd:?}");
 
         // Track the start time to compensate for the network setup sleep
         #[cfg(target_os = "linux")]
@@ -739,7 +739,7 @@ impl IsolatedProcessSpawner {
             }
         }
 
-        debug!("Process spawned with PID: {}", pid);
+        debug!("Process spawned with PID: {pid}");
 
         // Setup network connectivity if network namespace is used
         #[cfg(target_os = "linux")]
@@ -815,26 +815,26 @@ impl IsolatedProcessSpawner {
                     match status_result {
                         Ok(status) => {
                             if status.success() {
-                                info!("Process {} exited normally with status: {}", pid_for_task, status);
+                                info!("Process {pid_for_task} exited normally with status: {status}");
                             } else {
-                                warn!("Process {} exited normally with non-zero status: {}", pid_for_task, status);
+                                warn!("Process {pid_for_task} exited normally with non-zero status: {status}");
                             }
                             *exit_status_for_task.lock().await = Some(status);
                         }
                         Err(err) => {
-                            error!("Failed to wait for process {}: {}", pid_for_task, err);
+                            error!("Failed to wait for process {pid_for_task}: {err}");
                             // Set a generic error status if wait fails
                             *exit_status_for_task.lock().await = Some(ExitStatus::from_raw(1));
                         }
                     }
                 }
                 () = shutdown_token_for_task.cancelled() => {
-                    info!("Shutdown requested for process {}, terminating...", pid_for_task);
+                    info!("Shutdown requested for process {pid_for_task}, terminating...");
                     #[allow(clippy::cast_possible_wrap)]
                     let pid = Pid::from_raw(pid_for_task as i32);
-                    debug!("Sending {} to process {}", shutdown_signal, pid);
+                    debug!("Sending {shutdown_signal} to process {pid}");
                     if let Err(err) = signal::kill(pid, shutdown_signal) {
-                        error!("Failed to send {} to process {}: {}", shutdown_signal, pid_for_task, err);
+                        error!("Failed to send {shutdown_signal} to process {pid_for_task}: {err}");
                         // If sending the initial signal fails, we might still want to proceed to kill
                     }
 
@@ -848,12 +848,12 @@ impl IsolatedProcessSpawner {
                         let pid_for_wait = Pid::from_raw(pid_for_task as i32);
                         match waitpid(pid_for_wait, Some(WaitPidFlag::WNOHANG)) {
                             Ok(WaitStatus::Exited(_, status)) => {
-                                info!("Process {} exited gracefully after signal with status code: {}", pid_for_task, status);
+                                info!("Process {pid_for_task} exited gracefully after signal with status code: {status}");
                                 graceful_exit_status = Some(ExitStatus::from_raw(status));
                                 break;
                             }
                             Ok(WaitStatus::Signaled(_, signal, _)) => {
-                                info!("Process {} terminated by signal: {}", pid_for_task, signal);
+                                info!("Process {pid_for_task} terminated by signal: {signal}");
                                 // This case should ideally be caught by the final wait() below,
                                 // but we can record it happened.
                                 graceful_exit_status = Some(ExitStatus::from_raw(128 + signal as i32));
@@ -862,10 +862,10 @@ impl IsolatedProcessSpawner {
                             Ok(WaitStatus::StillAlive) => {
                                 // Process still running, check timeout
                                 if start.elapsed() > shutdown_timeout {
-                                    error!("Timeout waiting for process {} to exit gracefully, killing...", pid_for_task);
+                                    error!("Timeout waiting for process {pid_for_task} to exit gracefully, killing...");
                                     // Send SIGKILL to the specific PID
                                     if let Err(err) = signal::kill(pid, Signal::SIGKILL) {
-                                        error!("Failed to send SIGKILL to process {}: {}", pid_for_task, err);
+                                        error!("Failed to send SIGKILL to process {pid_for_task}: {err}");
                                     }
                                     // Also try killing the handle `child` directly, might be needed for `unshare`
                                     // Note: child.kill() is async, but we are in a sync context here implicitly.
@@ -877,21 +877,21 @@ impl IsolatedProcessSpawner {
                             }
                             Ok(other_status) => {
                                 // Log and continue checking, treating as StillAlive for timeout purposes.
-                                warn!("Process {} reported unexpected status via waitpid: {:?}", pid_for_task, other_status);
+                                warn!("Process {pid_for_task} reported unexpected status via waitpid: {other_status:?}");
                                 if start.elapsed() > shutdown_timeout { // Check timeout here too
-                                     error!("Timeout waiting for process {} after unexpected status, killing...", pid_for_task);
+                                     error!("Timeout waiting for process {pid_for_task} after unexpected status, killing...");
                                      if let Err(err) = signal::kill(pid, Signal::SIGKILL) {
-                                        error!("Failed to send SIGKILL to process {}: {}", pid_for_task, err);
+                                        error!("Failed to send SIGKILL to process {pid_for_task}: {err}");
                                      }
                                      killed_by_timeout = true;
                                      break;
                                 }
                             }
                             Err(e) => {
-                                error!("waitpid error checking process {}: {}", pid_for_task, e);
+                                error!("waitpid error checking process {pid_for_task}: {e}");
                                 // ECHILD means the process is already gone (or never existed), break.
                                 if e == nix::errno::Errno::ECHILD {
-                                    info!("Process {} already reaped or gone (ECHILD).", pid_for_task);
+                                    info!("Process {pid_for_task} already reaped or gone (ECHILD).");
                                     // Assume it exited somehow, let final wait() confirm.
                                     // Or maybe set a default status? Let's break and let wait() handle it.
                                     break;
@@ -910,15 +910,15 @@ impl IsolatedProcessSpawner {
                                 let mut exit_status_guard = exit_status_for_task.lock().await;
                                 if exit_status_guard.is_none() { // Only set if not already set
                                     if killed_by_timeout {
-                                         warn!("Process {} was killed due to timeout. Final status from wait: {}", pid_for_task, final_status);
+                                         warn!("Process {pid_for_task} was killed due to timeout. Final status from wait: {final_status}");
                                          // We trust the final_status from wait() as the most accurate.
                                     } else if let Some(_graceful_status) = graceful_exit_status {
                                          // Prefer the status obtained via waitpid if available and consistent?
                                          // Let's trust the final wait() status as the definitive one from the OS.
-                                         info!("Process {} exited after signal. Final status from wait: {}", pid_for_task, final_status);
+                                         info!("Process {pid_for_task} exited after signal. Final status from wait: {final_status}");
                                     } else {
                                         // Process exited/disappeared during waitpid loop (e.g., ECHILD or other error)
-                                        info!("Process {} status unclear from waitpid loop. Final status from wait: {}", pid_for_task, final_status);
+                                        info!("Process {pid_for_task} status unclear from waitpid loop. Final status from wait: {final_status}");
                                     }
 
                                     *exit_status_guard = Some(final_status);
@@ -928,11 +928,11 @@ impl IsolatedProcessSpawner {
                             // Check for status differences outside the guard scope
                             if let Some(existing_status) = exit_status_for_task.lock().await.as_ref()
                                 && Some(final_status) != Some(*existing_status) {
-                                    warn!("Final status from wait ({}) differs from already set status ({:?}) for process {}", final_status, existing_status, pid_for_task);
+                                    warn!("Final status from wait ({final_status}) differs from already set status ({existing_status:?}) for process {pid_for_task}");
                                 }
                         }
                         Err(err) => {
-                            error!("Final wait() failed for process {} after shutdown sequence: {}", pid_for_task, err);
+                            error!("Final wait() failed for process {pid_for_task} after shutdown sequence: {err}");
                             // If wait failed, we need to set *some* status if not already set.
                             let mut exit_status_guard = exit_status_for_task.lock().await;
                             if exit_status_guard.is_none() {
@@ -967,7 +967,7 @@ impl IsolatedProcessSpawner {
             |memory_config| match CgroupsController::new(pid, memory_config) {
                 Ok(controller) => {
                     if controller.is_active() {
-                        debug!("Cgroups memory controller activated for process {}", pid);
+                        debug!("Cgroups memory controller activated for process {pid}");
                         Some(controller)
                     } else {
                         warn!("Cgroups memory controller could not be activated");
@@ -975,7 +975,7 @@ impl IsolatedProcessSpawner {
                     }
                 }
                 Err(e) => {
-                    error!("Failed to create cgroups controller: {}", e);
+                    error!("Failed to create cgroups controller: {e}");
                     None
                 }
             },
@@ -1086,7 +1086,7 @@ impl IsolatedProcessSpawner {
                 )));
             }
 
-            debug!("Application not ready, attempt {}, waiting...", attempts);
+            debug!("Application not ready, attempt {attempts}, waiting...");
             tokio::time::sleep(interval).await;
         }
 

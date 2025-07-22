@@ -1,6 +1,6 @@
 use crate::error::Error;
 
-use tracing::info;
+use proven_logger::info;
 
 /// Fetches the external IP address using myip.com API
 pub async fn fetch_external_ip() -> Result<std::net::IpAddr, Error> {
@@ -21,7 +21,7 @@ pub async fn fetch_external_ip() -> Result<std::net::IpAddr, Error> {
         .parse::<std::net::IpAddr>()
         .map_err(|e| Error::Io(format!("Failed to parse external IP: {e}")))?;
 
-    info!("External IP detected: {}", ip_addr);
+    info!("External IP detected: {ip_addr}");
 
     Ok(ip_addr)
 }

@@ -5,9 +5,9 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use proven_logger::{debug, info};
 use std::{num::NonZero, sync::Arc};
 use tokio_stream::Stream;
-use tracing::{debug, info};
 
 use crate::{
     LogStorage, LogStorageStreaming, LogStorageWithDelete, StorageNamespace, StorageResult,

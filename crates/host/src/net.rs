@@ -3,8 +3,8 @@ use crate::{Error, Result};
 use std::net::Ipv4Addr;
 
 use cidr::Ipv4Cidr;
+use proven_logger::info;
 use tokio::process::Command;
-use tracing::info;
 
 pub async fn configure_nat(outbound_device: &str, cidr: Ipv4Cidr) -> Result<()> {
     Command::new("iptables")

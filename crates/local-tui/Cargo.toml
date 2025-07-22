@@ -3,6 +3,14 @@ name = "proven-local-tui"
 version.workspace = true
 edition = "2024"
 
+[[bin]]
+name = "proven-local-tui"
+path = "src/main.rs"
+
+[lib]
+name = "proven_local_tui"
+path = "src/lib.rs"
+
 [dependencies]
 # Core TUI
 ratatui = "0.29.0"
@@ -30,9 +38,11 @@ proven-topology-mock.workspace = true
 
 # Logging
 parking_lot.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 tracing-appender = "0.2"
+proven-logger-file.workspace = true
+proven-logger-viewer.workspace = true
 
 # Data handling
 chrono.workspace = true
@@ -64,5 +74,6 @@ coset.workspace = true
 bytes.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 serial_test = "3.2.0"
-tempfile = "3.8"
+tempfile = { workspace = true }

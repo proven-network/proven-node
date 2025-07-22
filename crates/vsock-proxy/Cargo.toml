@@ -7,7 +7,7 @@ edition = "2024"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix.workspace = true

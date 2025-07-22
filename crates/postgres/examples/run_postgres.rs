@@ -1,12 +1,15 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use proven_bootable::Bootable;
+use proven_logger::{StdoutLogger, init};
 use proven_postgres::{Postgres, PostgresOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Initialize tracing for better logging
-    tracing_subscriber::fmt::init();
+    // Initialize logger for better logging
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     // Create a directory for storing Postgres data
     let store_dir = PathBuf::from("/tmp/postgres-data");

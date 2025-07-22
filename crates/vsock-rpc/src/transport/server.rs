@@ -9,12 +9,12 @@ use crate::protocol::{
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::{SinkExt, StreamExt};
+use proven_logger::{debug, error, info, warn};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 use tokio_util::codec::Framed;
-use tracing::{debug, error, info, instrument, warn};
 
 /// Configuration for the RPC server.
 #[derive(Debug, Clone)]
@@ -112,7 +112,7 @@ impl<H: RpcHandler> RpcServer<H> {
     /// # Errors
     ///
     /// Returns an error if the server fails to bind or accept connections.
-    #[instrument(skip(self))]
+    // #[instrument(skip(self))] // TODO: Add this back in if we support instrument
     pub async fn serve(mut self) -> Result<()> {
         #[cfg(target_os = "linux")]
         let listener = tokio_vsock::VsockListener::bind(self.addr).map_err(|e| {
@@ -157,19 +157,19 @@ impl<H: RpcHandler> RpcServer<H> {
                                             handler,
                                                 config,
                                         ).await {
-                                            error!("Connection error from {:?}: {}", addr, e);
+                                            error!("Connection error from {addr:?}: {e}");
                                         }
                                         drop(permit);
                                     });
                                 }
                                 Err(_) => {
-                                    warn!("Max connections reached, rejecting connection from {:?}", addr);
+                                    warn!("Max connections reached, rejecting connection from {addr:?}");
                                     // Connection will be dropped
                                 }
                             }
                         }
                         Err(e) => {
-                            error!("Failed to accept connection: {}", e);
+                            error!("Failed to accept connection: {e}");
                         }
                     }
                 }
@@ -184,7 +184,8 @@ impl<H: RpcHandler> RpcServer<H> {
     }
 
     /// Handle a single connection.
-    #[instrument(skip(stream, handler))]
+    // #[instrument(skip(stream, handler))] // TODO: Add this back in if we support instrument
+    #[allow(clippy::cognitive_complexity)]
     async fn handle_connection(
         #[cfg(target_os = "linux")] stream: tokio_vsock::VsockStream,
         #[cfg(not(target_os = "linux"))] stream: tokio::net::TcpStream,
@@ -193,7 +194,7 @@ impl<H: RpcHandler> RpcServer<H> {
         handler: Arc<H>,
         config: ServerConfig,
     ) -> Result<()> {
-        debug!("New connection from {:?}", addr);
+        debug!("New connection from {addr:?}");
 
         // Notify handler
         handler.on_connect(addr).await?;
@@ -220,18 +221,18 @@ impl<H: RpcHandler> RpcServer<H> {
                             )
                             .await
                             {
-                                error!("Failed to handle request: {}", e);
+                                error!("Failed to handle request: {e}");
                             }
                         }
                         FrameType::Heartbeat => {
                             // Echo back heartbeat
                             let pong = Frame::new(FrameType::Heartbeat, frame.payload);
                             if let Err(e) = framed.send(pong).await {
-                                error!("Failed to send heartbeat response: {}", e);
+                                error!("Failed to send heartbeat response: {e}");
                                 break;
                             }
                             if let Err(e) = framed.flush().await {
-                                error!("Failed to flush heartbeat response: {}", e);
+                                error!("Failed to flush heartbeat response: {e}");
                                 break;
                             }
                         }
@@ -245,7 +246,7 @@ impl<H: RpcHandler> RpcServer<H> {
                     }
                 }
                 Ok(Some(Err(e))) => {
-                    error!("Frame error: {}", e);
+                    error!("Frame error: {e}");
                     break;
                 }
                 Ok(None) => {
@@ -378,16 +379,16 @@ impl<H: RpcHandler> RpcServer<H> {
                             let response_frame = Frame::new(FrameType::Stream, response_bytes);
 
                             if let Err(e) = sink.send(response_frame).await {
-                                error!("Failed to send stream response: {}", e);
+                                error!("Failed to send stream response: {e}");
                                 break;
                             }
                             if let Err(e) = sink.flush().await {
-                                error!("Failed to flush stream response: {}", e);
+                                error!("Failed to flush stream response: {e}");
                                 break;
                             }
                         }
                         Err(e) => {
-                            error!("Stream error: {}", e);
+                            error!("Stream error: {e}");
                             // Send error response
                             let (code, message) = match &e {
                                 Error::Handler(crate::error::HandlerError::NotFound(_)) => {

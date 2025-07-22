@@ -11,8 +11,9 @@ proven-topology.workspace = true
 proven-transport.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }

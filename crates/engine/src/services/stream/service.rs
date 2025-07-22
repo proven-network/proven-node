@@ -3,13 +3,13 @@
 //! This service manages stream storage and provides stream operations following
 //! the established service patterns in the consensus engine.
 
+use proven_logger::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::{RwLock, oneshot};
 use tokio_stream::{Stream, StreamExt};
-use tracing::{debug, error, info, warn};
 
 use proven_storage::{
     LogStorage, LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace,
@@ -170,10 +170,7 @@ impl<S: StorageAdaptor> StreamService<S> {
             self.streams.write().await.insert(name.clone(), storage);
         }
 
-        info!(
-            "Created stream {} in group {} with config {:?}",
-            name, group_id, config
-        );
+        info!("Created stream {name} in group {group_id} with config {config:?}");
         Ok(())
     }
 
@@ -182,7 +179,7 @@ impl<S: StorageAdaptor> StreamService<S> {
         self.stream_configs.write().await.remove(name);
         self.streams.write().await.remove(name);
 
-        info!("Deleted stream {}", name);
+        info!("Deleted stream {name}");
         Ok(())
     }
 
@@ -461,18 +458,12 @@ impl<S: StorageAdaptor> StreamService<S> {
                     {
                         metadata.message_count -= 1;
                     }
-                    info!(
-                        "Deleted message {} from stream {} storage",
-                        sequence, stream_name
-                    );
+                    info!("Deleted message {sequence} from stream {stream_name} storage");
                 }
                 Ok(deleted)
             }
             Err(e) => {
-                error!(
-                    "Failed to delete message {} from stream {}: {}",
-                    sequence, stream_name, e
-                );
+                error!("Failed to delete message {sequence} from stream {stream_name}: {e}");
                 Err(Error::with_context(
                     ErrorKind::Storage,
                     format!("Failed to delete message: {e}"),
@@ -588,7 +579,7 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
         let mut tasks = self.background_tasks.write().await;
         for task in tasks.drain(..) {
             if let Err(e) = task.await {
-                warn!("Error waiting for background task: {}", e);
+                warn!("Error waiting for background task: {e}");
             }
         }
 

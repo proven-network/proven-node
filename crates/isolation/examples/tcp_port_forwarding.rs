@@ -6,12 +6,13 @@
 //! 3. Ensuring we can access the HTTP server from the host
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use proven_isolation::{IsolatedApplication, ReadyCheckInfo};
+use proven_logger::{StdoutLogger, debug, info, init};
 use reqwest::StatusCode;
-use tracing::{debug, info};
 
 /// The port that the server will listen on
 const SERVER_PORT: u16 = 8080;
@@ -51,10 +52,7 @@ impl IsolatedApplication for PortForwardServer {
         match reqwest::get(&url).await {
             Ok(response) => {
                 if response.status() == StatusCode::OK {
-                    info!(
-                        "✅ Server is ready! Got HTTP 200 OK response on attempt {}",
-                        attempt
-                    );
+                    info!("✅ Server is ready! Got HTTP 200 OK response on attempt {attempt}");
                     true
                 } else {
                     debug!(
@@ -66,10 +64,7 @@ impl IsolatedApplication for PortForwardServer {
                 }
             }
             Err(e) => {
-                debug!(
-                    "❌ Failed to connect to server on attempt {}: {}",
-                    attempt, e
-                );
+                debug!("❌ Failed to connect to server on attempt {attempt}: {e}");
                 false
             }
         }
@@ -101,8 +96,9 @@ impl IsolatedApplication for PortForwardServer {
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing with defaults
-    tracing_subscriber::fmt::init();
+    // Initialize logger
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     info!("🚀 Starting isolated HTTP server example");
     info!("This example demonstrates running a server in isolation and accessing it from the host");
@@ -137,17 +133,14 @@ async fn main() {
 
     // Spawn the isolated process
     info!("🔄 Spawning server process and waiting for it to become ready...");
-    info!(
-        "🔌 The server will be accessible on localhost:{}",
-        SERVER_PORT
-    );
+    info!("🔌 The server will be accessible on localhost:{SERVER_PORT}");
 
     let start_time = Instant::now();
     let process = proven_isolation::spawn(server)
         .await
         .expect("Failed to spawn server");
     let elapsed = start_time.elapsed();
-    info!("✅ Server process is now ready! (took {:?})", elapsed);
+    info!("✅ Server process is now ready! (took {elapsed:?})");
     info!("Server is running with PID: {}", process.pid());
 
     // Make final requests to verify server connectivity
@@ -166,7 +159,7 @@ async fn main() {
         .text()
         .await
         .expect("Failed to read direct container response");
-    info!("Direct container access response: {}", text);
+    info!("Direct container access response: {text}");
 
     // Then verify localhost port forwarding
     let response = reqwest::get(&format!("http://127.0.0.1:{SERVER_PORT}"))
@@ -177,7 +170,7 @@ async fn main() {
         .text()
         .await
         .expect("Failed to read localhost response");
-    info!("Localhost port forwarding response: {}", text);
+    info!("Localhost port forwarding response: {text}");
 
     // Wait a bit before shutting down
     info!("Server verified working, waiting 5 seconds before shutdown");

@@ -11,6 +11,7 @@
 //! - Error handling works properly when groups don't exist
 
 use proven_engine::{EngineBuilder, EngineConfig};
+use proven_logger_macros::logged_tokio_test;
 use proven_network::NetworkManager;
 use proven_storage::manager::StorageManager;
 use proven_storage_memory::MemoryStorage;
@@ -23,14 +24,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
-#[tokio::test]
+#[logged_tokio_test]
 async fn test_store_with_engine() {
-    // Initialize tracing for debugging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=info,proven_engine::services::global_consensus=debug,proven_engine::services::group_consensus=debug")
-        .with_test_writer()
-        .try_init();
-
     // Create a simple single-node setup
     let node_id = NodeId::from_seed(1);
 
@@ -141,7 +136,7 @@ async fn test_store_with_engine() {
     engine.stop().await.expect("Failed to stop engine");
 }
 
-#[tokio::test]
+#[logged_tokio_test]
 async fn test_scoped_stores_with_engine() {
     // Create a simple single-node setup
     let node_id = NodeId::from_seed(2);
@@ -210,14 +205,8 @@ async fn test_scoped_stores_with_engine() {
     engine.stop().await.expect("Failed to stop engine");
 }
 
-#[tokio::test]
+#[logged_tokio_test]
 async fn test_store_persistence_across_recreations() {
-    // Initialize tracing for debugging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=info,proven_store_engine=debug")
-        .with_test_writer()
-        .try_init();
-
     // Create a simple single-node setup
     let node_id = NodeId::from_seed(3);
 
@@ -404,14 +393,8 @@ async fn test_store_persistence_across_recreations() {
     engine.stop().await.expect("Failed to stop engine");
 }
 
-#[tokio::test]
+#[logged_tokio_test]
 async fn test_store_handles_existing_streams() {
-    // Initialize tracing for debugging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=info,proven_store_engine=debug")
-        .with_test_writer()
-        .try_init();
-
     // Create a simple single-node setup
     let node_id = NodeId::from_seed(4);
 

@@ -30,6 +30,7 @@ use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use parking_lot::RwLock;
 use proven_bootable::Bootable;
 use proven_http::HttpServer;
+use proven_logger::{error, info};
 use proven_store::Store;
 use tokio::time::{Duration, sleep};
 use tokio_rustls_acme::AcmeConfig;
@@ -37,7 +38,6 @@ use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower::Service;
-use tracing::{error, info};
 
 /// Options for creating a new `LetsEncryptHttpServer`.
 pub struct LetsEncryptHttpServerOptions<S>
@@ -113,8 +113,8 @@ where
         tokio::spawn(async move {
             loop {
                 match node_endpoints_state.next().await.unwrap() {
-                    Ok(ok) => info!("event: {:?}", ok),
-                    Err(err) => info!("error: {:?}", err),
+                    Ok(ok) => info!("event: {ok:?}"),
+                    Err(err) => info!("error: {err:?}"),
                 }
             }
         });
@@ -160,10 +160,7 @@ where
                 }
 
                 if attempt == 4 {
-                    error!(
-                        "DNS verification failed after 5 attempts for domain: {}",
-                        domain
-                    );
+                    error!("DNS verification failed after 5 attempts for domain: {domain}");
                     return;
                 }
 
@@ -172,8 +169,8 @@ where
 
             loop {
                 match new_state.next().await.unwrap() {
-                    Ok(ok) => info!("event: {:?}", ok),
-                    Err(err) => info!("error: {:?}", err),
+                    Ok(ok) => info!("event: {ok:?}"),
+                    Err(err) => info!("error: {err:?}"),
                 }
             }
         });
@@ -247,7 +244,7 @@ where
         self.task_tracker.spawn(async move {
             tokio::select! {
                 e = axum_server::bind(listen_addr).acceptor(acceptor).serve(router.into_make_service()).into_future() => {
-                    info!("https server exited {:?}", e);
+                    info!("https server exited {e:?}");
                 }
                 () = shutdown_token.cancelled() => {}
             };

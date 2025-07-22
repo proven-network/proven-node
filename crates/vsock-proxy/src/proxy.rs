@@ -1,4 +1,5 @@
 use crate::{Error, Result};
+use proven_logger::{debug, error, info};
 use std::net::Ipv4Addr;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -6,7 +7,6 @@ use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error, info};
 
 #[cfg(target_os = "linux")]
 use nix::sys::signal::{self, Signal};

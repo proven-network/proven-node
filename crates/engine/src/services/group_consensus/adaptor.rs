@@ -12,6 +12,7 @@ use openraft::{
 };
 use tokio::sync::RwLock;
 
+use proven_logger::debug;
 use proven_network::NetworkManager;
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
@@ -222,13 +223,9 @@ where
                         || error_str.contains("Handler not found")
                         || error_str.contains("not initialized")
                     {
-                        tracing::debug!(
+                        debug!(
                             "Group vote request to {} for group {:?} failed (attempt {}/{}), retrying with backoff: {}",
-                            self.target_node_id,
-                            self.group_id,
-                            attempt,
-                            max_attempts,
-                            error_str
+                            self.target_node_id, self.group_id, attempt, max_attempts, error_str
                         );
                         tokio::time::sleep(backoff).await;
                         backoff *= 2; // Exponential backoff

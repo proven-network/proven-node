@@ -6,6 +6,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use proven_logger::{error, info, warn};
+
 use crate::{
     BlobId, TierHint,
     config::Config,
@@ -25,7 +27,7 @@ pub struct FuseHandle {
 
 impl Drop for FuseHandle {
     fn drop(&mut self) {
-        tracing::info!("Unmounting FUSE filesystem at {:?}", self.mountpoint);
+        info!("Unmounting FUSE filesystem at {:?}", self.mountpoint);
 
         // Unmount the filesystem
         #[cfg(target_os = "macos")]
@@ -93,9 +95,7 @@ impl EnclaveService {
             )?)
         } else {
             // Fall back to in-memory only if journal dir not available
-            tracing::warn!(
-                "Journal directory not available, metadata will not persist across restarts"
-            );
+            warn!("Journal directory not available, metadata will not persist across restarts");
             Arc::new(LocalEncryptedMetadataStore::new(
                 encryption.clone(),
                 Some(metadata_storage),
@@ -160,19 +160,19 @@ impl EnclaveService {
 
         // Spawn mount in a separate thread since it's blocking
         std::thread::spawn(move || {
-            tracing::info!("Starting FUSE mount2 call to {:?}", mountpoint_thread);
+            info!("Starting FUSE mount2 call to {mountpoint_thread:?}");
             match fuser::mount2(fs, &mountpoint_thread, &options) {
                 Ok(()) => {
-                    tracing::info!("FUSE mount2 returned successfully");
+                    info!("FUSE mount2 returned successfully");
                 }
                 Err(e) => {
-                    tracing::error!("FUSE mount error: {}", e);
+                    error!("FUSE mount error: {e}");
                 }
             }
         });
 
         // Give mount a moment to initialize
-        tracing::info!("Waiting for mount to initialize...");
+        info!("Waiting for mount to initialize...");
         std::thread::sleep(std::time::Duration::from_millis(500));
 
         Ok(FuseHandle {
@@ -211,15 +211,15 @@ impl EnclaveService {
 
                     match snapshot_manager.create_snapshot(sequence) {
                         Ok(path) => {
-                            tracing::info!("Created snapshot at {:?}", path);
+                            info!("Created snapshot at {path:?}");
 
                             // Clean up old snapshots, keep last 3
                             if let Err(e) = snapshot_manager.cleanup_old_snapshots(3) {
-                                tracing::warn!("Failed to cleanup old snapshots: {}", e);
+                                warn!("Failed to cleanup old snapshots: {e}");
                             }
                         }
                         Err(e) => {
-                            tracing::error!("Failed to create snapshot: {}", e);
+                            error!("Failed to create snapshot: {e}");
                         }
                     }
                 }

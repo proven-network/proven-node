@@ -16,11 +16,11 @@ use std::sync::{Arc, LazyLock};
 use async_trait::async_trait;
 use proven_bootable::Bootable;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
+use proven_logger::{debug, error, info, warn};
 use regex::Regex;
 use tempfile::TempDir;
 use tokio::process::Command;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, warn};
 
 /// Regex pattern for matching Postgres log lines
 static LOG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
@@ -64,22 +64,22 @@ impl IsolatedApplication for PostgresApp {
             let label = caps.get(1).map_or("UNKNOWN", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {
-                "DEBUG1" => debug!(target: "postgres", "{}", message),
-                "DEBUG2" => debug!(target: "postgres", "{}", message),
-                "DEBUG3" => debug!(target: "postgres", "{}", message),
-                "DEBUG4" => debug!(target: "postgres", "{}", message),
-                "DEBUG5" => debug!(target: "postgres", "{}", message),
-                "INFO" => info!(target: "postgres", "{}", message),
-                "NOTICE" => info!(target: "postgres", "{}", message),
-                "WARNING" => warn!(target: "postgres", "{}", message),
-                "ERROR" => error!(target: "postgres", "{}", message),
-                "LOG" => info!(target: "postgres", "{}", message),
-                "FATAL" => error!(target: "postgres", "{}", message),
-                "PANIC" => error!(target: "postgres", "{}", message),
-                _ => error!(target: "postgres", "{}", line),
+                "DEBUG1" => debug!("{message}"),
+                "DEBUG2" => debug!("{message}"),
+                "DEBUG3" => debug!("{message}"),
+                "DEBUG4" => debug!("{message}"),
+                "DEBUG5" => debug!("{message}"),
+                "INFO" => info!("{message}"),
+                "NOTICE" => info!("{message}"),
+                "WARNING" => warn!("{message}"),
+                "ERROR" => error!("{message}"),
+                "LOG" => info!("{message}"),
+                "FATAL" => error!("{message}"),
+                "PANIC" => error!("{message}"),
+                _ => error!("{line}"),
             }
         } else {
-            error!(target: "postgres", "{}", line);
+            error!("{line}");
         }
     }
 
@@ -157,11 +157,11 @@ impl IsolatedApplication for PostgresInitApp {
     }
 
     fn handle_stdout(&self, line: &str) {
-        info!(target: "postgres-init", "{}", line);
+        info!("{line}");
     }
 
     fn handle_stderr(&self, line: &str) {
-        error!(target: "postgres-init", "{}", line);
+        error!("{line}");
     }
 
     fn memory_limit_mb(&self) -> usize {
@@ -216,7 +216,7 @@ impl IsolatedApplication for PostgresVacuumApp {
     }
 
     fn handle_stdout(&self, line: &str) {
-        info!(target: "postgres-vacuum", "{}", line);
+        info!("{line}");
     }
 
     fn handle_stderr(&self, line: &str) {

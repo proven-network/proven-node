@@ -122,7 +122,7 @@ where
         if let Some(task) = bootable_state.refresh_task.take() {
             match tokio::time::timeout(Duration::from_secs(5), task).await {
                 Ok(Ok(())) => debug!("Topology refresh task completed"),
-                Ok(Err(e)) => warn!("Topology refresh task failed: {}", e),
+                Ok(Err(e)) => warn!("Topology refresh task failed: {e}"),
                 Err(_) => warn!("Topology refresh task timed out"),
             }
         }
@@ -217,7 +217,7 @@ where
     async fn add_to_cooldown(&self, node_id: &NodeId) {
         let mut cooldown_map = self.missing_peer_cooldown.write().await;
         cooldown_map.insert(node_id.clone(), Instant::now());
-        warn!("Added node {} to missing peer cooldown", node_id);
+        warn!("Added node {node_id} to missing peer cooldown");
     }
 
     /// Clean up expired cooldown entries
@@ -256,17 +256,14 @@ where
 
         // Peer not found in cache, check if we can refresh
         if self.is_in_cooldown(&node_id).await {
-            debug!("Node {} is in cooldown, skipping topology refresh", node_id);
+            debug!("Node {node_id} is in cooldown, skipping topology refresh");
             return None;
         }
 
         // Try refreshing topology
-        debug!("Peer {} not found in cache, refreshing topology", node_id);
+        debug!("Peer {node_id} not found in cache, refreshing topology");
         if let Err(e) = self.refresh_topology().await {
-            warn!(
-                "Failed to refresh topology while looking for peer {}: {}",
-                node_id, e
-            );
+            warn!("Failed to refresh topology while looking for peer {node_id}: {e}");
             return None;
         }
 
@@ -309,17 +306,14 @@ where
 
         // Node not found in cache, check if we can refresh
         if self.is_in_cooldown(node_id).await {
-            debug!("Node {} is in cooldown, skipping topology refresh", node_id);
+            debug!("Node {node_id} is in cooldown, skipping topology refresh");
             return None;
         }
 
         // Try refreshing topology
-        debug!("Node {} not found in cache, refreshing topology", node_id);
+        debug!("Node {node_id} not found in cache, refreshing topology");
         if let Err(e) = self.refresh_topology().await {
-            warn!(
-                "Failed to refresh topology while looking for node {}: {}",
-                node_id, e
-            );
+            warn!("Failed to refresh topology while looking for node {node_id}: {e}");
             return None;
         }
 
@@ -389,7 +383,7 @@ where
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        debug!("Refreshing topology for node {}", node_id);
+                        debug!("Refreshing topology for node {node_id}");
 
                         match topology_adaptor.get_topology().await {
                             Ok(topology) => {
@@ -441,7 +435,7 @@ where
                                 }
                             }
                             Err(e) => {
-                                error!("Failed to refresh topology: {}", e);
+                                error!("Failed to refresh topology: {e}");
                             }
                         }
                     }
@@ -482,7 +476,7 @@ where
     pub async fn clear_cooldown(&self, node_id: &NodeId) {
         let mut cooldown_map = self.missing_peer_cooldown.write().await;
         if cooldown_map.remove(node_id).is_some() {
-            info!("Cleared cooldown for node {}", node_id);
+            info!("Cleared cooldown for node {node_id}");
         }
     }
 
@@ -754,7 +748,7 @@ where
                     _ = interval.tick() => {
                         debug!("Performing periodic topology refresh");
                         if let Err(e) = manager.refresh_topology().await {
-                            error!("Failed to refresh topology: {}", e);
+                            error!("Failed to refresh topology: {e}");
                             // Continue running even if refresh fails
                         }
                     }
@@ -793,7 +787,7 @@ where
                     debug!("Topology refresh task shut down cleanly");
                 }
                 Ok(Err(e)) => {
-                    error!("Topology refresh task panicked: {}", e);
+                    error!("Topology refresh task panicked: {e}");
                 }
                 Err(_) => {
                     error!("Topology refresh task did not shut down within timeout");

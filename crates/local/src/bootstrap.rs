@@ -23,11 +23,11 @@ use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
 use proven_core::Core;
 use proven_http_insecure::InsecureHttpServer;
+use proven_logger::{error, info};
 use proven_topology::Node;
 use proven_topology::TopologyAdaptor;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{error, info};
 use url::Url;
 
 /// Bootstrap struct for local node initialization.
@@ -97,7 +97,7 @@ impl<G: TopologyAdaptor> Bootstrap<G> {
         // Shutdown all bootable services in reverse order (LIFO)
         while let Some(bootable) = self.bootables.pop() {
             if let Err(e) = bootable.shutdown().await {
-                error!("Error shutting down service during cleanup: {:?}", e);
+                error!("Error shutting down service during cleanup: {e:?}");
             }
         }
 
@@ -105,7 +105,7 @@ impl<G: TopologyAdaptor> Bootstrap<G> {
         if let Some(light_core) = self.bootstrapping_core.take()
             && let Err(e) = light_core.shutdown().await
         {
-            error!("Error shutting down light_core during cleanup: {:?}", e);
+            error!("Error shutting down light_core during cleanup: {e:?}");
         }
 
         info!("Cleanup complete");
@@ -254,7 +254,7 @@ impl<G: TopologyAdaptor> Bootstrap<G> {
                     let service_name = bootable.bootable_name().to_string();
                     let future = Box::pin(async move {
                         bootable.wait().await;
-                        error!("Bootable service '{}' exited unexpectedly", service_name);
+                        error!("Bootable service '{service_name}' exited unexpectedly");
                     });
                     futures.push(future);
                 }
@@ -277,13 +277,13 @@ impl<G: TopologyAdaptor> Bootstrap<G> {
                 }
             };
 
-            info!("{}, supervisor shutting down services...", shutdown_reason);
+            info!("{shutdown_reason}, supervisor shutting down services...");
 
             // Shutdown all bootable services in reverse order (LIFO)
             let mut services = bootables_for_supervisor;
             while let Some(bootable) = services.pop() {
                 if let Err(e) = bootable.shutdown().await {
-                    error!("Error shutting down service: {:?}", e);
+                    error!("Error shutting down service: {e:?}");
                 }
             }
 

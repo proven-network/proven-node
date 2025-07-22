@@ -11,7 +11,8 @@ radix-common.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 tokio.workspace = true

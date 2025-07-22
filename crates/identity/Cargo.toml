@@ -16,9 +16,10 @@ proven-messaging.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 proven-locks-memory.workspace = true
 proven-messaging-memory.workspace = true

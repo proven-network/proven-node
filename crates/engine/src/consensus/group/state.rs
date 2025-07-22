@@ -7,6 +7,8 @@ use std::num::NonZero;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use proven_logger::error;
+
 use super::types::MessageData;
 use crate::services::stream::StreamName;
 
@@ -150,7 +152,7 @@ impl GroupState {
                         message_count += 1;
                     }
                     Err(e) => {
-                        tracing::error!("Failed to serialize message: {}", e);
+                        error!("Failed to serialize message: {e}");
                         // Skip this message
                         continue;
                     }
@@ -172,7 +174,7 @@ impl GroupState {
             Arc::new(entries)
         } else {
             // Stream doesn't exist - this shouldn't happen as we validate in operations
-            tracing::error!("Stream {} not found in state", stream);
+            error!("Stream {stream} not found in state");
             Arc::new(vec![])
         }
     }

@@ -17,6 +17,7 @@ use std::num::NonZero;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
+use proven_logger::{debug, info, trace};
 use proven_messaging::stream::InitializedStream;
 use proven_radix_gateway_sdk::types::{
     LedgerStateSelector, LedgerStateSelectorInner, StreamTransactionsRequest,
@@ -27,7 +28,6 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, info, trace};
 
 static GATEWAY_OPT_INS: LazyLock<TransactionDetailsOptIns> =
     LazyLock::new(|| TransactionDetailsOptIns {
@@ -104,7 +104,7 @@ where
             .map_err(|e| Error::TransactionStream(e.to_string()))?)
         .map(|last_transaction| {
             let state_version = last_transaction.state_version();
-            info!("Starting from state version: {}", state_version);
+            info!("Starting from state version: {state_version}");
             state_version
         });
 
@@ -138,10 +138,7 @@ where
 
             let current_version = *last_state_version.lock().await;
             if let Some(state_version) = current_version {
-                info!(
-                    "Polling for transactions from state version: {}",
-                    state_version
-                );
+                info!("Polling for transactions from state version: {state_version}");
             } else {
                 info!("Polling for transactions ");
             }
@@ -201,7 +198,7 @@ where
                     }
                 }
                 Err(e) => {
-                    info!("Failed to poll for transactions: {:?}", e);
+                    info!("Failed to poll for transactions: {e:?}");
                     tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                 }
             }
@@ -215,7 +212,7 @@ where
         last_state_version: Arc<Mutex<Option<u64>>>,
     ) -> Result<(), Error> {
         for transaction in &transactions {
-            trace!("Publishing transaction: {:?}", transaction);
+            trace!("Publishing transaction: {transaction:?}");
             transaction_stream
                 .publish(transaction.clone())
                 .await

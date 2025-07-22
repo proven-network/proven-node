@@ -2,9 +2,9 @@ use crate::StopArgs;
 use crate::error::{Error, Result};
 use crate::nitro::NitroCli;
 
+use proven_logger::info;
 use proven_vsock_cac::CacClient;
 use tokio::time::{Duration, sleep};
-use tracing::info;
 
 #[allow(clippy::cognitive_complexity)]
 pub async fn stop(args: StopArgs) -> Result<()> {

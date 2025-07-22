@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use proven_logger::{error, info, warn};
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::{
@@ -84,12 +84,12 @@ impl ServiceCoordinatorTrait for ServiceCoordinator {
 
         for name in &order {
             if let Some(service) = services.get(name) {
-                info!("Starting service: {}", name);
+                info!("Starting service: {name}");
 
                 match service.start().await {
-                    Ok(()) => info!("Service {} started successfully", name),
+                    Ok(()) => info!("Service {name} started successfully"),
                     Err(e) => {
-                        error!("Failed to start service {}: {}", name, e);
+                        error!("Failed to start service {name}: {e}");
 
                         // Stop already started services
                         self.stop_started_services(&order, name).await;
@@ -120,13 +120,13 @@ impl ServiceCoordinatorTrait for ServiceCoordinator {
             if let Some(service) = services.get(name)
                 && service.is_running().await
             {
-                info!("Stopping service: {}", name);
+                info!("Stopping service: {name}");
 
                 if let Err(e) = service.stop().await {
-                    error!("Failed to stop service {}: {}", name, e);
+                    error!("Failed to stop service {name}: {e}");
                     errors.push(format!("{name}: {e}"));
                 } else {
-                    info!("Service {} stopped successfully", name);
+                    info!("Service {name} stopped successfully");
                 }
             }
         }
@@ -160,9 +160,9 @@ impl ServiceCoordinator {
             if let Some(service) = services.get(name)
                 && service.is_running().await
             {
-                warn!("Stopping service {} due to startup failure", name);
+                warn!("Stopping service {name} due to startup failure");
                 if let Err(e) = service.stop().await {
-                    error!("Failed to stop service {}: {}", name, e);
+                    error!("Failed to stop service {name}: {e}");
                 }
             }
         }

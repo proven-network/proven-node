@@ -8,6 +8,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_engine::{EngineBuilder, EngineConfig};
+use proven_logger::info;
+use proven_logger_macros::logged_test;
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::service_handler::ServiceHandler;
 use proven_messaging::service_responder::ServiceResponder;
@@ -24,8 +26,6 @@ use proven_transport_memory::MemoryTransport;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tokio::time::{sleep, timeout};
-use tracing::info;
-use tracing_test::traced_test;
 
 /// Simple error type for test handlers
 #[derive(Debug)]
@@ -215,7 +215,7 @@ async fn create_test_engine()
     engine.client()
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_basic_client_service_interaction() {
     let client = create_test_engine().await;
@@ -280,7 +280,7 @@ async fn test_basic_client_service_interaction() {
         .expect("Failed to shutdown service");
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_multiple_requests() {
     let client = create_test_engine().await;
@@ -346,7 +346,7 @@ async fn test_multiple_requests() {
         .expect("Failed to shutdown service");
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_concurrent_requests() {
     let client = create_test_engine().await;
@@ -424,7 +424,7 @@ async fn test_concurrent_requests() {
         .expect("Failed to shutdown service");
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_request_with_timeout() {
     let client = create_test_engine().await;
@@ -459,7 +459,7 @@ async fn test_request_with_timeout() {
     assert!(result.unwrap().is_err()); // inner request timed out
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_multiple_clients_one_service() {
     let client = create_test_engine().await;
@@ -530,7 +530,7 @@ async fn test_multiple_clients_one_service() {
         .expect("Failed to shutdown service");
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_service_start_after_requests() {
     let client = create_test_engine().await;
@@ -646,7 +646,7 @@ impl ServiceHandler<TestRequest, serde_cbor::Error, serde_cbor::Error> for Error
     }
 }
 
-#[traced_test]
+#[logged_test]
 #[tokio::test]
 async fn test_service_error_handling() {
     let client = create_test_engine().await;

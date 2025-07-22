@@ -13,12 +13,12 @@ use crate::error::Error;
 use std::path::PathBuf;
 
 use proven_bootable::Bootable;
+use proven_logger::info;
 use proven_radix_aggregator::{RadixAggregator, RadixAggregatorOptions};
 use proven_radix_gateway::{RadixGateway, RadixGatewayOptions};
 use proven_radix_node::{RadixNode, RadixNodeOptions};
 use proven_topology::{NodeSpecialization, TopologyAdaptor};
 use radix_common::prelude::NetworkDefinition;
-use tracing::info;
 
 static POSTGRES_USERNAME: &str = "your-username";
 static POSTGRES_PASSWORD: &str = "your-password";

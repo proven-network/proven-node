@@ -10,6 +10,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_bootable::Bootable;
+use proven_logger::{debug, error};
 use proven_messaging::consumer::{Consumer, ConsumerOptions};
 use proven_messaging::consumer_handler::ConsumerHandler;
 use tokio::sync::Mutex;
@@ -17,7 +18,6 @@ use tokio_stream::StreamExt;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, error};
 
 use crate::stream::InitializedMemoryStream;
 
@@ -109,7 +109,7 @@ where
                         drop(seq); // Release lock before calling handler
 
                         if let Err(e) = handler.handle(message, current_seq).await {
-                            error!("error handling message: {}", e);
+                            error!("error handling message: {e}");
                             return Err(Error::Handler);
                         }
                     } else {

@@ -12,16 +12,12 @@ use proven_topology_mock::MockTopologyAdaptor;
 use proven_transport::{Config as TransportConfig, Transport};
 use proven_transport_tcp::{TcpConfig, TcpTransport};
 // No longer need to import verification components for manual construction
-use tracing::info;
+use proven_logger::info;
+use proven_logger_macros::logged_tokio_test;
 
-#[tokio::test]
+#[logged_tokio_test]
 async fn test_tcp_transport_basic() {
     use proven_util::port_allocator::allocate_port;
-
-    // Initialize tracing
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .try_init();
 
     // Create two nodes with deterministic keys
     let node1_key = SigningKey::from_bytes(&[1u8; 32]);
@@ -32,8 +28,8 @@ async fn test_tcp_transport_basic() {
     let node2_id = NodeId::from(node2_key.verifying_key());
     let node2_port = allocate_port();
 
-    info!("Node 1: {} on port {}", node1_id, node1_port);
-    info!("Node 2: {} on port {}", node2_id, node2_port);
+    info!("Node 1: {node1_id} on port {node1_port}");
+    info!("Node 2: {node2_id} on port {node2_port}");
 
     // Create mock governance with both nodes
     let attestor = MockAttestor::new();
@@ -106,11 +102,11 @@ async fn test_tcp_transport_basic() {
     // Start both transports
     info!("Starting transport 1");
     let addr1 = transport1.start().await.unwrap();
-    info!("Transport 1 listening on {}", addr1);
+    info!("Transport 1 listening on {addr1}");
 
     info!("Starting transport 2");
     let addr2 = transport2.start().await.unwrap();
-    info!("Transport 2 listening on {}", addr2);
+    info!("Transport 2 listening on {addr2}");
 
     // Set up a task to consume incoming messages on transport 2
     let transport2_clone = transport2.clone();
@@ -155,14 +151,8 @@ async fn test_tcp_transport_basic() {
     let test_payload = Bytes::from("Hello from node 1!");
     let test_message_type = "test.message";
 
-    info!(
-        "Attempting to send message from node 1 ({}) to node 2 ({})",
-        node1_id, node2_id
-    );
-    info!(
-        "Payload: {:?}, Message type: {}",
-        test_payload, test_message_type
-    );
+    info!("Attempting to send message from node 1 ({node1_id}) to node 2 ({node2_id})");
+    info!("Payload: {test_payload:?}, Message type: {test_message_type}");
 
     info!("About to call send_envelope...");
     let send_future = transport1.send_envelope(&node2_id, &test_payload, test_message_type, None);

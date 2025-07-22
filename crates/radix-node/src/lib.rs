@@ -15,12 +15,12 @@ use std::net::{IpAddr, Ipv4Addr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
+use proven_logger::{debug, error, info, trace, warn};
 use radix_common::network::NetworkDefinition;
 use regex::Regex;
 use reqwest::Client;
 use strip_ansi_escapes::strip_str;
 use tokio::process::Command;
-use tracing::{debug, error, info, trace, warn};
 
 use async_trait::async_trait;
 use proven_isolation::{IsolatedApplication, IsolatedProcess, ReadyCheckInfo, VolumeMount};
@@ -121,28 +121,28 @@ impl IsolatedApplication for RadixNodeApp {
             let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {
-                "OFF" => info!("{}", message),
-                "FATAL" => error!("{}", message),
-                "ERROR" => error!("{}", message),
-                "WARN" => warn!("{}", message),
-                "INFO" => info!("{}", message),
-                "DEBUG" => debug!("{}", message),
-                "TRACE" => trace!("{}", message),
-                _ => error!("{}", line),
+                "OFF" => info!("{message}"),
+                "FATAL" => error!("{message}"),
+                "ERROR" => error!("{message}"),
+                "WARN" => warn!("{message}"),
+                "INFO" => info!("{message}"),
+                "DEBUG" => debug!("{message}"),
+                "TRACE" => trace!("{message}"),
+                _ => error!("{line}"),
             }
         } else if let Some(caps) = RUST_LOG_REGEX.captures(&strip_str(line)) {
             let label = caps.get(1).map_or("UNKNW", |m| m.as_str());
             let message = caps.get(2).map_or(line, |m| m.as_str());
             match label {
-                "DEBUG" => debug!("{}", message),
-                "ERROR" => error!("{}", message),
-                "INFO" => info!("{}", message),
-                "TRACE" => trace!("{}", message),
-                "WARN" => warn!("{}", message),
-                _ => error!("{}", line),
+                "DEBUG" => debug!("{message}"),
+                "ERROR" => error!("{message}"),
+                "INFO" => info!("{message}"),
+                "TRACE" => trace!("{message}"),
+                "WARN" => warn!("{message}"),
+                _ => error!("{line}"),
             }
         } else {
-            error!("{}", line);
+            error!("{line}");
         }
     }
 

@@ -1,0 +1,32 @@
+[package]
+name = "proven-logger-viewer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "High-performance log viewer with memory-mapped file support"
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+memmap2 = "0.9"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+crossbeam-channel = "0.5"
+notify = "6.1"
+parking_lot = { workspace = true }
+glob = "0.3"
+regex = "1.10"
+
+# Optional tokio support for async APIs
+tokio = { workspace = true, features = ["sync", "time", "fs"], optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+proven-logger-file = { path = "../logger-file" }
+proven-logger = { path = "../logger" }
+
+[features]
+default = []
+async = ["tokio"]

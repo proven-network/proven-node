@@ -19,13 +19,13 @@ serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 proven-attestation-mock.workspace = true
 proven-topology-mock.workspace = true
 proven-transport-tcp.workspace = true
 proven-util.workspace = true
 tokio-test.workspace = true
-tracing-subscriber.workspace = true

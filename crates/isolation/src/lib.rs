@@ -25,7 +25,7 @@ pub use network::{VethPair, check_root_permissions};
 pub use spawn::{IsolatedProcess, IsolatedProcessOptions, IsolatedProcessSpawner};
 pub use volume_mount::VolumeMount;
 
-use tracing::warn;
+use proven_logger::warn;
 
 /// Counter for generating unique Veth pair IP addresses
 static IP_COUNTER: AtomicU32 = AtomicU32::new(2);

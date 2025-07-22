@@ -28,6 +28,10 @@ pub struct TuiNodeId {
 
 impl TuiNodeId {
     /// Create a new `NodeId` with incremental execution order and random pokemon
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned
     pub fn new() -> Self {
         let mut used_pokemon_ids = USED_POKEMON_IDS.lock().unwrap();
         let mut next_order = NEXT_EXECUTION_ORDER.lock().unwrap();
@@ -66,6 +70,7 @@ impl TuiNodeId {
     }
 
     /// Create a `NodeId` with specific values (useful for testing)
+    #[must_use]
     pub const fn with_values(execution_order: u8, pokemon_id: u8) -> Self {
         Self {
             execution_order,
@@ -74,31 +79,37 @@ impl TuiNodeId {
     }
 
     /// Check if this is the first node created (`execution_order` == 1)
+    #[must_use]
     pub const fn is_first_node(self) -> bool {
         self.execution_order == 1
     }
 
     /// Get the full pokemon name for this node
+    #[must_use]
     pub fn full_pokemon_name(self) -> String {
         full_pokemon_name_from_id(self.pokemon_id)
     }
 
     /// Get the pokemon name for this node
+    #[must_use]
     pub fn pokemon_name(self) -> String {
         pokemon_name_from_id(self.pokemon_id)
     }
 
     /// Get the execution order for naming and coloring
+    #[must_use]
     pub const fn execution_order(self) -> u8 {
         self.execution_order
     }
 
     /// Get the pokemon ID
+    #[must_use]
     pub const fn pokemon_id(self) -> u8 {
         self.pokemon_id
     }
 
     /// Get a display name in the format "node-X" where X is the execution order
+    #[must_use]
     pub fn display_name(self) -> String {
         if self == MAIN_THREAD_NODE_ID {
             "main".to_string()
@@ -108,6 +119,10 @@ impl TuiNodeId {
     }
 
     /// Reset the global state (useful for testing)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the mutex is poisoned
     #[cfg(test)]
     pub fn reset_global_state() {
         let mut used_pokemon_ids = USED_POKEMON_IDS.lock().unwrap();
@@ -135,6 +150,7 @@ impl fmt::Display for TuiNodeId {
 }
 
 /// Get Pokemon name from pokemon ID
+#[must_use]
 pub fn full_pokemon_name_from_id(pokemon_id: u8) -> String {
     // Special case for main/TUI thread
     if pokemon_id == 255 {
@@ -148,6 +164,7 @@ pub fn full_pokemon_name_from_id(pokemon_id: u8) -> String {
 }
 
 /// Get Pokemon name from pokemon ID
+#[must_use]
 pub fn pokemon_name_from_id(pokemon_id: u8) -> String {
     // Clean up the name: replace spaces with dashes, keep only letters and dashes
     full_pokemon_name_from_id(pokemon_id)

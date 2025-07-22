@@ -4,6 +4,7 @@
 //! require round trips to the host. Only data blobs go to the host.
 
 use parking_lot::RwLock;
+use proven_logger::{error, info};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -64,7 +65,7 @@ impl LocalMetadataStore {
 
         if let Ok(Some(snapshot_path)) = snapshot_manager.find_latest_snapshot() {
             if let Ok(snapshot) = snapshot_manager.load_snapshot(&snapshot_path) {
-                tracing::info!("Recovering from snapshot at {:?}", snapshot_path);
+                info!("Recovering from snapshot at {snapshot_path:?}");
                 let snapshot_seq = snapshot.sequence;
                 store.import_snapshot(snapshot)?;
                 // Apply journal entries after the snapshot
@@ -258,12 +259,12 @@ impl LocalMetadataStore {
             if let Err(e) = journal.write_entry(JournalEntry::CreateDirectory {
                 dir_id: DirectoryId(root_id),
             }) {
-                tracing::error!("Failed to write root directory creation to journal: {}", e);
+                error!("Failed to write root directory creation to journal: {e}");
             }
             if let Err(e) = journal.write_entry(JournalEntry::FileMetadata {
                 metadata: root_metadata.clone(),
             }) {
-                tracing::error!("Failed to write root metadata to journal: {}", e);
+                error!("Failed to write root metadata to journal: {e}");
             }
         }
 
@@ -286,7 +287,7 @@ impl LocalMetadataStore {
                 metadata: metadata.clone(),
             })
         {
-            tracing::error!("Failed to write metadata to journal: {}", e);
+            error!("Failed to write metadata to journal: {e}");
         }
 
         // Update blob index for all blocks
@@ -305,7 +306,7 @@ impl LocalMetadataStore {
         if let Some(journal) = &self.journal
             && let Err(e) = journal.write_entry(JournalEntry::DeleteFile { file_id: *file_id })
         {
-            tracing::error!("Failed to write delete to journal: {}", e);
+            error!("Failed to write delete to journal: {e}");
         }
 
         // Remove from blob index
@@ -330,7 +331,7 @@ impl LocalMetadataStore {
         if let Some(journal) = &self.journal
             && let Err(e) = journal.write_entry(JournalEntry::CreateDirectory { dir_id })
         {
-            tracing::error!("Failed to write directory creation to journal: {}", e);
+            error!("Failed to write directory creation to journal: {e}");
         }
 
         self.directories.write().insert(dir_id, entries);
@@ -363,7 +364,7 @@ impl LocalMetadataStore {
                 file_type,
             })
         {
-            tracing::error!("Failed to write directory entry to journal: {}", e);
+            error!("Failed to write directory entry to journal: {e}");
         }
 
         entries.push(DirectoryEntry {
@@ -392,7 +393,7 @@ impl LocalMetadataStore {
                     name: name.to_vec(),
                 })
             {
-                tracing::error!("Failed to write directory removal to journal: {}", e);
+                error!("Failed to write directory removal to journal: {e}");
             }
 
             return Some(entries.remove(pos));

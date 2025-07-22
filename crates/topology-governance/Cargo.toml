@@ -17,9 +17,9 @@ hex.workspace = true
 proven-topology.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 dotenv.workspace = true
 ed25519-dalek.workspace = true
-tracing-subscriber.workspace = true

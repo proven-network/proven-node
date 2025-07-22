@@ -42,10 +42,6 @@ pub enum Error {
     #[error("must be root")]
     NotRoot,
 
-    /// Could not set global default subscriber.
-    #[error("could not set global default subscriber: {0}")]
-    SetTracing(#[from] tracing::dispatcher::SetGlobalDefaultError),
-
     #[error(transparent)]
     VsockProxy(#[from] proven_vsock_proxy::Error),
 

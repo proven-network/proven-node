@@ -20,6 +20,7 @@ use crossterm::{
 };
 use proven_attestation_mock::MockAttestor;
 use proven_local::NodeStatus;
+use proven_logger::{info, warn};
 use proven_topology::Version;
 use proven_topology_mock::MockTopologyAdaptor;
 use proven_util::Origin;
@@ -37,7 +38,6 @@ use std::{
     },
     time::Duration,
 };
-use tracing::{info, warn};
 
 /// Events that can occur in the TUI
 #[derive(Debug, Clone)]
@@ -79,33 +79,39 @@ pub struct App {
     /// RPC client for communicating with nodes
     rpc_client: RpcClient,
 
-    /// Log writer for disk-based logging
-    log_writer: LogWriter,
-
     /// Log reader for reading logs from disk
     log_reader: LogReader,
+
+    /// Log writer for writing logs to disk
+    log_writer: LogWriter,
 
     /// Shutdown flag set by signal handler
     shutdown_flag: Option<Arc<AtomicBool>>,
 }
 
+impl Default for App {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl App {
     /// Create a new application - now fully synchronous
     ///
-    /// # Errors
+    /// # Panics
     ///
-    /// Returns an error if the channels fail to initialize or if the shared
-    /// governance cannot be created.
+    /// Panics if the log writer fails to initialize
+    #[must_use]
     pub fn new() -> Self {
         // Create shared governance synchronously
         let governance = Arc::new(Self::create_shared_governance());
 
         // Generate session ID
         let session_id = Utc::now().format("%Y-%m-%d_%H-%M-%S").to_string();
-        info!("Starting TUI application with session_id: {}", session_id);
+        info!("Starting TUI application with session_id: {session_id}");
 
         // Create log writer with session_id-based config in /tmp (synchronous)
-        let log_writer = LogWriter::new(&PathBuf::from(format!("/tmp/proven/{session_id}")))
+        let log_writer = LogWriter::new_sync(&PathBuf::from(format!("/tmp/proven/{session_id}")))
             .expect("Failed to create log writer");
 
         // Create log reader for the same session
@@ -124,8 +130,8 @@ impl App {
             ui_state: UiState::new(),
             node_manager,
             rpc_client,
-            log_writer,
             log_reader,
+            log_writer,
             shutdown_flag: None,
         }
     }
@@ -145,15 +151,15 @@ impl App {
         )
     }
 
-    /// Get the log writer for the tracing layer
-    #[must_use]
-    pub fn get_log_writer(&self) -> LogWriter {
-        self.log_writer.clone()
-    }
-
     /// Set the shutdown flag for signal handling
     pub fn set_shutdown_flag(&mut self, shutdown_flag: Arc<AtomicBool>) {
         self.shutdown_flag = Some(shutdown_flag);
+    }
+
+    /// Get the log writer for external use
+    #[must_use]
+    pub fn get_log_writer(&self) -> LogWriter {
+        self.log_writer.clone()
     }
 
     /// Run the application with synchronous event handling
@@ -439,14 +445,11 @@ impl App {
 
         // Log the node creation with its specializations
         if specializations.is_empty() {
-            info!("Creating basic node: {}", name);
+            info!("Creating basic node: {name}");
         } else {
             let spec_names: Vec<String> =
                 specializations.iter().map(|s| format!("{s:?}")).collect();
-            info!(
-                "Creating specialized node: {} with specializations: {:?}",
-                name, spec_names
-            );
+            info!("Creating specialized node: {name} with specializations: {spec_names:?}");
         }
 
         self.node_manager.start_node(id, &name, specializations);
@@ -679,7 +682,7 @@ impl App {
         if !self.ui_state.mouse_state.capture_enabled
             && let Err(e) = self.re_enable_mouse_capture()
         {
-            warn!("Failed to re-enable mouse capture: {}", e);
+            warn!("Failed to re-enable mouse capture: {e}");
         }
     }
 
@@ -710,7 +713,7 @@ impl App {
             if down_time.elapsed() > hold_duration
                 && let Err(e) = self.disable_mouse_capture()
             {
-                warn!("Failed to disable mouse capture: {}", e);
+                warn!("Failed to disable mouse capture: {e}");
             }
         }
     }

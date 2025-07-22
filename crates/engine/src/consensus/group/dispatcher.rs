@@ -4,6 +4,7 @@ use std::{num::NonZero, sync::Arc};
 use tokio::sync::RwLock;
 
 use crate::{error::ConsensusResult, foundation::types::ConsensusGroupId};
+use proven_logger::{debug, error, info};
 use proven_topology::NodeId;
 
 use super::{
@@ -26,12 +27,9 @@ impl GroupCallbackDispatcher {
     /// Handle state synchronization after replay completes
     pub async fn dispatch_state_sync(&self, group_id: ConsensusGroupId, state: &GroupState) {
         if let Err(e) = self.callbacks.on_state_synchronized(group_id, state).await {
-            tracing::error!("State sync callback failed for group {:?}: {}", group_id, e);
+            error!("State sync callback failed for group {group_id:?}: {e}");
         } else {
-            tracing::info!(
-                "State synchronized for group {:?} - replay complete",
-                group_id
-            );
+            info!("State synchronized for group {group_id:?} - replay complete");
         }
     }
 
@@ -47,11 +45,7 @@ impl GroupCallbackDispatcher {
             .on_membership_changed(group_id, added_members, removed_members)
             .await
         {
-            tracing::error!(
-                "Membership change callback failed for group {:?}: {}",
-                group_id,
-                e
-            );
+            error!("Membership change callback failed for group {group_id:?}: {e}");
         }
     }
 
@@ -65,10 +59,7 @@ impl GroupCallbackDispatcher {
     ) {
         // Only dispatch callbacks for current operations (not replay)
         if is_replay {
-            tracing::debug!(
-                "Skipping callback dispatch for replayed operation: {:?}",
-                request
-            );
+            debug!("Skipping callback dispatch for replayed operation: {request:?}");
             return;
         }
 
@@ -82,7 +73,7 @@ impl GroupCallbackDispatcher {
                     .as_ref()
                     .expect("Entries should be present coming from local state machine");
 
-                tracing::info!(
+                info!(
                     "Dispatching on_messages_appended callback for {} entries to stream {}",
                     entries.len(),
                     stream,
@@ -93,7 +84,7 @@ impl GroupCallbackDispatcher {
                     .on_messages_appended(group_id, stream.as_str(), entries.clone())
                     .await
                 {
-                    tracing::error!("Messages append callback failed: {}", e);
+                    error!("Messages append callback failed: {e}");
                 }
             }
 
@@ -106,7 +97,7 @@ impl GroupCallbackDispatcher {
                     .on_stream_created(group_id, stream.as_str())
                     .await
                 {
-                    tracing::error!("Stream creation callback failed: {}", e);
+                    error!("Stream creation callback failed: {e}");
                 }
             }
 
@@ -119,7 +110,7 @@ impl GroupCallbackDispatcher {
                     .on_stream_removed(group_id, stream.as_str())
                     .await
                 {
-                    tracing::error!("Stream removal callback failed: {}", e);
+                    error!("Stream removal callback failed: {e}");
                 }
             }
 

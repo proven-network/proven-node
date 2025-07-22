@@ -9,6 +9,14 @@ use anyhow::Result;
 static NEXT_PORT: LazyLock<Mutex<u16>> = LazyLock::new(|| Mutex::new(3000));
 
 /// Allocate the next available port, starting from 3000
+///
+/// # Errors
+///
+/// Returns an error if no available ports can be found after checking 10000 ports
+///
+/// # Panics
+///
+/// Panics if the mutex is poisoned
 pub fn allocate_port() -> Result<u16> {
     // Try up to 10000 ports from the current position
     for _ in 0..10000 {
@@ -33,6 +41,7 @@ pub fn allocate_port() -> Result<u16> {
 }
 
 /// Check if a port is available by attempting to bind to it
+#[must_use]
 pub fn is_port_available(port: u16) -> bool {
     TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).is_ok()
 }

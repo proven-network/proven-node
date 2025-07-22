@@ -11,7 +11,7 @@ mod tests {
 
         let x = 5;
         let y = 10;
-        info!("x = {}, y = {}", x, y);
+        info!("x = {x}, y = {y}");
 
         warn!("About to perform assertion");
         assert_eq!(x + y, 20); // This will fail!

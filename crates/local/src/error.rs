@@ -47,10 +47,6 @@ pub enum Error {
     #[error(transparent)]
     IdentityManager(#[from] proven_identity::Error),
 
-    /// Could not set global default subscriber.
-    #[error("could not set global default subscriber: {0}")]
-    SetTracing(#[from] tracing::dispatcher::SetGlobalDefaultError),
-
     /// IO error
     #[error("IO error: {0}")]
     Io(String),

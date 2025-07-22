@@ -14,8 +14,8 @@ use proven_ethereum_lighthouse::{
     EthereumNetwork as LighthouseNetwork, LighthouseNode, LighthouseNodeOptions,
 };
 use proven_ethereum_reth::{EthereumNetwork as RethNetwork, RethNode, RethNodeOptions};
+use proven_logger::info;
 use proven_topology::{NodeSpecialization, TopologyAdaptor};
-use tracing::info;
 
 pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result<(), Error> {
     let node = bootstrap.node.as_ref().unwrap_or_else(|| {

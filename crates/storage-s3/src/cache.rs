@@ -2,6 +2,7 @@
 
 use bytes::Bytes;
 use lru::LruCache;
+use proven_logger::{debug, trace};
 use proven_storage::StorageNamespace;
 use std::{
     collections::HashMap,
@@ -10,7 +11,6 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::RwLock;
-use tracing::{debug, trace};
 
 use crate::config::CacheConfig;
 
@@ -207,7 +207,7 @@ impl LogCache {
             Some(entry) => {
                 if entry.expires_at > Instant::now() {
                     stats.hits += 1;
-                    trace!("Cache hit for {}:{}", namespace, index);
+                    trace!("Cache hit for {namespace}:{index}");
                     Some(entry.data.clone())
                 } else {
                     // Expired, remove it
@@ -218,7 +218,7 @@ impl LogCache {
             }
             None => {
                 stats.misses += 1;
-                trace!("Cache miss for {}:{}", namespace, index);
+                trace!("Cache miss for {namespace}:{index}");
                 None
             }
         }
@@ -256,7 +256,7 @@ impl LogCache {
         // Update bloom filter
         self.add_to_bloom(namespace, index).await;
 
-        trace!("Cached entry {}:{} ({} bytes)", namespace, index, data_size);
+        trace!("Cached entry {namespace}:{index} ({data_size} bytes)");
     }
 
     /// Put multiple entries in cache
@@ -336,7 +336,7 @@ impl LogCache {
         }
 
         if evicted > 0 {
-            debug!("Evicted {} entries to make room", evicted);
+            debug!("Evicted {evicted} entries to make room");
         }
     }
 

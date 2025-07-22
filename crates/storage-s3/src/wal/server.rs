@@ -12,12 +12,12 @@ use std::{
     sync::Arc,
 };
 
+use proven_logger::{debug, error, info};
 use tokio::{
     fs::{self, File, OpenOptions},
     io::AsyncWriteExt,
     sync::{Mutex, RwLock},
 };
-use tracing::{debug, error, info, instrument};
 
 use super::commands::*;
 
@@ -74,7 +74,7 @@ impl<H: WalCommandHandler> WalHandler<H> {
 
 #[async_trait]
 impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
-    #[instrument(skip(self, message))]
+    // #[instrument(skip(self, message))] // TODO: Add this back in if we support instrument
     async fn handle_message(
         &self,
         message_id: &str,
@@ -105,7 +105,7 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
                         Ok(HandlerResponse::Single(response_bytes))
                     }
                     Err(e) => {
-                        error!("Append logs failed: {}", e);
+                        error!("Append logs failed: {e}");
                         let resp = AppendLogsResponse {
                             success: false,
                             error: Some(e.to_string()),
@@ -140,7 +140,7 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
                         Ok(HandlerResponse::Single(response_bytes))
                     }
                     Err(e) => {
-                        error!("Confirm batch failed: {}", e);
+                        error!("Confirm batch failed: {e}");
                         let resp = ConfirmBatchResponse {
                             success: false,
                             error: Some(e.to_string()),
@@ -175,7 +175,7 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
                         Ok(HandlerResponse::Single(response_bytes))
                     }
                     Err(e) => {
-                        error!("Sync failed: {}", e);
+                        error!("Sync failed: {e}");
                         let resp = SyncResponse {
                             success: false,
                             error: Some(e.to_string()),
@@ -210,7 +210,7 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
                         Ok(HandlerResponse::Single(response_bytes))
                     }
                     Err(e) => {
-                        error!("Get pending batches failed: {}", e);
+                        error!("Get pending batches failed: {e}");
                         let resp = GetPendingBatchesResponse {
                             batches: Vec::new(),
                             error: Some(e.to_string()),
@@ -245,7 +245,7 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
                         Ok(HandlerResponse::Single(response_bytes))
                     }
                     Err(e) => {
-                        error!("Set metadata failed: {}", e);
+                        error!("Set metadata failed: {e}");
                         let resp = SetMetadataResponse {
                             success: false,
                             error: Some(e.to_string()),
@@ -280,7 +280,7 @@ impl<H: WalCommandHandler> RpcHandler for WalHandler<H> {
         #[cfg(target_os = "linux")] addr: tokio_vsock::VsockAddr,
         #[cfg(not(target_os = "linux"))] addr: std::net::SocketAddr,
     ) {
-        info!("WAL client disconnected from {:?}", addr);
+        info!("WAL client disconnected from {addr:?}");
     }
 }
 

@@ -13,4 +13,4 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tower.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true

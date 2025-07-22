@@ -7,7 +7,7 @@ use std::net::IpAddr;
 use std::process::Command;
 use std::time::Duration;
 
-use tracing::debug;
+use proven_logger::debug;
 
 use crate::error::Error;
 use crate::error::Result;
@@ -79,7 +79,7 @@ impl VethPair {
         let resolv_conf = match std::fs::read_to_string("/etc/resolv.conf") {
             Ok(content) => content,
             Err(e) => {
-                debug!("Failed to read host's resolv.conf: {}", e);
+                debug!("Failed to read host's resolv.conf: {e}");
                 return Err(Error::Network(format!("Failed to configure DNS: {e}")));
             }
         };
@@ -106,7 +106,7 @@ impl VethPair {
             ));
         }
 
-        debug!("Found nameservers: {:?}", nameservers);
+        debug!("Found nameservers: {nameservers:?}");
 
         let docker_dns_tcp_port = get_docker_dns_tcp_port()?;
         let docker_dns_udp_port = get_docker_dns_udp_port()?;
@@ -268,10 +268,7 @@ impl VethPair {
         let ns_name = format!("container_{pid}");
         let ns_link = format!("/var/run/netns/{ns_name}");
 
-        debug!(
-            "Setting up container network for PID {} in namespace {}",
-            pid, ns_name
-        );
+        debug!("Setting up container network for PID {pid} in namespace {ns_name}");
 
         // Create /var/run/netns directory if it doesn't exist
         let output = Command::new("mkdir")
@@ -299,7 +296,7 @@ impl VethPair {
             )));
         }
 
-        debug!("Created network namespace symlink at {}", ns_link);
+        debug!("Created network namespace symlink at {ns_link}");
 
         // Verify network namespace exists
         let output = Command::new("ip")
@@ -315,7 +312,7 @@ impl VethPair {
         }
 
         let namespaces = String::from_utf8_lossy(&output.stdout);
-        debug!("Available network namespaces: {}", namespaces);
+        debug!("Available network namespaces: {namespaces}");
 
         // Set container IP
         let output = Command::new("ip")
@@ -364,7 +361,7 @@ impl VethPair {
         }
 
         let interface_info = String::from_utf8_lossy(&output.stdout);
-        debug!("Container interface info: {}", interface_info);
+        debug!("Container interface info: {interface_info}");
 
         // Bring up container interface
         let output = Command::new("ip")
@@ -432,7 +429,7 @@ impl VethPair {
         }
 
         let routes = String::from_utf8_lossy(&output.stdout);
-        debug!("Container routing table: {}", routes);
+        debug!("Container routing table: {routes}");
 
         // Bring up loopback interface in container
         let output = Command::new("ip")
@@ -469,7 +466,7 @@ impl VethPair {
         let resolv_conf = match std::fs::read_to_string("/etc/resolv.conf") {
             Ok(content) => content,
             Err(e) => {
-                debug!("Failed to read host's resolv.conf: {}", e);
+                debug!("Failed to read host's resolv.conf: {e}");
                 return Err(Error::Network(format!("Failed to configure DNS: {e}")));
             }
         };
@@ -496,7 +493,7 @@ impl VethPair {
             ));
         }
 
-        debug!("Found nameservers: {:?}", nameservers);
+        debug!("Found nameservers: {nameservers:?}");
 
         // Add iptables rules to forward DNS queries to each nameserver
         for nameserver in nameservers {
@@ -527,10 +524,7 @@ impl VethPair {
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    debug!(
-                        "Failed to set up UDP DNS forwarding to {}: {}",
-                        nameserver, stderr
-                    );
+                    debug!("Failed to set up UDP DNS forwarding to {nameserver}: {stderr}");
                     continue; // Try the next nameserver if this one fails
                 }
 
@@ -558,14 +552,11 @@ impl VethPair {
                     })?;
 
                 if output.status.success() {
-                    debug!("Set up DNS forwarding to {}", nameserver);
+                    debug!("Set up DNS forwarding to {nameserver}");
                     return Ok(()); // Success with this nameserver, stop here
                 }
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                debug!(
-                    "Failed to set up TCP DNS forwarding to {}: {}",
-                    nameserver, stderr
-                );
+                debug!("Failed to set up TCP DNS forwarding to {nameserver}: {stderr}");
             }
             // Forward UDP DNS queries (port 53)
             let output = Command::new("iptables")
@@ -590,10 +581,7 @@ impl VethPair {
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                debug!(
-                    "Failed to set up UDP DNS forwarding to {}: {}",
-                    nameserver, stderr
-                );
+                debug!("Failed to set up UDP DNS forwarding to {nameserver}: {stderr}");
                 continue; // Try the next nameserver if this one fails
             }
 
@@ -619,14 +607,11 @@ impl VethPair {
                 .map_err(|e| Error::Network(format!("Failed to set up TCP DNS forwarding: {e}")))?;
 
             if output.status.success() {
-                debug!("Set up DNS forwarding to {}", nameserver);
+                debug!("Set up DNS forwarding to {nameserver}");
                 return Ok(()); // Success with this nameserver, stop here
             }
             let stderr = String::from_utf8_lossy(&output.stderr);
-            debug!(
-                "Failed to set up TCP DNS forwarding to {}: {}",
-                nameserver, stderr
-            );
+            debug!("Failed to set up TCP DNS forwarding to {nameserver}: {stderr}");
         }
 
         debug!("Failed to set up DNS forwarding to any nameserver");
@@ -680,7 +665,7 @@ impl VethPair {
         }
 
         let interface_info = String::from_utf8_lossy(&output.stdout);
-        debug!("Host interface info: {}", interface_info);
+        debug!("Host interface info: {interface_info}");
 
         // Bring up host interface
         let output = Command::new("ip")
@@ -737,7 +722,7 @@ impl VethPair {
 
         // Set up TCP port forwarding
         for port in &self.tcp_port_forwards {
-            debug!("Setting up TCP rules for port {}", port);
+            debug!("Setting up TCP rules for port {port}");
 
             // --- NAT Table Rules --- //
 
@@ -866,7 +851,7 @@ impl VethPair {
 
         // Set up UDP port forwarding
         for port in &self.udp_port_forwards {
-            debug!("Setting up UDP rules for port {}", port);
+            debug!("Setting up UDP rules for port {port}");
 
             // --- NAT Table Rules --- //
 
@@ -1069,7 +1054,7 @@ impl VethPair {
         }
 
         let rules = String::from_utf8_lossy(&output.stdout);
-        debug!("NAT table rules:\n{}", rules);
+        debug!("NAT table rules:\n{rules}");
 
         // Check default table rules
         let output = Command::new("iptables")
@@ -1085,7 +1070,7 @@ impl VethPair {
         }
 
         let rules = String::from_utf8_lossy(&output.stdout);
-        debug!("Filter table rules:\n{}", rules);
+        debug!("Filter table rules:\n{rules}");
 
         Ok(())
     }
@@ -1105,7 +1090,7 @@ impl VethPair {
 
         // Remove port forwarding rules for TCP ports
         for port in &self.tcp_port_forwards {
-            debug!("Removing TCP rules for port {}", port);
+            debug!("Removing TCP rules for port {port}");
 
             // 1. Remove NAT PREROUTING rule (External DNAT)
             let _ = Command::new("iptables")
@@ -1198,7 +1183,7 @@ impl VethPair {
 
         // Remove port forwarding rules for UDP ports
         for port in &self.udp_port_forwards {
-            debug!("Removing UDP rules for port {}", port);
+            debug!("Removing UDP rules for port {port}");
 
             // 1. Remove NAT PREROUTING rule (External DNAT)
             let _ = Command::new("iptables")
@@ -1328,7 +1313,7 @@ impl VethPair {
         let ns_name = format!("container_{}", self.isolated_pid);
         let ns_link = format!("/var/run/netns/{ns_name}");
         if std::path::Path::new(&ns_link).exists() {
-            debug!("Removing network namespace symlink: {}", ns_link);
+            debug!("Removing network namespace symlink: {ns_link}");
             if let Err(e) = std::fs::remove_file(&ns_link) {
                 // Log error, but don't fail the whole cleanup
                 debug!("Failed to remove network namespace symlink {ns_link}: {e}");
@@ -1379,7 +1364,7 @@ impl VethPair {
             return;
         }
 
-        debug!("Found nameservers: {:?}", nameservers);
+        debug!("Found nameservers: {nameservers:?}");
 
         // Remove iptables rules to forward DNS queries to each nameserver
         for nameserver in nameservers {

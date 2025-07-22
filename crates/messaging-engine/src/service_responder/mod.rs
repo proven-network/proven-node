@@ -8,7 +8,7 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::Stream;
-use tracing::{debug, warn};
+use proven_logger::{debug, warn};
 
 use proven_messaging::service_responder::{ServiceResponder, UsedServiceResponder};
 use proven_messaging::stream::InitializedStream;

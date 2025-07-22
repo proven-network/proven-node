@@ -4,12 +4,12 @@
 
 use std::{num::NonZero, sync::Arc};
 
+use proven_logger::{debug, error, info, warn};
 use proven_network::NetworkManager;
 use proven_storage::StorageAdaptor;
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
 use tokio::sync::{RwLock, mpsc, oneshot};
-use tracing::{debug, info};
 
 use crate::{
     error::{ConsensusResult, Error},
@@ -363,7 +363,7 @@ where
         let mut request_rx = match self.request_rx.write().await.take() {
             Some(rx) => rx,
             None => {
-                tracing::warn!("Request receiver already taken");
+                warn!("Request receiver already taken");
                 return;
             }
         };
@@ -371,7 +371,7 @@ where
         let handlers = match self.handlers.read().await.clone() {
             Some(h) => h,
             None => {
-                tracing::error!("Handlers not initialized");
+                error!("Handlers not initialized");
                 return;
             }
         };
@@ -383,7 +383,7 @@ where
                         request,
                         response_tx,
                     } => {
-                        debug!("Processing global request: {:?}", request);
+                        debug!("Processing global request: {request:?}");
                         let result = handlers.global.handle(request).await;
                         let _ = response_tx.send(result);
                     }
@@ -393,10 +393,7 @@ where
                         request,
                         response_tx,
                     } => {
-                        debug!(
-                            "Processing group request for group {:?}: {:?}",
-                            group_id, request
-                        );
+                        debug!("Processing group request for group {group_id:?}: {request:?}");
                         let result = handlers.group.handle(group_id, request).await;
                         let _ = response_tx.send(result);
                     }
@@ -406,7 +403,7 @@ where
                         request,
                         response_tx,
                     } => {
-                        debug!("Processing stream request for: {}", stream_name);
+                        debug!("Processing stream request for: {stream_name}");
                         let result = handlers.stream.handle(&stream_name, request).await;
                         let _ = response_tx.send(result);
                     }
@@ -415,7 +412,7 @@ where
                         stream_name,
                         response_tx,
                     } => {
-                        debug!("Processing stream info request for: {}", stream_name);
+                        debug!("Processing stream info request for: {stream_name}");
                         let result = handlers.query.get_stream_info(&stream_name).await;
                         let _ = response_tx.send(result);
                     }
@@ -424,7 +421,7 @@ where
                         group_id,
                         response_tx,
                     } => {
-                        debug!("Processing group info request for: {:?}", group_id);
+                        debug!("Processing group info request for: {group_id:?}");
                         let result = handlers.query.get_group_info(group_id).await;
                         let _ = response_tx.send(result);
                     }
@@ -463,7 +460,7 @@ where
                             requester_id: _,
                             request,
                         } => {
-                            tracing::info!("Received forwarded global request from {}", sender);
+                            info!("Received forwarded global request from {sender}");
                             let response = handlers.global.handle(request).await.map_err(|e| {
                                 proven_network::NetworkError::Internal(format!(
                                     "Failed to handle global request: {e}"
@@ -477,10 +474,8 @@ where
                             group_id,
                             request,
                         } => {
-                            tracing::info!(
-                                "Received forwarded group request from {} for group {:?}",
-                                sender,
-                                group_id
+                            info!(
+                                "Received forwarded group request from {sender} for group {group_id:?}"
                             );
                             let response =
                                 handlers
@@ -501,10 +496,8 @@ where
                             start_sequence,
                             count,
                         } => {
-                            tracing::info!(
-                                "Received forwarded read request from {} for stream {}",
-                                sender,
-                                stream_name
+                            info!(
+                                "Received forwarded read request from {sender} for stream {stream_name}"
                             );
 
                             let messages = handlers
@@ -526,10 +519,8 @@ where
                             end_sequence,
                             batch_size,
                         } => {
-                            tracing::info!(
-                                "Received stream start request from {} for stream {}",
-                                sender,
-                                stream_name
+                            info!(
+                                "Received stream start request from {sender} for stream {stream_name}"
                             );
 
                             let stream_handler =
@@ -566,10 +557,8 @@ where
                             session_id,
                             max_messages,
                         } => {
-                            tracing::debug!(
-                                "Received stream continue request from {} for session {}",
-                                sender,
-                                session_id
+                            debug!(
+                                "Received stream continue request from {sender} for session {session_id}"
                             );
 
                             let stream_handler =
@@ -599,10 +588,8 @@ where
                             requester_id: _,
                             session_id,
                         } => {
-                            tracing::debug!(
-                                "Received stream cancel request from {} for session {}",
-                                sender,
-                                session_id
+                            debug!(
+                                "Received stream cancel request from {sender} for session {session_id}"
                             );
 
                             let stream_handler =
@@ -962,7 +949,7 @@ where
                                 streaming_handler.cleanup_expired_sessions().await;
                                 let active_count = streaming_handler.active_session_count().await;
                                 if active_count > 0 {
-                                    debug!("Active streaming sessions: {}", active_count);
+                                    debug!("Active streaming sessions: {active_count}");
                                 }
                             }
                     }
@@ -1013,7 +1000,7 @@ where
         if self.network_manager.read().await.is_some()
             && let Err(e) = self.register_network_handlers().await
         {
-            tracing::warn!("Failed to register network handlers: {}", e);
+            warn!("Failed to register network handlers: {e}");
             // Continue anyway - the service can still work for local requests
         }
 
@@ -1045,9 +1032,9 @@ where
         // Unregister the service handler from NetworkManager
         use super::messages::ClientServiceMessage;
         if let Some(network) = self.network_manager.read().await.as_ref() {
-            tracing::debug!("Unregistering client service handler");
+            debug!("Unregistering client service handler");
             if let Err(e) = network.unregister_service::<ClientServiceMessage>().await {
-                tracing::warn!("Failed to unregister client service: {}", e);
+                warn!("Failed to unregister client service: {e}");
             }
         }
 

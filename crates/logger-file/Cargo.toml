@@ -1,0 +1,30 @@
+[package]
+name = "proven-logger-file"
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+version.workspace = true
+description = "File-based logging implementation for proven-logger"
+
+[features]
+default = ["timestamps"]
+timestamps = []
+
+[dependencies]
+proven-logger = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["test-util", "macros"] }
+proven-logger-macros = { workspace = true }

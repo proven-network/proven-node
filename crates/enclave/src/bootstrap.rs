@@ -35,6 +35,7 @@ use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::{Kms, KmsOptions};
 use proven_locks_memory::MemoryLockManager;
+use proven_logger::{error, info};
 use proven_messaging::stream::Stream;
 use proven_messaging_memory::client::MemoryClientOptions;
 use proven_messaging_memory::consumer::MemoryConsumerOptions;
@@ -71,7 +72,6 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tower_http::cors::CorsLayer;
-use tracing::{error, info};
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
 
@@ -189,103 +189,103 @@ impl Bootstrap {
         self.started = true;
 
         if let Err(e) = self.remount_tmp_with_exec().await {
-            error!("failed to remount tmp with exec: {:?}", e);
+            error!("failed to remount tmp with exec: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.configure_temp_dns_resolv() {
-            error!("failed to configure temp dns resolv: {:?}", e);
+            error!("failed to configure temp dns resolv: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.bring_up_loopback().await {
-            error!("failed to bring up loopback: {:?}", e);
+            error!("failed to bring up loopback: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_network_proxy().await {
-            error!("failed to start network proxy: {:?}", e);
+            error!("failed to start network proxy: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.seed_entropy().await {
-            error!("failed to seed entropy: {:?}", e);
+            error!("failed to seed entropy: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.fetch_imds_identity().await {
-            error!("failed to fetch imds identity: {:?}", e);
+            error!("failed to fetch imds identity: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.fetch_instance_details().await {
-            error!("failed to fetch instance details: {:?}", e);
+            error!("failed to fetch instance details: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.perform_speedtest().await {
-            error!("failed to perform speedtest: {:?}", e);
+            error!("failed to perform speedtest: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_dnscrypt_proxy().await {
-            error!("failed to start dnscrypt-proxy: {:?}", e);
+            error!("failed to start dnscrypt-proxy: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.get_network_topology().await {
-            error!("failed to get network topology: {:?}", e);
+            error!("failed to get network topology: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_radix_node_fs().await {
-            error!("failed to start radix-node filesystem: {:?}", e);
+            error!("failed to start radix-node filesystem: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_radix_node().await {
-            error!("failed to start radix-node: {:?}", e);
+            error!("failed to start radix-node: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_postgres_fs().await {
-            error!("failed to start postgres filesystem: {:?}", e);
+            error!("failed to start postgres filesystem: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_postgres().await {
-            error!("failed to start postgres: {:?}", e);
+            error!("failed to start postgres: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_radix_aggregator().await {
-            error!("failed to start radix-aggregator: {:?}", e);
+            error!("failed to start radix-aggregator: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_radix_gateway().await {
-            error!("failed to start radix-gateway: {:?}", e);
+            error!("failed to start radix-gateway: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
 
         if let Err(e) = self.start_core().await {
-            error!("failed to start core: {:?}", e);
+            error!("failed to start core: {e:?}");
             self.unwind_services().await;
             return Err(e);
         }
@@ -345,19 +345,19 @@ impl Bootstrap {
 
                     tokio::select! {
                         Ok(Err(e)) = proxy_handle => {
-                            error!("proxy exited: {:?}", e);
+                            error!("proxy exited: {e:?}");
                         }
                         Ok(Err(e)) = dnscrypt_proxy_handle => {
-                            error!("dnscrypt_proxy exited: {:?}", e);
+                            error!("dnscrypt_proxy exited: {e:?}");
                         }
                         Ok(Err(e)) = radix_node_fs_handle => {
-                            error!("radix_external_fs exited: {:?}", e);
+                            error!("radix_external_fs exited: {e:?}");
                         }
                         () = radix_node_guard.wait() => {
                             error!("radix_node exited");
                         }
                         Ok(Err(e)) = postgres_fs_handle => {
-                            error!("postgres_external_fs exited: {:?}", e);
+                            error!("postgres_external_fs exited: {e:?}");
                         }
                         () = postgres_guard.wait() => {
                             error!("postgres exited");
@@ -512,7 +512,7 @@ impl Bootstrap {
         let imds = Imds::new().await?;
         let identity = imds.get_verified_identity_document().await?;
 
-        info!("identity: {:?}", identity);
+        info!("identity: {identity:?}");
 
         self.imds_identity = Some(identity);
 
@@ -527,7 +527,7 @@ impl Bootstrap {
         let fetcher = InstanceDetailsFetcher::new(id.region.clone()).await;
         let instance = fetcher.get_instance_details(id.instance_id.clone()).await?;
 
-        info!("instance: {:?}", instance);
+        info!("instance: {instance:?}");
 
         self.instance_details = Some(instance);
 
@@ -542,7 +542,7 @@ impl Bootstrap {
 
             let results = SpeedTest::run().await?;
 
-            info!("speedtest results: {:?}", results);
+            info!("speedtest results: {results:?}");
         }
 
         Ok(())

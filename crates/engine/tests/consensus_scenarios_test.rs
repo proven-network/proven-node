@@ -4,25 +4,16 @@ mod common;
 
 use common::test_cluster::{TestCluster, TransportType};
 use proven_engine::foundation::types::ConsensusGroupId;
+use proven_logger_macros::logged_tokio_test;
 use std::time::Duration;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_node_restart_rejoin() {
     // Test that a node can restart and rejoin the cluster
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    tracing::info!("=== Starting 3-node cluster ===");
+    proven_logger::info!("=== Starting 3-node cluster ===");
 
     let (engines, node_infos) = cluster.add_nodes(3).await;
 
@@ -46,7 +37,7 @@ async fn test_node_restart_rejoin() {
     for (i, engine) in engines.iter().enumerate() {
         if let Ok(state) = engine.group_state(group_id).await {
             _initial_leader = state.leader.clone();
-            tracing::info!(
+            proven_logger::info!(
                 "Node {} initial state: leader={:?}, term={}",
                 i,
                 state.leader,
@@ -55,7 +46,7 @@ async fn test_node_restart_rejoin() {
         }
     }
 
-    tracing::info!("=== Stopping node 2 ===");
+    proven_logger::info!("=== Stopping node 2 ===");
 
     // Stop node 2 (index 1)
     let mut engines_vec: Vec<_> = engines.into_iter().collect();
@@ -63,7 +54,7 @@ async fn test_node_restart_rejoin() {
     let stopped_node_id = node_infos[1].node_id.clone();
 
     stopped_engine.stop().await.expect("Failed to stop engine");
-    tracing::info!("Stopped node: {}", stopped_node_id);
+    proven_logger::info!("Stopped node: {stopped_node_id}");
 
     // Wait for cluster to adapt
     tokio::time::sleep(Duration::from_secs(3)).await;
@@ -71,7 +62,7 @@ async fn test_node_restart_rejoin() {
     // Verify remaining nodes still have consensus
     for (i, engine) in engines_vec.iter().enumerate() {
         if let Ok(state) = engine.group_state(group_id).await {
-            tracing::info!(
+            proven_logger::info!(
                 "Remaining node {} state: leader={:?}, term={}",
                 i,
                 state.leader,
@@ -80,7 +71,7 @@ async fn test_node_restart_rejoin() {
         }
     }
 
-    tracing::info!("=== Restarting node 2 ===");
+    proven_logger::info!("=== Restarting node 2 ===");
 
     // Restart the stopped node
     stopped_engine
@@ -99,7 +90,7 @@ async fn test_node_restart_rejoin() {
             if let Some(ref leader) = state.leader {
                 final_leaders.insert(leader.clone());
             }
-            tracing::info!(
+            proven_logger::info!(
                 "Node {} after restart: leader={:?}, term={}, is_member={}",
                 i,
                 state.leader,
@@ -114,31 +105,23 @@ async fn test_node_restart_rejoin() {
         1,
         "All nodes should agree on leader after restart"
     );
-    tracing::info!("Node successfully rejoined cluster");
+    proven_logger::info!("Node successfully rejoined cluster");
 
     // Clean up
     for mut engine in engines_vec {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    tracing::info!("=== Node restart/rejoin test completed successfully ===");
+    proven_logger::info!("=== Node restart/rejoin test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_concurrent_operations() {
     // Test that the cluster handles concurrent operations correctly
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    tracing::info!("=== Starting 3-node cluster for concurrent ops ===");
+    proven_logger::info!("=== Starting 3-node cluster for concurrent ops ===");
 
     let (engines, _node_infos) = cluster.add_nodes(3).await;
 
@@ -154,7 +137,7 @@ async fn test_concurrent_operations() {
         .await
         .expect("Failed to wait for default group to become routable");
 
-    tracing::info!("=== Creating multiple streams concurrently ===");
+    proven_logger::info!("=== Creating multiple streams concurrently ===");
 
     // Create multiple streams concurrently from different nodes
     let mut handles = Vec::new();
@@ -178,17 +161,13 @@ async fn test_concurrent_operations() {
         match handle.await {
             Ok(Ok(_)) => {
                 successes += 1;
-                tracing::info!(
-                    "Node {} successfully created stream: {}",
-                    node_idx,
-                    stream_name
-                );
+                proven_logger::info!("Node {node_idx} successfully created stream: {stream_name}");
             }
             Ok(Err(e)) => {
-                tracing::warn!("Node {} failed to create stream: {}", node_idx, e);
+                proven_logger::warn!("Node {node_idx} failed to create stream: {e}");
             }
             Err(e) => {
-                tracing::error!("Task panic for node {}: {}", node_idx, e);
+                proven_logger::error!("Task panic for node {node_idx}: {e}");
             }
         }
     }
@@ -197,9 +176,9 @@ async fn test_concurrent_operations() {
         successes >= 1,
         "At least one stream creation should succeed"
     );
-    tracing::info!("{} out of 3 concurrent operations succeeded", successes);
+    proven_logger::info!("{successes} out of 3 concurrent operations succeeded");
 
-    tracing::info!("=== Publishing messages concurrently ===");
+    proven_logger::info!("=== Publishing messages concurrently ===");
 
     // Pick one stream and publish to it concurrently
     let test_stream = "concurrent_stream_0";
@@ -229,14 +208,12 @@ async fn test_concurrent_operations() {
         match handle.await {
             Ok(results) => {
                 let successes = results.iter().filter(|r| r.is_ok()).count();
-                tracing::info!(
-                    "Node {} published {}/3 messages successfully",
-                    node_idx,
-                    successes
+                proven_logger::info!(
+                    "Node {node_idx} published {successes}/3 messages successfully"
                 );
             }
             Err(e) => {
-                tracing::error!("Publish task panic for node {}: {}", node_idx, e);
+                proven_logger::error!("Publish task panic for node {node_idx}: {e}");
             }
         }
     }
@@ -246,30 +223,22 @@ async fn test_concurrent_operations() {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    tracing::info!("=== Concurrent operations test completed successfully ===");
+    proven_logger::info!("=== Concurrent operations test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_large_cluster_formation() {
     // Test formation of a larger cluster
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=info".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    tracing::info!("=== Starting 7-node cluster ===");
+    proven_logger::info!("=== Starting 7-node cluster ===");
 
     let (engines, node_infos) = cluster.add_nodes(7).await;
 
-    tracing::info!("Created {} nodes", engines.len());
+    proven_logger::info!("Created {} nodes", engines.len());
     for (i, info) in node_infos.iter().enumerate() {
-        tracing::info!("  Node {}: {}", i, info.node_id);
+        proven_logger::info!("  Node {}: {}", i, info.node_id);
     }
 
     // Wait for global cluster formation with longer timeout for larger cluster
@@ -297,7 +266,7 @@ async fn test_large_cluster_formation() {
                     leaders.insert(leader.clone());
                 }
             }
-            tracing::info!(
+            proven_logger::info!(
                 "Node {} state: leader={:?}, is_member={}",
                 i,
                 state.leader,
@@ -312,10 +281,7 @@ async fn test_large_cluster_formation() {
     );
     assert_eq!(leaders.len(), 1, "Should have consensus on one leader");
 
-    tracing::info!(
-        "Large cluster formed successfully with {} members",
-        member_count
-    );
+    proven_logger::info!("Large cluster formed successfully with {member_count} members");
 
     // Test that the cluster is functional
     let client = engines[0].client();
@@ -336,45 +302,36 @@ async fn test_large_cluster_formation() {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    tracing::info!("=== Large cluster formation test completed successfully ===");
+    proven_logger::info!("=== Large cluster formation test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[logged_tokio_test(flavor = "multi_thread", worker_threads = 4)]
 async fn test_network_delays() {
     // Test cluster behavior with simulated network delays
     // Note: This test doesn't actually simulate network delays but tests
     // the cluster's ability to handle timing variations
 
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
-    tracing::info!("=== Starting 3-node cluster with staggered starts ===");
+    proven_logger::info!("=== Starting 3-node cluster with staggered starts ===");
 
     // Start nodes with delays between them
     let (mut engines, mut node_infos) = cluster.add_nodes(1).await;
-    tracing::info!("Started node 1: {}", node_infos[0].node_id);
+    proven_logger::info!("Started node 1: {}", node_infos[0].node_id);
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     let (new_engines, new_infos) = cluster.add_nodes(1).await;
     engines.extend(new_engines);
     node_infos.extend(new_infos);
-    tracing::info!("Started node 2: {}", node_infos[1].node_id);
+    proven_logger::info!("Started node 2: {}", node_infos[1].node_id);
 
     tokio::time::sleep(Duration::from_secs(2)).await;
 
     let (new_engines, new_infos) = cluster.add_nodes(1).await;
     engines.extend(new_engines);
     node_infos.extend(new_infos);
-    tracing::info!("Started node 3: {}", node_infos[2].node_id);
+    proven_logger::info!("Started node 3: {}", node_infos[2].node_id);
 
     // Wait for global cluster formation with staggered starts
     cluster
@@ -395,7 +352,7 @@ async fn test_network_delays() {
     for (i, engine) in engines.iter().enumerate() {
         if let Ok(state) = engine.group_state(group_id).await {
             final_state.push((i, state.leader.clone(), state.is_member));
-            tracing::info!(
+            proven_logger::info!(
                 "Node {} final state: leader={:?}, is_member={}",
                 i,
                 state.leader,
@@ -419,5 +376,5 @@ async fn test_network_delays() {
         engine.stop().await.expect("Failed to stop engine");
     }
 
-    tracing::info!("=== Network delays test completed successfully ===");
+    proven_logger::info!("=== Network delays test completed successfully ===");
 }

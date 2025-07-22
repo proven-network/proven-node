@@ -25,7 +25,7 @@ anyhow.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 pin-project.workspace = true
-tracing.workspace = true
+proven-logger.workspace = true
 uuid = { workspace = true, features = ["v4", "serde"] }
 dashmap.workspace = true
 parking_lot.workspace = true
@@ -35,6 +35,7 @@ prost = { workspace = true, optional = true }
 crc32fast.workspace = true
 
 [dev-dependencies]
+proven-logger-macros.workspace = true
 tokio-test.workspace = true
 criterion.workspace = true
 proptest.workspace = true

@@ -16,11 +16,11 @@ use ed25519_dalek::SigningKey;
 pub use error::Error;
 use proven_topology::TopologyAdaptor;
 
+use proven_logger::info;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
-use tracing::info;
 use url::Url;
 
 /// Status of a node
@@ -403,7 +403,7 @@ async fn run_node_internal<G: TopologyAdaptor>(
         }
 
         Err(e) => {
-            info!("Bootstrap failed: {:?}", e);
+            info!("Bootstrap failed: {e:?}");
             return Err(e);
         }
     }

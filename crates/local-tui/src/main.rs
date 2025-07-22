@@ -7,6 +7,8 @@
 
 mod app;
 mod ip_allocator;
+mod logs_categorizer;
+mod logs_formatter;
 mod logs_viewer;
 mod logs_writer;
 mod messages;
@@ -18,16 +20,13 @@ mod ui;
 use app::App;
 
 use anyhow::Result;
+use proven_logger::{info, warn};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use tracing::{Level, info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() -> Result<()> {
-    info!("Starting Proven Node TUI");
-
     // Set up signal handling for graceful shutdown
     let shutdown_requested = Arc::new(AtomicBool::new(false));
     setup_signal_handlers(shutdown_requested.clone())?;
@@ -35,8 +34,11 @@ fn main() -> Result<()> {
     // Create the application synchronously
     let mut app = App::new();
 
-    // Set up logging with integrated TUI log writer
-    setup_logging(app.get_log_writer());
+    // Set up the log writer as the global logger
+    let log_writer = app.get_log_writer();
+    proven_logger::init(Arc::new(log_writer)).expect("Failed to initialize logger");
+
+    info!("Starting Proven Node TUI");
 
     // Pass the shutdown flag to the app
     app.set_shutdown_flag(shutdown_requested);
@@ -64,23 +66,11 @@ fn setup_signal_handlers(shutdown_requested: Arc<AtomicBool>) -> Result<()> {
                     break;
                 }
                 _ => {
-                    warn!("Received unexpected signal: {}", sig);
+                    warn!("Received unexpected signal: {sig}");
                 }
             }
         }
     });
 
     Ok(())
-}
-
-/// Set up tracing/logging with integrated log writer
-fn setup_logging(log_writer: logs_writer::LogWriter) {
-    // Create integrated tracing layer (LogWriter implements Layer trait)
-    // Set up the subscriber to capture all log levels - filtering is done in the TUI
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::filter::LevelFilter::from_level(
-            Level::TRACE, // Capture all levels, let TUI filter them
-        ))
-        .with(log_writer)
-        .init();
 }

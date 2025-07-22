@@ -13,11 +13,11 @@ use proven_core::{
     IdentifyResponse, ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse, Response,
     WhoAmICommand, WhoAmIResponse, routes,
 };
+use proven_logger::{debug, error, info};
 use proven_util::Origin;
 use rand::rngs::OsRng;
 use reqwest::{blocking::Client, blocking::multipart};
 use std::collections::HashMap;
-use tracing::{debug, error, info};
 use uuid::Uuid;
 
 /// Types of sessions that can be created
@@ -55,24 +55,32 @@ pub struct RpcClient {
 /// Error types for RPC operations
 #[derive(Debug, thiserror::Error)]
 pub enum RpcError {
+    /// HTTP request failed
     #[error("HTTP request failed: {0}")]
     Http(#[from] reqwest::Error),
+    /// Invalid response format
     #[error("Invalid response format: {0}")]
     InvalidResponse(String),
+    /// Server error
     #[error("Server error: {0}")]
     ServerError(String),
+    /// CBOR parsing error
     #[error("CBOR parsing error: {0}")]
     CborError(#[from] ciborium::de::Error<std::io::Error>),
+    /// COSE parsing error
     #[error("COSE parsing error: {0}")]
     CoseError(String),
+    /// Attestation verification failed
     #[error("Attestation verification failed: {0}")]
     AttestationError(String),
+    /// Session creation failed
     #[error("Session creation failed: {0}")]
     SessionCreation(String),
 }
 
 impl RpcClient {
     /// Create a new RPC client
+    #[must_use]
     pub fn new() -> Self {
         Self {
             client: Client::new(),
@@ -82,6 +90,10 @@ impl RpcClient {
     }
 
     /// Send a `WhoAmI` command to get session information (management session)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC request fails or the response is invalid
     pub fn who_am_i(&mut self, node_url: &str) -> Result<WhoAmIResponse, RpcError> {
         self.node_url = Some(node_url.to_string());
         let session_id = {
@@ -99,6 +111,10 @@ impl RpcClient {
     }
 
     /// Create a new application on the specified node (management session)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC request fails or the response is invalid
     pub fn create_application(&mut self, node_url: &str, _name: &str) -> Result<Uuid, RpcError> {
         self.node_url = Some(node_url.to_string());
 
@@ -134,6 +150,10 @@ impl RpcClient {
     }
 
     /// Send an identify command to authenticate the session (management session)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC request fails or the response is invalid
     pub fn identify(&mut self, node_url: &str) -> Result<(), RpcError> {
         self.node_url = Some(node_url.to_string());
         let (session_id, identity_key, session_id_signature) = {
@@ -187,6 +207,10 @@ impl RpcClient {
     }
 
     /// Send an anonymize command to remove session identity (management session)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC request fails or the response is invalid
     pub fn anonymize(&mut self, node_url: &str) -> Result<(), RpcError> {
         self.node_url = Some(node_url.to_string());
         let session_id = {
@@ -221,6 +245,10 @@ impl RpcClient {
     }
 
     /// List applications owned by the current user (management session)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC request fails or the response is invalid
     pub fn list_applications_by_owner(
         &mut self,
         node_url: &str,
@@ -259,6 +287,10 @@ impl RpcClient {
     }
 
     /// Add an allowed origin to an application (management session)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPC request fails or the response is invalid
     pub fn add_allowed_origin(
         &mut self,
         node_url: &str,
@@ -292,10 +324,7 @@ impl RpcClient {
 
         match response {
             AddAllowedOriginResponse::AddAllowedOriginSuccess => {
-                info!(
-                    "Successfully added allowed origin to application {}",
-                    application_id
-                );
+                info!("Successfully added allowed origin to application {application_id}");
                 Ok(())
             }
             AddAllowedOriginResponse::AddAllowedOriginFailure(error) => Err(RpcError::ServerError(
@@ -370,8 +399,7 @@ impl RpcClient {
                 .unwrap_or_else(|_| "Could not read error response body".to_string());
 
             error!(
-                "HTTP error during session creation: {} - Response body: {} - URL: {}",
-                status, error_body, url
+                "HTTP error during session creation: {status} - Response body: {error_body} - URL: {url}"
             );
 
             return Err(RpcError::SessionCreation(format!(
@@ -385,7 +413,7 @@ impl RpcClient {
         let (session_id, server_verifying_key) =
             Self::parse_attestation_document(&response_bytes, &nonce)?;
 
-        info!("✅ Management session created: {}", session_id);
+        info!("✅ Management session created: {session_id}");
 
         Ok(CachedSession {
             session_id,
@@ -459,7 +487,7 @@ impl RpcClient {
         session_id: &Uuid,
         command: &Command,
     ) -> Result<Response, RpcError> {
-        debug!("Sending management RPC command to {}", node_url);
+        debug!("Sending management RPC command to {node_url}");
 
         let session = self
             .sessions
@@ -497,8 +525,7 @@ impl RpcClient {
                 .unwrap_or_else(|_| "Could not read error response body".to_string());
 
             error!(
-                "HTTP error during RPC command: {} - Response body: {} - URL: {}",
-                status, error_body, url
+                "HTTP error during RPC command: {status} - Response body: {error_body} - URL: {url}"
             );
 
             return Err(RpcError::ServerError(format!(
@@ -568,11 +595,13 @@ impl RpcClient {
     }
 
     /// Check if we have a management session
+    #[must_use]
     pub fn has_management_session(&self) -> bool {
         self.sessions.contains_key(&SessionType::Management)
     }
 
     /// Check if we have an identified management session
+    #[must_use]
     pub fn has_identified_session(&self) -> bool {
         self.sessions
             .get(&SessionType::Management)
@@ -580,6 +609,7 @@ impl RpcClient {
     }
 
     /// Get the management session ID (if any)
+    #[must_use]
     pub fn management_session_id(&self) -> Option<Uuid> {
         self.sessions
             .get(&SessionType::Management)

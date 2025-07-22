@@ -3,6 +3,7 @@
 //! This module implements the actual storage backend with hot and cold tiers.
 
 use async_trait::async_trait;
+use proven_logger::{info, warn};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -206,22 +207,18 @@ impl HotTier {
         for blob_id in to_evict {
             let path = self.blob_path(&blob_id);
             if let Err(e) = fs::remove_file(&path).await {
-                tracing::warn!("Failed to evict blob {:?}: {}", blob_id, e);
+                warn!("Failed to evict blob {blob_id:?}: {e}");
             }
 
             // Remove from indices
             self.blob_index.write().await.remove(&blob_id);
             self.access_tracker.write().await.remove(&blob_id);
 
-            tracing::info!("Evicted blob {:?} from hot tier", blob_id);
+            info!("Evicted blob {blob_id:?} from hot tier");
         }
 
         if freed_space < needed_space {
-            tracing::warn!(
-                "Could only free {} bytes out of {} requested",
-                freed_space,
-                needed_space
-            );
+            warn!("Could only free {freed_space} bytes out of {needed_space} requested");
         }
 
         Ok(())

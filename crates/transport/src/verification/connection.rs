@@ -259,10 +259,7 @@ where
                     .await
             }
             VerificationMessage::VerificationFailed { reason, .. } => {
-                warn!(
-                    "Received verification failure from connection {}: {}",
-                    connection_id, reason
-                );
+                warn!("Received verification failure from connection {connection_id}: {reason}");
                 self.mark_connection_failed(connection_id, reason).await;
                 Ok(None)
             }

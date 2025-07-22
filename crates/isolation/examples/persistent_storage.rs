@@ -12,11 +12,12 @@
 //! 4. Shows how the value persists between runs
 
 use async_trait::async_trait;
+use proven_logger::{StdoutLogger, debug, error, info, init, warn};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::fs;
 use tokio::process::Command;
 use tokio::time::{Duration, sleep};
-use tracing::{debug, error, info, warn};
 
 use proven_isolation::{IsolatedApplication, VolumeMount};
 
@@ -43,19 +44,19 @@ impl CounterApp {
         // Parse the log line based on its prefix
         if line.starts_with("[INFO]") {
             let content = line.trim_start_matches("[INFO]").trim();
-            info!(target: "counter-app", "{}", content);
+            info!("{content}");
         } else if line.starts_with("[DEBUG]") {
             let content = line.trim_start_matches("[DEBUG]").trim();
-            debug!(target: "counter-app", "{}", content);
+            debug!("{content}");
         } else if line.starts_with("[WARN]") {
             let content = line.trim_start_matches("[WARN]").trim();
-            warn!(target: "counter-app", "{}", content);
+            warn!("{content}");
         } else if line.starts_with("[ERROR]") {
             let content = line.trim_start_matches("[ERROR]").trim();
-            error!(target: "counter-app", "{}", content);
+            error!("{content}");
         } else {
             // For unrecognized log formats, just log as info
-            info!(target: "counter-app", "{}", line);
+            info!("{line}");
         }
     }
 }
@@ -75,7 +76,7 @@ impl IsolatedApplication for CounterApp {
     }
 
     fn handle_stderr(&self, line: &str) {
-        error!(target: "counter-app", "{}", line);
+        error!("{line}");
     }
 
     fn name(&self) -> &str {
@@ -95,8 +96,9 @@ impl IsolatedApplication for CounterApp {
 
 #[tokio::main]
 async fn main() {
-    // Set up logging
-    tracing_subscriber::fmt::init();
+    // Initialize logger
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     // Create dir for test binary
     let test_bin_dir = tempfile::tempdir().expect("Failed to create test bin directory");
@@ -123,7 +125,7 @@ async fn main() {
 
     // Run the counter application multiple times to demonstrate persistence
     for run in 1..=3 {
-        info!("Run #{}", run);
+        info!("Run #{run}");
 
         let app = CounterApp::new(storage_dir_path.clone(), test_bin_dir_path.clone());
         let process = proven_isolation::spawn(app)

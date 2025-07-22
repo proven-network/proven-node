@@ -3448,7 +3448,7 @@ checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
 dependencies = [
  "bitflags 2.9.1",
  "crossterm_winapi",
- "mio",
+ "mio 1.0.4",
  "parking_lot 0.12.4",
  "rustix 0.38.44",
  "signal-hook",
@@ -3466,7 +3466,7 @@ dependencies = [
  "crossterm_winapi",
  "derive_more 2.0.1",
  "document-features",
- "mio",
+ "mio 1.0.4",
  "parking_lot 0.12.4",
  "rustix 1.0.7",
  "signal-hook",
@@ -4707,7 +4707,7 @@ dependencies = [
  "log",
  "nix 0.27.1",
  "node_resolver",
- "notify",
+ "notify 8.1.0",
  "ntapi",
  "once_cell",
  "rustyline",
@@ -7366,6 +7366,17 @@ checksum = "c8fae54786f62fb2918dcfae3d568594e50eb9b5c25bf04371af6fe7516452fb"
 
 [[package]]
 name = "inotify"
+version = "0.9.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8069d3ec154eb856955c1c0fbffefbf5f3c40a104ec912d4797314c1801abff"
+dependencies = [
+ "bitflags 1.3.2",
+ "inotify-sys",
+ "libc",
+]
+
+[[package]]
+name = "inotify"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f37dccff2791ab604f9babef0ba14fbe0be30bd368dc541e2b08d07c8aa908f3"
@@ -8417,6 +8428,18 @@ dependencies = [
 
 [[package]]
 name = "mio"
+version = "0.8.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4a650543ca06a924e8b371db273b2756685faae30f8487da1b56505a8f78b0c"
+dependencies = [
+ "libc",
+ "log",
+ "wasi 0.11.1+wasi-snapshot-preview1",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "mio"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78bed444cc8a2160f01cbcf811ef18cac863ad68ae8ca62092e8db51d51c761c"
@@ -8743,17 +8766,36 @@ dependencies = [
 
 [[package]]
 name = "notify"
+version = "6.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6205bd8bb1e454ad2e27422015fb5e4f2bcc7e08fa8f27058670d208324a4d2d"
+dependencies = [
+ "bitflags 2.9.1",
+ "crossbeam-channel",
+ "filetime",
+ "fsevent-sys",
+ "inotify 0.9.6",
+ "kqueue",
+ "libc",
+ "log",
+ "mio 0.8.11",
+ "walkdir",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "notify"
 version = "8.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3163f59cd3fa0e9ef8c32f242966a7b9994fd7378366099593e0e73077cd8c97"
 dependencies = [
  "bitflags 2.9.1",
  "fsevent-sys",
- "inotify",
+ "inotify 0.11.0",
  "kqueue",
  "libc",
  "log",
- "mio",
+ "mio 1.0.4",
  "notify-types",
  "walkdir",
  "windows-sys 0.60.2",
@@ -10184,13 +10226,14 @@ dependencies = [
  "proven-bootable",
  "proven-locks",
  "proven-locks-memory",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-messaging",
  "proven-messaging-memory",
  "proven-util",
  "serde",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -10236,6 +10279,8 @@ dependencies = [
  "async-trait",
  "proven-bootable",
  "proven-isolation",
+ "proven-logger",
+ "proven-logger-macros",
  "regex",
  "reqwest",
  "serde",
@@ -10243,8 +10288,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
- "tracing-subscriber 0.3.19",
  "url",
  "which 6.0.3",
 ]
@@ -10284,13 +10327,13 @@ dependencies = [
  "deno_semver",
  "eszip",
  "futures",
+ "proven-logger",
  "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "url",
 ]
 
@@ -10319,6 +10362,7 @@ dependencies = [
  "proven-headers",
  "proven-http",
  "proven-identity",
+ "proven-logger",
  "proven-passkeys",
  "proven-runtime",
  "proven-sessions",
@@ -10334,7 +10378,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower-http",
- "tracing",
  "url",
  "uuid",
  "webauthn-rs",
@@ -10348,11 +10391,11 @@ dependencies = [
  "aws-sdk-route53resolver",
  "dns-stamp-parser",
  "nix 0.27.1",
+ "proven-logger",
  "regex",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
 ]
 
 [[package]]
@@ -10423,9 +10466,7 @@ dependencies = [
  "tokio-util",
  "tokio-vsock",
  "tower-http",
- "tracing",
  "tracing-panic",
- "tracing-subscriber 0.3.19",
  "uuid",
 ]
 
@@ -10455,6 +10496,8 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-network",
  "proven-storage",
  "proven-storage-memory",
@@ -10479,8 +10522,6 @@ dependencies = [
  "tokio-util",
  "tower 0.5.2",
  "tower-http",
- "tracing",
- "tracing-subscriber 0.3.19",
  "tracing-test",
  "url",
  "uuid",
@@ -10494,6 +10535,8 @@ dependencies = [
  "proven-bootable",
  "proven-ethereum-reth",
  "proven-isolation",
+ "proven-logger",
+ "proven-logger-macros",
  "regex",
  "reqwest",
  "serde_json",
@@ -10501,8 +10544,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -10512,6 +10553,7 @@ dependencies = [
  "async-trait",
  "proven-bootable",
  "proven-isolation",
+ "proven-logger",
  "regex",
  "reqwest",
  "serde_json",
@@ -10519,8 +10561,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
  "url",
 ]
 
@@ -10528,11 +10568,11 @@ dependencies = [
 name = "proven-external-fs"
 version = "0.1.0"
 dependencies = [
+ "proven-logger",
  "rand 0.8.5",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
 ]
 
 [[package]]
@@ -10555,6 +10595,7 @@ dependencies = [
  "proven-bootable",
  "proven-http",
  "proven-http-insecure",
+ "proven-logger",
  "proven-logger-vsock",
  "proven-vsock-cac",
  "proven-vsock-proxy",
@@ -10566,8 +10607,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tokio-vsock",
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -10589,11 +10628,11 @@ dependencies = [
  "parking_lot 0.12.4",
  "proven-bootable",
  "proven-http",
+ "proven-logger",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
  "tower 0.5.2",
- "tracing",
 ]
 
 [[package]]
@@ -10611,6 +10650,7 @@ dependencies = [
  "proven-bootable",
  "proven-cert-store",
  "proven-http",
+ "proven-logger",
  "proven-store",
  "rustls",
  "thiserror 2.0.12",
@@ -10620,7 +10660,6 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tower 0.5.2",
- "tracing",
 ]
 
 [[package]]
@@ -10636,6 +10675,8 @@ dependencies = [
  "http 1.3.1",
  "http-serde",
  "proven-bootable",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-messaging",
  "proven-messaging-memory",
  "reqwest",
@@ -10644,7 +10685,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
  "tracing-subscriber 0.3.19",
  "tracing-test",
 ]
@@ -10662,12 +10702,13 @@ dependencies = [
  "proven-bootable",
  "proven-locks",
  "proven-locks-memory",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-messaging",
  "proven-messaging-memory",
  "serde",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -10702,6 +10743,8 @@ dependencies = [
  "async-trait",
  "libc",
  "nix 0.27.1",
+ "proven-logger",
+ "proven-logger-macros",
  "reqwest",
  "serde",
  "serde_json",
@@ -10709,8 +10752,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
  "uuid",
  "which 6.0.3",
 ]
@@ -10775,6 +10816,7 @@ dependencies = [
  "proven-http-proxy",
  "proven-identity",
  "proven-locks-memory",
+ "proven-logger",
  "proven-messaging",
  "proven-messaging-engine",
  "proven-network",
@@ -10806,7 +10848,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower-http",
- "tracing",
  "url",
  "uuid",
 ]
@@ -10822,13 +10863,12 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-mock",
  "proven-local",
+ "proven-logger",
  "proven-topology",
  "proven-topology-mock",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
  "url",
 ]
 
@@ -10855,6 +10895,10 @@ dependencies = [
  "proven-attestation-mock",
  "proven-core",
  "proven-local",
+ "proven-logger",
+ "proven-logger-file",
+ "proven-logger-macros",
+ "proven-logger-viewer",
  "proven-topology",
  "proven-topology-mock",
  "proven-util",
@@ -10872,7 +10916,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "toml 0.9.2",
- "tracing",
  "tracing-appender",
  "tracing-subscriber 0.3.19",
  "url",
@@ -10893,9 +10936,10 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "proven-locks",
+ "proven-logger",
+ "proven-logger-macros",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -10917,12 +10961,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "proven-logger-file"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "parking_lot 0.12.4",
+ "proven-logger",
+ "proven-logger-macros",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.12",
+ "tokio",
+]
+
+[[package]]
 name = "proven-logger-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
+]
+
+[[package]]
+name = "proven-logger-viewer"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crossbeam-channel",
+ "glob",
+ "memmap2",
+ "notify 6.1.1",
+ "parking_lot 0.12.4",
+ "proven-logger",
+ "proven-logger-file",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.12",
+ "tokio",
 ]
 
 [[package]]
@@ -10966,6 +11048,8 @@ dependencies = [
  "proven-attestation-mock",
  "proven-bootable",
  "proven-engine",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-messaging",
  "proven-network",
  "proven-storage",
@@ -10984,8 +11068,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
  "tracing-test",
  "uuid",
 ]
@@ -10999,13 +11081,14 @@ dependencies = [
  "futures",
  "paste",
  "proven-bootable",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-messaging",
  "serial_test",
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tokio-util",
- "tracing",
  "uuid",
 ]
 
@@ -11022,6 +11105,8 @@ dependencies = [
  "hex",
  "proven-attestation-mock",
  "proven-bootable",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-topology",
  "proven-topology-mock",
  "proven-transport",
@@ -11033,8 +11118,6 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
  "uuid",
 ]
 
@@ -11059,12 +11142,13 @@ dependencies = [
  "async-trait",
  "proven-bootable",
  "proven-isolation",
+ "proven-logger",
+ "proven-logger-macros",
  "regex",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
  "tracing-subscriber 0.3.19",
 ]
 
@@ -11076,6 +11160,8 @@ dependencies = [
  "nix 0.27.1",
  "proven-bootable",
  "proven-isolation",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-postgres",
  "proven-radix-node",
  "radix-common 1.3.0",
@@ -11085,8 +11171,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -11096,12 +11180,12 @@ dependencies = [
  "async-trait",
  "proven-bootable",
  "proven-isolation",
+ "proven-logger",
  "regex",
  "reqwest",
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -11160,6 +11244,8 @@ dependencies = [
  "nix 0.27.1",
  "proven-bootable",
  "proven-isolation",
+ "proven-logger",
+ "proven-logger-macros",
  "radix-common 1.3.0",
  "regex",
  "reqwest",
@@ -11168,8 +11254,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -11178,13 +11262,14 @@ version = "0.1.0"
 dependencies = [
  "bech32 0.11.0",
  "hex",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-radix-gateway-sdk",
  "radix-common 1.3.0",
  "reqwest",
  "serde",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -11194,6 +11279,8 @@ dependencies = [
  "async-trait",
  "bytes",
  "ciborium",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-messaging",
  "proven-messaging-memory",
  "proven-radix-gateway-sdk",
@@ -11203,8 +11290,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -11227,6 +11312,8 @@ dependencies = [
  "http 1.3.1",
  "proven-code-package",
  "proven-identity",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-radix-nft-verifier",
  "proven-radix-nft-verifier-mock",
  "proven-sql",
@@ -11243,7 +11330,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "url",
  "uuid",
 ]
@@ -11257,11 +11343,11 @@ dependencies = [
  "ciborium",
  "ed25519-dalek",
  "proven-attestation",
+ "proven-logger",
  "proven-store",
  "rand 0.8.5",
  "serde",
  "thiserror 2.0.12",
- "tracing",
  "uuid",
 ]
 
@@ -11305,6 +11391,8 @@ dependencies = [
  "paste",
  "proven-bootable",
  "proven-libsql",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-messaging",
  "proven-messaging-memory",
  "proven-sql",
@@ -11314,7 +11402,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -11326,11 +11413,12 @@ dependencies = [
  "chrono",
  "futures",
  "hex",
+ "proven-logger",
+ "proven-logger-macros",
  "serde",
  "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
- "tracing",
 ]
 
 [[package]]
@@ -11339,10 +11427,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-storage",
  "tokio",
  "tokio-stream",
- "tracing",
  "tracing-subscriber 0.3.19",
 ]
 
@@ -11355,6 +11444,8 @@ dependencies = [
  "bytes",
  "chrono",
  "ciborium",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-storage",
  "rocksdb",
  "serde",
@@ -11362,8 +11453,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-stream",
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -11389,6 +11478,8 @@ dependencies = [
  "md5",
  "miniz_oxide",
  "prometheus 0.14.0",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-storage",
  "proven-vsock-rpc",
  "rand 0.8.5",
@@ -11437,9 +11528,12 @@ dependencies = [
  "async-trait",
  "bytes",
  "deno_error",
+ "futures",
  "lru 0.12.5",
  "paste",
  "proven-engine",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-network",
  "proven-storage",
  "proven-storage-memory",
@@ -11452,7 +11546,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "tracing-subscriber 0.3.19",
 ]
 
@@ -11534,11 +11627,11 @@ dependencies = [
  "helios-core",
  "helios-ethereum",
  "hex",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-topology",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -11590,11 +11683,12 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-topology",
  "proven-transport",
  "thiserror 2.0.12",
  "tokio",
- "tracing",
  "uuid",
 ]
 
@@ -11611,6 +11705,8 @@ dependencies = [
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-topology",
  "proven-topology-mock",
  "proven-transport",
@@ -11619,8 +11715,6 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
  "uuid",
 ]
 
@@ -11636,6 +11730,8 @@ dependencies = [
  "futures",
  "proven-attestation",
  "proven-attestation-mock",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-network",
  "proven-topology",
  "proven-topology-mock",
@@ -11649,8 +11745,6 @@ dependencies = [
  "tokio-test",
  "tokio-tungstenite 0.27.0",
  "tower-http",
- "tracing",
- "tracing-subscriber 0.3.19",
  "url",
  "uuid",
 ]
@@ -11677,13 +11771,14 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "proven-attestation",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-topology",
  "rand 0.8.5",
  "serde",
  "thiserror 2.0.12",
  "tokio",
  "tokio-test",
- "tracing",
  "uuid",
 ]
 
@@ -11696,13 +11791,14 @@ dependencies = [
  "bincode",
  "bytes",
  "cidr",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-vsock-rpc",
  "serde",
  "thiserror 2.0.12",
  "tokio",
  "tokio-test",
  "tokio-vsock",
- "tracing",
 ]
 
 [[package]]
@@ -11730,6 +11826,8 @@ dependencies = [
  "pin-project",
  "prometheus 0.14.0",
  "proptest",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-util",
  "proven-vsock-rpc",
  "rand 0.8.5",
@@ -11744,8 +11842,6 @@ dependencies = [
  "tokio-test",
  "tokio-vsock",
  "toml 0.9.2",
- "tracing",
- "tracing-subscriber 0.3.19",
  "uuid",
  "zstd",
 ]
@@ -11755,10 +11851,10 @@ name = "proven-vsock-proxy"
 version = "0.1.0"
 dependencies = [
  "nix 0.27.1",
+ "proven-logger",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "tracing",
 ]
 
 [[package]]
@@ -11778,6 +11874,8 @@ dependencies = [
  "pin-project",
  "proptest",
  "prost",
+ "proven-logger",
+ "proven-logger-macros",
  "proven-util",
  "serde",
  "serde_json",
@@ -11787,7 +11885,6 @@ dependencies = [
  "tokio-test",
  "tokio-util",
  "tokio-vsock",
- "tracing",
  "uuid",
 ]
 
@@ -13873,7 +13970,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "34db1a06d485c9142248b7a054f034b349b212551f3dfd19c94d45a754a217cd"
 dependencies = [
  "libc",
- "mio",
+ "mio 1.0.4",
  "signal-hook",
 ]
 
@@ -15067,7 +15164,7 @@ dependencies = [
  "bytes",
  "io-uring",
  "libc",
- "mio",
+ "mio 1.0.4",
  "parking_lot 0.12.4",
  "pin-project-lite",
  "signal-hook-registry",

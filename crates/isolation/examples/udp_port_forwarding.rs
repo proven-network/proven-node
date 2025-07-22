@@ -7,11 +7,12 @@
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use proven_isolation::{IsolatedApplication, ReadyCheckInfo, VolumeMount};
-use tracing::{debug, info};
+use proven_logger::{StdoutLogger, debug, info, init};
 
 /// The port that the UDP server will listen on
 const SERVER_PORT: u16 = 8080;
@@ -82,12 +83,12 @@ impl IsolatedApplication for UdpEchoServer {
                     if received == UDP_TEST_MESSAGE {
                         Ok(true) // Server is ready
                     } else {
-                        debug!("Received unexpected response: {}", received);
+                        debug!("Received unexpected response: {received}");
                         Ok(false)
                     }
                 }
                 Err(e) => {
-                    debug!("Failed to receive response: {}", e);
+                    debug!("Failed to receive response: {e}");
                     Ok(false)
                 }
             }
@@ -95,18 +96,15 @@ impl IsolatedApplication for UdpEchoServer {
 
         match test_result() {
             Ok(true) => {
-                info!(
-                    "✅ UDP server is ready! Got echo response on attempt {}",
-                    attempt
-                );
+                info!("✅ UDP server is ready! Got echo response on attempt {attempt}");
                 true
             }
             Ok(false) => {
-                debug!("❌ UDP server not ready on attempt {}", attempt);
+                debug!("❌ UDP server not ready on attempt {attempt}");
                 false
             }
             Err(e) => {
-                debug!("❌ Error testing UDP server on attempt {}: {}", attempt, e);
+                debug!("❌ Error testing UDP server on attempt {attempt}: {e}");
                 false
             }
         }
@@ -136,8 +134,9 @@ impl IsolatedApplication for UdpEchoServer {
 
 #[tokio::main]
 async fn main() {
-    // Initialize tracing with defaults
-    tracing_subscriber::fmt::init();
+    // Initialize logger
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     info!("🚀 Starting isolated UDP echo server example");
     info!(
@@ -174,17 +173,14 @@ async fn main() {
 
     // Spawn the isolated process
     info!("🔄 Spawning server process and waiting for it to become ready...");
-    info!(
-        "🔌 The server will be accessible on localhost:{}",
-        SERVER_PORT
-    );
+    info!("🔌 The server will be accessible on localhost:{SERVER_PORT}");
 
     let start_time = Instant::now();
     let process = proven_isolation::spawn(server)
         .await
         .expect("Failed to spawn server");
     let elapsed = start_time.elapsed();
-    info!("✅ Server process is now ready! (took {:?})", elapsed);
+    info!("✅ Server process is now ready! (took {elapsed:?})");
     info!("Server is running with PID: {}", process.pid());
 
     // Make final requests to verify server connectivity
@@ -192,10 +188,7 @@ async fn main() {
 
     // Test sending to the container IP directly
     let container_ip = process.container_ip().unwrap();
-    info!(
-        "Testing direct connection to container at {}:{}",
-        container_ip, SERVER_PORT
-    );
+    info!("Testing direct connection to container at {container_ip}:{SERVER_PORT}");
 
     let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind socket");
     socket
@@ -214,13 +207,10 @@ async fn main() {
         .expect("Failed to receive from container");
 
     let received = String::from_utf8_lossy(&buf[..len]);
-    info!("Direct container response: {}", received);
+    info!("Direct container response: {received}");
 
     // Test localhost port forwarding
-    info!(
-        "Testing localhost port forwarding at 127.0.0.1:{}",
-        SERVER_PORT
-    );
+    info!("Testing localhost port forwarding at 127.0.0.1:{SERVER_PORT}");
 
     let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind socket");
     socket
@@ -242,7 +232,7 @@ async fn main() {
         .expect("Failed to receive from localhost");
 
     let received = String::from_utf8_lossy(&buf[..len]);
-    info!("Localhost port forwarding response: {}", received);
+    info!("Localhost port forwarding response: {received}");
 
     // Wait a bit before shutting down
     info!("Server verified working, waiting 5 seconds before shutdown");

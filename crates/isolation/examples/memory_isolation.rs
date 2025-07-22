@@ -8,13 +8,14 @@
 //! Note: This example requires Linux with cgroups v2 support.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use proven_isolation::{Error, IsolatedApplication, Result};
+use proven_logger::{StdoutLogger, info, init};
 use tokio::fs;
 use tokio::time::interval;
-use tracing::info;
 
 /// Memory limit in MB
 const MEMORY_LIMIT_MB: usize = 20;
@@ -150,8 +151,9 @@ impl IsolatedApplication for MemoryStressTest {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing with defaults
-    tracing_subscriber::fmt().init();
+    // Initialize logger
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     // Set up temporary directory
     let temp_dir =
@@ -161,16 +163,13 @@ async fn main() -> Result<()> {
 
     info!("Starting memory isolation example");
     info!("Work directory: {}", work_dir.display());
-    info!("Memory limit: {}MB", MEMORY_LIMIT_MB);
+    info!("Memory limit: {MEMORY_LIMIT_MB}MB");
 
     // Create the memory stress test
     let test = MemoryStressTest::new(&work_dir).await?;
 
     // Check if memory control is likely to be available
-    info!(
-        "Memory limits are enabled in config, attempting to enforce {}MB limit",
-        MEMORY_LIMIT_MB
-    );
+    info!("Memory limits are enabled in config, attempting to enforce {MEMORY_LIMIT_MB}MB limit");
 
     // Spawn the isolated process
     info!("Spawning isolated process...");
@@ -184,10 +183,7 @@ async fn main() -> Result<()> {
     let mut i = 0;
 
     // Print the monitoring header
-    info!(
-        "Starting memory usage monitoring (limit: {}MB)",
-        MEMORY_LIMIT_MB
-    );
+    info!("Starting memory usage monitoring (limit: {MEMORY_LIMIT_MB}MB)");
     info!("{:=^50}", " MEMORY MONITOR ");
     info!("Time (s) | Usage (MB) | % of Limit");
     info!("{:-^50}", "");
@@ -199,7 +195,7 @@ async fn main() -> Result<()> {
                 // Check memory usage
                 if let Ok(Some(usage_mb)) = process.current_memory_usage_mb() {
                     let percent = (usage_mb / MEMORY_LIMIT_MB as f64) * 100.0;
-                    info!("{:7} | {:9.2} | {:9.1}%", i, usage_mb, percent);
+                    info!("{i:7} | {usage_mb:9.2} | {percent:9.1}%");
                 } else {
                     info!("{:7} | {:9} | {:9}", i, "N/A", "N/A");
                 }
@@ -219,7 +215,7 @@ async fn main() -> Result<()> {
             exit_status = process.wait() => {
                 // Process has exited
                 info!("Process has exited, stopping monitoring");
-                info!("Process exited with status: {}", exit_status);
+                info!("Process exited with status: {exit_status}");
 
                 break;
             }

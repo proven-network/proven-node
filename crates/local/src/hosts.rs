@@ -5,7 +5,7 @@ use std::path::Path;
 
 use console::style;
 use hickory_resolver::Resolver;
-use tracing::{error, info};
+use proven_logger::{error, info};
 
 /// Checks if a hostname can be resolved via DNS or hosts file.
 /// Exits the process if the hostname cannot be resolved.
@@ -15,7 +15,7 @@ pub async fn check_hostname_resolution(hostname: &str) -> Result<(), Error> {
     let resolver = match Resolver::tokio_from_system_conf() {
         Ok(resolver) => resolver,
         Err(e) => {
-            error!("Failed to create DNS resolver: {}", e);
+            error!("Failed to create DNS resolver: {e}");
             return Err(Error::Io(format!("Failed to create DNS resolver: {e}")));
         }
     };
@@ -23,9 +23,9 @@ pub async fn check_hostname_resolution(hostname: &str) -> Result<(), Error> {
 
     if let Ok(lookup_result) = dns_lookup_result {
         if lookup_result.iter().next().is_none() {
-            error!("DNS resolution for {} returned no addresses", hostname);
+            error!("DNS resolution for {hostname} returned no addresses");
             if !check_hosts_file(hostname) {
-                error!("{} is not configured in hosts file or DNS", hostname);
+                error!("{hostname} is not configured in hosts file or DNS");
                 show_hosts_file_instructions(hostname);
                 std::process::exit(1);
             }
@@ -37,7 +37,7 @@ pub async fn check_hostname_resolution(hostname: &str) -> Result<(), Error> {
             );
         }
     } else if !check_hosts_file(hostname) {
-        error!("{} is not valid DNS nor configured in hosts file", hostname);
+        error!("{hostname} is not valid DNS nor configured in hosts file");
         show_hosts_file_instructions(hostname);
         std::process::exit(1);
     }

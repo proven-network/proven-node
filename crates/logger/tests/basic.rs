@@ -19,7 +19,7 @@ fn test_macros() {
 
     // Test formatting
     let value = 42;
-    info!("The answer is {}", value);
+    info!("The answer is {value}");
 }
 
 #[test]

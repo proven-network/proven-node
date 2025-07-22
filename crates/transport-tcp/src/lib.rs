@@ -7,6 +7,7 @@ use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use futures::Stream;
 use proven_attestation::Attestor;
+use proven_logger::{debug, error, info, warn};
 use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::connection::ConnectionManager;
@@ -20,7 +21,6 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{RwLock, broadcast, mpsc};
 use tokio::time::{Duration, timeout};
-use tracing::{debug, error, info, warn};
 
 /// TCP-specific configuration
 #[derive(Debug, Clone)]
@@ -110,7 +110,7 @@ where
             .map_err(TransportError::Io)?;
 
         let local_addr = listener.local_addr().map_err(TransportError::Io)?;
-        info!("TCP transport listening on {}", local_addr);
+        info!("TCP transport listening on {local_addr}");
 
         let connection_manager = self.connection_manager.clone();
         let incoming_tx = self.incoming_tx.clone();
@@ -122,7 +122,7 @@ where
                     accept_result = listener.accept() => {
                         match accept_result {
                             Ok((stream, addr)) => {
-                                debug!("Accepted connection from {}", addr);
+                                debug!("Accepted connection from {addr}");
                                 let connection_manager = connection_manager.clone();
                                 let incoming_tx = incoming_tx.clone();
 
@@ -133,12 +133,12 @@ where
                                         connection_manager,
                                         incoming_tx,
                                     ).await {
-                                        warn!("Failed to handle incoming connection from {}: {}", addr, e);
+                                        warn!("Failed to handle incoming connection from {addr}: {e}");
                                     }
                                 });
                             }
                             Err(e) => {
-                                error!("Failed to accept connection: {}", e);
+                                error!("Failed to accept connection: {e}");
                             }
                         }
                     }
@@ -162,7 +162,7 @@ where
         incoming_tx: broadcast::Sender<TransportEnvelope>,
     ) -> Result<(), TransportError> {
         let connection_id = format!("tcp-incoming-{addr}");
-        debug!("Handling incoming connection with ID: {}", connection_id);
+        debug!("Handling incoming connection with ID: {connection_id}");
 
         // Store the stream in a shared location for the I/O functions
         let stream_arc = Arc::new(tokio::sync::Mutex::new(stream));
@@ -197,7 +197,7 @@ where
             .handle_incoming_connection(connection_id.clone(), send_fn, recv_fn, incoming_tx)
             .await?;
 
-        debug!("Incoming connection {} completed", connection_id);
+        debug!("Incoming connection {connection_id} completed");
         Ok(())
     }
 
@@ -209,10 +209,7 @@ where
         connection_manager: Arc<ConnectionManager<G, A>>,
         outgoing_rx: mpsc::Receiver<TransportEnvelope>,
     ) -> Result<(), TransportError> {
-        debug!(
-            "Starting outgoing connection handling for: {}",
-            connection_id
-        );
+        debug!("Starting outgoing connection handling for: {connection_id}");
 
         // Store the stream in a shared location for the I/O functions
         let stream_arc = Arc::new(tokio::sync::Mutex::new(stream));
@@ -253,7 +250,7 @@ where
             )
             .await?;
 
-        debug!("Outgoing connection {} completed", connection_id);
+        debug!("Outgoing connection {connection_id} completed");
         Ok(())
     }
 
@@ -330,7 +327,7 @@ where
 
             match timeout(timeout_duration, TcpStream::connect(addr)).await {
                 Ok(Ok(stream)) => {
-                    debug!("TCP connection established to {}", addr);
+                    debug!("TCP connection established to {addr}");
 
                     // Create channels for outgoing messages
                     let (outgoing_tx, outgoing_rx) = mpsc::channel(1000);
@@ -356,14 +353,14 @@ where
                         )
                         .await
                         {
-                            warn!("Outgoing connection failed: {}", e);
+                            warn!("Outgoing connection failed: {e}");
                         }
 
                         // Clean up the sender when connection ends
                         outgoing_senders.write().await.remove(&connection_id_clone);
                     });
 
-                    debug!("Connection established and handlers started for {}", addr);
+                    debug!("Connection established and handlers started for {addr}");
                     return Ok(());
                 }
                 Ok(Err(e)) => {
@@ -427,10 +424,7 @@ where
             .await
             .contains_key(&connection_id)
         {
-            debug!(
-                "No existing connection, establishing one to {} at {}",
-                recipient, addr
-            );
+            debug!("No existing connection, establishing one to {recipient} at {addr}");
             self.connect_to_address(recipient.clone(), addr).await?;
         }
 
@@ -447,7 +441,7 @@ where
             sender.send(envelope).await.map_err(|_| {
                 TransportError::connection_failed(recipient, "Connection channel closed")
             })?;
-            debug!("Message sent successfully to {}", recipient);
+            debug!("Message sent successfully to {recipient}");
             Ok(())
         } else {
             Err(TransportError::connection_failed(

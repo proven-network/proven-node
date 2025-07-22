@@ -1,15 +1,13 @@
+use proven_logger::{StdoutLogger, init};
 use proven_messaging::stream::Stream;
 use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
 use proven_radix_stream::{RadixStream, RadixStreamOptions};
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
-    tracing::subscriber::set_global_default(
-        tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(tracing::Level::DEBUG)
-            .finish(),
-    )
-    .unwrap();
+    let logger = Arc::new(StdoutLogger::new());
+    init(logger).expect("Failed to initialize logger");
 
     let radix_stream = RadixStream::new(RadixStreamOptions {
         radix_gateway_origin: "https://mainnet.radixdlt.com",

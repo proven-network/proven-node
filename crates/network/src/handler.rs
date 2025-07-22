@@ -5,11 +5,11 @@ use crate::message::{HandledMessage, NetworkEnvelope, NetworkMessage};
 
 use bytes::Bytes;
 use dashmap::DashMap;
+use proven_logger::{debug, info};
 use proven_topology::NodeId;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use tracing::{debug, info};
 use uuid::Uuid;
 
 /// Type alias for async handler results
@@ -85,7 +85,7 @@ impl HandlerRegistry {
 
         self.handlers.insert(msg_type, boxed_handler);
 
-        info!("Registered handler for message type: {}", msg_type);
+        info!("Registered handler for message type: {msg_type}");
         Ok(())
     }
 
@@ -146,7 +146,7 @@ impl HandlerRegistry {
             .get(message_type.as_str())
             .ok_or_else(|| NetworkError::NoHandler(message_type.clone()))?;
 
-        debug!("Found handler for message type: {}", message_type);
+        debug!("Found handler for message type: {message_type}");
 
         match handler
             .handle_request(sender, &payload, correlation_id)

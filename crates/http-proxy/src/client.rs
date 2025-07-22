@@ -13,11 +13,11 @@ use axum::response::IntoResponse;
 use bytes::Bytes;
 use http::{HeaderMap, Method, StatusCode, Uri};
 use proven_bootable::Bootable;
+use proven_logger::{error, info};
 use proven_messaging::client::{Client, ClientResponseType};
 use proven_messaging::stream::InitializedStream;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{error, info};
 
 type MessagingClient<S> =
     <S as InitializedStream<Request, DeserializeError, SerializeError>>::Client<HttpServiceHandler>;
@@ -113,7 +113,7 @@ where
             .client::<_, HttpServiceHandler>(SERVICE_NAME.to_string(), self.client_options.clone())
             .await
             .map_err(|e| {
-                error!("HTTP proxy client setup failed: {}", e);
+                error!("HTTP proxy client setup failed: {e}");
                 Error::Client(e.to_string())
             })?;
 
@@ -129,7 +129,7 @@ where
         where
             S: InitializedStream<Request, DeserializeError, SerializeError>,
         {
-            info!(%method, %uri, "Received HTTP request");
+            info!("Received HTTP request {method} {uri}");
 
             let proxy_request = Request {
                 body: if body.is_empty() { None } else { Some(body) },
@@ -148,7 +148,7 @@ where
                     }
                 },
                 Err(e) => {
-                    error!("Failed to send request: {}", e);
+                    error!("Failed to send request: {e}");
                     (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         format!("Failed to communicate with backend: {e}"),
@@ -166,7 +166,7 @@ where
         info!("HTTP proxy listening on http://{}", addr);
 
         let listener = tokio::net::TcpListener::bind(addr).await.map_err(|e| {
-            error!("Failed to bind HTTP listener: {}", e);
+            error!("Failed to bind HTTP listener: {e}");
             Error::Io("Failed to bind HTTP listener", e)
         })?;
 
@@ -174,7 +174,7 @@ where
         self.task_tracker.spawn(async move {
             tokio::select! {
                 e = axum::serve(listener, app.into_make_service()).into_future() => {
-                    info!("http proxy client exited {:?}", e);
+                    info!("http proxy client exited {e:?}");
                 }
                 () = shutdown_token.cancelled() => {}
             };

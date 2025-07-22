@@ -2,8 +2,8 @@ use crate::ConnectArgs;
 use crate::error::{Error, Result};
 use crate::nitro::NitroCli;
 
+use proven_logger::info;
 use proven_logger_vsock::server::run_stdout_collector;
-use tracing::info;
 
 pub async fn connect(_args: ConnectArgs) -> Result<()> {
     if !NitroCli::is_enclave_running().await? {
@@ -18,7 +18,7 @@ pub async fn connect(_args: ConnectArgs) -> Result<()> {
     #[cfg(not(target_os = "linux"))]
     let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 5555));
 
-    info!("Starting log collector server on {:?}", addr);
+    info!("Starting log collector server on {addr:?}");
     info!("Connected to enclave logs. Press Ctrl+C to exit.");
 
     // Use the convenient run_stdout_collector function

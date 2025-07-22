@@ -8,10 +8,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_bootable::Bootable;
+use proven_logger::{debug, warn};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tracing::{debug, warn};
 
 use proven_messaging::service::{Service, ServiceError, ServiceOptions};
 use proven_messaging::service_handler::ServiceHandler;
@@ -223,7 +223,7 @@ where
             {
                 Ok(Ok(msgs)) => msgs,
                 Ok(Err(e)) => {
-                    warn!("Service failed to get initial stream messages: {:?}", e);
+                    warn!("Service failed to get initial stream messages: {e:?}");
                     0
                 }
                 Err(_) => {
@@ -248,7 +248,7 @@ where
                     ).await {
                         Ok(Ok(msgs)) => msgs,
                         Ok(Err(e)) => {
-                            warn!("Service failed to get stream messages: {:?}", e);
+                            warn!("Service failed to get stream messages: {e:?}");
                             continue;
                         }
                         Err(_) => {
@@ -268,15 +268,15 @@ where
                         ).await {
                             Ok(Ok(Some(msg))) => msg,
                             Ok(Ok(None)) => {
-                                debug!("Request {} not found in stream, skipping", last_checked_seq);
+                                debug!("Request {last_checked_seq} not found in stream, skipping");
                                 continue;
                             }
                             Ok(Err(e)) => {
-                                warn!("Service failed to get message {}: {:?}", last_checked_seq, e);
+                                warn!("Service failed to get message {last_checked_seq}: {e:?}");
                                 continue;
                             }
                             Err(_) => {
-                                warn!("Service get message {} timed out", last_checked_seq);
+                                warn!("Service get message {last_checked_seq} timed out");
                                 continue;
                             }
                         };
@@ -302,8 +302,7 @@ where
                         // Handle the request
                         if let Err(e) = handler.handle(msg, responder).await {
                             warn!(
-                                "Service handler error at sequence {}: {:?}",
-                                last_checked_seq, e
+                                "Service handler error at sequence {last_checked_seq}: {e:?}"
                             );
                         }
 
@@ -322,8 +321,7 @@ where
                         if !caught_up && last_checked_seq >= current_stream_msgs {
                             caught_up = true;
                             debug!(
-                                "Service caught up after processing {} requests",
-                                requests_processed
+                                "Service caught up after processing {requests_processed} requests"
                             );
                         }
                     }
@@ -331,10 +329,7 @@ where
             }
         }
 
-        debug!(
-            "Service shutting down after processing {} requests",
-            requests_processed
-        );
+        debug!("Service shutting down after processing {requests_processed} requests");
         Ok(())
     }
 }
@@ -380,10 +375,7 @@ where
             )
             .await
             {
-                warn!(
-                    "Service '{}' request processing error: {:?}",
-                    service_name, e
-                );
+                warn!("Service '{service_name}' request processing error: {e:?}");
             }
         });
 

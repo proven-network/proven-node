@@ -14,9 +14,9 @@ pub use stub::Proxy;
 #[cfg(not(target_os = "linux"))]
 mod stub {
     use super::*;
+    use proven_logger::info;
     use std::net::Ipv4Addr;
     use tokio::task::JoinHandle;
-    use tracing::info;
 
     pub struct Proxy;
 

@@ -4,12 +4,12 @@ use crate::{Error, ExecutionRequest, ExecutionResult, Runtime, RuntimeOptions};
 use std::marker::PhantomData;
 use std::thread;
 
+use proven_logger::error;
 use proven_radix_nft_verifier::RadixNftVerifier;
 use proven_sql::{SqlStore2, SqlStore3};
 use proven_store::{Store, Store2, Store3};
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tracing::error;
 
 /// A worker that handles execution requests using a runtime. Can be run async in tokio.
 ///

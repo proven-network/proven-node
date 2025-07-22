@@ -37,6 +37,7 @@ mod tests {
     use bytes::Bytes;
     use http::{HeaderMap, Method, StatusCode, Uri};
     use proven_bootable::Bootable;
+    use proven_logger_macros::logged_test;
     use proven_messaging::stream::InitializedStream;
     use proven_messaging_memory::{
         client::MemoryClientOptions,
@@ -46,7 +47,6 @@ mod tests {
     use serde::{Deserialize, Serialize};
     use tokio::net::TcpListener;
     use tokio::task::JoinHandle;
-    use tracing_test::traced_test;
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     struct EchoResponse {
@@ -105,7 +105,7 @@ mod tests {
         (addr, handle)
     }
 
-    #[traced_test]
+    #[logged_test]
     #[tokio::test]
     async fn test_http_proxy_integration() {
         let test_timeout = std::time::Duration::from_secs(5);

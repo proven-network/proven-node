@@ -35,10 +35,10 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use lru::LruCache;
 use proven_engine::{Client, StreamConfig};
+use proven_logger::{debug, info};
 use proven_store::{Store, Store1, Store2, Store3};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
-use tracing::{debug, info};
 
 /// Special stream name for key listing
 const KEY_INDEX_STREAM: &str = "__store_keys__";
@@ -331,13 +331,13 @@ where
                 .await
             {
                 Ok(()) => {
-                    info!("Created store stream: {}", stream_name);
+                    info!("Created store stream: {stream_name}");
                 }
                 Err(e) => {
                     // Check if error is because stream already exists
                     let error_msg = e.to_string();
                     if error_msg.contains("already exists") {
-                        debug!("Store stream {} already exists, continuing", stream_name);
+                        debug!("Store stream {stream_name} already exists, continuing");
                     } else {
                         return Err(e);
                     }
@@ -352,20 +352,14 @@ where
                 // Try to verify the stream is accessible by checking if it exists
                 match self.client.stream_exists(&stream_name).await {
                     Ok(true) => {
-                        debug!("Store stream {} verified as accessible", stream_name);
+                        debug!("Store stream {stream_name} verified as accessible");
                         break;
                     }
                     Ok(false) => {
-                        debug!(
-                            "Store stream {} not yet accessible, retrying...",
-                            stream_name
-                        );
+                        debug!("Store stream {stream_name} not yet accessible, retrying...");
                     }
                     Err(e) => {
-                        debug!(
-                            "Error checking store stream {}: {}, retrying...",
-                            stream_name, e
-                        );
+                        debug!("Error checking store stream {stream_name}: {e}, retrying...");
                     }
                 }
 
@@ -390,13 +384,13 @@ where
                 .await
             {
                 Ok(()) => {
-                    info!("Created key index stream: {}", key_index);
+                    info!("Created key index stream: {key_index}");
                 }
                 Err(e) => {
                     // Check if error is because stream already exists
                     let error_msg = e.to_string();
                     if error_msg.contains("already exists") {
-                        debug!("Key index stream {} already exists, continuing", key_index);
+                        debug!("Key index stream {key_index} already exists, continuing");
                     } else {
                         return Err(e);
                     }
@@ -409,20 +403,14 @@ where
             while retries < MAX_RETRIES_KEY_INDEX {
                 match self.client.stream_exists(&key_index).await {
                     Ok(true) => {
-                        debug!("Key index stream {} verified as accessible", key_index);
+                        debug!("Key index stream {key_index} verified as accessible");
                         break;
                     }
                     Ok(false) => {
-                        debug!(
-                            "Key index stream {} not yet accessible, retrying...",
-                            key_index
-                        );
+                        debug!("Key index stream {key_index} not yet accessible, retrying...");
                     }
                     Err(e) => {
-                        debug!(
-                            "Error checking key index stream {}: {}, retrying...",
-                            key_index, e
-                        );
+                        debug!("Error checking key index stream {key_index}: {e}, retrying...");
                     }
                 }
 
@@ -572,10 +560,7 @@ where
         }
 
         if total_messages > 0 {
-            debug!(
-                "Synced {} new messages for stream {}",
-                total_messages, stream_name
-            );
+            debug!("Synced {total_messages} new messages for stream {stream_name}");
         }
 
         Ok(())
@@ -654,7 +639,7 @@ where
             |bytes| match T::try_from(bytes.clone()) {
                 Ok(value) => Ok(Some(value)),
                 Err(e) => {
-                    debug!("Failed to deserialize value for key {}: {:?}", key, e);
+                    debug!("Failed to deserialize value for key {key}: {e:?}");
                     Ok(None)
                 }
             },

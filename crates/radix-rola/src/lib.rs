@@ -18,8 +18,8 @@ use util::{
     get_virtual_address_for_public_key, verify_proof_factory,
 };
 
+use proven_logger::error;
 use radix_common::network::NetworkDefinition;
-use tracing::error;
 
 /// Client for the Radix On Ledger Authenticator.
 #[derive(Debug)]
@@ -88,7 +88,7 @@ impl<'a> Rola<'a> {
             .get_entity_owner_keys(signed_challenge.clone().address)
             .await
             .map_err(|e| {
-                error!("Error getting entity owner keys: {:?}", e);
+                error!("Error getting entity owner keys: {e:?}");
                 e
             })
             .ok()

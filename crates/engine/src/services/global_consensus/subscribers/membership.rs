@@ -4,12 +4,12 @@ use crate::consensus::global::{GlobalConsensusLayer, GlobalRequest};
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::event::{EventHandler, EventPriority};
 use crate::services::membership::{ClusterFormationState, MembershipEvent};
+use proven_logger::{debug, error, info, warn};
 use proven_storage::{LogStorage, StorageAdaptor, StorageManager, StorageNamespace};
 use proven_topology::{NodeId, TopologyAdaptor, TopologyManager};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
 
 /// Type alias for the consensus layer
 type ConsensusLayer<S> =
@@ -121,7 +121,7 @@ where
                                     {
                                         raft_members.insert(member_id.clone(), node_info);
                                     } else {
-                                        error!("Could not find node info for member {}", member_id);
+                                        error!("Could not find node info for member {member_id}");
                                         return;
                                     }
                                 }
@@ -133,7 +133,7 @@ where
                             // Initialize cluster
                             let handler: &dyn GlobalRaftMessageHandler = consensus.as_ref();
                             if let Err(e) = handler.initialize_cluster(raft_members).await {
-                                error!("Failed to initialize Raft cluster: {}", e);
+                                error!("Failed to initialize Raft cluster: {e}");
                                 return;
                             }
 
@@ -184,7 +184,7 @@ where
                             info!("Successfully created default group through consensus");
                         }
                         Err(e) => {
-                            error!("Failed to create default group: {}", e);
+                            error!("Failed to create default group: {e}");
                         }
                     }
                 } else {

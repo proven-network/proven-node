@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use proven_logger::{debug, error, info, warn};
 use tokio::time::Duration;
-use tracing::{error, info, warn};
 
 use proven_network::NetworkManager;
 use proven_storage::{StorageAdaptor, StorageManager};
@@ -219,7 +219,7 @@ where
 
         // Stop all services (coordinator handles reverse order)
         if let Err(e) = self.coordinator.stop_all().await {
-            error!("Error stopping services: {}", e);
+            error!("Error stopping services: {e}");
         }
 
         // Note: We intentionally do NOT shut down the storage manager here
@@ -285,11 +285,11 @@ where
                                                 );
                                                 return Ok(());
                                             } else {
-                                                tracing::debug!("Default group exists but no leader elected yet");
+                                                debug!("Default group exists but no leader elected yet");
                                             }
                                         }
                                         Err(e) => {
-                                            tracing::debug!("Default group not fully initialized yet: {}", e);
+                                            debug!("Default group not fully initialized yet: {e}");
                                         }
                                     }
 
@@ -310,7 +310,7 @@ where
                     }
                     Err(e) => {
                         // Group might not exist in routing table yet
-                        tracing::debug!("Default group not in routing table yet: {}", e);
+                        debug!("Default group not in routing table yet: {e}");
                     }
                 }
 
