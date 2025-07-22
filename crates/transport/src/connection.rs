@@ -408,7 +408,8 @@ mod tests {
         ConnectionManager::new(attestor, governance, signing_key)
     }
 
-    #[proven_logger::logged_tokio_test]
+    #[tokio::test]
+    #[tracing_test::traced_test]
     async fn test_new_manager() {
         let manager = create_test_manager();
 
@@ -416,7 +417,8 @@ mod tests {
         assert_ne!(manager.our_node_id, NodeId::from_seed(0));
     }
 
-    #[proven_logger::logged_test]
+    #[test]
+    #[tracing_test::traced_test]
     fn test_manager_debug() {
         let manager = create_test_manager();
         let debug_str = format!("{manager:?}");
@@ -425,7 +427,8 @@ mod tests {
         assert!(debug_str.contains("our_node_id"));
     }
 
-    #[proven_logger::logged_tokio_test]
+    #[tokio::test]
+    #[tracing_test::traced_test]
     async fn test_prepare_outgoing_message() {
         let manager = create_test_manager();
 

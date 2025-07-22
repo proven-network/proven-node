@@ -1,13 +1,12 @@
 //! Binary entry point for SQL-based TUI
 
 use anyhow::Result;
-use proven_logger::info;
-use proven_logger_libsql::{LibsqlLogger, LibsqlLoggerConfig};
+use proven_logger_libsql::{LibsqlSubscriber, LibsqlSubscriberConfig};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
-use tracing::{Level, info, warn};
+use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -16,14 +15,16 @@ async fn main() -> Result<()> {
     let shutdown_requested = Arc::new(AtomicBool::new(false));
     setup_signal_handlers(shutdown_requested.clone())?;
 
-    // Create SQL logger first
-    let logger = LibsqlLogger::new(LibsqlLoggerConfig::default()).await?;
+    // Create SQL subscriber first
+    let subscriber = LibsqlSubscriber::new(LibsqlSubscriberConfig::default()).await?;
 
-    // Initialize the global logger
-    proven_logger::init(logger.clone()).expect("Failed to initialize logger");
+    // Initialize the global tracing subscriber
+    tracing_subscriber::registry()
+        .with(subscriber.clone())
+        .init();
 
-    // Create the application with the logger
-    let mut app = proven_local_tui::app::App::new(logger);
+    // Create the application with the subscriber
+    let mut app = proven_local_tui::app::App::new(subscriber);
 
     info!("Starting Proven Node TUI with SQL-based logging");
 
@@ -48,7 +49,8 @@ fn setup_signal_handlers(shutdown_requested: Arc<AtomicBool>) -> Result<()> {
         for sig in signals.forever() {
             match sig {
                 SIGINT => {
-                    info!("Received SIGINT (Ctrl+C), initiating graceful shutdown...");
+                    // Can't use tracing from here since we're in a different thread
+                    eprintln!("Received SIGINT (Ctrl+C), initiating graceful shutdown...");
                     shutdown_requested.store(true, Ordering::SeqCst);
                     break;
                 }
@@ -60,16 +62,4 @@ fn setup_signal_handlers(shutdown_requested: Arc<AtomicBool>) -> Result<()> {
     });
 
     Ok(())
-}
-
-/// Set up tracing/logging with integrated log writer
-fn setup_logging(log_writer: logs_writer::LogWriter) {
-    // Create integrated tracing layer (LogWriter implements Layer trait)
-    // Set up the subscriber to capture all log levels - filtering is done in the TUI
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::filter::LevelFilter::from_level(
-            Level::TRACE, // Capture all levels, let TUI filter them
-        ))
-        .with(log_writer)
-        .init();
 }

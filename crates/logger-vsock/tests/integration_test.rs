@@ -2,14 +2,16 @@
 
 #[cfg(test)]
 mod tests {
-    use proven_logger::{Level, LoggerExt};
     use proven_logger_vsock::{
-        client::{VsockLogger, VsockLoggerConfig},
+        LogLevel,
+        client::{VsockLoggerConfig, VsockSubscriber},
         server::{ChannelLogProcessor, VsockLogServerBuilder},
     };
     use std::sync::Arc;
     use std::time::Duration;
     use tokio::time::timeout;
+    use tracing::{debug, error, info, trace, warn};
+    use tracing_subscriber::prelude::*;
 
     #[tokio::test]
     async fn test_client_server_integration() {
@@ -37,22 +39,22 @@ mod tests {
         let client_config = VsockLoggerConfig::builder()
             .vsock_addr(addr)
             .batch_size(5)
-            .flush_interval(Duration::from_millis(50))
-            .min_level(Level::Info)
+            .batch_interval(Duration::from_millis(50))
+            .min_level(LogLevel::Info)
             .build();
 
-        let logger = Arc::new(
-            VsockLogger::new(client_config)
-                .await
-                .expect("Failed to create logger"),
-        );
+        let vsock_subscriber = VsockSubscriber::new(client_config)
+            .await
+            .expect("Failed to create subscriber");
 
-        // Initialize global logger
-        let _ = proven_logger::init(logger.clone());
+        // Initialize tracing
+        let _guard = tracing_subscriber::registry()
+            .with(vsock_subscriber)
+            .set_default();
 
         // Send some logs
         for i in 0..10 {
-            proven_logger::info!("Test log message {}", i);
+            info!("Test log message {}", i);
         }
 
         // Wait for batches to be sent
@@ -69,7 +71,7 @@ mod tests {
 
             // Verify batch contents
             for entry in &batch.entries {
-                assert_eq!(entry.level, Level::Info);
+                assert_eq!(entry.level, LogLevel::Info);
                 assert!(entry.message.starts_with("Test log message"));
             }
         }
@@ -106,22 +108,25 @@ mod tests {
         let client_config = VsockLoggerConfig::builder()
             .vsock_addr(addr)
             .batch_size(10)
-            .flush_interval(Duration::from_millis(50))
-            .min_level(Level::Info)
+            .batch_interval(Duration::from_millis(50))
+            .min_level(LogLevel::Info)
             .build();
 
-        let logger = Arc::new(
-            VsockLogger::new(client_config)
-                .await
-                .expect("Failed to create logger"),
-        );
+        let vsock_subscriber = VsockSubscriber::new(client_config)
+            .await
+            .expect("Failed to create subscriber");
+
+        // Initialize tracing
+        let _guard = tracing_subscriber::registry()
+            .with(vsock_subscriber)
+            .set_default();
 
         // Log at different levels
-        logger.trace("This should be filtered out");
-        logger.debug("This should also be filtered");
-        logger.info("This should be sent");
-        logger.warn("This should be sent too");
-        logger.error("And this");
+        trace!("This should be filtered out");
+        debug!("This should also be filtered");
+        info!("This should be sent");
+        warn!("This should be sent too");
+        error!("And this");
 
         // Force flush
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -129,9 +134,83 @@ mod tests {
         // Check received logs
         if let Ok(Some(batch)) = timeout(Duration::from_millis(100), receiver.recv()).await {
             assert_eq!(batch.entries.len(), 3);
-            assert_eq!(batch.entries[0].level, Level::Info);
-            assert_eq!(batch.entries[1].level, Level::Warn);
-            assert_eq!(batch.entries[2].level, Level::Error);
+            assert_eq!(batch.entries[0].level, LogLevel::Info);
+            assert_eq!(batch.entries[1].level, LogLevel::Warn);
+            assert_eq!(batch.entries[2].level, LogLevel::Error);
+        } else {
+            panic!("Did not receive expected batch");
+        }
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_span_context() {
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 5560));
+
+        // Create a channel processor
+        let (processor, mut receiver) = ChannelLogProcessor::new(100);
+
+        // Start server
+        let server = VsockLogServerBuilder::new(addr)
+            .processor(Arc::new(processor))
+            .build()
+            .await
+            .expect("Failed to build server");
+
+        let server_handle = tokio::spawn(async move {
+            let _ = server.serve().await;
+        });
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Create client
+        let client_config = VsockLoggerConfig::builder()
+            .vsock_addr(addr)
+            .batch_size(10)
+            .batch_interval(Duration::from_millis(50))
+            .build();
+
+        let vsock_subscriber = VsockSubscriber::new(client_config)
+            .await
+            .expect("Failed to create subscriber");
+
+        // Initialize tracing
+        let _guard = tracing_subscriber::registry()
+            .with(vsock_subscriber)
+            .set_default();
+
+        // Log with span context
+        {
+            let _span = tracing::info_span!("node:test-node-1").entered();
+            info!("Message with node context");
+
+            {
+                let _inner_span = tracing::info_span!("inner_operation").entered();
+                info!("Message in nested span");
+            }
+        }
+
+        // Force flush
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Check received logs
+        if let Ok(Some(batch)) = timeout(Duration::from_millis(100), receiver.recv()).await {
+            assert_eq!(batch.entries.len(), 2);
+
+            // First message should have node_id from span
+            assert_eq!(batch.entries[0].node_id, Some("test-node-1".to_string()));
+            assert_eq!(
+                batch.entries[0].component,
+                Some("node:test-node-1".to_string())
+            );
+
+            // Second message should also have node_id (inherited from parent span)
+            assert_eq!(batch.entries[1].node_id, Some("test-node-1".to_string()));
+            assert_eq!(
+                batch.entries[1].component,
+                Some("inner_operation".to_string())
+            );
         } else {
             panic!("Did not receive expected batch");
         }

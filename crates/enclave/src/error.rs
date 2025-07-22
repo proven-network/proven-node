@@ -137,8 +137,4 @@ pub enum Error {
     /// Logger VSOCK error.
     #[error(transparent)]
     LoggerVsock(#[from] proven_logger_vsock::Error),
-
-    /// Logger initialization error.
-    #[error("Logger initialization failed: {0}")]
-    LoggerInit(Box<dyn std::error::Error + Send + Sync>),
 }

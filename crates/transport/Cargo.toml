@@ -20,7 +20,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-proven-logger = { path = "../logger", features = ["test-support"] }
+tracing.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
@@ -28,3 +28,4 @@ proven-attestation-mock.workspace = true
 proven-topology-mock.workspace = true
 tokio.workspace = true
 tokio-test.workspace = true
+tracing-test.workspace = true

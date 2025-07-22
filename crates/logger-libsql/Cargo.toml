@@ -8,7 +8,8 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-proven-logger = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
 libsql = { workspace = true }
 tokio = { workspace = true, features = ["sync", "rt", "macros", "time"] }
 parking_lot = { workspace = true }

@@ -7,32 +7,32 @@ use crate::messages::{LogLevel, MAIN_THREAD_NODE_ID, TuiNodeId};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use libsql::Connection;
-use proven_logger::Level;
-use proven_logger_libsql::{LibsqlLogger, LogQuery, LogRow};
+use proven_logger_libsql::{LibsqlSubscriber, LogQuery, LogRow};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::interval;
+use tracing::Level;
 
 /// Convert TUI log level to logger level
 fn tui_level_to_logger_level(level: LogLevel) -> Level {
     match level {
-        LogLevel::Error => Level::Error,
-        LogLevel::Warn => Level::Warn,
-        LogLevel::Info => Level::Info,
-        LogLevel::Debug => Level::Debug,
-        LogLevel::Trace => Level::Trace,
+        LogLevel::Error => Level::ERROR,
+        LogLevel::Warn => Level::WARN,
+        LogLevel::Info => Level::INFO,
+        LogLevel::Debug => Level::DEBUG,
+        LogLevel::Trace => Level::TRACE,
     }
 }
 
 /// Convert logger level to TUI log level
 fn logger_level_to_tui_level(level: Level) -> LogLevel {
     match level {
-        Level::Error => LogLevel::Error,
-        Level::Warn => LogLevel::Warn,
-        Level::Info => LogLevel::Info,
-        Level::Debug => LogLevel::Debug,
-        Level::Trace => LogLevel::Trace,
+        Level::ERROR => LogLevel::Error,
+        Level::WARN => LogLevel::Warn,
+        Level::INFO => LogLevel::Info,
+        Level::DEBUG => LogLevel::Debug,
+        Level::TRACE => LogLevel::Trace,
     }
 }
 
@@ -116,10 +116,10 @@ pub struct SqlLogViewer {
 }
 
 impl SqlLogViewer {
-    /// Create a new log viewer connected to the logger
-    pub fn new(logger: &LibsqlLogger) -> Self {
+    /// Create a new log viewer connected to the subscriber
+    pub fn new(subscriber: &LibsqlSubscriber) -> Self {
         Self {
-            connection: logger.get_connection(),
+            connection: subscriber.get_connection(),
             state: LogViewerState::default(),
         }
     }
@@ -294,11 +294,11 @@ impl SqlLogViewer {
         // Level filter
         let level = tui_level_to_logger_level(self.state.level_filter);
         let levels = match level {
-            Level::Error => vec!["ERROR"],
-            Level::Warn => vec!["ERROR", "WARN"],
-            Level::Info => vec!["ERROR", "WARN", "INFO"],
-            Level::Debug => vec!["ERROR", "WARN", "INFO", "DEBUG"],
-            Level::Trace => vec!["ERROR", "WARN", "INFO", "DEBUG", "TRACE"],
+            Level::ERROR => vec!["ERROR"],
+            Level::WARN => vec!["ERROR", "WARN"],
+            Level::INFO => vec!["ERROR", "WARN", "INFO"],
+            Level::DEBUG => vec!["ERROR", "WARN", "INFO", "DEBUG"],
+            Level::TRACE => vec!["ERROR", "WARN", "INFO", "DEBUG", "TRACE"],
         };
 
         let placeholders = levels.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
@@ -336,9 +336,9 @@ pub struct BackgroundLogViewer {
 
 impl BackgroundLogViewer {
     /// Create a new background viewer
-    pub fn new(logger: &LibsqlLogger) -> Self {
+    pub fn new(subscriber: &LibsqlSubscriber) -> Self {
         Self {
-            viewer: SqlLogViewer::new(logger),
+            viewer: SqlLogViewer::new(subscriber),
             update_interval: Duration::from_millis(100),
         }
     }

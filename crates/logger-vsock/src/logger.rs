@@ -1,11 +1,10 @@
-//! VSOCK logger implementation
+//! VSOCK tracing subscriber implementation
 
 pub use crate::config::{VsockLoggerConfig, VsockLoggerConfigBuilder};
 use crate::{
     error::Result,
     messages::{LogBatch, LogEntry},
 };
-use proven_logger::{Context, Level, Logger, Record};
 use proven_vsock_rpc::RpcClient;
 use std::sync::{
     Arc,
@@ -13,24 +12,23 @@ use std::sync::{
 };
 use tokio::sync::mpsc;
 use tokio::time::interval;
-use tracing::{debug, error, warn};
+use tracing::{Event, Level, Subscriber, debug, error, warn};
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::{Layer, layer::Context};
 
-/// VSOCK-based logger that batches and sends logs to a remote collector
-pub struct VsockLogger {
+/// VSOCK-based tracing subscriber that batches and sends logs to a remote collector
+#[derive(Clone)]
+pub struct VsockSubscriber {
     /// Configuration
     config: VsockLoggerConfig,
     /// Channel sender for log entries
     sender: mpsc::Sender<LogEntry>,
     /// Sequence counter for batches
     sequence: Arc<AtomicU64>,
-    /// Logger context
-    context: Context,
-    /// Handle to the background worker
-    _worker_handle: tokio::task::JoinHandle<()>,
 }
 
-impl VsockLogger {
-    /// Create a new VSOCK logger with the given configuration
+impl VsockSubscriber {
+    /// Create a new VSOCK subscriber with the given configuration
     pub async fn new(config: VsockLoggerConfig) -> Result<Self> {
         let (sender, receiver) = mpsc::channel(config.channel_buffer_size);
         let sequence = Arc::new(AtomicU64::new(0));
@@ -41,11 +39,11 @@ impl VsockLogger {
         // Spawn background worker
         let worker_config = config.clone();
         let worker_sequence = sequence.clone();
-        let worker_handle = tokio::spawn(async move {
+        tokio::spawn(async move {
             if let Err(e) =
                 Self::worker_loop(receiver, rpc_client, worker_config, worker_sequence).await
             {
-                error!("VSOCK logger worker failed: {}", e);
+                error!("VSOCK subscriber worker failed: {}", e);
             }
         });
 
@@ -53,16 +51,7 @@ impl VsockLogger {
             config,
             sender,
             sequence,
-            context: Context::new("vsock"),
-            _worker_handle: worker_handle,
         })
-    }
-
-    /// Create a new VSOCK logger with context
-    pub async fn with_context(config: VsockLoggerConfig, context: Context) -> Result<Self> {
-        let mut logger = Self::new(config).await?;
-        logger.context = context;
-        Ok(logger)
     }
 
     /// Background worker that batches and sends logs
@@ -73,8 +62,7 @@ impl VsockLogger {
         sequence: Arc<AtomicU64>,
     ) -> Result<()> {
         let mut batch = Vec::with_capacity(config.batch_size);
-        let mut flush_interval = interval(config.flush_interval);
-        flush_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut interval = interval(config.batch_interval);
 
         loop {
             tokio::select! {
@@ -88,15 +76,16 @@ impl VsockLogger {
                     }
                 }
 
-                // Flush on interval
-                _ = flush_interval.tick() => {
+                // Periodic flush
+                _ = interval.tick() => {
                     if !batch.is_empty() {
                         Self::send_batch(&client, &mut batch, &sequence).await;
                     }
                 }
 
-                // Channel closed, flush remaining and exit
+                // Channel closed
                 else => {
+                    // Send any remaining logs
                     if !batch.is_empty() {
                         Self::send_batch(&client, &mut batch, &sequence).await;
                     }
@@ -136,22 +125,65 @@ impl VsockLogger {
     }
 }
 
-impl Logger for VsockLogger {
-    fn log(&self, record: Record) {
+impl<S> Layer<S> for VsockSubscriber
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
         // Apply level filter
-        if record.level < self.config.min_level {
+        let level = *event.metadata().level();
+        if level < Level::from(self.config.min_level) {
             return;
         }
 
-        // Add context if not present
-        let record = if record.context.is_none() {
-            record.with_context(&self.context)
-        } else {
-            record
-        };
+        // Get timestamp
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
 
-        // Convert to log entry
-        let entry = LogEntry::from(record);
+        // Extract message
+        let mut message = String::new();
+        let mut visitor = MessageVisitor(&mut message);
+        event.record(&mut visitor);
+
+        // Extract span context
+        let (node_id, component, span_id) =
+            if let Some(span) = ctx.current_span().id().and_then(|id| ctx.span(id)) {
+                let mut node_id: Option<String> = None;
+                let component = span.name().to_string();
+                let span_id = Some(span.id().into_u64());
+
+                // Walk up the span tree looking for node_id
+                let mut current_span = Some(span);
+                while let Some(span_ref) = current_span {
+                    // Check span name for node pattern
+                    if span_ref.name().starts_with("node:") {
+                        node_id = Some(span_ref.name()[5..].to_string());
+                        break;
+                    }
+                    current_span = span_ref.parent();
+                }
+
+                (node_id, Some(component), span_id)
+            } else {
+                (None, None, None)
+            };
+
+        // Get metadata
+        let metadata = event.metadata();
+
+        let entry = LogEntry {
+            level: level.into(),
+            target: metadata.target().to_string(),
+            message,
+            file: metadata.file().map(|s| s.to_string()),
+            line: metadata.line(),
+            node_id,
+            component,
+            span_id,
+            timestamp,
+        };
 
         // Try to send to channel
         match self.sender.try_send(entry.clone()) {
@@ -174,30 +206,22 @@ impl Logger for VsockLogger {
             }
         }
     }
-
-    fn flush(&self) {
-        // VSOCK logger flushes automatically on interval
-        // Could implement manual flush by sending a signal to worker
-    }
-
-    fn is_enabled(&self, level: Level) -> bool {
-        level >= self.config.min_level && level.is_enabled_static()
-    }
-
-    fn with_context(&self, context: Context) -> Arc<dyn Logger> {
-        Arc::new(Self {
-            config: self.config.clone(),
-            sender: self.sender.clone(),
-            sequence: self.sequence.clone(),
-            context: self.context.merge(&context),
-            _worker_handle: tokio::spawn(async {}), // Dummy handle for clone
-        })
-    }
 }
 
-// Implement Drop to ensure graceful shutdown
-impl Drop for VsockLogger {
-    fn drop(&mut self) {
-        // The channel will be dropped, causing the worker to exit and flush
+/// Visitor to extract the message from an event
+struct MessageVisitor<'a>(&'a mut String);
+
+impl<'a> tracing::field::Visit for MessageVisitor<'a> {
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        if field.name() == "message" {
+            self.0.push_str(value);
+        }
+    }
+
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if field.name() == "message" {
+            use std::fmt::Write;
+            let _ = write!(self.0, "{:?}", value);
+        }
     }
 }

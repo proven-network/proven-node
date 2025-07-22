@@ -1,15 +1,15 @@
 //! Message types for VSOCK logging protocol
 
 use bytes::Bytes;
-use proven_logger::{Level, Record};
 use proven_vsock_rpc::{RpcMessage, error::CodecError};
 use serde::{Deserialize, Serialize};
+use tracing::Level;
 
 /// A single log entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogEntry {
     /// Log level
-    pub level: Level,
+    pub level: LogLevel,
     /// Target module
     pub target: String,
     /// Log message
@@ -20,28 +20,49 @@ pub struct LogEntry {
     pub line: Option<u32>,
     /// Node ID if available
     pub node_id: Option<String>,
+    /// Component/span name
+    pub component: Option<String>,
+    /// Span ID
+    pub span_id: Option<u64>,
     /// Timestamp (milliseconds since epoch)
     pub timestamp: u64,
 }
 
-impl From<Record<'_>> for LogEntry {
-    fn from(record: Record) -> Self {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+/// Serializable log level
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum LogLevel {
+    /// Error level
+    Error,
+    /// Warn level
+    Warn,
+    /// Info level
+    Info,
+    /// Debug level
+    Debug,
+    /// Trace level
+    Trace,
+}
 
-        Self {
-            level: record.level,
-            target: record.target.to_string(),
-            message: record.message.to_string(),
-            file: record.file.map(|s| s.to_string()),
-            line: record.line,
-            node_id: record
-                .context
-                .and_then(|ctx| ctx.node_id.as_ref())
-                .map(|id| id.to_string()),
-            timestamp,
+impl From<Level> for LogLevel {
+    fn from(level: Level) -> Self {
+        match level {
+            Level::ERROR => LogLevel::Error,
+            Level::WARN => LogLevel::Warn,
+            Level::INFO => LogLevel::Info,
+            Level::DEBUG => LogLevel::Debug,
+            Level::TRACE => LogLevel::Trace,
+        }
+    }
+}
+
+impl From<LogLevel> for Level {
+    fn from(level: LogLevel) -> Self {
+        match level {
+            LogLevel::Error => Level::ERROR,
+            LogLevel::Warn => Level::WARN,
+            LogLevel::Info => Level::INFO,
+            LogLevel::Debug => Level::DEBUG,
+            LogLevel::Trace => Level::TRACE,
         }
     }
 }

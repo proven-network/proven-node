@@ -23,63 +23,27 @@ pub struct StdoutLogProcessor;
 impl LogProcessor for StdoutLogProcessor {
     async fn process_batch(&self, batch: LogBatch) -> Result<()> {
         for entry in batch.entries {
-            println!(
-                "[{}] {} [{}] {}{}",
-                entry.timestamp,
-                entry.level,
-                entry.target,
-                entry
-                    .node_id
-                    .as_ref()
-                    .map(|id| format!(" <{id}> "))
-                    .unwrap_or_default(),
-                entry.message
-            );
-        }
-        Ok(())
-    }
-}
+            let mut output = format!("[{}] {:?} [{}]", entry.timestamp, entry.level, entry.target,);
 
-/// Log processor that forwards to another logger
-pub struct ForwardingLogProcessor {
-    logger: Arc<dyn proven_logger::Logger>,
-}
-
-impl ForwardingLogProcessor {
-    /// Create a new forwarding processor
-    pub fn new(logger: Arc<dyn proven_logger::Logger>) -> Self {
-        Self { logger }
-    }
-}
-
-#[async_trait::async_trait]
-impl LogProcessor for ForwardingLogProcessor {
-    async fn process_batch(&self, batch: LogBatch) -> Result<()> {
-        use proven_logger::Record;
-
-        for entry in batch.entries {
-            // Convert target to 'static str
-            let target: &'static str = Box::leak(entry.target.into_boxed_str());
-
-            let mut record = Record::new(entry.level, entry.message).with_target(target);
-
-            if let (Some(file), Some(line)) = (entry.file, entry.line) {
-                // Convert file to 'static str
-                let file: &'static str = Box::leak(file.into_boxed_str());
-                record = record.with_location(file, line);
+            // Add node_id if present
+            if let Some(ref node_id) = entry.node_id {
+                output.push_str(&format!(" <{}>", node_id));
             }
 
-            // Handle context separately since it has a different lifetime
-            if let Some(node_id) = entry.node_id {
-                // For context, we need to use a different approach
-                // Since the logger.log() method takes ownership of the record,
-                // we can't use a local context. Instead, let's add the node_id
-                // to the message or create an owned record.
-                let msg = format!("[node:{}] {}", node_id, record.message);
-                record.message = msg.into();
+            // Add component/span if present
+            if let Some(ref component) = entry.component {
+                output.push_str(&format!(" [{}]", component));
             }
 
-            self.logger.log(record);
+            // Add message
+            output.push_str(&format!(" {}", entry.message));
+
+            // Add file:line if present
+            if let (Some(file), Some(line)) = (&entry.file, entry.line) {
+                output.push_str(&format!(" @ {}:{}", file, line));
+            }
+
+            println!("{}", output);
         }
         Ok(())
     }

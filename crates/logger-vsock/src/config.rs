@@ -1,5 +1,6 @@
 //! Configuration for VSOCK logger
 
+use crate::messages::LogLevel;
 use std::time::Duration;
 
 /// Configuration for the VSOCK logger client
@@ -17,7 +18,7 @@ pub struct VsockLoggerConfig {
     pub batch_size: usize,
 
     /// Maximum time to wait before flushing a batch
-    pub flush_interval: Duration,
+    pub batch_interval: Duration,
 
     /// Buffer size for the log channel
     pub channel_buffer_size: usize,
@@ -26,7 +27,7 @@ pub struct VsockLoggerConfig {
     pub drop_on_full: bool,
 
     /// Minimum log level to send
-    pub min_level: proven_logger::Level,
+    pub min_level: LogLevel,
 }
 
 impl Default for VsockLoggerConfig {
@@ -40,10 +41,10 @@ impl Default for VsockLoggerConfig {
             #[cfg(not(target_os = "linux"))]
             vsock_addr: std::net::SocketAddr::from(([127, 0, 0, 1], 5555)),
             batch_size: 100,
-            flush_interval: Duration::from_millis(100),
+            batch_interval: Duration::from_millis(100),
             channel_buffer_size: 10000,
             drop_on_full: true,
-            min_level: proven_logger::Level::Info,
+            min_level: LogLevel::Info,
         }
     }
 }
@@ -78,9 +79,9 @@ impl VsockLoggerConfigBuilder {
         self
     }
 
-    /// Set the flush interval
-    pub fn flush_interval(mut self, interval: Duration) -> Self {
-        self.config.flush_interval = interval;
+    /// Set the batch interval (was flush_interval)
+    pub fn batch_interval(mut self, interval: Duration) -> Self {
+        self.config.batch_interval = interval;
         self
     }
 
@@ -97,7 +98,7 @@ impl VsockLoggerConfigBuilder {
     }
 
     /// Set the minimum log level
-    pub fn min_level(mut self, level: proven_logger::Level) -> Self {
+    pub fn min_level(mut self, level: LogLevel) -> Self {
         self.config.min_level = level;
         self
     }

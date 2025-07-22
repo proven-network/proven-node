@@ -41,8 +41,7 @@ members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
-    "crates/logger",
-    "crates/logger-macros",
+    "crates/logger-libsql",
     "crates/logger-vsock",
     "crates/messaging",
     "crates/messaging-engine",
@@ -85,7 +84,7 @@ members = [
     "crates/vsock-cac",
     "crates/vsock-fuse",
     "crates/vsock-proxy",
-    "crates/vsock-rpc", "crates/logger-libsql",
+    "crates/vsock-rpc",
 ]
 default-members = [
     "crates/applications",
@@ -120,8 +119,7 @@ default-members = [
     "crates/local-tui",
     "crates/locks",
     "crates/locks-memory",
-    "crates/logger",
-    "crates/logger-macros",
+    "crates/logger-libsql",
     "crates/logger-vsock",
     "crates/messaging",
     "crates/messaging-engine",
@@ -172,7 +170,7 @@ aead-gcm-stream = "0.4.0"
 aes = "0.8.4"
 aes-gcm = "0.10"
 aes-kw = "0.2.1"
-alloy = { version = "1.0.17", features = [
+alloy = { version = "1.0.3", features = [
     "rpc-types",
     "consensus",
     "rlp",
@@ -184,8 +182,8 @@ alloy = { version = "1.0.17", features = [
     "json-rpc",
     "signers",
 ] }
-alloy-sol-types = "1.2.1"
-alloy-trie = "0.8.1"
+alloy-sol-types = "1.0.3"
+alloy-trie = { version = "0.9.0", features = ["ethereum"] }
 anyhow = "1.0.98"
 argon2 = "0.5"
 asn1-rs = "0.7.1"
@@ -469,9 +467,7 @@ proven-local-cli = { path = "crates/local-cli" }
 proven-local-tui = { path = "crates/local-tui" }
 proven-locks = { path = "crates/locks" }
 proven-locks-memory = { path = "crates/locks-memory" }
-proven-logger = { path = "crates/logger", features = ["log-compat", "release-max-level-info", "tracing-compat"] }
 proven-logger-libsql = { path = "crates/logger-libsql" }
-proven-logger-macros = { path = "crates/logger-macros" }
 proven-logger-vsock = { path = "crates/logger-vsock" }
 proven-messaging = { path = "crates/messaging" }
 proven-messaging-engine = { path = "crates/messaging-engine" }

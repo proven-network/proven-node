@@ -8,7 +8,6 @@ repository.workspace = true
 
 [dependencies]
 # Core dependencies
-proven-logger = { path = "../logger" }
 proven-vsock-rpc = { path = "../vsock-rpc" }
 
 # Async runtime
@@ -26,9 +25,10 @@ thiserror = { workspace = true }
 # Async trait for server
 async-trait = { workspace = true }
 
-# Logging (for internal debugging)
+# Tracing
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
-proven-logger = { path = "../logger", features = ["test-support"] }

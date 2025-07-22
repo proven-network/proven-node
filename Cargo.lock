@@ -140,9 +140,9 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "alloy"
-version = "1.0.23"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ecf116474faea3e30ecb03cb14548598ca8243d5316ce50f820e67b3e848473"
+checksum = "8a66e45d962abb2e1e8a505d97af34d92137b82f6cabbfb373406a9220dc7dca"
 dependencies = [
  "alloy-consensus",
  "alloy-contract",
@@ -182,7 +182,7 @@ dependencies = [
  "alloy-primitives",
  "alloy-rlp",
  "alloy-serde 1.0.23",
- "alloy-trie 0.9.0",
+ "alloy-trie",
  "alloy-tx-macros",
  "auto_impl",
  "c-kzg",
@@ -235,9 +235,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-core"
-version = "1.3.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d47400608fc869727ad81dba058d55f97b29ad8b5c5256d9598523df8f356ab6"
+checksum = "ad31216895d27d307369daa1393f5850b50bbbd372478a9fa951c095c210627e"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -248,9 +248,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-dyn-abi"
-version = "1.3.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9e8a436f0aad7df8bb47f144095fba61202265d9f5f09a70b0e3227881a668e"
+checksum = "7b95b3deca680efc7e9cba781f1a1db352fa1ea50e6384a514944dcf4419e652"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -350,7 +350,7 @@ dependencies = [
  "alloy-eips 1.0.23",
  "alloy-primitives",
  "alloy-serde 1.0.23",
- "alloy-trie 0.9.0",
+ "alloy-trie",
  "serde",
  "serde_with",
 ]
@@ -733,9 +733,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-types"
-version = "1.3.0"
+version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a285b46e3e0c177887028278f04cc8262b76fd3b8e0e20e93cea0a58c35f5ac5"
+checksum = "58377025a47d8b8426b3e4846a251f2c1991033b27f517aade368146f6ab1dfe"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -783,22 +783,6 @@ dependencies = [
 
 [[package]]
 name = "alloy-trie"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "983d99aa81f586cef9dae38443245e585840fcf0fc58b09aee0b1f27aed1d500"
-dependencies = [
- "alloy-primitives",
- "alloy-rlp",
- "arrayvec",
- "derive_more 2.0.1",
- "nybbles 0.3.4",
- "serde",
- "smallvec",
- "tracing",
-]
-
-[[package]]
-name = "alloy-trie"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bada1fc392a33665de0dc50d401a3701b62583c655e3522a323490a5da016962"
@@ -807,7 +791,7 @@ dependencies = [
  "alloy-rlp",
  "arrayvec",
  "derive_more 2.0.1",
- "nybbles 0.4.1",
+ "nybbles",
  "serde",
  "smallvec",
  "tracing",
@@ -6625,7 +6609,7 @@ name = "helios-core"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "alloy-trie 0.8.1",
+ "alloy-trie",
  "async-trait",
  "eyre",
  "futures",
@@ -6656,7 +6640,7 @@ name = "helios-ethereum"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "alloy-trie 0.8.1",
+ "alloy-trie",
  "async-trait",
  "chrono",
  "dirs 5.0.1",
@@ -8953,19 +8937,6 @@ dependencies = [
 
 [[package]]
 name = "nybbles"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8983bb634df7248924ee0c4c3a749609b5abcb082c28fffe3254b3eb3602b307"
-dependencies = [
- "alloy-rlp",
- "const-hex",
- "proptest",
- "serde",
- "smallvec",
-]
-
-[[package]]
-name = "nybbles"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "675b3a54e5b12af997abc8b6638b0aee51a28caedab70d4967e0d5db3a3f1d06"
@@ -10413,7 +10384,6 @@ dependencies = [
  "proven-instance-details",
  "proven-kms",
  "proven-locks-memory",
- "proven-logger",
  "proven-logger-vsock",
  "proven-messaging",
  "proven-messaging-memory",
@@ -10931,23 +10901,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-logger"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "log",
- "once_cell",
- "proven-logger-macros",
- "serde",
- "serde_json",
- "termcolor",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
- "tracing-subscriber 0.3.19",
-]
-
-[[package]]
 name = "proven-logger-libsql"
 version = "0.1.0"
 dependencies = [
@@ -10956,17 +10909,9 @@ dependencies = [
  "futures",
  "libsql",
  "parking_lot 0.12.4",
- "proven-logger",
  "tokio",
-]
-
-[[package]]
-name = "proven-logger-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.104",
+ "tracing",
+ "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -10976,13 +10921,14 @@ dependencies = [
  "async-trait",
  "bincode",
  "bytes",
- "proven-logger",
+ "chrono",
  "proven-vsock-rpc",
  "serde",
  "serde_json",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
+ "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
@@ -11555,11 +11501,11 @@ dependencies = [
  "hex",
  "proven-attestation",
  "proven-bootable",
- "proven-logger",
  "proven-topology-mock",
  "serde",
  "thiserror 2.0.12",
  "tokio",
+ "tracing",
  "url",
 ]
 
@@ -11614,7 +11560,6 @@ dependencies = [
  "futures",
  "proven-attestation",
  "proven-attestation-mock",
- "proven-logger",
  "proven-topology",
  "proven-topology-mock",
  "proven-verification",
@@ -11624,6 +11569,8 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-test",
+ "tracing",
+ "tracing-test",
  "uuid",
 ]
 

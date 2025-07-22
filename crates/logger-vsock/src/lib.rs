@@ -15,15 +15,15 @@ mod config;
 mod logger;
 pub mod server;
 
-/// Client-side logger implementation
+/// Client-side subscriber implementation
 pub mod client {
-    pub use crate::logger::{VsockLogger, VsockLoggerConfig, VsockLoggerConfigBuilder};
+    pub use crate::logger::{VsockLoggerConfig, VsockLoggerConfigBuilder, VsockSubscriber};
 }
 
 // Re-export common types at crate root
 pub use error::{Error, Result};
-pub use messages::{LogBatch, LogBatchAck, LogEntry};
+pub use messages::{LogBatch, LogBatchAck, LogEntry, LogLevel};
 pub use server::{
-    ChannelLogProcessor, ForwardingLogProcessor, LogProcessor, StdoutLogProcessor,
-    VsockLogCollector, VsockLogServerBuilder, run_stdout_collector,
+    ChannelLogProcessor, LogProcessor, StdoutLogProcessor, VsockLogCollector,
+    VsockLogServerBuilder, run_stdout_collector,
 };

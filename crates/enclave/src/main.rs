@@ -18,7 +18,7 @@ mod speedtest;
 use bootstrap::Bootstrap;
 use error::{Error, Result};
 use node::EnclaveNode;
-use proven_logger_vsock::client::{VsockLogger, VsockLoggerConfig};
+use proven_logger_vsock::client::{VsockLoggerConfig, VsockSubscriber};
 
 use std::sync::Arc;
 
@@ -113,6 +113,8 @@ impl CacCommandHandler for EnclaveHandler {
 // TODO: Don't hardcode threads
 #[tokio::main(worker_threads = 12)]
 async fn main() -> Result<()> {
+    use tracing_subscriber::prelude::*;
+
     // Configure logging
     std::panic::set_hook(Box::new(panic_hook));
 
@@ -126,14 +128,13 @@ async fn main() -> Result<()> {
             std::net::SocketAddr::from(([127, 0, 0, 1], 5555)),
         )
         .batch_size(50)
-        .flush_interval(std::time::Duration::from_millis(100))
+        .batch_interval(std::time::Duration::from_millis(100))
         .build();
 
-    let vsock_logger = Arc::new(VsockLogger::new(logger_config).await?);
+    let vsock_subscriber = VsockSubscriber::new(logger_config).await?;
 
-    // Initialize proven-logger with compatibility bridges for tracing
-    proven_logger::compat::init_with_bridges(vsock_logger)
-        .map_err(|e| Error::LoggerInit(format!("Failed to initialize logger: {e}").into()))?;
+    // Initialize tracing with the VSOCK subscriber
+    tracing_subscriber::registry().with(vsock_subscriber).init();
 
     fdlimit::raise_fdlimit();
 

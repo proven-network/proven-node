@@ -19,8 +19,7 @@ use crossterm::{
 };
 use proven_attestation_mock::MockAttestor;
 use proven_local::NodeStatus;
-use proven_logger::info;
-use proven_logger_libsql::LibsqlLogger;
+use proven_logger_libsql::LibsqlSubscriber;
 use proven_topology::Version;
 use proven_topology_mock::MockTopologyAdaptor;
 use ratatui::{Terminal, backend::CrosstermBackend};
@@ -57,8 +56,8 @@ pub struct App {
     node_manager: Arc<NodeManager>,
     /// RPC client for communication with nodes
     rpc_client: RpcClient,
-    /// SQL logger instance
-    logger: Arc<LibsqlLogger>,
+    /// SQL subscriber instance
+    subscriber: LibsqlSubscriber,
     /// Log viewer communication channels
     log_request_tx: tokio::sync::mpsc::UnboundedSender<ViewerRequest>,
     log_response_rx: tokio::sync::mpsc::UnboundedReceiver<ViewerResponse>,
@@ -73,9 +72,9 @@ impl App {
     ///
     /// # Arguments
     ///
-    /// * `logger` - The SQL logger instance to use
+    /// * `subscriber` - The SQL subscriber instance to use
     #[must_use]
-    pub fn new(logger: Arc<LibsqlLogger>) -> Self {
+    pub fn new(subscriber: LibsqlSubscriber) -> Self {
         // Create shared governance synchronously
         let governance = Arc::new(Self::create_shared_governance());
 
@@ -88,7 +87,7 @@ impl App {
         let (log_response_tx, log_response_rx) = tokio::sync::mpsc::unbounded_channel();
 
         // Start background log viewer
-        let viewer = BackgroundLogViewer::new(&logger);
+        let viewer = BackgroundLogViewer::new(&subscriber);
         tokio::spawn(viewer.run(log_request_rx, log_response_tx));
 
         // Create node manager with clean interface
@@ -103,7 +102,7 @@ impl App {
             ui_state: UiState::new(),
             node_manager,
             rpc_client,
-            logger,
+            subscriber,
             log_request_tx,
             log_response_rx,
             cached_logs: Vec::new(),
@@ -130,15 +129,10 @@ impl App {
         self.shutdown_flag = Some(shutdown_flag);
     }
 
-    /// Get the logger for external use
+    /// Get the subscriber for external use
     #[must_use]
-    pub fn get_logger(&self) -> Arc<LibsqlLogger> {
-        self.logger.clone()
-    }
-
-    /// Set the shutdown flag for signal handling
-    pub fn set_shutdown_flag(&mut self, shutdown_flag: Arc<AtomicBool>) {
-        self.shutdown_flag = Some(shutdown_flag);
+    pub fn get_subscriber(&self) -> LibsqlSubscriber {
+        self.subscriber.clone()
     }
 
     /// Run the application with synchronous event handling
