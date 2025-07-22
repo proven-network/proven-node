@@ -3,11 +3,12 @@
 use crate::messages::{LogEntry, LogLevel, MAIN_THREAD_NODE_ID, TuiNodeId};
 use anyhow::{Context, Result};
 use chrono::Utc;
+use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
 use parking_lot::{Mutex, RwLock};
 use rusqlite::{Connection, params};
 use std::fmt::Write as FmtWrite;
 use std::sync::Arc;
-use std::{sync::mpsc, thread, time::Duration};
+use std::{cell::RefCell, thread, time::Duration};
 use tracing::{
     Event, Subscriber, error,
     field::{Field, Visit},
@@ -15,6 +16,11 @@ use tracing::{
 };
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context as LayerContext;
+
+thread_local! {
+    /// Thread-local buffer for formatting node IDs to reduce allocations
+    static NODE_ID_BUFFER: RefCell<String> = RefCell::new(String::with_capacity(32));
+}
 
 /// SQL for creating the logs table
 const CREATE_TABLE_SQL: &str = r"
@@ -56,7 +62,7 @@ struct LogBatch {
 impl LogBatch {
     fn new() -> Self {
         Self {
-            entries: Vec::with_capacity(1000),
+            entries: Vec::with_capacity(2000),
         }
     }
 
@@ -79,13 +85,13 @@ impl LogBatch {
 
 /// Async log writer that runs in background thread
 struct AsyncLogWriter {
-    command_receiver: mpsc::Receiver<LogWriterCommand>,
+    command_receiver: Receiver<LogWriterCommand>,
     connection: Arc<Mutex<Connection>>,
 }
 
 impl AsyncLogWriter {
     fn new(
-        command_receiver: mpsc::Receiver<LogWriterCommand>,
+        command_receiver: Receiver<LogWriterCommand>,
         connection: Arc<Mutex<Connection>>,
     ) -> Self {
         info!("Created in-memory SQL log writer");
@@ -100,8 +106,10 @@ impl AsyncLogWriter {
         info!("Starting async log writer thread");
 
         let mut batch = LogBatch::new();
-        let batch_interval = Duration::from_millis(10);
-        let max_batch_size = 1000;
+        // Reduced interval for lower latency while still batching effectively
+        let batch_interval = Duration::from_millis(5);
+        // Increased batch size to reduce transaction overhead
+        let max_batch_size = 2000;
 
         let mut last_flush = std::time::Instant::now();
 
@@ -128,16 +136,19 @@ impl AsyncLogWriter {
                     }
                     break;
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // Periodic flush
-                    if !batch.is_empty() && last_flush.elapsed() >= batch_interval {
+                Err(RecvTimeoutError::Timeout) => {
+                    // Periodic flush - also flush if we have a reasonable number of logs
+                    // This ensures logs appear quickly even under light load
+                    if !batch.is_empty()
+                        && (last_flush.elapsed() >= batch_interval || batch.len() >= 50)
+                    {
                         if let Err(e) = self.flush_batch(&mut batch) {
                             error!("Failed to flush batch: {}", e);
                         }
                         last_flush = std::time::Instant::now();
                     }
                 }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(RecvTimeoutError::Disconnected) => {
                     break;
                 }
             }
@@ -154,6 +165,11 @@ impl AsyncLogWriter {
         let mut conn = self.connection.lock();
         let tx = conn.transaction().context("Failed to start transaction")?;
 
+        // Prepare statement once for the batch
+        let mut stmt = tx
+            .prepare_cached(INSERT_LOG_SQL)
+            .context("Failed to prepare insert statement")?;
+
         for entry in batch.drain() {
             let timestamp = entry.timestamp.timestamp_micros();
             let level = match entry.level {
@@ -166,27 +182,35 @@ impl AsyncLogWriter {
             let node_id = if entry.node_id == MAIN_THREAD_NODE_ID {
                 "main".to_string()
             } else {
-                format!(
-                    "{}-{}",
-                    entry.node_id.execution_order(),
-                    entry.node_id.pokemon_name()
-                )
+                // Use thread-local buffer to reduce allocations
+                NODE_ID_BUFFER.with(|buf| {
+                    let mut buffer = buf.borrow_mut();
+                    buffer.clear();
+                    write!(
+                        &mut buffer,
+                        "{}-{}",
+                        entry.node_id.execution_order(),
+                        entry.node_id.pokemon_name()
+                    )
+                    .unwrap();
+                    buffer.clone()
+                })
             };
             let execution_order = i64::from(entry.node_id.execution_order());
 
-            tx.execute(
-                INSERT_LOG_SQL,
-                params![
-                    timestamp,
-                    level,
-                    node_id,
-                    entry.message,
-                    entry.target,
-                    execution_order
-                ],
-            )
+            stmt.execute(params![
+                timestamp,
+                level,
+                node_id,
+                entry.message,
+                entry.target,
+                execution_order
+            ])
             .context("Failed to insert log entry")?;
         }
+
+        // Drop the statement before committing
+        drop(stmt);
 
         tx.commit().context("Failed to commit transaction")?;
         Ok(())
@@ -243,7 +267,7 @@ impl Visit for MessageVisitor {
 /// High-performance SQL-based log writer with integrated tracing layer
 pub struct LogWriter {
     /// Command sender for async log writer
-    command_sender: mpsc::Sender<LogWriterCommand>,
+    command_sender: Sender<LogWriterCommand>,
     /// Thread handle for async log writer
     writer_thread: Option<thread::JoinHandle<()>>,
     /// Current log level filter
@@ -269,7 +293,7 @@ impl LogWriter {
         let connection = Arc::new(Mutex::new(connection));
 
         // Create async log writer
-        let (command_sender, command_receiver) = mpsc::channel();
+        let (command_sender, command_receiver) = crossbeam_channel::unbounded();
         let async_writer = AsyncLogWriter::new(command_receiver, Arc::clone(&connection));
 
         // Start background thread

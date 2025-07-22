@@ -168,18 +168,34 @@ impl UiState {
         } else {
             // Content requires scrolling
             // For ratatui scrollbar: position 0 = top, position max = bottom
-            // For our logs: log_scroll 0 = bottom, log_scroll max = top
-            // So we need to invert: scrollbar_position = max_scroll - log_scroll
-            let max_scroll = total_logs - viewport_height;
-            let scrollbar_position = max_scroll.saturating_sub(self.log_scroll);
+            // For our logs: log_scroll 0 = bottom (newest), log_scroll max = top (oldest)
+            //
+            // The scrollbar should represent which part of the logs we're viewing:
+            // - When first log is visible (log_scroll = max_scroll), scrollbar should be at top (0)
+            // - When last log is at bottom (log_scroll = 0), scrollbar should be at bottom
+            //
+            // We need to set content_length to total_logs and viewport_content_length to viewport_height
+            // Then position represents the first visible log index (from the top)
 
-            // Set content_length to max_scroll + 1 to ensure scrollbar can reach the bottom
-            // This makes the scrollbar's internal max position exactly equal to max_scroll
+            // log_scroll represents how many logs are below our viewport
+            // So the first visible log index from the top is: total_logs - viewport_height - log_scroll
+            let max_scroll = total_logs.saturating_sub(viewport_height);
+            let first_visible_log_from_top = total_logs
+                .saturating_sub(viewport_height)
+                .saturating_sub(self.log_scroll);
+
+            // ROBUST CHECK: If we're at or very close to the top, force scrollbar to position 0
+            let position = if self.log_scroll >= max_scroll || first_visible_log_from_top == 0 {
+                0 // Force to top when first log is visible
+            } else {
+                first_visible_log_from_top
+            };
+
             self.log_scrollbar_state = self
                 .log_scrollbar_state
-                .content_length(max_scroll + 1)
-                .viewport_content_length(1)
-                .position(scrollbar_position);
+                .content_length(total_logs)
+                .viewport_content_length(viewport_height)
+                .position(position);
         }
     }
 
@@ -190,7 +206,11 @@ impl UiState {
         total_lines: usize,
         scroll_position: usize,
     ) {
-        self.viewport_logs = logs;
+        // Only update logs if we received actual log content
+        // Empty logs mean this is just a metadata update (scrollbar position)
+        if !logs.is_empty() {
+            self.viewport_logs = logs;
+        }
         self.total_log_lines = total_lines;
         self.log_scroll = scroll_position;
 

@@ -455,6 +455,10 @@ impl LogWorker {
         drop(stmt);
         drop(conn);
 
+        // Save the old values before updating
+        let old_max_scroll = self.state.max_scroll_position();
+        let was_at_top = self.state.scroll_position >= old_max_scroll && old_max_scroll > 0;
+
         // Update filtered count
         self.state.total_filtered_count = self.get_filtered_count()?;
 
@@ -517,8 +521,12 @@ impl LogWorker {
                 );
             } else if !self.state.auto_scroll_enabled {
                 // We're in manual scroll mode but don't have an anchor yet
-                // This can happen when new logs come in before the viewport is fetched
-                // Don't change scroll position - it will be recalculated when viewport is fetched
+                // Special case: if we were at the very top, stay at the top
+                if was_at_top {
+                    // We were at the very top, stay there by updating to new max_scroll
+                    self.state.scroll_position = self.state.max_scroll_position();
+                }
+                // Otherwise don't change scroll position - it will be recalculated when viewport is fetched
             }
         }
 
@@ -647,30 +655,49 @@ impl LogWorker {
                 }
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     // Check for updates during timeout
-                    if self.last_check.elapsed() >= Duration::from_millis(100) {
+                    // Increased interval to allow time for user scrolling
+                    if self.last_check.elapsed() >= Duration::from_millis(250) {
                         self.last_check = Instant::now();
 
                         match self.check_for_updates() {
                             Ok(true) => {
-                                // New logs available, send update
-                                match self.get_viewport_logs() {
-                                    Ok(logs) => {
-                                        let update = LogResponse::ViewportUpdate {
-                                            logs,
-                                            total_filtered_lines: self.state.total_filtered_count,
-                                            scroll_position: self.state.scroll_position,
-                                        };
-                                        if sender.send(update).is_err() {
-                                            break;
+                                // New logs available
+                                if self.state.auto_scroll_enabled {
+                                    // Auto-scroll enabled - send full viewport update
+                                    match self.get_viewport_logs() {
+                                        Ok(logs) => {
+                                            let update = LogResponse::ViewportUpdate {
+                                                logs,
+                                                total_filtered_lines: self
+                                                    .state
+                                                    .total_filtered_count,
+                                                scroll_position: self.state.scroll_position,
+                                            };
+                                            if sender.send(update).is_err() {
+                                                break;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            let error_response = LogResponse::Error {
+                                                message: format!(
+                                                    "Error getting viewport logs: {e}"
+                                                ),
+                                            };
+                                            if sender.send(error_response).is_err() {
+                                                break;
+                                            }
                                         }
                                     }
-                                    Err(e) => {
-                                        let error_response = LogResponse::Error {
-                                            message: format!("Error getting viewport logs: {e}"),
-                                        };
-                                        if sender.send(error_response).is_err() {
-                                            break;
-                                        }
+                                } else {
+                                    // Auto-scroll disabled - still send metadata update so scrollbar updates
+                                    // but don't fetch new logs to avoid disrupting the view
+                                    let update = LogResponse::ViewportUpdate {
+                                        logs: vec![], // Empty logs to signal no content update
+                                        total_filtered_lines: self.state.total_filtered_count,
+                                        scroll_position: self.state.scroll_position,
+                                    };
+                                    if sender.send(update).is_err() {
+                                        break;
                                     }
                                 }
                             }
