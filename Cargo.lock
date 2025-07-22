@@ -10795,7 +10795,7 @@ dependencies = [
  "proven-identity",
  "proven-locks-memory",
  "proven-messaging",
- "proven-messaging-engine",
+ "proven-messaging-memory",
  "proven-network",
  "proven-passkeys",
  "proven-postgres",
