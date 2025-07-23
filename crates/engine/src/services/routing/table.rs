@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use tokio::sync::RwLock;
 use tracing::{debug, info};
@@ -16,8 +16,6 @@ use super::types::*;
 pub struct RouteEntry {
     /// Route information
     pub route: StreamRoute,
-    /// Expiration time
-    pub expires_at: SystemTime,
 }
 
 /// Routing table for stream to group mappings
@@ -28,18 +26,16 @@ pub struct RoutingTable {
     group_routes: Arc<RwLock<HashMap<ConsensusGroupId, GroupRoute>>>,
     /// Global consensus leader
     global_leader: Arc<RwLock<Option<proven_topology::NodeId>>>,
-    /// Cache TTL
-    cache_ttl: Duration,
 }
 
 impl RoutingTable {
     /// Create a new routing table
-    pub fn new(cache_ttl: Duration) -> Self {
+    pub fn new(_cache_ttl: Duration) -> Self {
+        // cache_ttl parameter kept for API compatibility but ignored
         Self {
             stream_routes: Arc::new(RwLock::new(HashMap::new())),
             group_routes: Arc::new(RwLock::new(HashMap::new())),
             global_leader: Arc::new(RwLock::new(None)),
-            cache_ttl,
         }
     }
 
@@ -50,10 +46,7 @@ impl RoutingTable {
         route: StreamRoute,
     ) -> RoutingResult<()> {
         let mut routes = self.stream_routes.write().await;
-        let entry = RouteEntry {
-            route,
-            expires_at: SystemTime::now() + self.cache_ttl,
-        };
+        let entry = RouteEntry { route };
         routes.insert(stream_name.clone(), entry);
         info!("Updated route for stream {}", stream_name);
         Ok(())
@@ -72,15 +65,6 @@ impl RoutingTable {
         let routes = self.stream_routes.read().await;
 
         if let Some(entry) = routes.get(stream_name) {
-            // Check if expired
-            if SystemTime::now() > entry.expires_at {
-                debug!("Route for stream {} has expired", stream_name);
-                drop(routes);
-                // Remove expired entry
-                let mut routes = self.stream_routes.write().await;
-                routes.remove(stream_name);
-                return Ok(None);
-            }
             Ok(Some(entry.route.clone()))
         } else {
             Ok(None)
@@ -124,11 +108,9 @@ impl RoutingTable {
     /// Get all stream routes
     pub async fn get_all_stream_routes(&self) -> RoutingResult<HashMap<String, StreamRoute>> {
         let routes = self.stream_routes.read().await;
-        let now = SystemTime::now();
 
         Ok(routes
             .iter()
-            .filter(|(_, entry)| entry.expires_at > now)
             .map(|(name, entry)| (name.clone(), entry.route.clone()))
             .collect())
     }
@@ -153,20 +135,10 @@ impl RoutingTable {
         Ok((stream_routes, group_routes))
     }
 
-    /// Clear expired entries
+    /// Clear expired entries (no-op now that routes don't expire)
     pub async fn clear_expired(&self) -> RoutingResult<usize> {
-        let mut routes = self.stream_routes.write().await;
-        let now = SystemTime::now();
-        let before = routes.len();
-
-        routes.retain(|_, entry| entry.expires_at > now);
-
-        let removed = before - routes.len();
-        if removed > 0 {
-            debug!("Cleared {} expired routing entries", removed);
-        }
-
-        Ok(removed)
+        // Routes no longer expire, so nothing to clear
+        Ok(0)
     }
 
     /// Update global consensus leader
@@ -191,13 +163,10 @@ impl RoutingTable {
         group_id: ConsensusGroupId,
     ) -> RoutingResult<Vec<String>> {
         let routes = self.stream_routes.read().await;
-        let now = SystemTime::now();
 
         Ok(routes
             .iter()
-            .filter(|(_, entry)| {
-                entry.route.group_id == group_id && entry.expires_at > now && entry.route.is_active
-            })
+            .filter(|(_, entry)| entry.route.group_id == group_id && entry.route.is_active)
             .map(|(name, _)| name.clone())
             .collect())
     }
@@ -205,11 +174,10 @@ impl RoutingTable {
     /// Count active streams per group
     pub async fn count_streams_per_group(&self) -> RoutingResult<HashMap<ConsensusGroupId, usize>> {
         let routes = self.stream_routes.read().await;
-        let now = SystemTime::now();
         let mut counts = HashMap::new();
 
         for (_, entry) in routes.iter() {
-            if entry.expires_at > now && entry.route.is_active {
+            if entry.route.is_active {
                 *counts.entry(entry.route.group_id).or_insert(0) += 1;
             }
         }
@@ -220,6 +188,8 @@ impl RoutingTable {
 
 #[cfg(test)]
 mod tests {
+    use std::time::SystemTime;
+
     use super::*;
 
     #[tokio::test]
