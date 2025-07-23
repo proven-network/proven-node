@@ -190,7 +190,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         .map_err(|e| Error::Bootable(Box::new(e)))?;
 
     // Save the engine client for use in later steps
-    bootstrap.engine_client = Some(engine.client());
+    bootstrap.engine_client = Some(Arc::new(engine.client()));
 
     // TODO: Add components to bootable vec
 

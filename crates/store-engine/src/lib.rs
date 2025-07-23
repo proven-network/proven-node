@@ -24,7 +24,6 @@ mod error;
 pub use error::Error;
 
 use std::collections::HashMap;
-use std::convert::Infallible;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Formatter};
 use std::num::{NonZero, NonZeroUsize};
@@ -96,7 +95,7 @@ struct StoreStateInner {
 }
 
 /// Engine-backed key-value store
-pub struct EngineStore<T = Bytes, D = Infallible, S = Infallible>
+pub struct EngineStore<T, D, S, Tr, G, St>
 where
     T: Clone
         + Debug
@@ -107,16 +106,19 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     /// The engine client
-    client: Arc<dyn ClientWrapper>,
+    client: Arc<Client<Tr, G, St>>,
     /// Optional scope prefix
     prefix: Option<String>,
     /// Phantom data for type parameters
     _marker: std::marker::PhantomData<(T, D, S)>,
 }
 
-impl<T, D, S> Clone for EngineStore<T, D, S>
+impl<T, D, S, Tr, G, St> Clone for EngineStore<T, D, S, Tr, G, St>
 where
     T: Clone
         + Debug
@@ -127,6 +129,9 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -137,7 +142,7 @@ where
     }
 }
 
-impl<T, D, S> Debug for EngineStore<T, D, S>
+impl<T, D, S, Tr, G, St> Debug for EngineStore<T, D, S, Tr, G, St>
 where
     T: Clone
         + Debug
@@ -148,6 +153,9 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EngineStore")
@@ -156,108 +164,7 @@ where
     }
 }
 
-/// Trait to abstract over the engine client's concrete types
-#[async_trait]
-trait ClientWrapper: Debug + Send + Sync + 'static {
-    /// Create a stream with automatic group assignment
-    async fn create_stream_auto(&self, name: String, config: StreamConfig) -> Result<(), Error>;
-
-    /// Publish to a stream
-    async fn publish(
-        &self,
-        stream: String,
-        payload: Vec<u8>,
-        metadata: Option<std::collections::HashMap<String, String>>,
-    ) -> Result<(), Error>;
-
-    /// Check if stream exists
-    async fn stream_exists(&self, name: &str) -> Result<bool, Error>;
-
-    /// Read messages from a stream
-    async fn read_stream(
-        &self,
-        stream_name: String,
-        start_sequence: u64,
-        count: u64,
-    ) -> Result<Vec<proven_engine::StoredMessage>, Error>;
-}
-
-/// Wrapper implementation for the engine client
-struct ClientWrapperImpl<T, G, St>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    St: proven_storage::StorageAdaptor + 'static,
-{
-    inner: Client<T, G, St>,
-}
-
-impl<T, G, St> Debug for ClientWrapperImpl<T, G, St>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    St: proven_storage::StorageAdaptor + 'static,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClientWrapperImpl").finish()
-    }
-}
-
-#[async_trait]
-impl<T, G, St> ClientWrapper for ClientWrapperImpl<T, G, St>
-where
-    T: proven_transport::Transport + Debug + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    St: proven_storage::StorageAdaptor + Debug + 'static,
-{
-    async fn create_stream_auto(&self, name: String, config: StreamConfig) -> Result<(), Error> {
-        self.inner
-            .create_stream(name, config)
-            .await
-            .map(|_| ())
-            .map_err(|e| Error::Engine(e.to_string()))
-    }
-
-    async fn publish(
-        &self,
-        stream: String,
-        payload: Vec<u8>,
-        metadata: Option<std::collections::HashMap<String, String>>,
-    ) -> Result<(), Error> {
-        self.inner
-            .publish(stream, payload, metadata)
-            .await
-            .map(|_| ())
-            .map_err(|e| Error::Engine(e.to_string()))
-    }
-
-    async fn stream_exists(&self, name: &str) -> Result<bool, Error> {
-        self.inner
-            .get_stream_info(name)
-            .await
-            .map(|info| info.is_some())
-            .map_err(|e| Error::Engine(e.to_string()))
-    }
-
-    async fn read_stream(
-        &self,
-        stream_name: String,
-        start_sequence: u64,
-        count: u64,
-    ) -> Result<Vec<proven_engine::StoredMessage>, Error> {
-        let start = NonZero::new(start_sequence)
-            .ok_or_else(|| Error::Engine("Start sequence must be greater than 0".to_string()))?;
-        let count_nz = NonZero::new(count)
-            .ok_or_else(|| Error::Engine("Count must be greater than 0".to_string()))?;
-
-        self.inner
-            .read_stream(stream_name, start, count_nz)
-            .await
-            .map_err(|e| Error::Engine(e.to_string()))
-    }
-}
-
-impl<T, D, S> EngineStore<T, D, S>
+impl<T, D, S, Tr, G, St> EngineStore<T, D, S, Tr, G, St>
 where
     T: Clone
         + Debug
@@ -268,24 +175,22 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     /// Create a new engine store with automatic group assignment
     #[must_use]
-    pub fn new<Tr, G, St>(client: Client<Tr, G, St>) -> Self
-    where
-        Tr: proven_transport::Transport + Debug + 'static,
-        G: proven_topology::TopologyAdaptor + 'static,
-        St: proven_storage::StorageAdaptor + Debug + 'static,
-    {
+    pub const fn new(client: Arc<Client<Tr, G, St>>) -> Self {
         Self {
-            client: Arc::new(ClientWrapperImpl { inner: client }),
+            client,
             prefix: None,
             _marker: std::marker::PhantomData,
         }
     }
 
     /// Create a scoped store
-    fn with_scope(client: Arc<dyn ClientWrapper>, prefix: String) -> Self {
+    const fn with_scope(client: Arc<Client<Tr, G, St>>, prefix: String) -> Self {
         Self {
             client,
             prefix: Some(prefix),
@@ -322,15 +227,16 @@ where
         let stream_name = self.get_stream_name();
 
         // Check if stream exists
-        if !self.client.stream_exists(&stream_name).await? {
+        let stream_info = self
+            .client
+            .get_stream_info(&stream_name)
+            .await
+            .map_err(|e| Error::Engine(e.to_string()))?;
+        if stream_info.is_none() {
             // Create the stream
             let config = StreamConfig::default();
-            match self
-                .client
-                .create_stream_auto(stream_name.clone(), config)
-                .await
-            {
-                Ok(()) => {
+            match self.client.create_stream(stream_name.clone(), config).await {
+                Ok(_response) => {
                     info!("Created store stream: {}", stream_name);
                 }
                 Err(e) => {
@@ -339,7 +245,7 @@ where
                     if error_msg.contains("already exists") {
                         debug!("Store stream {} already exists, continuing", stream_name);
                     } else {
-                        return Err(e);
+                        return Err(Error::Engine(e.to_string()));
                     }
                 }
             }
@@ -350,12 +256,12 @@ where
 
             while retries < MAX_RETRIES {
                 // Try to verify the stream is accessible by checking if it exists
-                match self.client.stream_exists(&stream_name).await {
-                    Ok(true) => {
+                match self.client.get_stream_info(&stream_name).await {
+                    Ok(Some(_)) => {
                         debug!("Store stream {} verified as accessible", stream_name);
                         break;
                     }
-                    Ok(false) => {
+                    Ok(None) => {
                         debug!(
                             "Store stream {} not yet accessible, retrying...",
                             stream_name
@@ -382,14 +288,15 @@ where
 
         // Also ensure key index stream exists
         let key_index = self.get_key_index_stream();
-        if !self.client.stream_exists(&key_index).await? {
+        let key_index_info = self
+            .client
+            .get_stream_info(&key_index)
+            .await
+            .map_err(|e| Error::Engine(e.to_string()))?;
+        if key_index_info.is_none() {
             let config = StreamConfig::default();
-            match self
-                .client
-                .create_stream_auto(key_index.clone(), config)
-                .await
-            {
-                Ok(()) => {
+            match self.client.create_stream(key_index.clone(), config).await {
+                Ok(_response) => {
                     info!("Created key index stream: {}", key_index);
                 }
                 Err(e) => {
@@ -398,7 +305,7 @@ where
                     if error_msg.contains("already exists") {
                         debug!("Key index stream {} already exists, continuing", key_index);
                     } else {
-                        return Err(e);
+                        return Err(Error::Engine(e.to_string()));
                     }
                 }
             }
@@ -407,12 +314,12 @@ where
             let mut retries = 0;
 
             while retries < MAX_RETRIES_KEY_INDEX {
-                match self.client.stream_exists(&key_index).await {
-                    Ok(true) => {
+                match self.client.get_stream_info(&key_index).await {
+                    Ok(Some(_)) => {
                         debug!("Key index stream {} verified as accessible", key_index);
                         break;
                     }
-                    Ok(false) => {
+                    Ok(None) => {
                         debug!(
                             "Key index stream {} not yet accessible, retrying...",
                             key_index
@@ -487,9 +394,9 @@ where
 
         self.client
             .publish(self.get_key_index_stream(), payload, None)
-            .await?;
-
-        Ok(())
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::Engine(e.to_string()))
     }
 
     /// Sync state from stream (incremental)
@@ -513,10 +420,17 @@ where
         let mut current_sequence = last_sequence;
 
         loop {
+            let start = NonZero::new(current_sequence + 1).ok_or_else(|| {
+                Error::Engine("Start sequence must be greater than 0".to_string())
+            })?;
+            let count_nz = NonZero::new(batch_size)
+                .ok_or_else(|| Error::Engine("Count must be greater than 0".to_string()))?;
+
             let messages = self
                 .client
-                .read_stream(stream_name.clone(), current_sequence + 1, batch_size)
-                .await?;
+                .read_stream(stream_name.clone(), start, count_nz)
+                .await
+                .map_err(|e| Error::Engine(e.to_string()))?;
 
             if messages.is_empty() {
                 break;
@@ -583,7 +497,7 @@ where
 }
 
 #[async_trait]
-impl<T, D, S> Store<T, D, S> for EngineStore<T, D, S>
+impl<T, D, S, Tr, G, St> Store<T, D, S> for EngineStore<T, D, S, Tr, G, St>
 where
     T: Clone
         + Debug
@@ -594,6 +508,9 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
+    Tr: proven_transport::Transport + 'static,
+    G: proven_topology::TopologyAdaptor + 'static,
+    St: proven_storage::StorageAdaptor + 'static,
 {
     type Error = Error;
 
@@ -619,7 +536,9 @@ where
 
         self.client
             .publish(self.get_stream_name(), vec![], Some(metadata))
-            .await?;
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::Engine(e.to_string()))?;
 
         // Update cache immediately
         let cached_state = self.get_or_create_cached_state().await?;
@@ -711,7 +630,9 @@ where
         // Publish the value
         self.client
             .publish(self.get_stream_name(), bytes.to_vec(), Some(metadata))
-            .await?;
+            .await
+            .map(|_| ())
+            .map_err(|e| Error::Engine(e.to_string()))?;
 
         // Track the key addition
         self.track_key_operation(KeyOperation::Add {
@@ -737,7 +658,7 @@ macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            pub struct [< EngineStore $index >]<T = Bytes, D = Infallible, S = Infallible>
+            pub struct [< EngineStore $index >]<T, D, S, Tr, G, St>
             where
                 T: Clone
                     + Debug
@@ -748,13 +669,16 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
             {
-                client: Arc<dyn ClientWrapper>,
+                client: Arc<Client<Tr, G, St>>,
                 prefix: Option<String>,
                 _marker: std::marker::PhantomData<(T, D, S)>,
             }
 
-            impl<T, D, S> Clone for [< EngineStore $index >]<T, D, S>
+            impl<T, D, S, Tr, G, St> Clone for [< EngineStore $index >]<T, D, S, Tr, G, St>
             where
                 T: Clone
                     + Debug
@@ -765,6 +689,9 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
             {
                 fn clone(&self) -> Self {
                     Self {
@@ -775,7 +702,7 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, D, S> Debug for [< EngineStore $index >]<T, D, S>
+            impl<T, D, S, Tr, G, St> Debug for [< EngineStore $index >]<T, D, S, Tr, G, St>
             where
                 T: Clone
                     + Debug
@@ -786,6 +713,9 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
             {
                 fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
                     f.debug_struct(stringify!([< EngineStore $index >]))
@@ -794,7 +724,7 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, D, S> [< EngineStore $index >]<T, D, S>
+            impl<T, D, S, Tr, G, St> [< EngineStore $index >]<T, D, S, Tr, G, St>
             where
                 T: Clone
                     + Debug
@@ -805,18 +735,17 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
             {
                 /// Create a new scoped engine store with automatic group assignment
-                #[must_use] pub fn new<Tr, G, St>(
-                    client: Client<Tr, G, St>,
-                ) -> Self
-                where
-                    Tr: proven_transport::Transport + Debug + 'static,
-                    G: proven_topology::TopologyAdaptor + 'static,
-                    St: proven_storage::StorageAdaptor + Debug + 'static,
-                {
+                #[must_use]
+                pub const fn new(
+                    client: Arc<Client<Tr, G, St>>,
+                ) -> Self {
                     Self {
-                        client: Arc::new(ClientWrapperImpl { inner: client }),
+                        client,
                         prefix: None,
                         _marker: std::marker::PhantomData,
                     }
@@ -824,8 +753,8 @@ macro_rules! impl_scoped_store {
 
                 /// Create a scoped store
                 #[allow(dead_code)]
-                fn with_scope(
-                    client: Arc<dyn ClientWrapper>,
+                const fn with_scope(
+                    client: Arc<Client<Tr, G, St>>,
                     prefix: String,
                 ) -> Self {
                     Self {
@@ -837,7 +766,7 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl<T, D, S> [< Store $index >]<T, D, S> for [< EngineStore $index >]<T, D, S>
+            impl<T, D, S, Tr, G, St> [< Store $index >]<T, D, S> for [< EngineStore $index >]<T, D, S, Tr, G, St>
             where
                 T: Clone
                     + Debug
@@ -848,11 +777,14 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
+                Tr: proven_transport::Transport + 'static,
+                G: proven_topology::TopologyAdaptor + 'static,
+                St: proven_storage::StorageAdaptor + 'static,
             {
                 type Error = Error;
-                type Scoped = $parent<T, D, S>;
+                type Scoped = $parent<T, D, S, Tr, G, St>;
 
-                fn scope<K>(&self, scope: K) -> $parent<T, D, S>
+                fn scope<K>(&self, scope: K) -> $parent<T, D, S, Tr, G, St>
                 where
                     K: AsRef<str> + Send,
                 {
@@ -860,7 +792,7 @@ macro_rules! impl_scoped_store {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.as_ref()),
                         None => scope.as_ref().to_string(),
                     };
-                    $parent::<T, D, S>::with_scope(
+                    $parent::<T, D, S, Tr, G, St>::with_scope(
                         self.client.clone(),
                         new_scope,
                     )

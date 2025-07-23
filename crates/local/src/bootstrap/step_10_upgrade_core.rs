@@ -32,7 +32,6 @@ use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_engine::{EngineStore, EngineStore1, EngineStore2, EngineStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_topology::TopologyAdaptor;
-use std::sync::Arc;
 use tracing::info;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
@@ -54,9 +53,8 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         command_timeout: std::time::Duration::from_secs(30),
     };
 
-    // TODO: we should probably Arc engine client much sooner and use for everything
     let identity_manager =
-        IdentityManager::new(Arc::new(engine_client.clone()), identity_manager_config).await?;
+        IdentityManager::new(engine_client.clone(), identity_manager_config).await?;
 
     let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
         passkeys_store: EngineStore::new(engine_client.clone()),
@@ -74,10 +72,8 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         command_timeout: std::time::Duration::from_secs(30),
     };
 
-    // TODO: we should probably Arc engine client much sooner and use for everything
     let application_manager =
-        ApplicationManager::new(Arc::new(engine_client.clone()), application_manager_config)
-            .await?;
+        ApplicationManager::new(engine_client.clone(), application_manager_config).await?;
 
     let applications = application_manager.list_all_applications().await.unwrap();
     info!("current application count: {}", applications.len());

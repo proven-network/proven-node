@@ -18,6 +18,7 @@ use super::error::Error;
 use crate::NodeConfig;
 
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
@@ -29,6 +30,15 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::{error, info};
 use url::Url;
+
+// Type alias for the complex engine client type
+type EngineClient<G> = Arc<
+    proven_engine::Client<
+        proven_transport_ws::WebsocketTransport<G, MockAttestor>,
+        G,
+        proven_storage_rocksdb::RocksDbStorage,
+    >,
+>;
 
 /// Bootstrap struct for local node initialization.
 ///
@@ -61,13 +71,7 @@ pub struct Bootstrap<G: TopologyAdaptor> {
     bootstrapping_core: Option<Core<MockAttestor, G, InsecureHttpServer>>,
 
     // Engine client for use in store creation
-    engine_client: Option<
-        proven_engine::Client<
-            proven_transport_ws::WebsocketTransport<G, MockAttestor>,
-            G,
-            proven_storage_rocksdb::RocksDbStorage,
-        >,
-    >,
+    engine_client: Option<EngineClient<G>>,
 
     // Collection of all bootable services
     bootables: Vec<Box<dyn Bootable>>,

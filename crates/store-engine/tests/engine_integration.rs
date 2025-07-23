@@ -94,8 +94,15 @@ async fn test_store_with_engine() {
     println!("Engine health: {health:?}");
 
     // Create store using the engine client
-    let client = engine.client();
-    let store = EngineStore::new(client);
+    let client = Arc::new(engine.client());
+    let store: EngineStore<
+        bytes::Bytes,
+        std::convert::Infallible,
+        std::convert::Infallible,
+        MemoryTransport,
+        MockTopologyAdaptor,
+        MemoryStorage,
+    > = EngineStore::new(client);
 
     // Test put operation
     let key = "test_key";
@@ -195,10 +202,17 @@ async fn test_scoped_stores_with_engine() {
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Create scoped stores
-    let client = engine.client();
+    let client = Arc::new(engine.client());
 
     // Test Store1 (single scope)
-    let store1 = proven_store_engine::EngineStore1::new(client.clone());
+    let store1: proven_store_engine::EngineStore1<
+        bytes::Bytes,
+        std::convert::Infallible,
+        std::convert::Infallible,
+        MemoryTransport,
+        MockTopologyAdaptor,
+        MemoryStorage,
+    > = proven_store_engine::EngineStore1::new(client.clone());
     let scoped = proven_store::Store1::scope(&store1, "users");
 
     match scoped.put("user1", bytes::Bytes::from("Alice")).await {
@@ -279,8 +293,8 @@ async fn test_store_persistence_across_recreations() {
     // Phase 1: Create store and write data
     println!("Phase 1: Creating store and writing data");
     {
-        let client = engine.client();
-        let store: EngineStore<bytes::Bytes> = EngineStore::new(client);
+        let client = Arc::new(engine.client());
+        let store: EngineStore<bytes::Bytes, _, _, _, _, _> = EngineStore::new(client);
 
         // Write some test data
         let test_data = vec![("key1", "value1"), ("key2", "value2"), ("key3", "value3")];
@@ -323,8 +337,8 @@ async fn test_store_persistence_across_recreations() {
     // Phase 2: Recreate store and verify data persists
     println!("Phase 2: Recreating store and verifying persistence");
     {
-        let client = engine.client();
-        let store: EngineStore<bytes::Bytes> = EngineStore::new(client);
+        let client = Arc::new(engine.client());
+        let store: EngineStore<bytes::Bytes, _, _, _, _, _> = EngineStore::new(client);
 
         // The store should create the same stream name and reuse existing data
         let test_data = vec![("key1", "value1"), ("key2", "value2"), ("key3", "value3")];
@@ -366,10 +380,19 @@ async fn test_store_persistence_across_recreations() {
     println!("Phase 3: Testing multiple rapid store creations");
     {
         // Simulate multiple services trying to create stores simultaneously
-        let client = engine.client();
+        let client = Arc::new(engine.client());
 
         // Create multiple stores in quick succession
-        let stores: Vec<EngineStore<bytes::Bytes>> = (0..5)
+        let stores: Vec<
+            EngineStore<
+                bytes::Bytes,
+                std::convert::Infallible,
+                std::convert::Infallible,
+                MemoryTransport,
+                MockTopologyAdaptor,
+                MemoryStorage,
+            >,
+        > = (0..5)
             .map(|i| {
                 println!("Creating store instance {i}");
                 EngineStore::new(client.clone())
@@ -473,17 +496,31 @@ async fn test_store_handles_existing_streams() {
     // Test that multiple stores can use the same stream without errors
     println!("Testing multiple stores sharing the same stream");
 
-    let client = engine.client();
+    let client = Arc::new(engine.client());
 
     // Create first store
-    let store1: EngineStore<bytes::Bytes> = EngineStore::new(client.clone());
+    let store1: EngineStore<
+        bytes::Bytes,
+        std::convert::Infallible,
+        std::convert::Infallible,
+        MemoryTransport,
+        MockTopologyAdaptor,
+        MemoryStorage,
+    > = EngineStore::new(client.clone());
     match store1.put("key1", bytes::Bytes::from("value1")).await {
         Ok(_) => println!("Store 1: Successfully put key1"),
         Err(e) => println!("Store 1: Put failed: {e}"),
     }
 
     // Create second store - should reuse the same stream
-    let store2: EngineStore<bytes::Bytes> = EngineStore::new(client.clone());
+    let store2: EngineStore<
+        bytes::Bytes,
+        std::convert::Infallible,
+        std::convert::Infallible,
+        MemoryTransport,
+        MockTopologyAdaptor,
+        MemoryStorage,
+    > = EngineStore::new(client.clone());
     match store2.get("key1").await {
         Ok(Some(value)) => {
             let value_str = String::from_utf8_lossy(&value);
@@ -495,7 +532,14 @@ async fn test_store_handles_existing_streams() {
     }
 
     // Create third store - should also reuse the same stream
-    let store3: EngineStore<bytes::Bytes> = EngineStore::new(client.clone());
+    let store3: EngineStore<
+        bytes::Bytes,
+        std::convert::Infallible,
+        std::convert::Infallible,
+        MemoryTransport,
+        MockTopologyAdaptor,
+        MemoryStorage,
+    > = EngineStore::new(client.clone());
     match store3.put("key2", bytes::Bytes::from("value2")).await {
         Ok(_) => println!("Store 3: Successfully put key2"),
         Err(e) => println!("Store 3: Put failed: {e}"),

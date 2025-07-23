@@ -135,6 +135,7 @@ where
     /// Returns an error if:
     /// - Failed to create any of the required streams
     /// - Failed to start the event consumer
+    #[allow(clippy::cognitive_complexity)]
     pub async fn new(
         client: Arc<Client<T, G, S>>,
         config: IdentityManagerConfig,
