@@ -1,25 +1,35 @@
 [package]
 name = "proven-applications"
-version.workspace = true
+version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-async-trait.workspace = true
-bytes.workspace = true
-chrono.workspace = true
-ciborium.workspace = true
-fastrand.workspace = true
-futures.workspace = true
-proven-bootable.workspace = true
-proven-locks.workspace = true
-proven-messaging.workspace = true
-proven-util.workspace = true
-serde.workspace = true
-thiserror.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-uuid.workspace = true
+proven-engine = { path = "../engine" }
+proven-util = { path = "../util" }
+proven-transport = { path = "../transport" }
+proven-topology = { path = "../topology" }
+proven-storage = { path = "../storage" }
+
+# Core dependencies
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+chrono = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+ciborium = { workspace = true }
+tracing = { workspace = true }
+bytes = { workspace = true }
+
+# Stream processing
+tokio-stream = { workspace = true }
 
 [dev-dependencies]
-proven-locks-memory.workspace = true
-proven-messaging-memory.workspace = true
+futures = { workspace = true }
+proven-engine = { path = "../engine" }
+proven-network = { path = "../network" }
+proven-storage-memory = { path = "../storage-memory" }
+proven-topology-mock = { path = "../topology-mock" }
+proven-transport-memory = { path = "../transport-memory" }
+ed25519-dalek = { workspace = true }
+rand = { workspace = true }
+tracing-subscriber = { workspace = true }

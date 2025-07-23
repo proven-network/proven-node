@@ -1,17 +1,13 @@
-use crate::{Application, Error, event::Event};
+use crate::{Application, Event};
 
+use proven_util::{Domain, Origin};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-
-use async_trait::async_trait;
-use proven_messaging::consumer_handler::ConsumerHandler;
-use proven_util::{Domain, Origin};
 use tokio::sync::{Notify, RwLock};
 use uuid::Uuid;
 
-type DeserializeError = ciborium::de::Error<std::io::Error>;
-type SerializeError = ciborium::ser::Error<std::io::Error>;
+// Moved DeserializeError and SerializeError to error.rs
 
 /// Shared in-memory view of applications built from events
 #[derive(Clone, Debug)]
@@ -117,10 +113,16 @@ impl ApplicationView {
         }
     }
 
+    /// Update the last processed sequence number.
+    pub fn update_last_processed_seq(&self, seq: u64) {
+        self.last_processed_seq.store(seq, Ordering::SeqCst);
+        self.seq_notifier.notify_waiters();
+    }
+
     /// Apply an event to update the view state
     /// This is called by the consumer handler when processing events
-    async fn apply_event(&self, event: &Event) {
-        match event {
+    pub async fn apply_event(&self, event: Event) {
+        match &event {
             Event::AllowedOriginAdded {
                 application_id,
                 origin,
@@ -275,54 +277,5 @@ impl ApplicationView {
 impl Default for ApplicationView {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Consumer handler that processes events from the event stream to update the view
-#[derive(Clone, Debug)]
-pub struct ApplicationViewConsumerHandler {
-    view: ApplicationView,
-}
-
-impl ApplicationViewConsumerHandler {
-    /// Creates a new consumer handler with the given view.
-    ///
-    /// # Arguments
-    ///
-    /// * `view` - The application view to update when events are processed
-    #[must_use]
-    pub const fn new(view: ApplicationView) -> Self {
-        Self { view }
-    }
-
-    /// Gets a reference to the application view.
-    #[must_use]
-    pub const fn view(&self) -> &ApplicationView {
-        &self.view
-    }
-}
-
-#[async_trait]
-impl ConsumerHandler<Event, DeserializeError, SerializeError> for ApplicationViewConsumerHandler {
-    type Error = Error;
-
-    async fn handle(&self, event: Event, stream_sequence: u64) -> Result<(), Self::Error> {
-        // Apply the event to update the view
-        self.view.apply_event(&event).await;
-
-        // Update the last processed sequence number
-        self.view
-            .last_processed_seq
-            .store(stream_sequence, Ordering::SeqCst);
-
-        // Notify any waiters that the sequence has advanced
-        self.view.seq_notifier.notify_waiters();
-
-        Ok(())
-    }
-
-    async fn on_caught_up(&self) -> Result<(), Self::Error> {
-        // Called when the consumer has processed all existing events
-        Ok(())
     }
 }

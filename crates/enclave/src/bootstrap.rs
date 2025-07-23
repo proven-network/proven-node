@@ -16,7 +16,7 @@ use axum::routing::any;
 use bytes::Bytes;
 use ed25519_dalek::SigningKey;
 use http::StatusCode;
-use proven_applications::ApplicationManager;
+use proven_applications::{ApplicationManager, ApplicationManagerConfig};
 use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
@@ -840,22 +840,6 @@ impl Bootstrap {
             listen_addr: http_sock_addr,
         });
 
-        let application_manager = ApplicationManager::new(
-            // Command stream for processing application commands
-            MemoryStream::new("APPLICATION_COMMANDS", MemoryStreamOptions),
-            // Event stream for publishing and consuming application events
-            MemoryStream::new("APPLICATION_EVENTS", MemoryStreamOptions),
-            // Service options for command processing
-            MemoryServiceOptions,
-            // Client options for sending commands
-            MemoryClientOptions,
-            // Consumer options for event processing
-            MemoryConsumerOptions,
-            // Lock manager for distributed leadership
-            lock_manager,
-        )
-        .await?;
-
         let application_store = MemoryStore2::new();
 
         let application_sql_store = StreamedSqlStore2::new(
@@ -1034,6 +1018,19 @@ impl Bootstrap {
 
         // Get the client for Core to use
         let _consensus = Arc::new(engine.client());
+
+        // Create ApplicationManager with engine client
+        let engine_client = Arc::new(engine.client());
+
+        let application_manager_config = ApplicationManagerConfig {
+            stream_prefix: "applications".to_string(),
+            leadership_lease_duration: std::time::Duration::from_secs(30),
+            leadership_renewal_interval: std::time::Duration::from_secs(10),
+            command_timeout: std::time::Duration::from_secs(30),
+        };
+
+        let application_manager =
+            ApplicationManager::new(Arc::clone(&engine_client), application_manager_config).await?;
 
         // Get engine router from transport
         let transport = self

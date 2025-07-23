@@ -13,7 +13,7 @@
 use super::Bootstrap;
 use crate::error::Error;
 
-use proven_applications::{ApplicationManagement, ApplicationManager};
+use proven_applications::{ApplicationManagement, ApplicationManager, ApplicationManagerConfig};
 
 use proven_core::BootstrapUpgrade;
 use proven_identity::IdentityManager;
@@ -35,6 +35,7 @@ use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
 use proven_store_engine::{EngineStore, EngineStore1, EngineStore2, EngineStore3};
 use proven_store_fs::{FsStore, FsStore2, FsStore3};
 use proven_topology::TopologyAdaptor;
+use std::sync::Arc;
 use tracing::info;
 
 static GATEWAY_URL: &str = "http://127.0.0.1:8081";
@@ -75,21 +76,17 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         sessions_store: EngineStore1::new(engine_client.clone()),
     });
 
-    let application_manager = ApplicationManager::new(
-        // Command stream for processing application commands
-        MemoryStream::new("APPLICATION_COMMANDS".to_string(), MemoryStreamOptions),
-        // Event stream for publishing application events
-        MemoryStream::new("APPLICATION_EVENTS".to_string(), MemoryStreamOptions),
-        // Service options for the command processing service
-        MemoryServiceOptions,
-        // Client options for the command client
-        MemoryClientOptions,
-        // Consumer options for the event consumer
-        MemoryConsumerOptions,
-        // Lock manager for distributed leadership
-        lock_manager,
-    )
-    .await?;
+    let application_manager_config = ApplicationManagerConfig {
+        stream_prefix: "applications".to_string(),
+        leadership_lease_duration: std::time::Duration::from_secs(30),
+        leadership_renewal_interval: std::time::Duration::from_secs(10),
+        command_timeout: std::time::Duration::from_secs(30),
+    };
+
+    // TODO: we should probably Arc engine client much sooner and use for everything
+    let application_manager =
+        ApplicationManager::new(Arc::new(engine_client.clone()), application_manager_config)
+            .await?;
 
     let applications = application_manager.list_all_applications().await.unwrap();
     info!("current application count: {}", applications.len());
