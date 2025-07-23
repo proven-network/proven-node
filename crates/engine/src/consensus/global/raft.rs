@@ -194,11 +194,11 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         network_factory: NF,
         storage: L,
         callbacks: Arc<dyn GlobalConsensusCallbacks>,
+        state: Arc<GlobalState>,
     ) -> ConsensusResult<Self>
     where
         NF: RaftNetworkFactory<GlobalTypeConfig>,
     {
-        let state = Arc::new(GlobalState::new());
         let handler = Arc::new(GlobalOperationHandler::new(state.clone()));
 
         // Get the last committed log index before starting (from raw storage)

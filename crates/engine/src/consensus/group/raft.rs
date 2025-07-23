@@ -115,11 +115,11 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
         network_factory: NF,
         log_storage: L,
         callbacks: Arc<dyn GroupConsensusCallbacks>,
+        state: Arc<GroupState>,
     ) -> ConsensusResult<Self>
     where
         NF: RaftNetworkFactory<GroupTypeConfig>,
     {
-        let state = Arc::new(GroupState::new());
         let handler = Arc::new(GroupOperationHandler::new(group_id, state.clone()));
 
         // Get the last committed log index before starting (from raw storage)

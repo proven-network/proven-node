@@ -19,6 +19,7 @@ use super::{
     callbacks::GlobalConsensusCallbacksImpl,
     config::{GlobalConsensusConfig, ServiceState},
 };
+use crate::foundation::GlobalState;
 use crate::services::global_consensus::subscribers::MembershipEventSubscriber;
 use crate::{
     consensus::global::{
@@ -68,6 +69,8 @@ where
     network_manager: Arc<NetworkManager<T, G>>,
     /// Storage manager
     storage_manager: Arc<StorageManager<S>>,
+    /// Global state
+    global_state: Arc<RwLock<Option<Arc<GlobalState>>>>,
     /// Consensus layer (initialized after cluster formation)
     consensus_layer: ConsensusLayer<S>,
     /// Service state
@@ -111,6 +114,7 @@ where
             node_id,
             network_manager,
             storage_manager,
+            global_state: Arc::new(RwLock::new(None)),
             consensus_layer: Arc::new(RwLock::new(None)),
             state: Arc::new(RwLock::new(ServiceState::NotInitialized)),
             topology_manager: None,
@@ -170,6 +174,9 @@ where
             }
         }
 
+        let global_state = Arc::new(GlobalState::new());
+        *self.global_state.write().await = Some(global_state.clone());
+
         // Create new task tracker and cancellation token
         let task_tracker = TaskTracker::new();
         let cancellation_token = CancellationToken::new();
@@ -196,6 +203,7 @@ where
                 self.network_manager.clone(),
                 consensus_storage,
                 callbacks.clone(),
+                global_state,
             )
             .await?;
 
@@ -324,6 +332,7 @@ where
         network_manager: Arc<NetworkManager<T, G>>,
         storage: L,
         callbacks: Arc<dyn GlobalConsensusCallbacks>,
+        global_state: Arc<GlobalState>,
     ) -> ConsensusResult<Arc<GlobalConsensusLayer<L>>>
     where
         L: LogStorage + 'static,
@@ -350,6 +359,7 @@ where
             network_factory,
             storage,
             callbacks,
+            global_state.clone(),
         )
         .await?;
 
@@ -528,67 +538,6 @@ where
             // Consensus layer not initialized yet
             vec![]
         }
-    }
-
-    /// Resume consensus from persisted state
-    pub async fn resume_from_persisted_state(&self) -> ConsensusResult<()> {
-        tracing::info!("Resuming global consensus from persisted state");
-
-        // Check if already initialized
-        if self.consensus_layer.read().await.is_some() {
-            tracing::debug!("Global consensus layer already initialized");
-            return Ok(());
-        }
-
-        // Always create consensus layer first so we can handle Raft messages
-        let consensus_storage = self.storage_manager.consensus_storage();
-
-        // Create callbacks with event bus only - all work is done by subscribers
-        let callbacks = Arc::new(GlobalConsensusCallbacksImpl::new(
-            self.node_id.clone(),
-            Some(self.event_bus.clone()),
-        ));
-
-        let layer = Self::create_consensus_layer(
-            &self.config,
-            self.node_id.clone(),
-            self.network_manager.clone(),
-            consensus_storage,
-            callbacks.clone(),
-        )
-        .await?;
-
-        // Store the layer immediately so we can handle Raft messages
-        {
-            let mut consensus_guard = self.consensus_layer.write().await;
-            *consensus_guard = Some(layer.clone());
-        }
-
-        // Store the metrics receiver
-        {
-            let metrics_rx = layer.metrics();
-            let mut metrics_guard = self.raft_metrics_rx.write().await;
-            *metrics_guard = Some(metrics_rx);
-        }
-
-        // Start event monitoring
-        let metrics_rx = self.raft_metrics_rx.read().await.clone();
-        if let Some(rx) = metrics_rx {
-            Self::start_event_monitoring(rx, self.event_bus.clone());
-        }
-
-        // Emit event with empty snapshot (actual state will be synchronized later)
-        let snapshot = crate::services::global_consensus::events::GlobalStateSnapshot {
-            groups: Vec::new(),
-            streams: Vec::new(),
-        };
-        let event = GlobalConsensusEvent::StateSynchronized {
-            snapshot: Box::new(snapshot),
-        };
-        self.event_bus.publish(event).await;
-
-        tracing::info!("Successfully resumed global consensus from persisted state");
-        Ok(())
     }
 
     /// Start monitoring the consensus layer for events

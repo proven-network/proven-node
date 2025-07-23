@@ -14,6 +14,7 @@ use proven_transport::Transport;
 use tracing::info;
 
 use super::{callbacks, config::GroupConsensusConfig};
+use crate::foundation::GroupState;
 use crate::foundation::group_state::StreamState;
 use crate::{
     consensus::group::GroupConsensusLayer,
@@ -32,6 +33,8 @@ type ConsensusLayers<S> = Arc<
     >,
 >;
 
+type States = Arc<RwLock<std::collections::HashMap<ConsensusGroupId, Arc<GroupState>>>>;
+
 /// Group consensus service
 pub struct GroupConsensusService<T, G, S>
 where
@@ -47,8 +50,10 @@ where
     network_manager: Arc<NetworkManager<T, G>>,
     /// Storage manager
     storage_manager: Arc<StorageManager<S>>,
+    /// Group states
+    group_states: States,
     /// Group consensus layers
-    groups: ConsensusLayers<S>,
+    consensus_layers: ConsensusLayers<S>,
     /// Event bus
     event_bus: Arc<EventBus>,
     /// Topology manager
@@ -76,7 +81,8 @@ where
             node_id,
             network_manager,
             storage_manager,
-            groups: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            group_states: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            consensus_layers: Arc::new(RwLock::new(std::collections::HashMap::new())),
             event_bus,
             topology_manager: None,
             stream_service: Arc::new(RwLock::new(None)),
@@ -130,7 +136,7 @@ where
     /// Stop the service
     pub async fn stop(&self) -> ConsensusResult<()> {
         // Shutdown all Raft instances in groups
-        let mut groups = self.groups.write().await;
+        let mut groups = self.consensus_layers.write().await;
         for (group_id, layer) in groups.iter() {
             // Shutdown the Raft instance to release all resources with timeout
             match tokio::time::timeout(std::time::Duration::from_secs(5), layer.shutdown()).await {
@@ -192,7 +198,7 @@ where
 
         // Check if group already exists
         {
-            let groups = self.groups.read().await;
+            let groups = self.consensus_layers.read().await;
             if groups.contains_key(&group_id) {
                 tracing::debug!("Group {:?} already exists, skipping creation", group_id);
                 return Ok(());
@@ -224,6 +230,12 @@ where
             Some(self.event_bus.clone()),
         ));
 
+        let state = Arc::new(GroupState::new());
+        self.group_states
+            .write()
+            .await
+            .insert(group_id, state.clone());
+
         let layer = Arc::new(
             GroupConsensusLayer::new(
                 self.node_id.clone(),
@@ -232,12 +244,16 @@ where
                 network_factory,
                 self.storage_manager.consensus_storage(),
                 callbacks,
+                state,
             )
             .await?,
         );
 
         // Store the layer
-        self.groups.write().await.insert(group_id, layer.clone());
+        self.consensus_layers
+            .write()
+            .await
+            .insert(group_id, layer.clone());
 
         // Start event monitoring for this group
         Self::start_group_event_monitoring(
@@ -355,7 +371,7 @@ where
         use super::messages::{GroupConsensusMessage, GroupConsensusServiceResponse};
         use crate::consensus::group::raft::GroupRaftMessageHandler;
 
-        let groups = self.groups.clone();
+        let groups = self.consensus_layers.clone();
 
         // Register the service handler
         self.network_manager
@@ -454,7 +470,7 @@ where
         group_id: ConsensusGroupId,
         request: crate::consensus::group::GroupRequest,
     ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
-        let groups = self.groups.read().await;
+        let groups = self.consensus_layers.read().await;
         let layer = groups.get(&group_id).ok_or_else(|| {
             Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
         })?;
@@ -473,7 +489,7 @@ where
         group_id: ConsensusGroupId,
         stream_name: &str,
     ) -> ConsensusResult<Option<StreamState>> {
-        let groups = self.groups.read().await;
+        let groups = self.consensus_layers.read().await;
         let layer = groups.get(&group_id).ok_or_else(|| {
             Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
         })?;
@@ -485,7 +501,7 @@ where
 
     /// Get all group IDs this node is a member of
     pub async fn get_node_groups(&self) -> ConsensusResult<Vec<ConsensusGroupId>> {
-        let groups = self.groups.read().await;
+        let groups = self.consensus_layers.read().await;
         // For now, return all groups that this node has joined
         // TODO: Properly track membership through Raft state
         Ok(groups.keys().cloned().collect())
@@ -498,7 +514,7 @@ where
     ) -> ConsensusResult<super::types::GroupStateInfo> {
         use std::time::SystemTime;
 
-        let groups = self.groups.read().await;
+        let groups = self.consensus_layers.read().await;
         let layer = groups.get(&group_id).ok_or_else(|| {
             Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
         })?;
@@ -626,7 +642,8 @@ where
             node_id: self.node_id.clone(),
             network_manager: self.network_manager.clone(),
             storage_manager: self.storage_manager.clone(),
-            groups: self.groups.clone(),
+            group_states: self.group_states.clone(),
+            consensus_layers: self.consensus_layers.clone(),
             event_bus: self.event_bus.clone(),
             topology_manager: self.topology_manager.clone(),
             stream_service: self.stream_service.clone(),
