@@ -16,14 +16,11 @@ use crate::error::Error;
 use proven_applications::{ApplicationManagement, ApplicationManager, ApplicationManagerConfig};
 
 use proven_core::BootstrapUpgrade;
-use proven_identity::IdentityManager;
-use proven_locks_memory::MemoryLockManager;
-use proven_messaging::stream::Stream;
-use proven_messaging_memory::client::MemoryClientOptions;
-use proven_messaging_memory::consumer::MemoryConsumerOptions;
-use proven_messaging_memory::service::MemoryServiceOptions;
-use proven_messaging_memory::stream::{
-    MemoryStream, MemoryStream2, MemoryStream3, MemoryStreamOptions,
+use proven_identity::{IdentityManager, IdentityManagerConfig};
+use proven_messaging_memory::{
+    client::MemoryClientOptions,
+    service::MemoryServiceOptions,
+    stream::{MemoryStream2, MemoryStream3, MemoryStreamOptions},
 };
 use proven_passkeys::{PasskeyManagement, PasskeyManager, PasskeyManagerOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
@@ -49,23 +46,17 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         .expect("Engine client not available")
         .clone();
 
-    let lock_manager = MemoryLockManager::default();
+    // Create IdentityManager with engine client
+    let identity_manager_config = IdentityManagerConfig {
+        stream_prefix: "identity".to_string(),
+        leadership_lease_duration: std::time::Duration::from_secs(30),
+        leadership_renewal_interval: std::time::Duration::from_secs(10),
+        command_timeout: std::time::Duration::from_secs(30),
+    };
 
-    let identity_manager = IdentityManager::new(
-        // Command stream for processing identity commands
-        MemoryStream::new("IDENTITY_COMMANDS".to_string(), MemoryStreamOptions),
-        // Event stream for publishing identity events
-        MemoryStream::new("IDENTITY_EVENTS".to_string(), MemoryStreamOptions),
-        // Service options for the command processing service
-        MemoryServiceOptions,
-        // Client options for the command client
-        MemoryClientOptions,
-        // Consumer options for the event consumer
-        MemoryConsumerOptions,
-        // Lock manager for distributed leadership
-        lock_manager.clone(),
-    )
-    .await?;
+    // TODO: we should probably Arc engine client much sooner and use for everything
+    let identity_manager =
+        IdentityManager::new(Arc::new(engine_client.clone()), identity_manager_config).await?;
 
     let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
         passkeys_store: EngineStore::new(engine_client.clone()),

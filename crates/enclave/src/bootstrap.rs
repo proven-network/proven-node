@@ -30,18 +30,13 @@ use proven_engine::config::{
 use proven_engine::{EngineBuilder, EngineConfig};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
-use proven_identity::IdentityManager;
+use proven_identity::{IdentityManager, IdentityManagerConfig};
 use proven_imds::{IdentityDocument, Imds};
 use proven_instance_details::{Instance, InstanceDetailsFetcher};
 use proven_kms::{Kms, KmsOptions};
-use proven_locks_memory::MemoryLockManager;
-use proven_messaging::stream::Stream;
 use proven_messaging_memory::client::MemoryClientOptions;
-use proven_messaging_memory::consumer::MemoryConsumerOptions;
 use proven_messaging_memory::service::MemoryServiceOptions;
-use proven_messaging_memory::stream::{
-    MemoryStream, MemoryStream2, MemoryStream3, MemoryStreamOptions,
-};
+use proven_messaging_memory::stream::{MemoryStream2, MemoryStream3, MemoryStreamOptions};
 use proven_network::NetworkManager;
 use proven_passkeys::{PasskeyManagement, PasskeyManager, PasskeyManagerOptions};
 use proven_postgres::{Postgres, PostgresOptions};
@@ -778,24 +773,6 @@ impl Bootstrap {
             panic!("network not set before core");
         });
 
-        let lock_manager = MemoryLockManager::new();
-
-        let identity_manager = IdentityManager::new(
-            // Command stream for processing identity commands
-            MemoryStream::new("IDENTITY_COMMANDS", MemoryStreamOptions),
-            // Event stream for publishing identity events
-            MemoryStream::new("IDENTITY_EVENTS", MemoryStreamOptions),
-            // Service options for the command processing service
-            MemoryServiceOptions,
-            // Client options for the command client
-            MemoryClientOptions,
-            // Consumer options for the event consumer
-            MemoryConsumerOptions,
-            // Lock manager for distributed leadership
-            lock_manager.clone(),
-        )
-        .await?;
-
         let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
             passkeys_store: MemoryStore::new(),
         });
@@ -1031,6 +1008,18 @@ impl Bootstrap {
 
         let application_manager =
             ApplicationManager::new(Arc::clone(&engine_client), application_manager_config).await?;
+
+        // Create IdentityManager with engine client
+        let identity_manager_config = IdentityManagerConfig {
+            stream_prefix: "identity".to_string(),
+            leadership_lease_duration: std::time::Duration::from_secs(30),
+            leadership_renewal_interval: std::time::Duration::from_secs(10),
+            command_timeout: std::time::Duration::from_secs(30),
+        };
+
+        let identity_manager = IdentityManager::new(engine_client.clone(), identity_manager_config)
+            .await
+            .map_err(|e| Error::Consensus(format!("Failed to create IdentityManager: {e}")))?;
 
         // Get engine router from transport
         let transport = self

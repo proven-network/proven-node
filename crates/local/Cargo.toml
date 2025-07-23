@@ -25,7 +25,6 @@ proven-ethereum-lighthouse.workspace = true
 proven-http-insecure.workspace = true
 proven-http-proxy.workspace = true
 proven-identity.workspace = true
-proven-locks-memory.workspace = true
 proven-messaging.workspace = true
 proven-messaging-memory.workspace = true
 proven-sessions.workspace = true

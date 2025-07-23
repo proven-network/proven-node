@@ -1,200 +1,143 @@
-use crate::{Error, Event, Identity};
+//! In-memory view of identity state built from events.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use async_trait::async_trait;
 use bytes::Bytes;
-use proven_messaging::consumer_handler::ConsumerHandler;
 use tokio::sync::{Notify, RwLock};
 use uuid::Uuid;
 
-type DeserializeError = ciborium::de::Error<std::io::Error>;
-type SerializeError = ciborium::ser::Error<std::io::Error>;
+use crate::{Event, Identity};
 
-/// Shared in-memory view of identities built from events
-#[derive(Clone, Debug)]
+/// In-memory view of all identities, built from consuming events.
+#[derive(Clone)]
 pub struct IdentityView {
-    // Use RwLock for efficient concurrent reads
+    /// All identities indexed by ID.
     identities: Arc<RwLock<HashMap<Uuid, Identity>>>,
 
-    // Track the sequence number of the last processed event
+    /// Mapping from PRF public key to identity ID.
+    prf_public_keys_to_identities: Arc<RwLock<HashMap<Bytes, Uuid>>>,
+
+    /// The last processed event sequence number.
     last_processed_seq: Arc<AtomicU64>,
 
-    // Map from PRF public key to identity ID
-    prf_to_identity: Arc<RwLock<HashMap<Bytes, Uuid>>>,
-
-    // Notifier for when sequence number advances (for consistency waiting)
-    seq_notifier: Arc<Notify>,
+    /// Notify for sequence updates.
+    seq_notify: Arc<Notify>,
 }
 
 impl IdentityView {
-    /// Creates a new empty identity view.
+    /// Create a new empty view.
     #[must_use]
     pub fn new() -> Self {
         Self {
             identities: Arc::new(RwLock::new(HashMap::new())),
+            prf_public_keys_to_identities: Arc::new(RwLock::new(HashMap::new())),
             last_processed_seq: Arc::new(AtomicU64::new(0)),
-            prf_to_identity: Arc::new(RwLock::new(HashMap::new())),
-            seq_notifier: Arc::new(Notify::new()),
+            seq_notify: Arc::new(Notify::new()),
         }
     }
 
-    /// Get a single identity by ID
-    pub async fn get_identity(&self, identity_id: &Uuid) -> Option<Identity> {
-        self.identities.read().await.get(identity_id).cloned()
-    }
-
-    /// Get an identity by PRF public key
-    pub async fn get_identity_by_prf_public_key(&self, prf_public_key: &Bytes) -> Option<Identity> {
-        let identity_id = {
-            let prf_map = self.prf_to_identity.read().await;
-            *prf_map.get(prf_public_key)?
-        };
-        let identities = self.identities.read().await;
-        identities.get(&identity_id).cloned()
-    }
-
-    /// List all identities
-    pub async fn list_all_identities(&self) -> Vec<Identity> {
-        self.identities.read().await.values().cloned().collect()
-    }
-
-    /// Check if an identity exists
-    pub async fn identity_exists(&self, identity_id: &Uuid) -> bool {
-        self.identities.read().await.contains_key(identity_id)
-    }
-
-    /// Check if a PRF public key is linked to any identity
-    pub async fn prf_public_key_exists(&self, prf_public_key: &Bytes) -> bool {
-        self.prf_to_identity
-            .read()
-            .await
-            .contains_key(prf_public_key)
-    }
-
-    /// Get the count of identities
-    pub async fn identity_count(&self) -> usize {
-        self.identities.read().await.len()
-    }
-
-    /// Get the count of linked PRF public keys
-    pub async fn prf_public_key_count(&self) -> usize {
-        self.prf_to_identity.read().await.len()
-    }
-
-    /// Get the sequence number of the last processed event
-    /// Useful for read-your-own-writes consistency
-    #[must_use]
-    pub fn last_processed_seq(&self) -> u64 {
-        self.last_processed_seq.load(Ordering::SeqCst)
-    }
-
-    /// Wait until the view has processed at least the given sequence number
-    /// Used for strong consistency guarantees in service handlers
-    pub async fn wait_for_seq(&self, min_seq: u64) {
-        if self.last_processed_seq() >= min_seq {
-            return; // Already caught up
-        }
-
-        // Use notification-based waiting to avoid polling
-        loop {
-            let notified = self.seq_notifier.notified();
-
-            // Check again in case we missed a notification
-            if self.last_processed_seq() >= min_seq {
-                return;
-            }
-
-            // Wait for next notification
-            notified.await;
-        }
-    }
-
-    /// Apply an event to update the view state
-    /// This is called by the consumer handler when processing events
-    async fn apply_event(&self, event: &Event) {
+    /// Apply an event to update the view.
+    pub async fn apply_event(&self, event: Event) {
         match event {
             Event::Created { identity_id, .. } => {
-                self.apply_created(*identity_id).await;
+                let identity = Identity::new(identity_id);
+                let mut identities = self.identities.write().await;
+                identities.insert(identity_id, identity);
+                drop(identities);
+                tracing::debug!("Applied Created event for identity {}", identity_id);
             }
             Event::PrfPublicKeyLinked {
                 identity_id,
                 prf_public_key,
                 ..
             } => {
-                self.apply_prf_public_key_linked(*identity_id, prf_public_key)
-                    .await;
+                let mut mapping = self.prf_public_keys_to_identities.write().await;
+                mapping.insert(prf_public_key.clone(), identity_id);
+                drop(mapping);
+                tracing::debug!(
+                    "Applied PrfPublicKeyLinked event for identity {} with key {:?}",
+                    identity_id,
+                    prf_public_key
+                );
             }
         }
     }
 
-    /// Apply `Created` event
-    async fn apply_created(&self, identity_id: Uuid) {
-        let identity = Identity { id: identity_id };
-        let mut identities = self.identities.write().await;
-        identities.insert(identity_id, identity);
+    /// Update the last processed sequence number.
+    pub fn update_last_processed_seq(&self, seq: u64) {
+        self.last_processed_seq.store(seq, Ordering::SeqCst);
+        self.seq_notify.notify_waiters();
     }
 
-    /// Apply `PrfPublicKeyLinked` event
-    async fn apply_prf_public_key_linked(&self, identity_id: Uuid, prf_public_key: &Bytes) {
-        let mut prf_map = self.prf_to_identity.write().await;
-        prf_map.insert(prf_public_key.clone(), identity_id);
+    /// Wait for a specific sequence number to be processed.
+    pub async fn wait_for_seq(&self, target_seq: u64) {
+        loop {
+            let current_seq = self.last_processed_seq.load(Ordering::SeqCst);
+            if current_seq >= target_seq {
+                return;
+            }
+            self.seq_notify.notified().await;
+        }
+    }
+
+    /// Get the last processed sequence number.
+    #[must_use]
+    pub fn last_processed_seq(&self) -> u64 {
+        self.last_processed_seq.load(Ordering::SeqCst)
+    }
+
+    /// Get an identity by its ID.
+    pub async fn get_identity(&self, identity_id: &Uuid) -> Option<Identity> {
+        let identities = self.identities.read().await;
+        identities.get(identity_id).copied()
+    }
+
+    /// Get an identity by PRF public key.
+    pub async fn get_identity_by_prf_public_key(&self, prf_public_key: &Bytes) -> Option<Identity> {
+        let mapping = self.prf_public_keys_to_identities.read().await;
+        if let Some(identity_id) = mapping.get(prf_public_key) {
+            let identities = self.identities.read().await;
+            identities.get(identity_id).copied()
+        } else {
+            None
+        }
+    }
+
+    /// Check if an identity exists.
+    pub async fn identity_exists(&self, identity_id: &Uuid) -> bool {
+        let identities = self.identities.read().await;
+        identities.contains_key(identity_id)
+    }
+
+    /// Check if a PRF public key exists.
+    pub async fn prf_public_key_exists(&self, prf_public_key: &Bytes) -> bool {
+        let mapping = self.prf_public_keys_to_identities.read().await;
+        mapping.contains_key(prf_public_key)
+    }
+
+    /// List all identities.
+    pub async fn list_all_identities(&self) -> Vec<Identity> {
+        let identities = self.identities.read().await;
+        identities.values().copied().collect()
+    }
+
+    /// Get the count of identities.
+    pub async fn identity_count(&self) -> usize {
+        let identities = self.identities.read().await;
+        identities.len()
+    }
+
+    /// Get the count of PRF public keys.
+    pub async fn prf_public_key_count(&self) -> usize {
+        let mapping = self.prf_public_keys_to_identities.read().await;
+        mapping.len()
     }
 }
 
 impl Default for IdentityView {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// Consumer handler that processes events from the event stream to update the view
-#[derive(Clone, Debug)]
-pub struct IdentityViewConsumerHandler {
-    view: IdentityView,
-}
-
-impl IdentityViewConsumerHandler {
-    /// Creates a new consumer handler with the given view.
-    ///
-    /// # Arguments
-    ///
-    /// * `view` - The identity view to update when events are processed
-    #[must_use]
-    pub const fn new(view: IdentityView) -> Self {
-        Self { view }
-    }
-
-    /// Gets a reference to the identity view.
-    #[must_use]
-    pub const fn view(&self) -> &IdentityView {
-        &self.view
-    }
-}
-
-#[async_trait]
-impl ConsumerHandler<Event, DeserializeError, SerializeError> for IdentityViewConsumerHandler {
-    type Error = Error;
-
-    async fn handle(&self, event: Event, stream_sequence: u64) -> Result<(), Self::Error> {
-        // Apply the event to update the view
-        self.view.apply_event(&event).await;
-
-        // Update the last processed sequence number
-        self.view
-            .last_processed_seq
-            .store(stream_sequence, Ordering::SeqCst);
-
-        // Notify any waiters that the sequence has advanced
-        self.view.seq_notifier.notify_waiters();
-
-        Ok(())
-    }
-
-    async fn on_caught_up(&self) -> Result<(), Self::Error> {
-        // Called when the consumer has processed all existing events
-        Ok(())
     }
 }

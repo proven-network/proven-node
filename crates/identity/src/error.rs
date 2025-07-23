@@ -1,25 +1,54 @@
-use thiserror::Error;
+//! Error types for the identity-engine crate.
 
-/// Errors that can occur in this crate.
-#[derive(Debug, Error)]
+use std::fmt;
+
+/// Error type for identity operations.
+#[derive(Debug)]
 pub enum Error {
-    /// Messaging client error
-    #[error("messaging client error: {0}")]
+    /// Client error.
     Client(String),
 
-    /// Command processing error
-    #[error("command error: {0}")]
+    /// Command processing error.
     Command(String),
 
-    /// Messaging service error
-    #[error("messaging service error: {0}")]
+    /// Deserialization error.
+    Deserialization(String),
+
+    /// Serialization error.
+    Serialization(String),
+
+    /// Service error.
     Service(String),
 
-    /// Stream error
-    #[error("stream error: {0}")]
+    /// Stream error.
     Stream(String),
 
-    /// Unexpected response type
-    #[error("unexpected response type")]
+    /// Timeout error.
+    Timeout,
+
+    /// Unexpected response type.
     UnexpectedResponse,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Client(msg) => write!(f, "Client error: {msg}"),
+            Self::Command(msg) => write!(f, "Command error: {msg}"),
+            Self::Deserialization(msg) => write!(f, "Deserialization error: {msg}"),
+            Self::Serialization(msg) => write!(f, "Serialization error: {msg}"),
+            Self::Service(msg) => write!(f, "Service error: {msg}"),
+            Self::Stream(msg) => write!(f, "Stream error: {msg}"),
+            Self::Timeout => write!(f, "Operation timed out"),
+            Self::UnexpectedResponse => write!(f, "Unexpected response type"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+impl From<ciborium::ser::Error<std::io::Error>> for Error {
+    fn from(err: ciborium::ser::Error<std::io::Error>) -> Self {
+        Self::Serialization(err.to_string())
+    }
 }
