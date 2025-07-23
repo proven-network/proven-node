@@ -235,20 +235,11 @@ where
         if stream_info.is_none() {
             // Create the stream
             let config = StreamConfig::default();
-            match self.client.create_stream(stream_name.clone(), config).await {
-                Ok(_response) => {
-                    info!("Created store stream: {}", stream_name);
-                }
-                Err(e) => {
-                    // Check if error is because stream already exists
-                    let error_msg = e.to_string();
-                    if error_msg.contains("already exists") {
-                        debug!("Store stream {} already exists, continuing", stream_name);
-                    } else {
-                        return Err(Error::Engine(e.to_string()));
-                    }
-                }
-            }
+            self.client
+                .create_stream(stream_name.clone(), config)
+                .await
+                .map_err(|e| Error::Engine(e.to_string()))?;
+            info!("Created store stream: {}", stream_name);
 
             // Wait for stream to be fully available in routing table
             // This prevents race conditions where the stream is created but not yet routable
@@ -295,20 +286,11 @@ where
             .map_err(|e| Error::Engine(e.to_string()))?;
         if key_index_info.is_none() {
             let config = StreamConfig::default();
-            match self.client.create_stream(key_index.clone(), config).await {
-                Ok(_response) => {
-                    info!("Created key index stream: {}", key_index);
-                }
-                Err(e) => {
-                    // Check if error is because stream already exists
-                    let error_msg = e.to_string();
-                    if error_msg.contains("already exists") {
-                        debug!("Key index stream {} already exists, continuing", key_index);
-                    } else {
-                        return Err(Error::Engine(e.to_string()));
-                    }
-                }
-            }
+            self.client
+                .create_stream(key_index.clone(), config)
+                .await
+                .map_err(|e| Error::Engine(e.to_string()))?;
+            info!("Created key index stream: {}", key_index);
 
             // Wait for key index stream to be fully available
             let mut retries = 0;

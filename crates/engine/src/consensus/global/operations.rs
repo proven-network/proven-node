@@ -74,10 +74,11 @@ impl OperationHandler for GlobalOperationHandler {
                 // Only validate for current operations (skip for replay)
                 if !is_replay {
                     // Check if stream already exists
-                    if self.state.get_stream(&name).await.is_some() {
-                        return Ok(GlobalResponse::error(format!(
-                            "Stream {name} already exists"
-                        )));
+                    if let Some(existing) = self.state.get_stream(&name).await {
+                        return Ok(GlobalResponse::StreamAlreadyExists {
+                            name: name.clone(),
+                            group_id: existing.group_id,
+                        });
                     }
 
                     // Check if group exists

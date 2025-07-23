@@ -119,6 +119,13 @@ pub enum GlobalResponse {
         /// Error message
         message: String,
     },
+    /// Stream already exists
+    StreamAlreadyExists {
+        /// Stream name
+        name: StreamName,
+        /// Current group assignment
+        group_id: ConsensusGroupId,
+    },
 }
 
 impl GlobalResponse {

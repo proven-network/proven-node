@@ -75,20 +75,29 @@ where
         // Get a suitable group for this node
         let group_id = self.client_service.get_suitable_group().await?;
 
+        let stream_name: crate::services::stream::StreamName = name.into();
         let request = GlobalRequest::CreateStream {
-            name: name.into(),
+            name: stream_name.clone(),
             config,
             group_id,
         };
 
-        let response = self.client_service.submit_global_request(request).await?;
-
-        // Make the operation idempotent - if stream already exists, return success
-        match &response {
-            GlobalResponse::Error { message } if message.contains("already exists") => {
-                Ok(GlobalResponse::Success)
+        match self.client_service.submit_global_request(request).await? {
+            GlobalResponse::StreamCreated { name, group_id } => {
+                Ok(GlobalResponse::StreamCreated { name, group_id })
             }
-            _ => Ok(response),
+            GlobalResponse::StreamAlreadyExists { name, group_id } => {
+                // Treat as success for idempotency
+                Ok(GlobalResponse::StreamCreated { name, group_id })
+            }
+            GlobalResponse::Error { message } => Err(Error::with_context(
+                crate::error::ErrorKind::OperationFailed,
+                message,
+            )),
+            other => Err(Error::with_context(
+                crate::error::ErrorKind::InvalidState,
+                format!("Unexpected response: {other:?}"),
+            )),
         }
     }
 
