@@ -9,7 +9,13 @@ use proven_transport::Transport;
 use crate::{
     consensus::global::{GlobalRequest, GlobalResponse},
     error::{ConsensusResult, Error, ErrorKind},
-    services::client::{messages::ClientServiceMessage, messages::ClientServiceResponse},
+    services::{
+        client::{
+            events::ClientServiceEvent, messages::ClientServiceMessage,
+            messages::ClientServiceResponse,
+        },
+        event::EventBus,
+    },
 };
 
 use super::types::{GlobalConsensusRef, NetworkManagerRef, RoutingServiceRef};
@@ -29,6 +35,8 @@ where
     network_manager: NetworkManagerRef<T, G>,
     /// Routing service for leader discovery
     routing_service: RoutingServiceRef,
+    /// Event bus for publishing events
+    event_bus: Arc<EventBus>,
 }
 
 impl<T, G, S> GlobalHandler<T, G, S>
@@ -43,12 +51,14 @@ where
         global_consensus: GlobalConsensusRef<T, G, S>,
         network_manager: NetworkManagerRef<T, G>,
         routing_service: RoutingServiceRef,
+        event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
             node_id,
             global_consensus,
             network_manager,
             routing_service,
+            event_bus,
         }
     }
 
@@ -134,7 +144,18 @@ where
             })?;
 
         match response {
-            ClientServiceResponse::Global { response } => Ok(response),
+            ClientServiceResponse::Global { response } => {
+                // Check if we learned about an existing stream
+                if let GlobalResponse::StreamAlreadyExists { name, group_id } = &response {
+                    // Publish event so routing service can learn about this stream
+                    let event = ClientServiceEvent::LearnedStreamExists {
+                        stream_name: name.clone(),
+                        group_id: *group_id,
+                    };
+                    self.event_bus.publish(event).await;
+                }
+                Ok(response)
+            }
             _ => Err(Error::with_context(
                 ErrorKind::Internal,
                 "Unexpected response type from leader",
@@ -155,6 +176,7 @@ where
             global_consensus: self.global_consensus.clone(),
             network_manager: self.network_manager.clone(),
             routing_service: self.routing_service.clone(),
+            event_bus: self.event_bus.clone(),
         }
     }
 }

@@ -12,7 +12,8 @@ use crate::foundation::ConsensusGroupId;
 use crate::services::event::{EventBus, EventHandler};
 use crate::services::routing::events::RoutingEvent;
 use crate::services::routing::subscribers::{
-    GlobalConsensusSubscriber, GroupConsensusSubscriber, MembershipSubscriber,
+    ClientServiceSubscriber, GlobalConsensusSubscriber, GroupConsensusSubscriber,
+    MembershipSubscriber,
 };
 use proven_topology::NodeId;
 
@@ -148,6 +149,9 @@ impl RoutingService {
 
         let membership_subscriber = MembershipSubscriber::new(self.routing_table.clone());
 
+        let client_subscriber =
+            ClientServiceSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
+
         // Subscribe to global consensus events
         self.event_bus.subscribe(global_subscriber).await;
 
@@ -156,6 +160,9 @@ impl RoutingService {
 
         // Subscribe to membership events
         self.event_bus.subscribe(membership_subscriber).await;
+
+        // Subscribe to client service events
+        self.event_bus.subscribe(client_subscriber).await;
 
         info!("RoutingService: Registered subscribers for consensus events");
 

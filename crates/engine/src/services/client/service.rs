@@ -18,8 +18,11 @@ use crate::{
         types::ConsensusGroupId,
     },
     services::{
-        event::EventService, global_consensus::GlobalConsensusService,
-        group_consensus::GroupConsensusService, routing::RoutingService, stream::StreamService,
+        event::{EventBus, EventService},
+        global_consensus::GlobalConsensusService,
+        group_consensus::GroupConsensusService,
+        routing::RoutingService,
+        stream::StreamService,
     },
 };
 
@@ -85,8 +88,10 @@ where
     group_consensus: GroupConsensusRef<T, G, S>,
     routing_service: ServiceRef<RoutingService>,
     stream_service: StreamServiceRef<S>,
-    event_service: ServiceRef<EventService>,
     network_manager: NetworkManagerRef<T, G>,
+
+    /// Event bus for publishing events
+    event_bus: Arc<EventBus>,
 
     /// Whether the service is running
     is_running: Arc<RwLock<bool>>,
@@ -102,7 +107,7 @@ where
     S: StorageAdaptor + 'static,
 {
     /// Create a new client service
-    pub fn new(node_id: NodeId) -> Self {
+    pub fn new(node_id: NodeId, event_bus: Arc<EventBus>) -> Self {
         let (request_tx, request_rx) = mpsc::channel(1000);
 
         // Service references
@@ -110,7 +115,6 @@ where
         let group_consensus = Arc::new(RwLock::new(None));
         let routing_service = Arc::new(RwLock::new(None));
         let stream_service = Arc::new(RwLock::new(None));
-        let event_service = Arc::new(RwLock::new(None));
         let network_manager = Arc::new(RwLock::new(None));
 
         // Create forwarder
@@ -131,8 +135,8 @@ where
             group_consensus,
             routing_service,
             stream_service,
-            event_service,
             network_manager,
+            event_bus,
             is_running: Arc::new(RwLock::new(false)),
             shutdown: Arc::new(RwLock::new(None)),
         }
@@ -156,11 +160,6 @@ where
     /// Set the stream service reference
     pub async fn set_stream_service(&self, service: Arc<StreamService<S>>) {
         *self.stream_service.write().await = Some(service);
-    }
-
-    /// Set the event service reference
-    pub async fn set_event_service(&self, service: Arc<EventService>) {
-        *self.event_service.write().await = Some(service);
     }
 
     /// Set the network manager reference
@@ -321,6 +320,7 @@ where
             self.global_consensus.clone(),
             self.network_manager.clone(),
             self.routing_service.clone(),
+            self.event_bus.clone(),
         );
 
         let group_handler = GroupHandler::new(

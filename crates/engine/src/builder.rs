@@ -203,8 +203,11 @@ where
             self.node_id.clone(),
         ));
 
-        // Create ClientService with StorageManager (which implements LogStorageWithDelete)
-        let client_service = Arc::new(ClientService::new(self.node_id.clone()));
+        // Create ClientService with event bus
+        let client_service = Arc::new(ClientService::new(
+            self.node_id.clone(),
+            event_service.bus(),
+        ));
 
         // Create StreamService with storage manager
         use crate::services::stream::{StreamService, StreamServiceConfig};

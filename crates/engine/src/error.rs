@@ -94,19 +94,6 @@ impl Error {
             _ => None,
         }
     }
-
-    /// Create a stream already exists error
-    pub fn stream_already_exists(stream_name: impl Into<String>) -> Self {
-        Self::with_context(
-            ErrorKind::StreamAlreadyExists,
-            format!("Stream '{}' already exists", stream_name.into()),
-        )
-    }
-
-    /// Check if this is a stream already exists error
-    pub fn is_stream_already_exists(&self) -> bool {
-        matches!(self.kind, ErrorKind::StreamAlreadyExists)
-    }
 }
 
 impl fmt::Display for Error {
@@ -159,8 +146,6 @@ pub enum ErrorKind {
     ClusterFormation,
     /// Not the leader
     NotLeader,
-    /// Stream already exists
-    StreamAlreadyExists,
 }
 
 impl fmt::Display for ErrorKind {
@@ -179,7 +164,6 @@ impl fmt::Display for ErrorKind {
             ErrorKind::Internal => write!(f, "Internal error"),
             ErrorKind::ClusterFormation => write!(f, "Cluster formation error"),
             ErrorKind::NotLeader => write!(f, "Not the leader"),
-            ErrorKind::StreamAlreadyExists => write!(f, "Stream already exists"),
         }
     }
 }
