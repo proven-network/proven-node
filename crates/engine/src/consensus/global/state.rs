@@ -68,12 +68,21 @@ impl GlobalState {
         }
     }
 
+    /// Clear all state (used when installing snapshots)
+    pub async fn clear(&self) {
+        self.streams.write().await.clear();
+        self.groups.write().await.clear();
+        self.node_groups.write().await.clear();
+        self.members.write().await.clear();
+    }
+
     // Stream operations
 
     /// Add a stream
-    pub async fn add_stream(&self, info: StreamInfo) {
+    pub async fn add_stream(&self, info: StreamInfo) -> crate::error::ConsensusResult<()> {
         let mut streams = self.streams.write().await;
         streams.insert(info.name.clone(), info);
+        Ok(())
     }
 
     /// Remove a stream
@@ -124,7 +133,7 @@ impl GlobalState {
     // Group operations
 
     /// Add a consensus group
-    pub async fn add_group(&self, info: GroupInfo) {
+    pub async fn add_group(&self, info: GroupInfo) -> crate::error::ConsensusResult<()> {
         let mut groups = self.groups.write().await;
         groups.insert(info.id, info.clone());
 
@@ -136,6 +145,7 @@ impl GlobalState {
                 .or_insert_with(Vec::new)
                 .push(info.id);
         }
+        Ok(())
     }
 
     /// Remove a consensus group

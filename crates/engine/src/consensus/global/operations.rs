@@ -97,7 +97,7 @@ impl OperationHandler for GlobalOperationHandler {
                     created_at: operation.timestamp,
                 };
 
-                self.state.add_stream(info).await;
+                self.state.add_stream(info).await?;
 
                 Ok(GlobalResponse::StreamCreated { name, group_id })
             }
@@ -129,7 +129,7 @@ impl OperationHandler for GlobalOperationHandler {
                     }
                 }
 
-                self.state.add_group(info.clone()).await;
+                self.state.add_group(info.clone()).await?;
 
                 Ok(GlobalResponse::GroupCreated {
                     id: info.id,

@@ -124,18 +124,34 @@ impl RaftSnapshotBuilder<GlobalTypeConfig> for GlobalSnapshotBuilder {
     async fn build_snapshot(
         &mut self,
     ) -> Result<Snapshot<GlobalTypeConfig>, StorageError<GlobalTypeConfig>> {
-        // TODO: Serialize the actual state
-        // This should:
         // 1. Lock and read all state components
-        // 2. Create a consistent snapshot of:
-        //    - All streams
-        //    - All groups
-        //    - All metadata
-        // 3. Serialize to a compact format
+        let all_groups = self.state.get_all_groups().await;
+        let all_streams = self.state.get_all_streams().await;
 
-        // For now, create an empty snapshot
-        let snapshot_data = vec![];
-        let snapshot = GlobalSnapshot::new(snapshot_data);
+        // 2. Create a state snapshot structure
+        let state_data = StateSnapshotData {
+            groups: all_groups,
+            streams: all_streams,
+        };
+
+        // 3. Serialize to a compact format
+        let mut serialized_state = Vec::new();
+        ciborium::into_writer(&state_data, &mut serialized_state)
+            .map_err(|e| StorageError::write(&e))?;
+
+        // Create snapshot data with metadata
+        let snapshot_data = GlobalSnapshotData::new(
+            serialized_state,
+            state_data.streams.len(),
+            state_data.groups.len(),
+        );
+
+        // Serialize the complete snapshot
+        let mut snapshot_bytes = Vec::new();
+        ciborium::into_writer(&snapshot_data, &mut snapshot_bytes)
+            .map_err(|e| StorageError::write(&e))?;
+
+        let snapshot = GlobalSnapshot::new(snapshot_bytes);
 
         Ok(Snapshot {
             meta: SnapshotMeta {
@@ -146,6 +162,15 @@ impl RaftSnapshotBuilder<GlobalTypeConfig> for GlobalSnapshotBuilder {
             snapshot,
         })
     }
+}
+
+/// State snapshot data containing all groups and streams
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StateSnapshotData {
+    /// All groups in the system
+    pub groups: Vec<super::types::GroupInfo>,
+    /// All streams in the system
+    pub streams: Vec<super::state::StreamInfo>,
 }
 
 /// Snapshot data structure that would be serialized

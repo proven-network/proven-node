@@ -90,6 +90,12 @@ impl GlobalStateMachine {
             let log_id = entry.log_id.clone();
             *self.applied.write().await = Some(log_id.clone());
 
+            tracing::info!(
+                "Applying log entry: index={}, leader_id={:?}",
+                log_id.index,
+                log_id.leader_id
+            );
+
             // Check if we've crossed the replay boundary
             if let Some(boundary) = self.replay_boundary
                 && log_id.index + 1 >= boundary.get()
@@ -226,6 +232,12 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
         meta: &openraft::SnapshotMeta<GlobalTypeConfig>,
         mut snapshot: GlobalSnapshot,
     ) -> Result<(), StorageError<GlobalTypeConfig>> {
+        tracing::info!(
+            "Installing snapshot: id={}, last_log_id={:?}",
+            meta.snapshot_id,
+            meta.last_log_id
+        );
+
         // Install snapshot into state machine
         use tokio::io::AsyncReadExt;
         let mut buffer = Vec::new();
@@ -234,15 +246,62 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
             .await
             .map_err(|e| StorageError::write(&e))?;
 
-        // TODO: Deserialize and install state
-        // This should:
         // 1. Deserialize the snapshot data
-        // 2. Replace the current state with snapshot state
-        // 3. Update applied index and membership from metadata
+        let snapshot_data: super::snapshot::GlobalSnapshotData =
+            ciborium::from_reader(&buffer[..]).map_err(|e| StorageError::read(&e))?;
 
-        // Update metadata
+        // Verify snapshot integrity
+        if !snapshot_data.verify() {
+            use crate::error::{Error, ErrorKind};
+            return Err(StorageError::read(&Error::with_context(
+                ErrorKind::InvalidState,
+                "Snapshot checksum verification failed",
+            )));
+        }
+
+        // Deserialize the state data
+        let state_data: super::snapshot::StateSnapshotData =
+            ciborium::from_reader(&snapshot_data.state[..]).map_err(|e| StorageError::read(&e))?;
+
+        // 2. Replace the current state with snapshot state
+        // Clear existing state first
+        self.state.clear().await;
+
+        // Store counts for logging
+        let group_count = state_data.groups.len();
+        let stream_count = state_data.streams.len();
+
+        // Install groups
+        for group in state_data.groups {
+            self.state
+                .add_group(group)
+                .await
+                .map_err(|e| StorageError::write(&e))?;
+        }
+
+        // Install streams
+        for stream in state_data.streams {
+            self.state
+                .add_stream(stream)
+                .await
+                .map_err(|e| StorageError::write(&e))?;
+        }
+
+        // 3. Update applied index and membership from metadata
         *self.applied.write().await = meta.last_log_id.clone();
         *self.membership.write().await = meta.last_membership.clone();
+
+        // 4. Mark state as synced and fire the state sync callback
+        *self.state_synced.write().await = true;
+        self.callback_dispatcher
+            .dispatch_state_sync(&self.state)
+            .await;
+
+        tracing::info!(
+            "Installed snapshot with {} groups and {} streams",
+            group_count,
+            stream_count
+        );
 
         Ok(())
     }
@@ -250,9 +309,11 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
     async fn get_current_snapshot(
         &mut self,
     ) -> Result<Option<Snapshot<GlobalTypeConfig>>, StorageError<GlobalTypeConfig>> {
-        // TODO: Create snapshot of current state
-        // For now, return None indicating no snapshot available
-        Ok(None)
+        // Build a snapshot of the current state
+        let mut builder = self.get_snapshot_builder().await;
+        use openraft::storage::RaftSnapshotBuilder;
+        let snapshot = builder.build_snapshot().await?;
+        Ok(Some(snapshot))
     }
 
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
