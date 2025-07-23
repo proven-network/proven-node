@@ -52,7 +52,7 @@ pub enum ClientRequest {
 }
 
 /// Stream information
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StreamInfo {
     /// Stream name
     pub name: String,

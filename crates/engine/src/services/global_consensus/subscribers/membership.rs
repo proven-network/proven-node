@@ -179,6 +179,55 @@ where
                     warn!("Global consensus layer not initialized when handling ClusterFormed");
                 }
             }
+
+            MembershipEvent::MembershipChangeRequired {
+                add_nodes,
+                remove_nodes,
+                reason,
+            } => {
+                info!(
+                    "MembershipEventSubscriber: Membership change required - add {} nodes, remove {} nodes. Reason: {}",
+                    add_nodes.len(),
+                    remove_nodes.len(),
+                    reason
+                );
+
+                // Check if we have a consensus layer
+                let consensus_guard = self.consensus_layer.read().await;
+                if let Some(consensus) = consensus_guard.as_ref() {
+                    // Check if we're the leader
+                    if consensus.is_leader().await {
+                        // Add new nodes as learners
+                        for (node_id, node_info) in add_nodes {
+                            info!("Adding node {} as learner to global consensus", node_id);
+
+                            if let Err(e) = consensus.add_learner(node_id.clone(), node_info).await
+                            {
+                                error!("Failed to add node {} as learner: {}", node_id, e);
+                            } else {
+                                info!("Successfully added node {} as learner", node_id);
+                                // TODO: Later we should promote learners to voters once they catch up
+                            }
+                        }
+
+                        // Handle node removals if any
+                        if !remove_nodes.is_empty() {
+                            warn!(
+                                "Node removal not yet implemented for nodes: {:?}",
+                                remove_nodes
+                            );
+                            // TODO: Implement node removal from Raft
+                        }
+                    } else {
+                        debug!("Not the leader, ignoring membership change request");
+                    }
+                } else {
+                    warn!(
+                        "Global consensus layer not initialized when handling MembershipChangeRequired"
+                    );
+                }
+            }
+
             _ => {
                 // Ignore other membership events
             }

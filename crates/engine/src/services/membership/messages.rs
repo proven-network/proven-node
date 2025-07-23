@@ -20,6 +20,8 @@ pub enum MembershipMessage {
     HealthCheck(HealthCheckRequest),
     /// Announce graceful shutdown
     GracefulShutdown(GracefulShutdownRequest),
+    /// Request to join the cluster
+    JoinCluster(JoinClusterRequest),
 }
 
 impl ServiceMessage for MembershipMessage {
@@ -42,6 +44,7 @@ pub enum MembershipResponse {
     AcceptProposal(AcceptProposalResponse),
     HealthCheck(HealthCheckResponse),
     GracefulShutdown(GracefulShutdownResponse),
+    JoinCluster(JoinClusterResponse),
 }
 
 impl ServiceMessage for MembershipResponse {
@@ -203,4 +206,24 @@ pub struct GracefulShutdownRequest {
 pub struct GracefulShutdownResponse {
     /// Acknowledgment received
     pub acknowledged: bool,
+}
+
+/// Request to join an existing cluster
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JoinClusterRequest {
+    /// Node information
+    pub node_info: Node,
+    /// Timestamp
+    pub timestamp: u64,
+}
+
+/// Response to join cluster request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JoinClusterResponse {
+    /// Whether the join was accepted
+    pub accepted: bool,
+    /// Reason if rejected
+    pub rejection_reason: Option<String>,
+    /// Current cluster state (if accepted)
+    pub cluster_state: Option<ClusterState>,
 }

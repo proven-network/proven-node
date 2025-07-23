@@ -343,6 +343,7 @@ where
             self.group_consensus.clone(),
             self.global_consensus.clone(),
             self.routing_service.clone(),
+            self.forwarder.clone(),
         );
 
         let handlers = Arc::new(ClientHandlers {
@@ -626,6 +627,26 @@ where
                                 reason: super::messages::StreamEndReason::Cancelled,
                             })
                         }
+                        super::messages::ClientServiceMessage::QueryStreamInfo {
+                            requester_id: _,
+                            stream_name,
+                        } => {
+                            tracing::debug!(
+                                "Received stream info query from {} for stream {}",
+                                sender,
+                                stream_name
+                            );
+
+                            let info = handlers.query.get_stream_info(&stream_name).await.map_err(
+                                |e| {
+                                    proven_network::NetworkError::Internal(format!(
+                                        "Failed to get stream info: {e}"
+                                    ))
+                                },
+                            )?;
+
+                            Ok(super::messages::ClientServiceResponse::StreamInfo { info })
+                        }
                     }
                 })
             })
@@ -667,6 +688,13 @@ where
         group_id: ConsensusGroupId,
         request: crate::consensus::group::GroupRequest,
     ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
+        tracing::debug!(
+            "ClientService on node {}: submit_group_request for group {:?}, request: {:?}",
+            self.node_id,
+            group_id,
+            request
+        );
+
         let (response_tx, response_rx) = oneshot::channel();
 
         self.request_tx

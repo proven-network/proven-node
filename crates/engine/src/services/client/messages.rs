@@ -88,6 +88,13 @@ pub enum ClientServiceMessage {
         /// Stream session ID
         session_id: uuid::Uuid,
     },
+    /// Query stream information
+    QueryStreamInfo {
+        /// Original requester node
+        requester_id: NodeId,
+        /// Stream name
+        stream_name: String,
+    },
 }
 
 /// Client service response
@@ -133,6 +140,11 @@ pub enum ClientServiceResponse {
         session_id: uuid::Uuid,
         /// Error message
         error: String,
+    },
+    /// Response to QueryStreamInfo
+    StreamInfo {
+        /// Stream information
+        info: Option<crate::services::client::types::StreamInfo>,
     },
 }
 

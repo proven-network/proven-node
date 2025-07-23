@@ -59,6 +59,7 @@ where
         // Route the stream operation
         match routing.route_stream_operation(stream_name, vec![]).await {
             Ok(RouteDecision::RouteToGroup(group_id)) => {
+                tracing::debug!("Stream {} routed to group {:?}", stream_name, group_id);
                 // Delegate to group handler (handles local vs remote)
                 self.group_handler.handle(group_id, request).await
             }

@@ -61,13 +61,21 @@ where
             Error::with_context(ErrorKind::Service, "Routing service not available")
         })?;
 
-        if routing.is_group_local(group_id).await? {
+        let is_local = routing.is_group_local(group_id).await?;
+        tracing::debug!(
+            "Group handler checking group {:?}: is_local = {}",
+            group_id,
+            is_local
+        );
+
+        if is_local {
             // Local group - try to submit locally first
             let group_guard = self.group_consensus.read().await;
             let service = group_guard.as_ref().ok_or_else(|| {
                 Error::with_context(ErrorKind::Service, "Group consensus service not available")
             })?;
 
+            tracing::debug!("Submitting request to local group {:?}", group_id);
             match service.submit_to_group(group_id, request.clone()).await {
                 Ok(response) => Ok(response),
                 Err(e) if e.is_not_leader() => {
@@ -89,6 +97,7 @@ where
             }
         } else {
             // Remote group - forward to any member
+            tracing::debug!("Group {:?} is remote, forwarding request", group_id);
             self.forwarder
                 .forward_to_remote_group(group_id, request)
                 .await

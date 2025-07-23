@@ -114,14 +114,29 @@ where
         payload: Vec<u8>,
         metadata: Option<std::collections::HashMap<String, String>>,
     ) -> ConsensusResult<GroupResponse> {
+        tracing::debug!(
+            "Client::publish called on node {} for stream '{}', payload size: {}",
+            self.node_id,
+            stream,
+            payload.len()
+        );
+
         // First, get stream info to find the group
         let stream_info = self
             .client_service
             .get_stream_info(&stream)
             .await?
             .ok_or_else(|| {
+                tracing::debug!("Stream '{}' not found on node {}", stream, self.node_id);
                 crate::error::Error::not_found(format!("Stream '{stream}' not found"))
             })?;
+
+        tracing::debug!(
+            "Node {}: Stream '{}' is in group {:?}",
+            self.node_id,
+            stream,
+            stream_info.group_id
+        );
 
         // Create message data
         let message = MessageData::with_headers(
@@ -144,9 +159,27 @@ where
             timestamp,
         });
 
-        self.client_service
+        tracing::debug!(
+            "Node {}: Submitting publish request to group {:?}",
+            self.node_id,
+            stream_info.group_id
+        );
+
+        let result = self
+            .client_service
             .submit_group_request(stream_info.group_id, request)
-            .await
+            .await;
+
+        match &result {
+            Ok(response) => tracing::debug!(
+                "Node {}: Publish succeeded with response: {:?}",
+                self.node_id,
+                response
+            ),
+            Err(e) => tracing::debug!("Node {}: Publish failed with error: {}", self.node_id, e),
+        }
+
+        result
     }
 
     /// Get stream information

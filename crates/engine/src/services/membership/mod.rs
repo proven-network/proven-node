@@ -9,6 +9,7 @@
 mod config;
 mod discovery;
 pub mod events;
+mod handlers;
 mod health;
 mod messages;
 mod service;

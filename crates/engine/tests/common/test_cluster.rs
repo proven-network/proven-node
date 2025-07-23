@@ -159,11 +159,6 @@ impl TestCluster {
 
             engines.push(engine);
             node_infos.push(node_info);
-
-            // Give a small delay between nodes to allow topology updates to propagate
-            if i < count - 1 {
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
         }
 
         info!("All {} nodes created and started successfully", count);
@@ -277,9 +272,6 @@ impl TestCluster {
             .expect("Failed to start network manager");
 
         engine.start().await.expect("Failed to start engine");
-
-        // Give services a moment to fully initialize
-        tokio::time::sleep(Duration::from_millis(100)).await;
 
         let node_info = NodeInfo {
             node_id: node_id.clone(),

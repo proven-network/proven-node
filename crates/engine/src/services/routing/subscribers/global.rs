@@ -114,11 +114,6 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
 
             GlobalConsensusEvent::GroupCreated { group_id, members } => {
                 // Synchronously update routing table when a group is created
-                info!(
-                    "GlobalConsensusSubscriber: Group {:?} created with {} members",
-                    group_id,
-                    members.len()
-                );
 
                 // Determine if we're a member of this group
                 let is_member = members.contains(&self.local_node_id);
@@ -127,6 +122,13 @@ impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
                 } else {
                     GroupLocation::Remote
                 };
+
+                info!(
+                    "GlobalConsensusSubscriber: {:?} Group {:?} created with {} members",
+                    location,
+                    group_id,
+                    members.len(),
+                );
 
                 // Create the group route
                 let route = GroupRoute {

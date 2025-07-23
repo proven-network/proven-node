@@ -114,21 +114,6 @@ impl RoutingService {
 
         info!("Starting routing service internal");
 
-        // Initialize with default group info
-        let default_group_id = ConsensusGroupId::new(1);
-        let default_group_route = GroupRoute {
-            group_id: default_group_id,
-            members: vec![], // Will be populated when group is actually created
-            leader: None,
-            stream_count: 0,
-            health: GroupHealth::Healthy,
-            last_updated: SystemTime::now(),
-            location: GroupLocation::Remote, // Default to remote until we know it's local
-        };
-        self.routing_table
-            .update_group_route(default_group_id, default_group_route)
-            .await?;
-
         let mut tasks = self.background_tasks.write().await;
 
         // Start load monitoring if enabled

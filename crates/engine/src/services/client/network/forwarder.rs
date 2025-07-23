@@ -9,7 +9,7 @@ use crate::{
     consensus::group::{GroupRequest, GroupResponse},
     error::{ConsensusResult, Error, ErrorKind},
     foundation::types::ConsensusGroupId,
-    services::client::{ClientServiceMessage, ClientServiceResponse},
+    services::client::{ClientServiceMessage, ClientServiceResponse, types::StreamInfo},
 };
 
 use super::super::handlers::types::{NetworkManagerRef, RoutingServiceRef};
@@ -67,8 +67,21 @@ where
         })?;
 
         let group_info = routing_info.group_routes.get(&group_id).ok_or_else(|| {
+            tracing::error!(
+                "Group {:?} not found in routing table. Available groups: {:?}",
+                group_id,
+                routing_info.group_routes.keys().collect::<Vec<_>>()
+            );
             Error::with_context(ErrorKind::NotFound, format!("Group {group_id:?} not found"))
         })?;
+
+        tracing::debug!(
+            "Forwarding request for group {:?} - location: {:?}, members: {:?}, leader: {:?}",
+            group_id,
+            group_info.location,
+            group_info.members,
+            group_info.leader
+        );
 
         // Find a responsive member (prefer leader if known)
         let target_node = if let Some(leader) = &group_info.leader {
@@ -258,6 +271,76 @@ where
                     last_error = Some(Error::with_context(
                         ErrorKind::Network,
                         format!("Failed to read from {member}: {e}"),
+                    ));
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            Error::with_context(
+                ErrorKind::InvalidState,
+                format!("No available members in group {group_id:?}"),
+            )
+        }))
+    }
+
+    /// Forward a stream info query to a remote group member
+    pub async fn forward_stream_info_query(
+        &self,
+        group_id: ConsensusGroupId,
+        stream_name: &str,
+    ) -> ConsensusResult<Option<StreamInfo>> {
+        // Get routing info to find group members
+        let routing_guard = self.routing_service.read().await;
+        let routing = routing_guard.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Service, "Routing service not available")
+        })?;
+
+        let routing_info = routing.get_routing_info().await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Failed to get routing info: {e}"),
+            )
+        })?;
+
+        let group_info = routing_info.group_routes.get(&group_id).ok_or_else(|| {
+            Error::with_context(ErrorKind::NotFound, format!("Group {group_id:?} not found"))
+        })?;
+
+        // Get network manager
+        let network_guard = self.network_manager.read().await;
+        let network = network_guard.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Service, "Network manager not available")
+        })?;
+
+        // Try members in order
+        let mut last_error = None;
+        for member in &group_info.members {
+            if member == &self.node_id {
+                continue; // Skip self
+            }
+
+            // Forward the query request
+            let message = ClientServiceMessage::QueryStreamInfo {
+                requester_id: self.node_id.clone(),
+                stream_name: stream_name.to_string(),
+            };
+
+            match network
+                .service_request(member.clone(), message, std::time::Duration::from_secs(5))
+                .await
+            {
+                Ok(ClientServiceResponse::StreamInfo { info }) => return Ok(info),
+                Ok(_) => {
+                    last_error = Some(Error::with_context(
+                        ErrorKind::Internal,
+                        "Unexpected response type",
+                    ));
+                }
+                Err(e) => {
+                    last_error = Some(Error::with_context(
+                        ErrorKind::Network,
+                        format!("Failed to query {member}: {e}"),
                     ));
                 }
             }

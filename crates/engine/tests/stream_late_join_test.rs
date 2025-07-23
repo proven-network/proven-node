@@ -101,6 +101,25 @@ async fn test_late_node_join_stream_creation() {
     // Extend our engines list
     engines.extend(new_engines);
 
+    // Immediately try to publish to the first stream from the new node
+    println!("\nImmediately attempting to publish to the first stream from the new node...");
+    match engines[1]
+        .client()
+        .publish(
+            stream_name.clone(),
+            b"Message from new node (immediate)".to_vec(),
+            None,
+        )
+        .await
+    {
+        Ok(response) => {
+            println!("Successfully published from new node (immediate): {response:?}");
+        }
+        Err(e) => {
+            println!("Error publishing from new node (immediate): {e}");
+        }
+    }
+
     // Wait for the new node to join the cluster
     println!("Waiting for topology to update...");
     cluster
@@ -108,9 +127,9 @@ async fn test_late_node_join_stream_creation() {
         .await
         .expect("Failed to wait for topology size");
 
-    // Give some time for any errors to manifest
-    println!("Waiting for potential errors to manifest...");
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    // Give a very short time for any errors to manifest
+    println!("Waiting briefly for potential errors to manifest...");
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Check if both nodes are healthy
     for (i, engine) in engines.iter().enumerate() {
@@ -149,6 +168,21 @@ async fn test_late_node_join_stream_creation() {
             Err(e) => {
                 println!("Node {i} error getting groups: {e}");
             }
+        }
+    }
+
+    // Try to publish to the first stream from node 1 (the new node)
+    println!("\nAttempting to publish to the first stream from node 1 (the new node)...");
+    match engines[1]
+        .client()
+        .publish(stream_name.clone(), b"Message from new node".to_vec(), None)
+        .await
+    {
+        Ok(response) => {
+            println!("Successfully published from new node: {response:?}");
+        }
+        Err(e) => {
+            println!("Error publishing from new node: {e}");
         }
     }
 

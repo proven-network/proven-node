@@ -26,9 +26,10 @@ use crate::services::event::bus::EventBus;
 use super::config::MembershipConfig;
 use super::discovery::{DiscoveryManager, DiscoveryResult};
 use super::events::MembershipEvent;
+use super::handlers;
 use super::health::HealthMonitor;
 use super::messages::{
-    AcceptProposalRequest, AcceptProposalResponse, ClusterState, DiscoverClusterResponse,
+    self, AcceptProposalRequest, AcceptProposalResponse, ClusterState, DiscoverClusterResponse,
     GlobalConsensusInfo, GracefulShutdownRequest, GracefulShutdownResponse, HealthCheckResponse,
     MembershipMessage, MembershipResponse, ProposeClusterRequest, ProposeClusterResponse,
 };
@@ -421,12 +422,59 @@ where
 
         drop(view);
 
-        // Publish event
-        self.publish_event(MembershipEvent::ClusterJoined {
-            members: all_members,
-            leader,
-        })
-        .await;
+        // Send join request to the leader
+        info!("Sending join request to leader {}", leader);
+        let join_request = MembershipMessage::JoinCluster(messages::JoinClusterRequest {
+            node_info: self.node_info.clone(),
+            timestamp: now_timestamp(),
+        });
+
+        match self
+            .network_manager
+            .service_request(leader.clone(), join_request, Duration::from_secs(5))
+            .await
+        {
+            Ok(MembershipResponse::JoinCluster(response)) => {
+                if response.accepted {
+                    info!("Join request accepted by leader");
+
+                    // Publish event
+                    self.publish_event(MembershipEvent::ClusterJoined {
+                        members: all_members,
+                        leader,
+                    })
+                    .await;
+                } else {
+                    error!(
+                        "Join request rejected by leader: {:?}",
+                        response.rejection_reason
+                    );
+                    return Err(Error::with_context(
+                        ErrorKind::InvalidState,
+                        format!(
+                            "Join request rejected: {}",
+                            response
+                                .rejection_reason
+                                .unwrap_or_else(|| "Unknown reason".to_string())
+                        ),
+                    ));
+                }
+            }
+            Ok(_) => {
+                error!("Unexpected response type from join request");
+                return Err(Error::with_context(
+                    ErrorKind::InvalidState,
+                    "Unexpected response type from join request",
+                ));
+            }
+            Err(e) => {
+                error!("Failed to send join request to leader: {}", e);
+                return Err(Error::with_context(
+                    ErrorKind::Network,
+                    format!("Failed to send join request: {e}"),
+                ));
+            }
+        }
 
         Ok(())
     }
@@ -600,6 +648,28 @@ where
                 Ok(MembershipResponse::GracefulShutdown(
                     GracefulShutdownResponse { acknowledged: true },
                 ))
+            }
+            MembershipMessage::JoinCluster(req) => {
+                // Use the join handler
+                let handler = handlers::JoinClusterHandler::new(
+                    self.node_id.clone(),
+                    self.membership_view.clone(),
+                    self.event_bus.clone(),
+                );
+
+                match handler.handle(sender, req).await {
+                    Ok(response) => Ok(MembershipResponse::JoinCluster(response)),
+                    Err(e) => {
+                        error!("Failed to handle join request: {}", e);
+                        Ok(MembershipResponse::JoinCluster(
+                            messages::JoinClusterResponse {
+                                accepted: false,
+                                rejection_reason: Some(format!("Internal error: {e}")),
+                                cluster_state: None,
+                            },
+                        ))
+                    }
+                }
             }
         }
     }
