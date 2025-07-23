@@ -4,14 +4,15 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::{
-    error::ConsensusResult, foundation::types::ConsensusGroupId, services::stream::StreamName,
+    error::ConsensusResult,
+    foundation::{global_state::GlobalState, global_state::GroupInfo, types::ConsensusGroupId},
+    services::stream::StreamName,
 };
 use proven_topology::NodeId;
 
 use super::{
     callbacks::GlobalConsensusCallbacks,
-    state::GlobalState,
-    types::{GlobalRequest, GlobalResponse, GroupInfo},
+    types::{GlobalRequest, GlobalResponse},
 };
 
 /// Dispatches callbacks based on operation results

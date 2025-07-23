@@ -5,9 +5,9 @@ use std::sync::Arc;
 use proven_topology::NodeId;
 
 use crate::{
-    consensus::global::{GlobalConsensusCallbacks, types::GroupInfo},
+    consensus::global::GlobalConsensusCallbacks,
     error::ConsensusResult,
-    foundation::types::ConsensusGroupId,
+    foundation::{GlobalState, GroupInfo, types::ConsensusGroupId},
     services::{
         event::bus::EventBus,
         global_consensus::{
@@ -33,10 +33,7 @@ impl GlobalConsensusCallbacksImpl {
 
 #[async_trait::async_trait]
 impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
-    async fn on_state_synchronized(
-        &self,
-        state: &crate::consensus::global::state::GlobalState,
-    ) -> ConsensusResult<()> {
+    async fn on_state_synchronized(&self, state: &GlobalState) -> ConsensusResult<()> {
         tracing::info!(
             "Global state synchronized - publishing snapshot for node {}",
             self.node_id

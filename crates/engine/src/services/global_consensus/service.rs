@@ -23,10 +23,9 @@ use crate::services::global_consensus::subscribers::MembershipEventSubscriber;
 use crate::{
     consensus::global::{
         GlobalConsensusCallbacks, GlobalConsensusLayer, raft::GlobalRaftMessageHandler,
-        types::GroupInfo,
     },
     error::{ConsensusResult, Error, ErrorKind},
-    foundation::types::ConsensusGroupId,
+    foundation::{GroupInfo, types::ConsensusGroupId},
     services::stream::StreamName,
     services::{
         event::bus::EventBus, global_consensus::GlobalConsensusEvent,

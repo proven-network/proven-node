@@ -4,13 +4,13 @@
 
 use std::sync::Arc;
 
+use crate::foundation::global_state::GlobalState;
 use openraft::{
     LogId, RaftSnapshotBuilder, SnapshotMeta, StorageError, StoredMembership, storage::Snapshot,
 };
 use serde::{Deserialize, Serialize};
 
 use super::raft::GlobalTypeConfig;
-use super::state::GlobalState;
 
 /// Global consensus snapshot - implements AsyncRead/Write/Seek for OpenRaft
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,9 +168,9 @@ impl RaftSnapshotBuilder<GlobalTypeConfig> for GlobalSnapshotBuilder {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StateSnapshotData {
     /// All groups in the system
-    pub groups: Vec<super::types::GroupInfo>,
+    pub groups: Vec<crate::foundation::GroupInfo>,
     /// All streams in the system
-    pub streams: Vec<super::state::StreamInfo>,
+    pub streams: Vec<crate::foundation::global_state::StreamInfo>,
 }
 
 /// Snapshot data structure that would be serialized

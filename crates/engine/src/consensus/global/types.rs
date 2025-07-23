@@ -3,22 +3,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::foundation::GroupInfo;
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::stream::{StreamConfig, StreamName};
 use proven_topology::NodeId;
-
-/// Consensus group information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GroupInfo {
-    /// Group ID
-    pub id: ConsensusGroupId,
-    /// Member nodes
-    pub members: Vec<NodeId>,
-    /// Creation timestamp
-    pub created_at: u64,
-    /// Group metadata
-    pub metadata: HashMap<String, String>,
-}
 
 /// Global consensus request
 #[derive(Debug, Clone, Serialize, Deserialize)]

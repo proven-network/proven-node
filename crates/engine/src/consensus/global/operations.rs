@@ -8,10 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::{traits::OperationHandler, types::OperationId, validations};
+use crate::foundation::{
+    global_state::GlobalState, traits::OperationHandler, types::OperationId, validations,
+};
 
-use super::state::GlobalState;
-use super::types::{GlobalRequest, GlobalResponse, GroupInfo};
+use super::types::{GlobalRequest, GlobalResponse};
 
 /// Global consensus operation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,7 +91,7 @@ impl OperationHandler for GlobalOperationHandler {
                 }
 
                 // Create stream
-                let info = super::state::StreamInfo {
+                let info = crate::foundation::global_state::StreamInfo {
                     name: name.clone(),
                     config,
                     group_id,
@@ -156,7 +157,7 @@ impl OperationHandler for GlobalOperationHandler {
             }
 
             GlobalRequest::AddNode { node_id, metadata } => {
-                let info = super::state::NodeInfo {
+                let info = crate::foundation::global_state::NodeInfo {
                     node_id: node_id.clone(),
                     joined_at: operation.timestamp,
                     metadata,

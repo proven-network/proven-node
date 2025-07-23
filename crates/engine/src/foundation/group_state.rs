@@ -7,7 +7,7 @@ use std::num::NonZero;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use super::types::MessageData;
+use crate::foundation::Message;
 use crate::services::stream::StreamName;
 
 /// Group consensus state
@@ -122,7 +122,7 @@ impl GroupState {
     pub async fn append_messages(
         &self,
         stream: &StreamName,
-        messages: Vec<MessageData>,
+        messages: Vec<Message>,
         timestamp_millis: u64,
     ) -> Arc<Vec<bytes::Bytes>> {
         if messages.is_empty() {

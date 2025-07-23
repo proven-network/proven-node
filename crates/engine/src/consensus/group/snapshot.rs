@@ -10,7 +10,7 @@ use openraft::{
 use serde::{Deserialize, Serialize};
 
 use super::raft::GroupTypeConfig;
-use super::state::GroupState;
+use crate::foundation::group_state::GroupState;
 
 /// Group consensus snapshot - implements AsyncRead/Write/Seek for OpenRaft
 #[derive(Debug, Clone, Serialize, Deserialize)]

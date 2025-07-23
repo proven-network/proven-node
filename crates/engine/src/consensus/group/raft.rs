@@ -17,6 +17,7 @@ use proven_topology::NodeId;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
+    group_state::GroupState,
     traits::ConsensusLayer,
     types::{ConsensusGroupId, ConsensusRole, OperationId, Term},
 };
@@ -25,7 +26,6 @@ use super::callbacks::GroupConsensusCallbacks;
 use super::dispatcher::GroupCallbackDispatcher;
 use super::operations::{GroupOperation, GroupOperationHandler};
 use super::snapshot::GroupSnapshot;
-use super::state::GroupState;
 use super::state_machine::GroupStateMachine;
 use super::storage::GroupRaftLogStorage;
 use super::types::{GroupRequest, GroupResponse};

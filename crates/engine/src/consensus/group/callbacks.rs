@@ -4,10 +4,13 @@ use async_trait::async_trait;
 use std::num::NonZero;
 use std::sync::Arc;
 
-use crate::{error::ConsensusResult, foundation::types::ConsensusGroupId};
+use crate::{
+    error::ConsensusResult,
+    foundation::{group_state::GroupState, types::ConsensusGroupId},
+};
 use proven_topology::NodeId;
 
-use super::{state::GroupState, types::MessageData};
+use super::types::MessageData;
 
 /// Callbacks for group consensus operations and state synchronization
 #[async_trait]

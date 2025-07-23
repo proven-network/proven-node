@@ -78,7 +78,7 @@ pub enum NodeState {
 
 /// Group state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum GroupState {
+pub enum GroupState2 {
     /// Group is forming
     Forming,
     /// Group is active

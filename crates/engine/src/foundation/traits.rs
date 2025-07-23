@@ -189,7 +189,7 @@ pub trait GroupManager: Send + Sync {
     async fn get_group_state(
         &self,
         group_id: ConsensusGroupId,
-    ) -> ConsensusResult<Option<GroupState>>;
+    ) -> ConsensusResult<Option<GroupState2>>;
 }
 
 /// Trait for stream management

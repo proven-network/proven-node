@@ -16,9 +16,8 @@ use super::dispatcher::GlobalCallbackDispatcher;
 use super::operations::{GlobalOperation, GlobalOperationHandler};
 use super::raft::GlobalTypeConfig;
 use super::snapshot::{GlobalSnapshot, GlobalSnapshotBuilder};
-use super::state::GlobalState;
 use super::types::{GlobalRequest, GlobalResponse};
-use crate::foundation::traits::OperationHandler;
+use crate::foundation::{global_state::GlobalState, traits::OperationHandler};
 use proven_topology::NodeId;
 
 /// Raft state machine - handles applying committed entries

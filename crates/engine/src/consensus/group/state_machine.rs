@@ -16,9 +16,10 @@ use super::dispatcher::GroupCallbackDispatcher;
 use super::operations::{GroupOperation, GroupOperationHandler};
 use super::raft::GroupTypeConfig;
 use super::snapshot::{GroupSnapshot, GroupSnapshotBuilder};
-use super::state::GroupState;
 use super::types::{GroupRequest, GroupResponse, StreamOperation};
-use crate::foundation::{traits::OperationHandler, types::ConsensusGroupId};
+use crate::foundation::{
+    group_state::GroupState, traits::OperationHandler, types::ConsensusGroupId,
+};
 use proven_topology::NodeId;
 
 /// Raft state machine - handles applying committed entries

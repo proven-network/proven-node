@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::{traits::OperationHandler, types::OperationId, validations};
+use crate::foundation::{
+    group_state::GroupState, traits::OperationHandler, types::OperationId, validations,
+};
 
-use super::state::GroupState;
 use super::types::{AdminOperation, GroupRequest, GroupResponse, StreamOperation};
 
 /// Group consensus operation

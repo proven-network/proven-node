@@ -9,10 +9,9 @@ pub mod group;
 
 // Re-export main types
 pub use global::{
-    GlobalConsensusLayer, GlobalOperation, GlobalRequest, GlobalResponse, GlobalState,
-    GlobalTypeConfig,
+    GlobalConsensusLayer, GlobalOperation, GlobalRequest, GlobalResponse, GlobalTypeConfig,
 };
 
 pub use group::{
-    GroupConsensusLayer, GroupOperation, GroupRequest, GroupResponse, GroupState, GroupTypeConfig,
+    GroupConsensusLayer, GroupOperation, GroupRequest, GroupResponse, GroupTypeConfig,
 };

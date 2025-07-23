@@ -17,6 +17,7 @@ use proven_topology::NodeId;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
+    global_state::GlobalState,
     traits::ConsensusLayer,
     types::{ConsensusRole, OperationId, Term},
 };
@@ -53,7 +54,6 @@ use super::callbacks::GlobalConsensusCallbacks;
 use super::dispatcher::GlobalCallbackDispatcher;
 use super::operations::{GlobalOperation, GlobalOperationHandler};
 use super::snapshot::GlobalSnapshot;
-use super::state::GlobalState;
 use super::state_machine::GlobalStateMachine;
 use super::storage::GlobalRaftLogStorage;
 use super::types::{GlobalRequest, GlobalResponse};

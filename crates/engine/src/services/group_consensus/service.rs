@@ -14,6 +14,7 @@ use proven_transport::Transport;
 use tracing::info;
 
 use super::{callbacks, config::GroupConsensusConfig};
+use crate::foundation::group_state::StreamState;
 use crate::{
     consensus::group::GroupConsensusLayer,
     error::{ConsensusResult, Error, ErrorKind},
@@ -471,7 +472,7 @@ where
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
-    ) -> ConsensusResult<Option<crate::consensus::group::state::StreamState>> {
+    ) -> ConsensusResult<Option<StreamState>> {
         let groups = self.groups.read().await;
         let layer = groups.get(&group_id).ok_or_else(|| {
             Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))

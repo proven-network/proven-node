@@ -1,7 +1,6 @@
 use crate::consensus::global::raft::GlobalRaftMessageHandler;
-use crate::consensus::global::types::GroupInfo;
 use crate::consensus::global::{GlobalConsensusLayer, GlobalRequest};
-use crate::foundation::types::ConsensusGroupId;
+use crate::foundation::{GroupInfo, types::ConsensusGroupId};
 use crate::services::event::{EventHandler, EventPriority};
 use crate::services::membership::MembershipEvent;
 use proven_storage::{StorageAdaptor, StorageManager};

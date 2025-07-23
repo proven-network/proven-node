@@ -196,7 +196,7 @@ where
         members: Vec<NodeId>,
     ) -> ConsensusResult<GlobalResponse> {
         let request = GlobalRequest::CreateGroup {
-            info: crate::consensus::global::types::GroupInfo {
+            info: crate::foundation::GroupInfo {
                 id: group_id,
                 members,
                 created_at: std::time::SystemTime::now()

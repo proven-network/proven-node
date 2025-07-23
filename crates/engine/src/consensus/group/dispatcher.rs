@@ -3,12 +3,14 @@
 use std::{num::NonZero, sync::Arc};
 use tokio::sync::RwLock;
 
-use crate::{error::ConsensusResult, foundation::types::ConsensusGroupId};
+use crate::{
+    error::ConsensusResult,
+    foundation::{group_state::GroupState, types::ConsensusGroupId},
+};
 use proven_topology::NodeId;
 
 use super::{
     callbacks::GroupConsensusCallbacks,
-    state::GroupState,
     types::{AdminOperation, GroupRequest, GroupResponse, StreamOperation},
 };
 

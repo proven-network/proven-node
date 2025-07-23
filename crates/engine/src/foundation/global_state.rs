@@ -15,7 +15,18 @@ use crate::{
 };
 use proven_topology::NodeId;
 
-use super::types::GroupInfo;
+/// Consensus group information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupInfo {
+    /// Group ID
+    pub id: ConsensusGroupId,
+    /// Member nodes
+    pub members: Vec<NodeId>,
+    /// Creation timestamp
+    pub created_at: u64,
+    /// Group metadata
+    pub metadata: HashMap<String, String>,
+}
 
 /// Global consensus state
 #[derive(Clone)]

@@ -3,11 +3,14 @@
 use async_trait::async_trait;
 
 use crate::{
-    error::ConsensusResult, foundation::types::ConsensusGroupId, services::stream::StreamName,
+    error::ConsensusResult,
+    foundation::{
+        global_state::{GlobalState, GroupInfo},
+        types::ConsensusGroupId,
+    },
+    services::stream::StreamName,
 };
 use proven_topology::NodeId;
-
-use super::{state::GlobalState, types::GroupInfo};
 
 /// Callbacks for global consensus operations and state synchronization
 #[async_trait]
