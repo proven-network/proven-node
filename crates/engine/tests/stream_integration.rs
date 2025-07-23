@@ -356,10 +356,16 @@ async fn test_stream_reading() {
     let num_messages = 50;
     println!("Publishing {num_messages} messages to test streaming");
 
+    // Store expected messages for verification
+    let mut expected_messages = Vec::new();
+
     for i in 0..num_messages {
         let payload = format!("Streaming message {i:03}").into_bytes();
         let mut metadata = HashMap::new();
         metadata.insert("index".to_string(), i.to_string());
+        metadata.insert("test_id".to_string(), "stream_reading".to_string());
+
+        expected_messages.push((payload.clone(), metadata.clone()));
 
         client
             .publish(stream_name.clone(), payload, Some(metadata))
@@ -377,25 +383,48 @@ async fn test_stream_reading() {
         .await
         .expect("Failed to create stream reader");
 
-    let mut count = 0;
+    let mut count = 0usize;
     while let Some(result) = stream.next().await {
         let msg = result.expect("Failed to read message from stream");
+
+        // Verify sequence number
         assert_eq!(
             msg.sequence,
-            NonZero::new(count + 1).unwrap(),
+            NonZero::new((count + 1) as u64).unwrap(),
             "Sequence mismatch"
         );
-        let expected_payload = format!("Streaming message {count:03}");
+
+        // Verify payload matches exactly
+        let (expected_payload, expected_metadata) = &expected_messages[count];
         assert_eq!(
-            String::from_utf8_lossy(&msg.data.payload),
+            &msg.data.payload.as_ref(),
             expected_payload,
             "Payload mismatch at sequence {}",
             msg.sequence
         );
+
+        // Verify metadata
+        let msg_headers: HashMap<String, String> = msg.data.headers.iter().cloned().collect();
+        assert_eq!(
+            msg_headers.get("index"),
+            expected_metadata.get("index"),
+            "Index metadata mismatch at sequence {}",
+            msg.sequence
+        );
+        assert_eq!(
+            msg_headers.get("test_id"),
+            expected_metadata.get("test_id"),
+            "Test ID metadata mismatch at sequence {}",
+            msg.sequence
+        );
+
         count += 1;
     }
-    assert_eq!(count, num_messages, "Should have streamed all messages");
-    println!("Successfully streamed {count} messages");
+    assert_eq!(
+        count, num_messages as usize,
+        "Should have streamed all messages"
+    );
+    println!("Successfully streamed {count} messages with verified content");
 
     // Test 2: Stream a range of messages
     println!("\nTest 2: Streaming range [10, 30)");
@@ -409,16 +438,38 @@ async fn test_stream_reading() {
         .expect("Failed to create stream reader");
 
     let mut count = 0;
+    let mut range_index = 9; // Start at index 9 (sequence 10)
     while let Some(result) = stream.next().await {
         let msg = result.expect("Failed to read message from stream");
         assert!(
             msg.sequence >= NonZero::new(10).unwrap() && msg.sequence < NonZero::new(30).unwrap(),
             "Message outside range"
         );
+
+        // Verify this is the correct message from our expected list
+        let (expected_payload, expected_metadata) = &expected_messages[range_index];
+        assert_eq!(
+            &msg.data.payload.as_ref(),
+            expected_payload,
+            "Payload mismatch at sequence {} (index {})",
+            msg.sequence,
+            range_index
+        );
+
+        // Verify metadata
+        let msg_headers: HashMap<String, String> = msg.data.headers.iter().cloned().collect();
+        assert_eq!(
+            msg_headers.get("index"),
+            Some(&range_index.to_string()),
+            "Index metadata mismatch at sequence {}",
+            msg.sequence
+        );
+
         count += 1;
+        range_index += 1;
     }
     assert_eq!(count, 20, "Should have streamed exactly 20 messages");
-    println!("Successfully streamed {count} messages in range");
+    println!("Successfully streamed {count} messages in range with verified content");
 
     // Test 3: Stream with custom batch size
     println!("\nTest 3: Streaming with custom batch size");
@@ -434,11 +485,31 @@ async fn test_stream_reading() {
 
     let mut count = 0;
     while let Some(result) = stream.next().await {
-        let _msg = result.expect("Failed to read message from stream");
+        let msg = result.expect("Failed to read message from stream");
+
+        // Verify this message matches our expected content
+        let msg_index = (msg.sequence.get() - 1) as usize;
+        let (expected_payload, expected_metadata) = &expected_messages[msg_index];
+        assert_eq!(
+            &msg.data.payload.as_ref(),
+            expected_payload,
+            "Payload mismatch at sequence {} with batch size",
+            msg.sequence
+        );
+
+        // Verify index metadata
+        let msg_headers: HashMap<String, String> = msg.data.headers.iter().cloned().collect();
+        assert_eq!(
+            msg_headers.get("index"),
+            Some(&msg_index.to_string()),
+            "Index metadata mismatch at sequence {} with batch size",
+            msg.sequence
+        );
+
         count += 1;
     }
     assert_eq!(count, 49, "Should have streamed 49 messages");
-    println!("Successfully streamed {count} messages with batch size 10");
+    println!("Successfully streamed {count} messages with batch size 10 and verified content");
 
     // Test 4: Early termination (drop stream before finishing)
     println!("\nTest 4: Testing early termination");
@@ -448,15 +519,24 @@ async fn test_stream_reading() {
         .expect("Failed to create stream reader");
 
     // Read only 5 messages then drop
-    for _ in 0..5 {
-        let _msg = stream
+    for i in 0..5 {
+        let msg = stream
             .next()
             .await
             .unwrap()
             .expect("Failed to read message");
+
+        // Even when terminating early, verify the messages we do read
+        let (expected_payload, _expected_metadata) = &expected_messages[i];
+        assert_eq!(
+            &msg.data.payload.as_ref(),
+            expected_payload,
+            "Payload mismatch at position {} during early termination",
+            i
+        );
     }
     drop(stream);
-    println!("Successfully dropped stream early");
+    println!("Successfully dropped stream early after verifying 5 messages");
 
     // Give time for cleanup
     tokio::time::sleep(Duration::from_millis(500)).await;
