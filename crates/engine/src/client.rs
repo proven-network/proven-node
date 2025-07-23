@@ -247,6 +247,9 @@ where
     ///
     /// Returns a stream that yields messages as they are read. If end_sequence is None,
     /// streams until the last available message.
+    ///
+    /// Use `.follow()` on the returned StreamReader to enable follow mode, which will
+    /// continuously wait for new messages instead of ending when all messages are consumed.
     pub async fn stream_messages(
         &self,
         stream_name: String,
@@ -305,6 +308,12 @@ where
     buffer: Vec<StoredMessage>,
     /// Whether we've reached the end
     is_finished: bool,
+    /// Whether to follow the stream (wait for new messages)
+    follow_mode: bool,
+    /// Current backoff delay for polling when no messages available
+    poll_backoff: std::time::Duration,
+    /// Last time we polled (for backoff calculation)
+    last_poll_time: Option<std::time::Instant>,
 }
 
 impl<T, G, S> StreamReader<T, G, S>
@@ -347,6 +356,9 @@ where
             is_local,
             buffer: Vec::new(),
             is_finished: false,
+            follow_mode: false,
+            poll_backoff: std::time::Duration::from_millis(100),
+            last_poll_time: None,
         })
     }
 
@@ -356,8 +368,22 @@ where
         self
     }
 
+    /// Enable follow mode to continuously wait for new messages
+    pub fn follow(mut self) -> Self {
+        self.follow_mode = true;
+        self
+    }
+
     /// Read the next batch of messages
     async fn read_next_batch(&mut self) -> ConsensusResult<()> {
+        tracing::debug!(
+            "read_next_batch: stream={}, current_seq={}, finished={}, follow={}",
+            self.stream_name,
+            self.current_sequence,
+            self.is_finished,
+            self.follow_mode
+        );
+
         if self.is_finished {
             return Ok(());
         }
@@ -370,8 +396,15 @@ where
                 .read_stream(&self.stream_name, self.current_sequence, count)
                 .await?;
 
+            tracing::debug!(
+                "read_next_batch: read {} messages from local storage",
+                messages.len()
+            );
+
             if messages.is_empty() {
-                self.is_finished = true;
+                if !self.follow_mode {
+                    self.is_finished = true;
+                }
             } else {
                 // Check if we've reached the end sequence
                 for msg in messages {
@@ -381,8 +414,11 @@ where
                         self.is_finished = true;
                         break;
                     }
-                    self.current_sequence = self.current_sequence.saturating_add(1);
                     self.buffer.push(msg);
+                }
+                // Update current_sequence to the next expected sequence
+                if let Some(last_msg) = self.buffer.last() {
+                    self.current_sequence = last_msg.sequence.saturating_add(1);
                 }
             }
         } else {
@@ -402,7 +438,12 @@ where
                 self.session_id = Some(session_id);
                 self.buffer.extend(messages);
 
-                if !has_more {
+                // Update current_sequence to the next expected sequence
+                if let Some(last_msg) = self.buffer.last() {
+                    self.current_sequence = last_msg.sequence.saturating_add(1);
+                }
+
+                if !has_more && !self.follow_mode {
                     self.is_finished = true;
                     // Clean up session
                     if let Some(id) = self.session_id.take() {
@@ -418,7 +459,12 @@ where
 
                 self.buffer.extend(messages);
 
-                if !has_more {
+                // Update current_sequence to the next expected sequence
+                if let Some(last_msg) = self.buffer.last() {
+                    self.current_sequence = last_msg.sequence.saturating_add(1);
+                }
+
+                if !has_more && !self.follow_mode {
                     self.is_finished = true;
                     // Session will be cleaned up automatically
                     self.session_id = None;
@@ -447,12 +493,30 @@ where
             return std::task::Poll::Ready(Some(Ok(self.buffer.remove(0))));
         }
 
-        // If we're finished, return None
-        if self.is_finished {
+        // If we're finished and not in follow mode, return None
+        if self.is_finished && !self.follow_mode {
             return std::task::Poll::Ready(None);
         }
 
-        // Try to read more messages
+        // Check if we need to apply backoff in follow mode
+        if self.follow_mode
+            && self.buffer.is_empty()
+            && let Some(last_poll) = self.last_poll_time
+        {
+            let elapsed = last_poll.elapsed();
+            if elapsed < self.poll_backoff {
+                // Schedule a wake-up after the backoff period
+                let remaining = self.poll_backoff - elapsed;
+                let waker = cx.waker().clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(remaining).await;
+                    waker.wake();
+                });
+                return std::task::Poll::Pending;
+            }
+        }
+
+        // We need to use the old approach of creating a new reader to avoid borrow issues
         let client_service = self.client_service.clone();
         let stream_name = self.stream_name.clone();
         let current_sequence = self.current_sequence;
@@ -460,6 +524,8 @@ where
         let batch_size = self.batch_size;
         let session_id = self.session_id;
         let is_local = self.is_local;
+        let follow_mode = self.follow_mode;
+        let poll_backoff = self.poll_backoff;
 
         // Create a future for reading the next batch
         let fut = async move {
@@ -473,6 +539,9 @@ where
                 is_local,
                 buffer: Vec::new(),
                 is_finished: false,
+                follow_mode,
+                poll_backoff,
+                last_poll_time: None,
             };
             reader.read_next_batch().await?;
             Ok::<_, crate::error::Error>(reader)
@@ -487,16 +556,25 @@ where
                 self.session_id = reader.session_id;
                 std::mem::swap(&mut self.buffer, &mut reader.buffer);
                 self.is_finished = reader.is_finished;
+                self.last_poll_time = Some(std::time::Instant::now());
 
                 // Return a message if we have one
                 if !self.buffer.is_empty() {
+                    // Reset backoff on successful read
+                    self.poll_backoff = std::time::Duration::from_millis(100);
                     std::task::Poll::Ready(Some(Ok(self.buffer.remove(0))))
-                } else if self.is_finished {
+                } else if self.is_finished && !self.follow_mode {
                     std::task::Poll::Ready(None)
-                } else {
-                    // Wake the task to try again
+                } else if self.follow_mode {
+                    // Apply exponential backoff (max 5 seconds)
+                    self.poll_backoff =
+                        (self.poll_backoff * 2).min(std::time::Duration::from_secs(5));
+                    // Wake ourselves up to retry after backoff
                     cx.waker().wake_by_ref();
                     std::task::Poll::Pending
+                } else {
+                    // Not in follow mode and no messages - we're done
+                    std::task::Poll::Ready(None)
                 }
             }
             std::task::Poll::Ready(Err(e)) => std::task::Poll::Ready(Some(Err(e))),

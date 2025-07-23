@@ -447,7 +447,7 @@ async fn test_stream_reading() {
         );
 
         // Verify this is the correct message from our expected list
-        let (expected_payload, expected_metadata) = &expected_messages[range_index];
+        let (expected_payload, _expected_metadata) = &expected_messages[range_index];
         assert_eq!(
             &msg.data.payload.as_ref(),
             expected_payload,
@@ -489,7 +489,7 @@ async fn test_stream_reading() {
 
         // Verify this message matches our expected content
         let msg_index = (msg.sequence.get() - 1) as usize;
-        let (expected_payload, expected_metadata) = &expected_messages[msg_index];
+        let (expected_payload, _expected_metadata) = &expected_messages[msg_index];
         assert_eq!(
             &msg.data.payload.as_ref(),
             expected_payload,
@@ -519,7 +519,8 @@ async fn test_stream_reading() {
         .expect("Failed to create stream reader");
 
     // Read only 5 messages then drop
-    for i in 0..5 {
+    for (i, (expected_payload, _expected_metadata)) in expected_messages.iter().enumerate().take(5)
+    {
         let msg = stream
             .next()
             .await
@@ -527,12 +528,10 @@ async fn test_stream_reading() {
             .expect("Failed to read message");
 
         // Even when terminating early, verify the messages we do read
-        let (expected_payload, _expected_metadata) = &expected_messages[i];
         assert_eq!(
             &msg.data.payload.as_ref(),
             expected_payload,
-            "Payload mismatch at position {} during early termination",
-            i
+            "Payload mismatch at position {i} during early termination"
         );
     }
     drop(stream);
