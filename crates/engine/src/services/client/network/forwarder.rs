@@ -2,6 +2,7 @@
 
 use std::{num::NonZero, sync::Arc};
 
+use proven_storage::LogIndex;
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
 
@@ -214,8 +215,8 @@ where
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
-        start_sequence: NonZero<u64>,
-        count: NonZero<u64>,
+        start_sequence: LogIndex,
+        count: LogIndex,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         // Get routing service to find the best node
         let routing_guard = self.routing_service.read().await;
@@ -359,9 +360,9 @@ where
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
-        start_sequence: NonZero<u64>,
-        end_sequence: Option<NonZero<u64>>,
-        batch_size: NonZero<u64>,
+        start_sequence: LogIndex,
+        end_sequence: Option<LogIndex>,
+        batch_size: LogIndex,
     ) -> ConsensusResult<(
         uuid::Uuid,
         Vec<crate::services::stream::StoredMessage>,

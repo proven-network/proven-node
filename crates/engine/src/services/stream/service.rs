@@ -4,7 +4,6 @@
 //! the established service patterns in the consensus engine.
 
 use std::collections::HashMap;
-use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::{RwLock, oneshot};
@@ -12,7 +11,7 @@ use tokio_stream::{Stream, StreamExt};
 use tracing::{debug, error, info, warn};
 
 use proven_storage::{
-    LogStorage, LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace,
+    LogIndex, LogStorage, LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace,
     StreamStorage,
 };
 
@@ -288,8 +287,8 @@ impl<S: StorageAdaptor> StreamService<S> {
     pub async fn read_messages(
         &self,
         stream_name: &str,
-        start_sequence: NonZero<u64>,
-        count: NonZero<u64>,
+        start_sequence: LogIndex,
+        count: LogIndex,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         let stream_name = StreamName::new(stream_name);
 
@@ -317,8 +316,8 @@ impl<S: StorageAdaptor> StreamService<S> {
     pub async fn stream_messages(
         &self,
         stream_name: &str,
-        start_sequence: NonZero<u64>,
-        end_sequence: Option<NonZero<u64>>,
+        start_sequence: LogIndex,
+        end_sequence: Option<LogIndex>,
     ) -> ConsensusResult<
         Pin<Box<dyn Stream<Item = ConsensusResult<crate::services::stream::StoredMessage>> + Send>>,
     > {
@@ -442,7 +441,7 @@ impl<S: StorageAdaptor> StreamService<S> {
     pub async fn delete_message_from_storage(
         &self,
         stream_name: &StreamName,
-        sequence: NonZero<u64>,
+        sequence: LogIndex,
     ) -> ConsensusResult<bool> {
         let storage_namespace = StorageNamespace::new(format!("stream_{stream_name}"));
         let stream_storage = self.storage_manager.stream_storage();
@@ -497,7 +496,7 @@ impl<S: StorageAdaptor> StreamService<S> {
         &self,
         stream_name: &StreamName,
         message_count: usize,
-        last_sequence: NonZero<u64>,
+        last_sequence: LogIndex,
     ) {
         if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream_name) {
             metadata.message_count += message_count as u64;
@@ -635,21 +634,21 @@ mod tests {
             &self,
             _namespace: &StorageNamespace,
             _entries: Arc<Vec<Bytes>>,
-        ) -> StorageResult<NonZero<u64>> {
-            Ok(NonZero::new(1).unwrap())
+        ) -> StorageResult<LogIndex> {
+            Ok(LogIndex::new(1).unwrap())
         }
 
         async fn bounds(
             &self,
             _namespace: &StorageNamespace,
-        ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
+        ) -> StorageResult<Option<(LogIndex, LogIndex)>> {
             Ok(None)
         }
 
         async fn compact_before(
             &self,
             _namespace: &StorageNamespace,
-            _index: NonZero<u64>,
+            _index: LogIndex,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -657,7 +656,7 @@ mod tests {
         async fn put_at(
             &self,
             _namespace: &StorageNamespace,
-            _entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+            _entries: Vec<(LogIndex, Arc<Bytes>)>,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -665,16 +664,16 @@ mod tests {
         async fn read_range(
             &self,
             _namespace: &StorageNamespace,
-            _start: NonZero<u64>,
-            _end: NonZero<u64>,
-        ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
+            _start: LogIndex,
+            _end: LogIndex,
+        ) -> StorageResult<Vec<(LogIndex, Bytes)>> {
             Ok(vec![])
         }
 
         async fn truncate_after(
             &self,
             _namespace: &StorageNamespace,
-            _index: NonZero<u64>,
+            _index: LogIndex,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -702,7 +701,7 @@ mod tests {
         async fn delete_entry(
             &self,
             _namespace: &StorageNamespace,
-            _index: NonZero<u64>,
+            _index: LogIndex,
         ) -> StorageResult<bool> {
             Ok(true)
         }
@@ -713,14 +712,10 @@ mod tests {
         async fn stream_range(
             &self,
             _namespace: &StorageNamespace,
-            _start: NonZero<u64>,
-            _end: Option<NonZero<u64>>,
+            _start: LogIndex,
+            _end: Option<LogIndex>,
         ) -> StorageResult<
-            Box<
-                dyn tokio_stream::Stream<Item = StorageResult<(NonZero<u64>, Bytes)>>
-                    + Send
-                    + Unpin,
-            >,
+            Box<dyn tokio_stream::Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>,
         > {
             Ok(Box::new(tokio_stream::empty()))
         }

@@ -4,12 +4,11 @@
 //! large streams efficiently in batches.
 
 use std::collections::HashMap;
-use std::num::NonZero;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use proven_storage::{LogStorageStreaming, StorageAdaptor};
+use proven_storage::{LogIndex, LogStorageStreaming, StorageAdaptor};
 use tokio::sync::RwLock;
 use tokio_stream::{Stream, StreamExt};
 use tracing::{debug, error, warn};
@@ -67,10 +66,10 @@ where
         &self,
         requester_id: proven_topology::NodeId,
         stream_name: String,
-        start_sequence: NonZero<u64>,
-        end_sequence: Option<NonZero<u64>>,
-        batch_size: NonZero<u64>,
-    ) -> ConsensusResult<(Uuid, Vec<StoredMessage>, bool, Option<NonZero<u64>>)> {
+        start_sequence: LogIndex,
+        end_sequence: Option<LogIndex>,
+        batch_size: LogIndex,
+    ) -> ConsensusResult<(Uuid, Vec<StoredMessage>, bool, Option<LogIndex>)> {
         // Get stream service
         let stream_guard = self.stream_service.read().await;
         let stream_service = stream_guard.as_ref().ok_or_else(|| {
@@ -148,7 +147,7 @@ where
         &self,
         session_id: Uuid,
         max_messages: u32,
-    ) -> ConsensusResult<(Vec<StoredMessage>, bool, Option<NonZero<u64>>)> {
+    ) -> ConsensusResult<(Vec<StoredMessage>, bool, Option<LogIndex>)> {
         let sessions = self.sessions.read().await;
 
         let session = sessions.get(&session_id).ok_or_else(|| {

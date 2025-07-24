@@ -2,18 +2,17 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_storage::{StorageAdaptor, StorageNamespace, StorageResult};
+use proven_storage::{LogIndex, StorageAdaptor, StorageNamespace, StorageResult};
 use std::{
     collections::{BTreeMap, HashMap},
-    num::NonZero,
     sync::Arc,
 };
 use tokio::sync::RwLock;
 use tokio_stream::Stream;
 
 /// Type aliases to reduce type complexity
-type LogStorage = Arc<RwLock<HashMap<StorageNamespace, BTreeMap<NonZero<u64>, Bytes>>>>;
-type LogBoundsCache = Arc<RwLock<HashMap<StorageNamespace, (NonZero<u64>, NonZero<u64>)>>>;
+type LogStorage = Arc<RwLock<HashMap<StorageNamespace, BTreeMap<LogIndex, Bytes>>>>;
+type LogBoundsCache = Arc<RwLock<HashMap<StorageNamespace, (LogIndex, LogIndex)>>>;
 type MetadataStorage = Arc<RwLock<HashMap<StorageNamespace, HashMap<String, Bytes>>>>;
 
 /// In-memory log storage implementation using BTreeMap for ordering
@@ -51,7 +50,7 @@ impl proven_storage::LogStorage for MemoryStorage {
         &self,
         namespace: &StorageNamespace,
         entries: Arc<Vec<Bytes>>,
-    ) -> StorageResult<NonZero<u64>> {
+    ) -> StorageResult<LogIndex> {
         if entries.is_empty() {
             return Err(proven_storage::StorageError::InvalidValue(
                 "Cannot append empty entries".to_string(),
@@ -65,15 +64,15 @@ impl proven_storage::LogStorage for MemoryStorage {
 
         // Get the next index based on current bounds
         let start_index = if let Some((_, last)) = bounds.get(namespace) {
-            NonZero::new(last.get() + 1).unwrap()
+            LogIndex::new(last.get() + 1).unwrap()
         } else {
-            NonZero::new(1).unwrap()
+            LogIndex::new(1).unwrap()
         };
 
         // Insert all entries sequentially
         let mut last_index = start_index;
         for (i, data) in entries.iter().enumerate() {
-            let index = NonZero::new(start_index.get() + i as u64).unwrap();
+            let index = LogIndex::new(start_index.get() + i as u64).unwrap();
             btree.insert(index, data.clone());
             last_index = index;
         }
@@ -91,7 +90,7 @@ impl proven_storage::LogStorage for MemoryStorage {
     async fn put_at(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+        entries: Vec<(LogIndex, Arc<Bytes>)>,
     ) -> StorageResult<()> {
         if entries.is_empty() {
             return Ok(());
@@ -106,8 +105,8 @@ impl proven_storage::LogStorage for MemoryStorage {
         let existing_bounds = bounds.get(namespace).copied();
 
         // Insert all entries and track bounds
-        let mut first_index: Option<NonZero<u64>> = existing_bounds.map(|(first, _)| first);
-        let mut last_index: Option<NonZero<u64>> = existing_bounds.map(|(_, last)| last);
+        let mut first_index: Option<LogIndex> = existing_bounds.map(|(first, _)| first);
+        let mut last_index: Option<LogIndex> = existing_bounds.map(|(_, last)| last);
 
         for (index, data) in entries {
             btree.insert(index, (*data).clone());
@@ -137,9 +136,9 @@ impl proven_storage::LogStorage for MemoryStorage {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: NonZero<u64>,
-    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
+        start: LogIndex,
+        end: LogIndex,
+    ) -> StorageResult<Vec<(LogIndex, Bytes)>> {
         let logs = self.logs.read().await;
 
         if let Some(btree) = logs.get(namespace) {
@@ -156,14 +155,14 @@ impl proven_storage::LogStorage for MemoryStorage {
     async fn truncate_after(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         let mut logs = self.logs.write().await;
         let mut bounds = self.log_bounds.write().await;
 
         if let Some(btree) = logs.get_mut(namespace) {
             // Create next index for the range
-            let next_index = NonZero::new(index.get() + 1);
+            let next_index = LogIndex::new(index.get() + 1);
 
             // Collect indices to remove
             let to_remove: Vec<_> = if let Some(next) = next_index {
@@ -194,14 +193,14 @@ impl proven_storage::LogStorage for MemoryStorage {
     async fn compact_before(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         let mut logs = self.logs.write().await;
         let mut bounds = self.log_bounds.write().await;
 
         if let Some(btree) = logs.get_mut(namespace) {
             // Collect indices to remove (up to and including index)
-            // We need to use Included bound for NonZero<u64>
+            // We need to use Included bound for LogIndex
             use std::ops::Bound;
             let to_remove: Vec<_> = btree
                 .range((Bound::Unbounded, Bound::Included(index)))
@@ -229,7 +228,7 @@ impl proven_storage::LogStorage for MemoryStorage {
     async fn bounds(
         &self,
         namespace: &StorageNamespace,
-    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
+    ) -> StorageResult<Option<(LogIndex, LogIndex)>> {
         // First check cache
         {
             let bounds = self.log_bounds.read().await;
@@ -301,7 +300,7 @@ impl proven_storage::LogStorageWithDelete for MemoryStorage {
     async fn delete_entry(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<bool> {
         let mut logs = self.logs.write().await;
 
@@ -329,13 +328,13 @@ impl proven_storage::LogStorageStreaming for MemoryStorage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: Option<NonZero<u64>>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+        start: LogIndex,
+        end: Option<LogIndex>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
         // Clone the data we need to stream
         let logs_guard = self.logs.read().await;
-        let entries: Vec<(NonZero<u64>, Bytes)> = if let Some(btree) = logs_guard.get(namespace) {
+        let entries: Vec<(LogIndex, Bytes)> = if let Some(btree) = logs_guard.get(namespace) {
             match end {
                 Some(end_idx) => btree
                     .range(start..end_idx)
@@ -375,9 +374,9 @@ mod tests {
     use proven_storage::{LogStorage, LogStorageStreaming, LogStorageWithDelete};
     use tokio_stream::StreamExt;
 
-    // Helper function to create NonZero<u64>
-    fn nz(n: u64) -> NonZero<u64> {
-        NonZero::new(n).expect("test indices should be non-zero")
+    // Helper function to create LogIndex
+    fn nz(n: u64) -> LogIndex {
+        LogIndex::new(n).expect("test indices should be non-zero")
     }
 
     #[tokio::test]

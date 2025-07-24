@@ -4,11 +4,11 @@
 //! replacing the messaging service abstraction.
 
 use std::collections::HashMap;
-use std::num::NonZero;
 use std::sync::Arc;
 use std::time::Duration;
 
 use proven_engine::{Client, StoredMessage};
+use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
@@ -462,8 +462,8 @@ impl CommandService {
             }
 
             // Read next batch of messages
-            let start_seq = NonZero::new(last_sequence + 1).unwrap();
-            let count = NonZero::new(10).unwrap(); // Process up to 10 at a time
+            let start_seq = LogIndex::new(last_sequence + 1).unwrap();
+            let count = LogIndex::new(10).unwrap(); // Process up to 10 at a time
 
             match client
                 .read_stream(command_stream.clone(), start_seq, count)
@@ -637,7 +637,7 @@ async fn listen_for_response<T, G, S>(
 {
     // Start from the beginning of the stream to find our response
     // We could optimize this by tracking message positions, but for now this works
-    let start_seq = NonZero::new(1).unwrap();
+    let start_seq = LogIndex::new(1).unwrap();
 
     // Use follow mode to wait for our response
     let mut stream = match client

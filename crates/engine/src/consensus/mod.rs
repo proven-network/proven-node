@@ -6,6 +6,7 @@
 
 pub mod global;
 pub mod group;
+pub mod log_index;
 
 // Re-export main types
 pub use global::{
@@ -15,3 +16,5 @@ pub use global::{
 pub use group::{
     GroupConsensusLayer, GroupOperation, GroupRequest, GroupResponse, GroupTypeConfig,
 };
+
+pub use log_index::{LogIndexExt, OptionLogIndexExt, from_openraft_option, from_openraft_u64};

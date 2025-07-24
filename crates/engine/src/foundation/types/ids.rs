@@ -78,24 +78,3 @@ impl Term {
         self.0 += 1;
     }
 }
-
-/// Log index in consensus
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct LogIndex(u64);
-
-impl LogIndex {
-    /// Create a new log index
-    pub fn new(index: u64) -> Self {
-        Self(index)
-    }
-
-    /// Get the inner value
-    pub fn value(&self) -> u64 {
-        self.0
-    }
-
-    /// Increment the index
-    pub fn increment(&mut self) {
-        self.0 += 1;
-    }
-}

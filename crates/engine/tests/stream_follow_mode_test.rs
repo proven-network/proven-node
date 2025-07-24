@@ -5,7 +5,8 @@
 
 use futures::StreamExt;
 use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
-use std::num::NonZero;
+use proven_storage::LogIndex;
+
 use std::time::Duration;
 
 mod common;
@@ -57,7 +58,7 @@ async fn test_stream_follow_mode_basic() {
     tokio::time::sleep(Duration::from_millis(500)).await;
     // Start a stream reader in follow mode
     let mut stream = client
-        .stream_messages(stream_name.clone(), NonZero::new(1).unwrap(), None)
+        .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create stream reader")
         .follow();
@@ -130,7 +131,7 @@ async fn test_stream_follow_mode_with_backoff() {
 
     // Start a stream reader in follow mode
     let mut stream = client
-        .stream_messages(stream_name.clone(), NonZero::new(1).unwrap(), None)
+        .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create stream reader")
         .follow();
@@ -203,7 +204,7 @@ async fn test_stream_follow_mode_cancellation() {
 
     // Start a stream reader in follow mode
     let stream = client
-        .stream_messages(stream_name.clone(), NonZero::new(1).unwrap(), None)
+        .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create stream reader")
         .follow();
@@ -214,7 +215,7 @@ async fn test_stream_follow_mode_cancellation() {
 
     // Verify we can create a new stream reader and use it normally
     let mut new_stream = client
-        .stream_messages(stream_name.clone(), NonZero::new(1).unwrap(), None)
+        .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create new stream reader");
 

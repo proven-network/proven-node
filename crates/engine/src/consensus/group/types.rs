@@ -2,6 +2,7 @@
 
 use std::{num::NonZero, sync::Arc};
 
+use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 
 /// Message type for consensus operations
@@ -34,14 +35,14 @@ pub enum StreamOperation {
         /// Stream name
         stream: StreamName,
         /// Trim up to this sequence
-        up_to_seq: NonZero<u64>,
+        up_to_seq: LogIndex,
     },
     /// Delete a specific message from stream
     Delete {
         /// Stream name
         stream: StreamName,
         /// Sequence number to delete
-        sequence: NonZero<u64>,
+        sequence: LogIndex,
     },
 }
 
@@ -73,7 +74,7 @@ pub enum GroupResponse {
         /// Stream name
         stream: StreamName,
         /// Assigned sequence number
-        sequence: NonZero<u64>,
+        sequence: LogIndex,
         /// Pre-serialized entries (not serialized, only for in-memory passing)
         #[serde(skip)]
         entries: Option<Arc<Vec<bytes::Bytes>>>,
@@ -83,14 +84,14 @@ pub enum GroupResponse {
         /// Stream name
         stream: StreamName,
         /// New start sequence
-        new_start_seq: NonZero<u64>,
+        new_start_seq: LogIndex,
     },
     /// Message deleted
     Deleted {
         /// Stream name
         stream: StreamName,
         /// Deleted sequence number
-        sequence: NonZero<u64>,
+        sequence: LogIndex,
     },
     /// Error response
     Error {

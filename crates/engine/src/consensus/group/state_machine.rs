@@ -9,6 +9,7 @@ use openraft::{
     Entry, EntryPayload, LogId, StorageError, StoredMembership,
     storage::{RaftStateMachine, Snapshot},
 };
+use proven_storage::LogIndex;
 use tokio::sync::RwLock;
 
 use super::callbacks::GroupConsensusCallbacks;
@@ -17,6 +18,7 @@ use super::operations::{GroupOperation, GroupOperationHandler};
 use super::raft::GroupTypeConfig;
 use super::snapshot::{GroupSnapshot, GroupSnapshotBuilder};
 use super::types::{GroupRequest, GroupResponse, StreamOperation};
+use crate::consensus::{LogIndexExt, from_openraft_u64};
 use crate::foundation::{
     GroupState, GroupStateWriter, traits::OperationHandler, types::ConsensusGroupId,
 };
@@ -38,7 +40,7 @@ pub struct GroupStateMachine {
     /// Current membership
     membership: Arc<RwLock<StoredMembership<GroupTypeConfig>>>,
     /// Last log index that was persisted before this instance started
-    replay_boundary: Option<NonZero<u64>>,
+    replay_boundary: Option<LogIndex>,
     /// Whether we've fired the state sync callback
     state_synced: Arc<RwLock<bool>>,
 }
@@ -50,7 +52,7 @@ impl GroupStateMachine {
         state: GroupStateWriter,
         handler: Arc<GroupOperationHandler>,
         callback_dispatcher: Arc<GroupCallbackDispatcher>,
-        replay_boundary: Option<NonZero<u64>>,
+        replay_boundary: Option<LogIndex>,
     ) -> Self {
         Self {
             group_id,
@@ -97,7 +99,7 @@ impl GroupStateMachine {
 
             // Check if we've reached the replay boundary
             if let Some(boundary) = self.replay_boundary
-                && log_id.index + 1 >= boundary.get()
+                && from_openraft_u64(log_id.index).is_some_and(|idx| idx >= boundary)
                 && !*self.state_synced.read().await
             {
                 // We've reached the replay boundary - fire state sync callback
@@ -114,7 +116,7 @@ impl GroupStateMachine {
             // Convert 0-based log_id.index to 1-based for comparison with boundary
             let is_replay = self
                 .replay_boundary
-                .map(|boundary| log_id.index + 1 < boundary.get())
+                .and_then(|boundary| from_openraft_u64(log_id.index).map(|idx| idx < boundary))
                 .unwrap_or(false);
 
             match &entry.payload {

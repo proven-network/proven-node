@@ -26,7 +26,7 @@ pub use error::Error;
 use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Formatter};
-use std::num::{NonZero, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -34,6 +34,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use lru::LruCache;
 use proven_engine::{Client, StreamConfig};
+use proven_storage::LogIndex;
 use proven_store::{Store, Store1, Store2, Store3};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
@@ -402,10 +403,10 @@ where
         let mut current_sequence = last_sequence;
 
         loop {
-            let start = NonZero::new(current_sequence + 1).ok_or_else(|| {
+            let start = LogIndex::new(current_sequence + 1).ok_or_else(|| {
                 Error::Engine("Start sequence must be greater than 0".to_string())
             })?;
-            let count_nz = NonZero::new(batch_size)
+            let count_nz = LogIndex::new(batch_size)
                 .ok_or_else(|| Error::Engine("Count must be greater than 0".to_string()))?;
 
             let messages = self

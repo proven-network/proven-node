@@ -3,10 +3,10 @@
 //! This module implements stateful stream consumption with position tracking,
 //! replacing the messaging consumer abstraction.
 
-use std::num::NonZero;
 use std::sync::Arc;
 
 use proven_engine::Client;
+use proven_storage::LogIndex;
 use tokio::task::JoinHandle;
 
 use crate::{Error, Event, view::IdentityView};
@@ -62,7 +62,7 @@ where
         Ok(Some(_info)) => {
             // TODO: In a real implementation, we'd persist consumer position
             // For now, start from the beginning
-            NonZero::new(1).unwrap()
+            LogIndex::new(1).unwrap()
         }
         Ok(None) => {
             return Err(Error::Stream(format!(
@@ -93,7 +93,7 @@ async fn run_consumer_loop<T, G, S>(
     client: Arc<Client<T, G, S>>,
     event_stream: String,
     consumer: &mut IdentityViewConsumer,
-    start_seq: NonZero<u64>,
+    start_seq: LogIndex,
 ) -> Result<(), Error>
 where
     T: proven_transport::Transport + 'static,

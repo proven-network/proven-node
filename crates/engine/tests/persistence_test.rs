@@ -4,7 +4,7 @@ mod common;
 
 use common::test_cluster::TestCluster;
 use proven_engine::foundation::types::ConsensusGroupId;
-use std::num::NonZero;
+use proven_storage::LogIndex;
 use std::time::Duration;
 use tracing::{Level, info};
 use tracing_subscriber::EnvFilter;
@@ -315,8 +315,8 @@ async fn test_single_node_persistence() {
     match client
         .read_stream(
             stream_name.to_string(),
-            NonZero::new(1).unwrap(),
-            NonZero::new(20).unwrap(),
+            LogIndex::new(1).unwrap(),
+            LogIndex::new(20).unwrap(),
         )
         .await
     {

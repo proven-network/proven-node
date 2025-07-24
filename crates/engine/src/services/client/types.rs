@@ -1,7 +1,8 @@
 //! Types for the client service
 
-use std::{num::NonZero, sync::Arc};
+use std::sync::Arc;
 
+use proven_storage::LogIndex;
 use proven_topology::NodeId;
 use tokio::sync::oneshot;
 
@@ -61,7 +62,7 @@ pub struct StreamInfo {
     /// Group ID that owns this stream
     pub group_id: ConsensusGroupId,
     /// Last sequence number
-    pub last_sequence: NonZero<u64>,
+    pub last_sequence: LogIndex,
     /// Total message count
     pub message_count: u64,
 }

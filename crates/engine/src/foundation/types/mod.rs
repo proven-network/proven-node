@@ -6,5 +6,5 @@ pub mod timestamp;
 
 // Re-export commonly used types
 pub use enums::{ConsensusRole, GroupStatus, NodeState, OperationPriority};
-pub use ids::{ConsensusGroupId, LogIndex, OperationId, Term};
+pub use ids::{ConsensusGroupId, OperationId, Term};
 pub use timestamp::ConsensusTimestamp;

@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use dashmap::DashMap;
+use proven_storage::LogIndex;
 
 use crate::foundation::messages::Message;
 use crate::foundation::models::{GroupMetadata, StreamState, StreamStats};
@@ -54,8 +55,8 @@ impl GroupState {
             name.clone(),
             StreamState {
                 name,
-                next_sequence: NonZero::new(1).unwrap(),
-                first_sequence: NonZero::new(1).unwrap(),
+                next_sequence: LogIndex::new(1).unwrap(),
+                first_sequence: LogIndex::new(1).unwrap(),
                 stats: StreamStats::default(),
             },
         );
@@ -142,11 +143,7 @@ impl GroupState {
     }
 
     /// Trim stream up to sequence
-    pub async fn trim_stream(
-        &self,
-        stream: &StreamName,
-        up_to_seq: NonZero<u64>,
-    ) -> Option<NonZero<u64>> {
+    pub async fn trim_stream(&self, stream: &StreamName, up_to_seq: LogIndex) -> Option<LogIndex> {
         if let Some(mut state) = self.streams.get_mut(stream) {
             // Can only trim if up_to_seq is valid
             if up_to_seq >= state.first_sequence && up_to_seq < state.next_sequence {
@@ -173,8 +170,8 @@ impl GroupState {
     pub async fn delete_message(
         &self,
         stream: &StreamName,
-        sequence: NonZero<u64>,
-    ) -> Option<NonZero<u64>> {
+        sequence: LogIndex,
+    ) -> Option<LogIndex> {
         if let Some(state) = self.streams.get(stream) {
             // Validate sequence is valid
             if sequence >= state.next_sequence {

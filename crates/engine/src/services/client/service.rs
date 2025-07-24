@@ -2,10 +2,10 @@
 //!
 //! The ClientService acts as a thin coordinator, delegating requests to specialized handlers.
 
-use std::{num::NonZero, sync::Arc};
+use std::sync::Arc;
 
 use proven_network::NetworkManager;
-use proven_storage::StorageAdaptor;
+use proven_storage::{LogIndex, StorageAdaptor};
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
 use tokio::sync::{RwLock, mpsc, oneshot};
@@ -247,8 +247,8 @@ where
     pub async fn read_stream(
         &self,
         stream_name: &str,
-        start_sequence: NonZero<u64>,
-        count: NonZero<u64>,
+        start_sequence: LogIndex,
+        count: LogIndex,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
         let routing_guard = self.routing_service.read().await;
         let routing = routing_guard.as_ref().ok_or_else(|| {
@@ -541,8 +541,8 @@ where
                                 .start_stream(
                                     sender.clone(),
                                     stream_name,
-                                    NonZero::new(start_sequence).unwrap(),
-                                    end_sequence.and_then(NonZero::new),
+                                    LogIndex::new(start_sequence).unwrap(),
+                                    end_sequence.and_then(LogIndex::new),
                                     batch_size,
                                 )
                                 .await
@@ -828,9 +828,9 @@ where
     pub async fn start_streaming_session(
         &self,
         stream_name: &str,
-        start_sequence: NonZero<u64>,
-        end_sequence: Option<NonZero<u64>>,
-        batch_size: NonZero<u64>,
+        start_sequence: LogIndex,
+        end_sequence: Option<LogIndex>,
+        batch_size: LogIndex,
     ) -> ConsensusResult<(
         uuid::Uuid,
         Vec<crate::services::stream::StoredMessage>,
@@ -917,7 +917,7 @@ where
     pub async fn continue_streaming_session(
         &self,
         session_id: uuid::Uuid,
-        max_messages: NonZero<u64>,
+        max_messages: LogIndex,
     ) -> ConsensusResult<(Vec<crate::services::stream::StoredMessage>, bool)> {
         // For continuing a session, we need to know if it's local or remote
         // We'll check if we have a local session first

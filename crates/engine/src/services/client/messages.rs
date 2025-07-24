@@ -1,10 +1,9 @@
 //! Network messages for client service
 
-use std::num::NonZero;
-
 use serde::{Deserialize, Serialize};
 
 use proven_network::ServiceMessage;
+use proven_storage::LogIndex;
 use proven_topology::NodeId;
 
 use crate::{
@@ -55,9 +54,9 @@ pub enum ClientServiceMessage {
         /// Stream name
         stream_name: String,
         /// Start sequence
-        start_sequence: NonZero<u64>,
+        start_sequence: LogIndex,
         /// Number of messages to read
-        count: NonZero<u64>,
+        count: LogIndex,
     },
     /// Start a streaming session
     StreamStart {
@@ -70,7 +69,7 @@ pub enum ClientServiceMessage {
         /// Optional end sequence (None means stream to end)
         end_sequence: Option<u64>,
         /// Batch size (messages per response)
-        batch_size: NonZero<u64>,
+        batch_size: LogIndex,
     },
     /// Continue a streaming session
     StreamContinue {

@@ -1,8 +1,6 @@
 //! Query handler for client service
 
-use std::num::NonZero;
-
-use proven_storage::StorageAdaptor;
+use proven_storage::{LogIndex, StorageAdaptor};
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
@@ -97,7 +95,7 @@ where
                                 }
                             }),
                             group_id: route.group_id,
-                            last_sequence: NonZero::new(stream_state.next_sequence.get().saturating_sub(1)).unwrap_or(stream_state.next_sequence),
+                            last_sequence: LogIndex::new(stream_state.next_sequence.get().saturating_sub(1)).unwrap_or(stream_state.next_sequence),
                             message_count: stream_state.stats.message_count,
                         };
                             Ok(Some(stream_info))
@@ -117,7 +115,7 @@ where
                                 }
                             }),
                             group_id: route.group_id,
-                            last_sequence: NonZero::new(1).unwrap(), // No messages yet, start at 1
+                            last_sequence: LogIndex::new(1).unwrap(), // No messages yet, start at 1
                             message_count: 0, // No messages yet
                         };
                             Ok(Some(stream_info))

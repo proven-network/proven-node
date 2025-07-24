@@ -6,11 +6,12 @@
 //! 3. Publish messages to the stream
 //! 4. Read messages back and verify ordering/content
 
+use std::collections::HashMap;
+use std::time::Duration;
+
 use proven_engine::EngineState;
 use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
-use std::collections::HashMap;
-use std::num::NonZero;
-use std::time::Duration;
+use proven_storage::LogIndex;
 use tokio_stream::StreamExt;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
@@ -125,7 +126,7 @@ async fn test_stream_operations() {
                 // Verify sequences are monotonically increasing
                 assert_eq!(
                     sequence,
-                    NonZero::new(i as u64 + 1).unwrap(),
+                    LogIndex::new(i as u64 + 1).unwrap(),
                     "Sequence should be {}",
                     i + 1
                 );
@@ -149,7 +150,7 @@ async fn test_stream_operations() {
     assert_eq!(stream_info.name, stream_name);
     assert_eq!(
         stream_info.last_sequence,
-        NonZero::new(num_messages as u64).unwrap()
+        LogIndex::new(num_messages as u64).unwrap()
     );
 
     // Step 5: Read messages back
@@ -157,8 +158,8 @@ async fn test_stream_operations() {
     let read_messages = client
         .read_stream(
             stream_name.clone(),
-            NonZero::new(1).unwrap(),
-            NonZero::new(num_messages as u64).unwrap(),
+            LogIndex::new(1).unwrap(),
+            LogIndex::new(num_messages as u64).unwrap(),
         )
         .await
         .expect("Failed to read messages");
@@ -177,7 +178,7 @@ async fn test_stream_operations() {
         // Check sequence number
         assert_eq!(
             stored_msg.sequence,
-            NonZero::new(i as u64 + 1).unwrap(),
+            LogIndex::new(i as u64 + 1).unwrap(),
             "Sequence should be {}",
             i + 1
         );
@@ -379,7 +380,7 @@ async fn test_stream_reading() {
     // Test 1: Stream all messages
     println!("\nTest 1: Streaming all messages");
     let mut stream = client
-        .stream_messages(stream_name.clone(), NonZero::new(1).unwrap(), None)
+        .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create stream reader");
 
@@ -390,7 +391,7 @@ async fn test_stream_reading() {
         // Verify sequence number
         assert_eq!(
             msg.sequence,
-            NonZero::new((count + 1) as u64).unwrap(),
+            LogIndex::new((count + 1) as u64).unwrap(),
             "Sequence mismatch"
         );
 
@@ -431,8 +432,8 @@ async fn test_stream_reading() {
     let mut stream = client
         .stream_messages(
             stream_name.clone(),
-            NonZero::new(10).unwrap(),
-            Some(NonZero::new(30).unwrap()),
+            LogIndex::new(10).unwrap(),
+            Some(LogIndex::new(30).unwrap()),
         )
         .await
         .expect("Failed to create stream reader");
@@ -442,7 +443,7 @@ async fn test_stream_reading() {
     while let Some(result) = stream.next().await {
         let msg = result.expect("Failed to read message from stream");
         assert!(
-            msg.sequence >= NonZero::new(10).unwrap() && msg.sequence < NonZero::new(30).unwrap(),
+            msg.sequence >= LogIndex::new(10).unwrap() && msg.sequence < LogIndex::new(30).unwrap(),
             "Message outside range"
         );
 
@@ -476,12 +477,12 @@ async fn test_stream_reading() {
     let mut stream = client
         .stream_messages(
             stream_name.clone(),
-            NonZero::new(1).unwrap(),
-            Some(NonZero::new(50).unwrap()),
+            LogIndex::new(1).unwrap(),
+            Some(LogIndex::new(50).unwrap()),
         )
         .await
         .expect("Failed to create stream reader")
-        .with_batch_size(NonZero::new(10).unwrap());
+        .with_batch_size(LogIndex::new(10).unwrap());
 
     let mut count = 0;
     while let Some(result) = stream.next().await {
@@ -514,7 +515,7 @@ async fn test_stream_reading() {
     // Test 4: Early termination (drop stream before finishing)
     println!("\nTest 4: Testing early termination");
     let mut stream = client
-        .stream_messages(stream_name.clone(), NonZero::new(1).unwrap(), None)
+        .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create stream reader");
 

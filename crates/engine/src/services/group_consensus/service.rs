@@ -217,7 +217,7 @@ where
             election_timeout_min: self.config.election_timeout_min.as_millis() as u64,
             election_timeout_max: self.config.election_timeout_max.as_millis() as u64,
             heartbeat_interval: self.config.heartbeat_interval.as_millis() as u64,
-            max_payload_entries: self.config.max_entries_per_append.get(),
+            max_payload_entries: self.config.max_entries_per_append as u64,
             // TODO: Think about snapshotting
             snapshot_policy: openraft::SnapshotPolicy::Never,
             ..Default::default()

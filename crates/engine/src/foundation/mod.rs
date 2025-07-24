@@ -34,6 +34,6 @@ pub use traits::{
 
 // From types
 pub use types::{
-    ConsensusGroupId, ConsensusRole, ConsensusTimestamp, GroupStatus, LogIndex, NodeState,
-    OperationId, OperationPriority, Term,
+    ConsensusGroupId, ConsensusRole, ConsensusTimestamp, GroupStatus, NodeState, OperationId,
+    OperationPriority, Term,
 };

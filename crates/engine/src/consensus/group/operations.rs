@@ -109,7 +109,7 @@ impl OperationHandler for GroupOperationHandler {
             }
             GroupRequest::Stream(StreamOperation::Trim { .. }) => Ok(()),
             GroupRequest::Stream(StreamOperation::Delete { .. }) => {
-                // NonZero<u64> already guarantees the sequence is greater than zero
+                // LogIndex already guarantees the sequence is greater than zero
                 Ok(())
             }
             GroupRequest::Admin(_) => Ok(()),

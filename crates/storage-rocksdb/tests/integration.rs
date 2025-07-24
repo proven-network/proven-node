@@ -1,14 +1,13 @@
 use bytes::Bytes;
-use proven_storage::{LogStorage, StorageNamespace};
+use proven_storage::{LogIndex, LogStorage, StorageNamespace};
 use proven_storage_rocksdb::RocksDbStorage;
-use std::num::NonZero;
 use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::task::JoinSet;
 
-// Helper function to create NonZero<u64>
-fn nz(n: u64) -> NonZero<u64> {
-    NonZero::new(n).expect("test indices should be non-zero")
+// Helper function to create LogIndex
+fn nz(n: u64) -> LogIndex {
+    LogIndex::new(n).expect("test indices should be non-zero")
 }
 
 #[tokio::test]

@@ -1,7 +1,6 @@
 //! Stream-related data models
 
-use std::num::NonZero;
-
+use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 
 use crate::foundation::types::ConsensusGroupId;
@@ -26,9 +25,9 @@ pub struct StreamState {
     /// Stream name
     pub name: StreamName,
     /// Next sequence number
-    pub next_sequence: NonZero<u64>,
+    pub next_sequence: LogIndex,
     /// First sequence (for trimmed streams)
-    pub first_sequence: NonZero<u64>,
+    pub first_sequence: LogIndex,
     /// Stream statistics
     pub stats: StreamStats,
 }

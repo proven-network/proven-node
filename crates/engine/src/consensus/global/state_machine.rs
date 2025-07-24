@@ -9,6 +9,7 @@ use openraft::{
     Entry, EntryPayload, LogId, StorageError, StoredMembership,
     storage::{RaftStateMachine, Snapshot},
 };
+use proven_storage::LogIndex;
 use tokio::sync::RwLock;
 
 use super::callbacks::GlobalConsensusCallbacks;
@@ -17,6 +18,7 @@ use super::operations::{GlobalOperation, GlobalOperationHandler};
 use super::raft::GlobalTypeConfig;
 use super::snapshot::{GlobalSnapshot, GlobalSnapshotBuilder};
 use super::types::{GlobalRequest, GlobalResponse};
+use crate::consensus::{LogIndexExt, from_openraft_u64};
 use crate::foundation::{
     GlobalState, GlobalStateWrite, GlobalStateWriter, traits::OperationHandler,
 };
@@ -36,7 +38,7 @@ pub struct GlobalStateMachine {
     /// Current membership
     membership: Arc<RwLock<StoredMembership<GlobalTypeConfig>>>,
     /// Last log index that was persisted before this instance started
-    replay_boundary: Option<NonZero<u64>>,
+    replay_boundary: Option<LogIndex>,
     /// Whether we've fired the state sync callback
     state_synced: Arc<RwLock<bool>>,
 }
@@ -47,7 +49,7 @@ impl GlobalStateMachine {
         state: GlobalStateWriter,
         handler: Arc<GlobalOperationHandler>,
         callback_dispatcher: Arc<GlobalCallbackDispatcher>,
-        replay_boundary: Option<NonZero<u64>>,
+        replay_boundary: Option<LogIndex>,
     ) -> Self {
         Self {
             state,
@@ -99,7 +101,7 @@ impl GlobalStateMachine {
 
             // Check if we've crossed the replay boundary
             if let Some(boundary) = self.replay_boundary
-                && log_id.index + 1 >= boundary.get()
+                && from_openraft_u64(log_id.index).is_some_and(|idx| idx >= boundary)
                 && !*self.state_synced.read().await
             {
                 // We've reached the replay boundary - fire state sync callback
@@ -118,7 +120,9 @@ impl GlobalStateMachine {
                     // Convert 0-based log_id.index to 1-based for comparison with boundary
                     let is_replay = self
                         .replay_boundary
-                        .map(|boundary| log_id.index + 1 < boundary.get())
+                        .and_then(|boundary| {
+                            from_openraft_u64(log_id.index).map(|idx| idx < boundary)
+                        })
                         .unwrap_or(false);
 
                     let response = match self.handler.handle(operation.clone(), is_replay).await {
@@ -140,7 +144,9 @@ impl GlobalStateMachine {
                     // Convert 0-based log_id.index to 1-based for comparison with boundary
                     let is_replay = self
                         .replay_boundary
-                        .map(|boundary| log_id.index + 1 < boundary.get())
+                        .and_then(|boundary| {
+                            from_openraft_u64(log_id.index).map(|idx| idx < boundary)
+                        })
                         .unwrap_or(false);
 
                     // Update membership

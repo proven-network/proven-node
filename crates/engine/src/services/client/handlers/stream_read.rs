@@ -1,8 +1,6 @@
 //! Stream read handler for direct stream reads
 
-use std::num::NonZero;
-
-use proven_storage::StorageAdaptor;
+use proven_storage::{LogIndex, StorageAdaptor};
 
 use crate::{
     error::{ConsensusResult, Error, ErrorKind},
@@ -33,8 +31,8 @@ where
     pub async fn handle_read(
         &self,
         stream_name: &str,
-        start_sequence: NonZero<u64>,
-        count: NonZero<u64>,
+        start_sequence: LogIndex,
+        count: LogIndex,
     ) -> ConsensusResult<Vec<StoredMessage>> {
         // Get stream service
         let stream_guard = self.stream_service.read().await;

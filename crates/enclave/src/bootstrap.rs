@@ -926,15 +926,15 @@ impl Bootstrap {
                     election_timeout_min: Duration::from_millis(1500),
                     election_timeout_max: Duration::from_millis(3000),
                     heartbeat_interval: Duration::from_millis(500),
-                    snapshot_interval: std::num::NonZero::new(10000).unwrap(),
-                    max_entries_per_append: std::num::NonZero::new(100).unwrap(),
+                    snapshot_interval: 10000,
+                    max_entries_per_append: 100,
                 },
                 group: GroupConsensusConfig {
                     election_timeout_min: Duration::from_millis(1500),
                     election_timeout_max: Duration::from_millis(3000),
                     heartbeat_interval: Duration::from_millis(500),
-                    snapshot_interval: std::num::NonZero::new(10000).unwrap(),
-                    max_entries_per_append: std::num::NonZero::new(100).unwrap(),
+                    snapshot_interval: 10000,
+                    max_entries_per_append: 100,
                 },
             },
             network: NetworkConfig {
@@ -950,7 +950,7 @@ impl Bootstrap {
             services: ServiceConfig::default(),
             storage: StorageConfig {
                 path: "/tmp/engine-storage".to_string(),
-                max_log_size: std::num::NonZero::new(1_000_000).unwrap(),
+                max_log_size: 1_000_000,
                 compaction_interval: Duration::from_secs(300),
                 cache_size: 1_000_000,
             },

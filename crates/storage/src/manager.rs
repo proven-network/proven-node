@@ -5,13 +5,13 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use std::{num::NonZero, sync::Arc};
+use std::sync::Arc;
 use tokio_stream::Stream;
 use tracing::{debug, info};
 
 use crate::{
-    LogStorage, LogStorageStreaming, LogStorageWithDelete, StorageNamespace, StorageResult,
-    adaptor::StorageAdaptor,
+    LogIndex, LogStorage, LogStorageStreaming, LogStorageWithDelete, StorageNamespace,
+    StorageResult, adaptor::StorageAdaptor,
 };
 
 /// Storage view for consensus operations (read-only logs)
@@ -121,7 +121,7 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
         &self,
         namespace: &StorageNamespace,
         entries: Arc<Vec<Bytes>>,
-    ) -> StorageResult<NonZero<u64>> {
+    ) -> StorageResult<LogIndex> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "ConsensusStorage: appending {} entries to namespace {}",
@@ -134,7 +134,7 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
     async fn put_at(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+        entries: Vec<(LogIndex, Arc<Bytes>)>,
     ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -148,7 +148,7 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
     async fn bounds(
         &self,
         namespace: &StorageNamespace,
-    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
+    ) -> StorageResult<Option<(LogIndex, LogIndex)>> {
         let prefixed = self.prefixed_namespace(namespace);
         LogStorage::bounds(&*self.adaptor, &prefixed).await
     }
@@ -156,7 +156,7 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
     async fn compact_before(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -169,9 +169,9 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: NonZero<u64>,
-    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
+        start: LogIndex,
+        end: LogIndex,
+    ) -> StorageResult<Vec<(LogIndex, Bytes)>> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "ConsensusStorage: reading range [{}, {}) from namespace {}",
@@ -183,7 +183,7 @@ impl<S: StorageAdaptor> LogStorage for ConsensusStorage<S> {
     async fn truncate_after(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -237,7 +237,7 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
         &self,
         namespace: &StorageNamespace,
         entries: Arc<Vec<Bytes>>,
-    ) -> StorageResult<NonZero<u64>> {
+    ) -> StorageResult<LogIndex> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "StreamStorage: appending {} entries to namespace {}",
@@ -250,7 +250,7 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
     async fn put_at(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+        entries: Vec<(LogIndex, Arc<Bytes>)>,
     ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -264,7 +264,7 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
     async fn bounds(
         &self,
         namespace: &StorageNamespace,
-    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
+    ) -> StorageResult<Option<(LogIndex, LogIndex)>> {
         let prefixed = self.prefixed_namespace(namespace);
         LogStorage::bounds(&*self.adaptor, &prefixed).await
     }
@@ -272,7 +272,7 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
     async fn compact_before(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -285,9 +285,9 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: NonZero<u64>,
-    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
+        start: LogIndex,
+        end: LogIndex,
+    ) -> StorageResult<Vec<(LogIndex, Bytes)>> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
             "StreamStorage: reading range [{}, {}) from namespace {}",
@@ -299,7 +299,7 @@ impl<S: StorageAdaptor> LogStorage for StreamStorage<S> {
     async fn truncate_after(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -343,7 +343,7 @@ impl<S: StorageAdaptor> LogStorageWithDelete for StreamStorage<S> {
     async fn delete_entry(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<bool> {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -363,9 +363,9 @@ where
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: Option<NonZero<u64>>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+        start: LogIndex,
+        end: Option<LogIndex>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
@@ -396,7 +396,7 @@ mod tests {
     #[derive(Clone, Debug)]
     struct MockAdaptor {
         #[allow(clippy::type_complexity)]
-        data: Arc<RwLock<HashMap<String, Vec<(NonZero<u64>, Bytes)>>>>,
+        data: Arc<RwLock<HashMap<String, Vec<(LogIndex, Bytes)>>>>,
     }
 
     impl MockAdaptor {
@@ -413,22 +413,22 @@ mod tests {
             &self,
             namespace: &StorageNamespace,
             entries: Arc<Vec<Bytes>>,
-        ) -> StorageResult<NonZero<u64>> {
+        ) -> StorageResult<LogIndex> {
             let mut data = self.data.write().await;
             let ns_entries = data.entry(namespace.as_str().to_string()).or_default();
 
             // Get the next index
             let start_index = if ns_entries.is_empty() {
-                NonZero::new(1).unwrap()
+                LogIndex::new(1).unwrap()
             } else {
                 let last = ns_entries.iter().map(|(idx, _)| *idx).max().unwrap();
-                NonZero::new(last.get() + 1).unwrap()
+                LogIndex::new(last.get() + 1).unwrap()
             };
 
             // Add entries sequentially
             let mut last_index = start_index;
             for (i, bytes) in entries.iter().enumerate() {
-                let index = NonZero::new(start_index.get() + i as u64).unwrap();
+                let index = LogIndex::new(start_index.get() + i as u64).unwrap();
                 ns_entries.push((index, bytes.clone()));
                 last_index = index;
             }
@@ -439,7 +439,7 @@ mod tests {
         async fn put_at(
             &self,
             namespace: &StorageNamespace,
-            entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+            entries: Vec<(LogIndex, Arc<Bytes>)>,
         ) -> StorageResult<()> {
             let mut data = self.data.write().await;
             let ns_entries = data.entry(namespace.as_str().to_string()).or_default();
@@ -465,7 +465,7 @@ mod tests {
         async fn bounds(
             &self,
             namespace: &StorageNamespace,
-        ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
+        ) -> StorageResult<Option<(LogIndex, LogIndex)>> {
             let data = self.data.read().await;
             if let Some(entries) = data.get(namespace.as_str()) {
                 if entries.is_empty() {
@@ -483,7 +483,7 @@ mod tests {
         async fn compact_before(
             &self,
             _namespace: &StorageNamespace,
-            _index: NonZero<u64>,
+            _index: LogIndex,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -491,9 +491,9 @@ mod tests {
         async fn read_range(
             &self,
             namespace: &StorageNamespace,
-            start: NonZero<u64>,
-            end: NonZero<u64>,
-        ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
+            start: LogIndex,
+            end: LogIndex,
+        ) -> StorageResult<Vec<(LogIndex, Bytes)>> {
             let data = self.data.read().await;
             if let Some(entries) = data.get(namespace.as_str()) {
                 Ok(entries
@@ -509,7 +509,7 @@ mod tests {
         async fn truncate_after(
             &self,
             _namespace: &StorageNamespace,
-            _index: NonZero<u64>,
+            _index: LogIndex,
         ) -> StorageResult<()> {
             Ok(())
         }
@@ -537,7 +537,7 @@ mod tests {
         async fn delete_entry(
             &self,
             namespace: &StorageNamespace,
-            index: NonZero<u64>,
+            index: LogIndex,
         ) -> StorageResult<bool> {
             let mut data = self.data.write().await;
             if let Some(entries) = data.get_mut(namespace.as_str()) {
@@ -555,11 +555,10 @@ mod tests {
         async fn stream_range(
             &self,
             namespace: &StorageNamespace,
-            start: NonZero<u64>,
-            end: Option<NonZero<u64>>,
-        ) -> StorageResult<
-            Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>,
-        > {
+            start: LogIndex,
+            end: Option<LogIndex>,
+        ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
+        {
             let data = self.data.read().await;
             if let Some(entries) = data.get(namespace.as_str()) {
                 // Filter entries based on the range [start, end)
@@ -617,12 +616,12 @@ mod tests {
         // Verify data isolation
         let consensus_data = &data["consensus:myapp"];
         assert_eq!(consensus_data.len(), 1);
-        assert_eq!(consensus_data[0].0, NonZero::new(1).unwrap());
+        assert_eq!(consensus_data[0].0, LogIndex::new(1).unwrap());
         assert_eq!(consensus_data[0].1, Bytes::from("consensus data"));
 
         let stream_data = &data["stream:myapp"];
         assert_eq!(stream_data.len(), 1);
-        assert_eq!(stream_data[0].0, NonZero::new(1).unwrap());
+        assert_eq!(stream_data[0].0, LogIndex::new(1).unwrap());
         assert_eq!(stream_data[0].1, Bytes::from("stream data"));
     }
 
@@ -671,7 +670,7 @@ mod tests {
 
         // Delete entry - this works because StreamStorage implements LogStorageWithDelete
         let deleted = stream
-            .delete_entry(&namespace, NonZero::new(1).unwrap())
+            .delete_entry(&namespace, LogIndex::new(1).unwrap())
             .await
             .unwrap();
         assert!(deleted);
@@ -680,13 +679,13 @@ mod tests {
         let remaining = stream
             .read_range(
                 &namespace,
-                NonZero::new(1).unwrap(),
-                NonZero::new(3).unwrap(),
+                LogIndex::new(1).unwrap(),
+                LogIndex::new(3).unwrap(),
             )
             .await
             .unwrap();
         assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].0, NonZero::new(2).unwrap());
+        assert_eq!(remaining[0].0, LogIndex::new(2).unwrap());
     }
 
     #[tokio::test]
@@ -718,27 +717,27 @@ mod tests {
         let stream_iter = stream
             .stream_range(
                 &namespace,
-                NonZero::new(2).unwrap(),
-                Some(NonZero::new(4).unwrap()),
+                LogIndex::new(2).unwrap(),
+                Some(LogIndex::new(4).unwrap()),
             )
             .await
             .unwrap();
         let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
 
         assert_eq!(results.len(), 2);
-        assert_eq!(results[0].as_ref().unwrap().0, NonZero::new(2).unwrap());
-        assert_eq!(results[1].as_ref().unwrap().0, NonZero::new(3).unwrap());
+        assert_eq!(results[0].as_ref().unwrap().0, LogIndex::new(2).unwrap());
+        assert_eq!(results[1].as_ref().unwrap().0, LogIndex::new(3).unwrap());
 
         // Test streaming with no end (should stream to the end)
         let stream_iter = stream
-            .stream_range(&namespace, NonZero::new(3).unwrap(), None)
+            .stream_range(&namespace, LogIndex::new(3).unwrap(), None)
             .await
             .unwrap();
         let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
 
         assert_eq!(results.len(), 3);
-        assert_eq!(results[0].as_ref().unwrap().0, NonZero::new(3).unwrap());
-        assert_eq!(results[1].as_ref().unwrap().0, NonZero::new(4).unwrap());
-        assert_eq!(results[2].as_ref().unwrap().0, NonZero::new(5).unwrap());
+        assert_eq!(results[0].as_ref().unwrap().0, LogIndex::new(3).unwrap());
+        assert_eq!(results[1].as_ref().unwrap().0, LogIndex::new(4).unwrap());
+        assert_eq!(results[2].as_ref().unwrap().0, LogIndex::new(5).unwrap());
     }
 }

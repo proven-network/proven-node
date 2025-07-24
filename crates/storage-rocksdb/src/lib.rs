@@ -4,17 +4,19 @@ pub mod config;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use proven_storage::{LogStorage, StorageAdaptor, StorageError, StorageNamespace, StorageResult};
+use proven_storage::{
+    LogIndex, LogStorage, StorageAdaptor, StorageError, StorageNamespace, StorageResult,
+};
 use rocksdb::{
     BoundColumnFamily, ColumnFamilyDescriptor, DBWithThreadMode, IteratorMode, MultiThreaded,
     Options, WriteBatch,
 };
-use std::{collections::HashMap, num::NonZero, path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 use tokio::sync::RwLock;
 use tokio_stream::Stream;
 
 /// Type alias for log bounds cache to reduce type complexity
-type LogBoundsCache = Arc<RwLock<HashMap<StorageNamespace, (NonZero<u64>, NonZero<u64>)>>>;
+type LogBoundsCache = Arc<RwLock<HashMap<StorageNamespace, (LogIndex, LogIndex)>>>;
 
 /// RocksDB log storage implementation
 #[derive(Clone)]
@@ -121,19 +123,19 @@ impl RocksDbStorage {
     }
 
     /// Encode a log key for RocksDB
-    fn encode_key(index: NonZero<u64>) -> Vec<u8> {
+    fn encode_key(index: LogIndex) -> Vec<u8> {
         index.get().to_be_bytes().to_vec()
     }
 
     /// Decode a log key from RocksDB
-    fn decode_key(key: &[u8]) -> StorageResult<NonZero<u64>> {
+    fn decode_key(key: &[u8]) -> StorageResult<LogIndex> {
         if key.len() != 8 {
             return Err(StorageError::InvalidKey("Invalid key length".to_string()));
         }
         let mut bytes = [0u8; 8];
         bytes.copy_from_slice(key);
         let value = u64::from_be_bytes(bytes);
-        NonZero::new(value)
+        LogIndex::new(value)
             .ok_or_else(|| StorageError::InvalidKey("Zero index not allowed".to_string()))
     }
 }
@@ -144,7 +146,7 @@ impl LogStorage for RocksDbStorage {
         &self,
         namespace: &StorageNamespace,
         entries: Arc<Vec<Bytes>>,
-    ) -> StorageResult<NonZero<u64>> {
+    ) -> StorageResult<LogIndex> {
         if entries.is_empty() {
             return Err(StorageError::InvalidValue(
                 "Cannot append empty entries".to_string(),
@@ -158,15 +160,15 @@ impl LogStorage for RocksDbStorage {
         // Get the next index based on current bounds
         let existing_bounds = bounds.get(namespace).copied();
         let start_index = if let Some((_, last)) = existing_bounds {
-            NonZero::new(last.get() + 1).unwrap()
+            LogIndex::new(last.get() + 1).unwrap()
         } else {
-            NonZero::new(1).unwrap()
+            LogIndex::new(1).unwrap()
         };
 
         // Add all entries to batch sequentially
         let mut last_index = start_index;
         for (i, data) in entries.iter().enumerate() {
-            let index = NonZero::new(start_index.get() + i as u64).unwrap();
+            let index = LogIndex::new(start_index.get() + i as u64).unwrap();
             batch.put_cf(&cf, Self::encode_key(index), data.as_ref());
             last_index = index;
         }
@@ -186,7 +188,7 @@ impl LogStorage for RocksDbStorage {
     async fn put_at(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+        entries: Vec<(LogIndex, Arc<Bytes>)>,
     ) -> StorageResult<()> {
         if entries.is_empty() {
             return Ok(());
@@ -198,8 +200,8 @@ impl LogStorage for RocksDbStorage {
 
         // Get current bounds
         let existing_bounds = bounds.get(namespace).copied();
-        let mut first_index: Option<NonZero<u64>> = existing_bounds.map(|(first, _)| first);
-        let mut last_index: Option<NonZero<u64>> = existing_bounds.map(|(_, last)| last);
+        let mut first_index: Option<LogIndex> = existing_bounds.map(|(first, _)| first);
+        let mut last_index: Option<LogIndex> = existing_bounds.map(|(_, last)| last);
 
         // Add all entries to batch
         for (index, data) in entries {
@@ -235,9 +237,9 @@ impl LogStorage for RocksDbStorage {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: NonZero<u64>,
-    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
+        start: LogIndex,
+        end: LogIndex,
+    ) -> StorageResult<Vec<(LogIndex, Bytes)>> {
         let cf = self.get_or_create_cf(namespace)?;
         let mut entries = Vec::new();
 
@@ -268,14 +270,14 @@ impl LogStorage for RocksDbStorage {
     async fn truncate_after(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         let cf = self.get_or_create_cf(namespace)?;
         let mut batch = WriteBatch::default();
         let mut bounds = self.log_bounds.write().await;
 
         // Create next index for the range
-        let next_index = NonZero::new(index.get() + 1);
+        let next_index = LogIndex::new(index.get() + 1);
 
         if let Some(next) = next_index {
             let start_key = Self::encode_key(next);
@@ -311,14 +313,14 @@ impl LogStorage for RocksDbStorage {
     async fn compact_before(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         let cf = self.get_or_create_cf(namespace)?;
         let mut batch = WriteBatch::default();
         let mut bounds = self.log_bounds.write().await;
 
         // We want to delete everything up to and including index
-        let next_index = NonZero::new(index.get() + 1);
+        let next_index = LogIndex::new(index.get() + 1);
         let end_key = next_index.map(Self::encode_key);
 
         let iter = self.db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
@@ -362,7 +364,7 @@ impl LogStorage for RocksDbStorage {
     async fn bounds(
         &self,
         namespace: &StorageNamespace,
-    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
+    ) -> StorageResult<Option<(LogIndex, LogIndex)>> {
         // First check cache
         {
             let bounds = self.log_bounds.read().await;
@@ -439,7 +441,7 @@ impl proven_storage::LogStorageWithDelete for RocksDbStorage {
     async fn delete_entry(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<bool> {
         let cf = self.get_or_create_cf(namespace)?;
         let key = Self::encode_key(index);
@@ -470,9 +472,9 @@ impl proven_storage::LogStorageStreaming for RocksDbStorage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: Option<NonZero<u64>>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+        start: LogIndex,
+        end: Option<LogIndex>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
         let _cf = self.get_or_create_cf(namespace)?;
         let start_key = Self::encode_key(start);
@@ -583,9 +585,9 @@ mod tests {
     use tempfile::TempDir;
     use tokio_stream::StreamExt;
 
-    // Helper function to create NonZero<u64>
-    fn nz(n: u64) -> NonZero<u64> {
-        NonZero::new(n).expect("test indices should be non-zero")
+    // Helper function to create LogIndex
+    fn nz(n: u64) -> LogIndex {
+        LogIndex::new(n).expect("test indices should be non-zero")
     }
 
     #[tokio::test]

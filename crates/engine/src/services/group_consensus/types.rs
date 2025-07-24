@@ -1,8 +1,9 @@
 //! Types for group consensus service
 
 use serde::{Deserialize, Serialize};
-use std::{num::NonZero, time::SystemTime};
+use std::time::SystemTime;
 
+use proven_storage::LogIndex;
 use proven_topology::NodeId;
 
 use crate::foundation::types::ConsensusGroupId;
@@ -40,9 +41,9 @@ pub struct StreamInfo {
     /// Number of messages in the stream
     pub message_count: u64,
     /// Next sequence number
-    pub next_sequence: NonZero<u64>,
+    pub next_sequence: LogIndex,
     /// First sequence number
-    pub first_sequence: NonZero<u64>,
+    pub first_sequence: LogIndex,
     /// Total bytes in the stream
     pub total_bytes: u64,
     /// Last update timestamp

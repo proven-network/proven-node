@@ -4,15 +4,11 @@ use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::Debug;
 use std::marker::PhantomData;
-use std::num::NonZero;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::Bytes;
 use proven_engine::consensus::GroupResponse;
-use tokio::sync::RwLock;
-use tracing::{info, warn};
-
 use proven_engine::{Client as EngineClient, StreamConfig};
 use proven_messaging::client::Client;
 use proven_messaging::consumer::Consumer;
@@ -20,6 +16,9 @@ use proven_messaging::service::Service;
 use proven_messaging::stream::{
     InitializedStream, Stream, Stream1, Stream2, Stream3, StreamOptions,
 };
+use proven_storage::LogIndex;
+use tokio::sync::RwLock;
+use tracing::{info, warn};
 
 use crate::client::EngineMessagingClient;
 use crate::consumer::EngineMessagingConsumer;
@@ -308,7 +307,7 @@ where
         // Delete from engine
         let response = self
             .client
-            .delete_message(self.name.clone(), NonZero::new(seq).unwrap())
+            .delete_message(self.name.clone(), LogIndex::new(seq).unwrap())
             .await
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;
 
@@ -340,8 +339,8 @@ where
             .client
             .read_stream(
                 self.name.clone(),
-                NonZero::new(seq).unwrap(),
-                NonZero::new(1).unwrap(),
+                LogIndex::new(seq).unwrap(),
+                LogIndex::new(1).unwrap(),
             )
             .await
             .map_err(|e| MessagingEngineError::Engine(e.to_string()))?;

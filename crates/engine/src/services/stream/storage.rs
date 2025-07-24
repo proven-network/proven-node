@@ -2,11 +2,13 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::{collections::BTreeMap, num::NonZero};
 use tokio::sync::RwLock;
 
-use proven_storage::{LogStorageWithDelete, StorageError, StorageNamespace, StorageResult};
+use proven_storage::{
+    LogIndex, LogStorageWithDelete, StorageError, StorageNamespace, StorageResult,
+};
 
 use super::types::{MessageData, StoredMessage};
 use crate::foundation::messages::format as message_format;
@@ -16,17 +18,14 @@ use crate::services::stream::StreamName;
 #[async_trait]
 pub trait StreamStorageReader: Send + Sync {
     /// Read messages from the stream
-    async fn read_range(
-        &self,
-        start: NonZero<u64>,
-        end: NonZero<u64>,
-    ) -> StorageResult<Vec<StoredMessage>>;
+    async fn read_range(&self, start: LogIndex, end: LogIndex)
+    -> StorageResult<Vec<StoredMessage>>;
 
     /// Get the last sequence number
-    async fn last_sequence(&self) -> StorageResult<Option<NonZero<u64>>>;
+    async fn last_sequence(&self) -> StorageResult<Option<LogIndex>>;
 
     /// Get stream bounds
-    async fn bounds(&self) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>>;
+    async fn bounds(&self) -> StorageResult<Option<(LogIndex, LogIndex)>>;
 }
 
 /// Stream storage writer interface
@@ -35,13 +34,13 @@ pub trait StreamStorageWriter: Send + Sync {
     /// Append a message to the stream
     async fn append(
         &self,
-        seq: NonZero<u64>,
+        seq: LogIndex,
         message: MessageData,
         timestamp: u64,
     ) -> StorageResult<()>;
 
     /// Compact messages before a sequence number
-    async fn compact_before(&self, seq: NonZero<u64>) -> StorageResult<()>;
+    async fn compact_before(&self, seq: LogIndex) -> StorageResult<()>;
 }
 
 /// Combined stream storage interface
@@ -54,7 +53,7 @@ pub enum StreamStorageBackend<L: LogStorageWithDelete> {
     /// Ephemeral storage in memory
     Ephemeral {
         /// BTreeMap of sequence numbers to messages
-        data: Arc<RwLock<BTreeMap<NonZero<u64>, StoredMessage>>>,
+        data: Arc<RwLock<BTreeMap<LogIndex, StoredMessage>>>,
     },
     /// Persistent storage using LogStorage
     Persistent {
@@ -101,8 +100,8 @@ impl<L: LogStorageWithDelete> StreamStorageImpl<L> {
 impl<L: LogStorageWithDelete> StreamStorageReader for StreamStorageImpl<L> {
     async fn read_range(
         &self,
-        start: NonZero<u64>,
-        end: NonZero<u64>,
+        start: LogIndex,
+        end: LogIndex,
     ) -> StorageResult<Vec<StoredMessage>> {
         match &self.backend {
             StreamStorageBackend::Ephemeral { data } => {
@@ -134,7 +133,7 @@ impl<L: LogStorageWithDelete> StreamStorageReader for StreamStorageImpl<L> {
         }
     }
 
-    async fn last_sequence(&self) -> StorageResult<Option<NonZero<u64>>> {
+    async fn last_sequence(&self) -> StorageResult<Option<LogIndex>> {
         match &self.backend {
             StreamStorageBackend::Ephemeral { data } => {
                 let data = data.read().await;
@@ -147,7 +146,7 @@ impl<L: LogStorageWithDelete> StreamStorageReader for StreamStorageImpl<L> {
         }
     }
 
-    async fn bounds(&self) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
+    async fn bounds(&self) -> StorageResult<Option<(LogIndex, LogIndex)>> {
         match &self.backend {
             StreamStorageBackend::Ephemeral { data } => {
                 let data = data.read().await;
@@ -167,7 +166,7 @@ impl<L: LogStorageWithDelete> StreamStorageReader for StreamStorageImpl<L> {
 impl<L: LogStorageWithDelete> StreamStorageWriter for StreamStorageImpl<L> {
     async fn append(
         &self,
-        seq: NonZero<u64>,
+        seq: LogIndex,
         message: MessageData,
         timestamp: u64,
     ) -> StorageResult<()> {
@@ -194,7 +193,7 @@ impl<L: LogStorageWithDelete> StreamStorageWriter for StreamStorageImpl<L> {
         }
     }
 
-    async fn compact_before(&self, seq: NonZero<u64>) -> StorageResult<()> {
+    async fn compact_before(&self, seq: LogIndex) -> StorageResult<()> {
         match &self.backend {
             StreamStorageBackend::Ephemeral { data } => {
                 let mut data = data.write().await;

@@ -14,12 +14,101 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Debug, Display},
-    num::NonZero,
+    num::NonZeroU64,
     sync::Arc,
 };
 use tokio_stream::Stream;
+
+/// Log index type that enforces 1-based indexing
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct LogIndex(NonZeroU64);
+
+impl LogIndex {
+    /// Create a new LogIndex from a u64 value
+    /// Returns None if the value is 0
+    pub fn new(index: u64) -> Option<Self> {
+        NonZeroU64::new(index).map(Self)
+    }
+
+    /// Get the inner u64 value
+    pub fn get(&self) -> u64 {
+        self.0.get()
+    }
+
+    /// Get the inner NonZeroU64 value
+    pub fn inner(&self) -> NonZeroU64 {
+        self.0
+    }
+
+    /// Increment the log index by 1
+    pub fn next(&self) -> Self {
+        // Safe because we're adding 1 to a non-zero value
+        Self(NonZeroU64::new(self.0.get() + 1).unwrap())
+    }
+
+    /// Decrement the log index by 1
+    /// Returns None if this would result in 0
+    pub fn prev(&self) -> Option<Self> {
+        NonZeroU64::new(self.0.get() - 1).map(Self)
+    }
+}
+
+impl Display for LogIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// Arithmetic implementations for LogIndex
+
+impl std::ops::Add<u64> for LogIndex {
+    type Output = Option<Self>;
+
+    fn add(self, rhs: u64) -> Self::Output {
+        self.0.get().checked_add(rhs).and_then(LogIndex::new)
+    }
+}
+
+impl std::ops::Sub<u64> for LogIndex {
+    type Output = Option<Self>;
+
+    fn sub(self, rhs: u64) -> Self::Output {
+        self.0.get().checked_sub(rhs).and_then(LogIndex::new)
+    }
+}
+
+impl std::ops::Sub for LogIndex {
+    type Output = u64;
+
+    /// Returns the distance between two log indices
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.0.get().saturating_sub(rhs.0.get())
+    }
+}
+
+// Convenience methods for checked arithmetic
+impl LogIndex {
+    /// Add a u64 to this index, returning None on overflow or if result would be 0
+    pub fn checked_add(self, n: u64) -> Option<Self> {
+        self + n
+    }
+
+    /// Subtract a u64 from this index, returning None on underflow or if result would be 0
+    pub fn checked_sub(self, n: u64) -> Option<Self> {
+        self - n
+    }
+
+    /// Saturating add - adds n but saturates at u64::MAX
+    pub fn saturating_add(self, n: u64) -> Self {
+        match self.0.get().checked_add(n) {
+            Some(result) => Self(NonZeroU64::new(result).unwrap_or(NonZeroU64::MAX)),
+            None => Self(NonZeroU64::MAX),
+        }
+    }
+}
 
 /// Result type for storage operations
 pub type StorageResult<T> = Result<T, StorageError>;
@@ -118,7 +207,7 @@ pub trait LogStorage: Clone + Send + Sync + 'static {
         &self,
         namespace: &StorageNamespace,
         entries: Arc<Vec<Bytes>>,
-    ) -> StorageResult<NonZero<u64>>;
+    ) -> StorageResult<LogIndex>;
 
     /// Put entries at specific indices
     /// The entries vector contains (index, data) pairs where the index specifies
@@ -126,35 +215,35 @@ pub trait LogStorage: Clone + Send + Sync + 'static {
     async fn put_at(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+        entries: Vec<(LogIndex, Arc<Bytes>)>,
     ) -> StorageResult<()>;
 
     /// Get the current bounds of the log (first_index, last_index)
     async fn bounds(
         &self,
         namespace: &StorageNamespace,
-    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>>;
+    ) -> StorageResult<Option<(LogIndex, LogIndex)>>;
 
     /// Remove all entries up to and including the given index
     async fn compact_before(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()>;
 
     /// Read a range of entries [start, end)
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: NonZero<u64>,
-    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>>;
+        start: LogIndex,
+        end: LogIndex,
+    ) -> StorageResult<Vec<(LogIndex, Bytes)>>;
 
     /// Remove all entries after the given index
     async fn truncate_after(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()>;
 
     /// Get metadata value by key
@@ -183,7 +272,7 @@ pub trait LogStorageWithDelete: LogStorage {
     async fn delete_entry(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<bool>;
 }
 
@@ -203,9 +292,9 @@ pub trait LogStorageStreaming: LogStorage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: Option<NonZero<u64>>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>;
+        start: LogIndex,
+        end: Option<LogIndex>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>;
 }
 
 /// Implement LogStorage for Arc<T> where T: LogStorage
@@ -215,14 +304,14 @@ impl<T: LogStorage> LogStorage for std::sync::Arc<T> {
         &self,
         namespace: &StorageNamespace,
         entries: Arc<Vec<Bytes>>,
-    ) -> StorageResult<NonZero<u64>> {
+    ) -> StorageResult<LogIndex> {
         (**self).append(namespace, entries).await
     }
 
     async fn put_at(
         &self,
         namespace: &StorageNamespace,
-        entries: Vec<(NonZero<u64>, Arc<Bytes>)>,
+        entries: Vec<(LogIndex, Arc<Bytes>)>,
     ) -> StorageResult<()> {
         (**self).put_at(namespace, entries).await
     }
@@ -230,14 +319,14 @@ impl<T: LogStorage> LogStorage for std::sync::Arc<T> {
     async fn bounds(
         &self,
         namespace: &StorageNamespace,
-    ) -> StorageResult<Option<(NonZero<u64>, NonZero<u64>)>> {
+    ) -> StorageResult<Option<(LogIndex, LogIndex)>> {
         (**self).bounds(namespace).await
     }
 
     async fn compact_before(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         (**self).compact_before(namespace, index).await
     }
@@ -245,16 +334,16 @@ impl<T: LogStorage> LogStorage for std::sync::Arc<T> {
     async fn read_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: NonZero<u64>,
-    ) -> StorageResult<Vec<(NonZero<u64>, Bytes)>> {
+        start: LogIndex,
+        end: LogIndex,
+    ) -> StorageResult<Vec<(LogIndex, Bytes)>> {
         (**self).read_range(namespace, start, end).await
     }
 
     async fn truncate_after(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<()> {
         (**self).truncate_after(namespace, index).await
     }
@@ -283,7 +372,7 @@ impl<T: LogStorageWithDelete> LogStorageWithDelete for std::sync::Arc<T> {
     async fn delete_entry(
         &self,
         namespace: &StorageNamespace,
-        index: NonZero<u64>,
+        index: LogIndex,
     ) -> StorageResult<bool> {
         (**self).delete_entry(namespace, index).await
     }
@@ -295,9 +384,9 @@ impl<T: LogStorageStreaming> LogStorageStreaming for std::sync::Arc<T> {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: NonZero<u64>,
-        end: Option<NonZero<u64>>,
-    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(NonZero<u64>, Bytes)>> + Send + Unpin>>
+        start: LogIndex,
+        end: Option<LogIndex>,
+    ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
         (**self).stream_range(namespace, start, end).await
     }

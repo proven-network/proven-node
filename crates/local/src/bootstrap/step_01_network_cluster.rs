@@ -12,7 +12,6 @@ use crate::error::Error;
 use crate::hosts::check_hostname_resolution;
 
 use std::net::{Ipv4Addr, SocketAddr};
-use std::num::NonZero;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -119,15 +118,15 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
                 election_timeout_min: Duration::from_millis(1500),
                 election_timeout_max: Duration::from_millis(3000),
                 heartbeat_interval: Duration::from_millis(500),
-                snapshot_interval: NonZero::new(1000).unwrap(),
-                max_entries_per_append: NonZero::new(64).unwrap(),
+                snapshot_interval: 1000,
+                max_entries_per_append: 64,
             },
             group: GroupConsensusConfig {
                 election_timeout_min: Duration::from_millis(150),
                 election_timeout_max: Duration::from_millis(300),
                 heartbeat_interval: Duration::from_millis(50),
-                snapshot_interval: NonZero::new(1000).unwrap(),
-                max_entries_per_append: NonZero::new(64).unwrap(),
+                snapshot_interval: 1000,
+                max_entries_per_append: 64,
             },
         },
         network: ConsensusNetworkConfig {
@@ -138,7 +137,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         },
         storage: StorageConfig {
             path: "./data".to_string(),
-            max_log_size: NonZero::new(1024 * 1024 * 1024).unwrap(),
+            max_log_size: 1024 * 1024 * 1024,
             compaction_interval: Duration::from_secs(3600),
             cache_size: 1000,
         },

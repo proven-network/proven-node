@@ -14,9 +14,10 @@ use openraft::{
 use tokio::sync::RwLock;
 
 use bytes::Bytes;
-use proven_storage::{LogStorage, StorageNamespace};
+use proven_storage::{LogIndex, LogStorage, StorageNamespace};
 
 use super::raft::GlobalTypeConfig;
+use crate::consensus::{LogIndexExt, OptionLogIndexExt, from_openraft_u64};
 
 /// Raft log storage - only handles log persistence
 ///
@@ -54,23 +55,27 @@ impl<L: LogStorage> RaftLogReader<GlobalTypeConfig> for Arc<GlobalRaftLogStorage
 
         // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
         let start = match range.start_bound() {
-            Bound::Included(&n) => NonZero::new(n + 1).expect("n + 1 should never be 0"),
-            Bound::Excluded(&n) => NonZero::new(n + 2).expect("n + 2 should never be 0"),
-            Bound::Unbounded => NonZero::new(1).unwrap(),
+            Bound::Included(&n) => from_openraft_u64(n).expect("valid index"),
+            Bound::Excluded(&n) => from_openraft_u64(n)
+                .and_then(|idx| idx + 1)
+                .expect("valid index"),
+            Bound::Unbounded => LogIndex::new(1).unwrap(),
         };
 
         let end = match range.end_bound() {
-            Bound::Included(&n) => NonZero::new(n + 2).expect("n + 2 should never be 0"),
+            Bound::Included(&n) => from_openraft_u64(n)
+                .and_then(|idx| idx + 1)
+                .expect("valid index"),
             Bound::Excluded(&n) => {
                 if n == 0 {
                     // OpenRaft might query with end=Excluded(0), which means "no entries"
                     // In our 1-based system, this would be before index 1
-                    NonZero::new(1).unwrap()
+                    LogIndex::new(1).unwrap()
                 } else {
-                    NonZero::new(n + 1).expect("n + 1 should never be 0")
+                    from_openraft_u64(n).expect("valid index")
                 }
             }
-            Bound::Unbounded => NonZero::new(u64::MAX).unwrap(),
+            Bound::Unbounded => LogIndex::new(u64::MAX).unwrap(),
         };
 
         // Read from storage
@@ -152,8 +157,7 @@ impl<L: LogStorage> RaftLogStorage<GlobalTypeConfig> for Arc<GlobalRaftLogStorag
             let mut buffer = Vec::new();
             ciborium::into_writer(entry, &mut buffer).map_err(|e| StorageError::write(&e))?;
             // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
-            let storage_index = NonZero::new(entry.log_id.index + 1)
-                .expect("entry.log_id.index + 1 should never be 0");
+            let storage_index = from_openraft_u64(entry.log_id.index).expect("valid log index");
             storage_entries.push((storage_index, Arc::new(Bytes::from(buffer))));
         }
 
@@ -176,8 +180,7 @@ impl<L: LogStorage> RaftLogStorage<GlobalTypeConfig> for Arc<GlobalRaftLogStorag
     ) -> Result<(), StorageError<GlobalTypeConfig>> {
         // Truncate all entries after the given log_id
         // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
-        let storage_index =
-            NonZero::new(log_id.index + 1).expect("log_id.index + 1 should never be 0");
+        let storage_index = from_openraft_u64(log_id.index).expect("valid log index");
         self.log_storage
             .truncate_after(&self.namespace, storage_index)
             .await
@@ -203,8 +206,7 @@ impl<L: LogStorage> RaftLogStorage<GlobalTypeConfig> for Arc<GlobalRaftLogStorag
 
         // Compact all entries before the given log_id
         // Convert from OpenRaft's 0-based indexing to our storage's 1-based indexing
-        let storage_index =
-            NonZero::new(log_id.index + 1).expect("log_id.index + 1 should never be 0");
+        let storage_index = from_openraft_u64(log_id.index).expect("valid log index");
         self.log_storage
             .compact_before(&self.namespace, storage_index)
             .await

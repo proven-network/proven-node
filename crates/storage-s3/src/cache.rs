@@ -2,10 +2,10 @@
 
 use bytes::Bytes;
 use lru::LruCache;
-use proven_storage::StorageNamespace;
+use proven_storage::{LogIndex, StorageNamespace};
 use std::{
     collections::HashMap,
-    num::{NonZero, NonZeroUsize},
+    num::NonZeroUsize,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -15,7 +15,7 @@ use tracing::{debug, trace};
 use crate::config::CacheConfig;
 
 /// Type aliases to reduce type complexity
-type CacheKey = (StorageNamespace, NonZero<u64>);
+type CacheKey = (StorageNamespace, LogIndex);
 type LruCacheType = Arc<RwLock<LruCache<CacheKey, CacheEntry>>>;
 type BloomFiltersMap = Arc<RwLock<HashMap<StorageNamespace, BloomFilter>>>;
 
@@ -162,7 +162,7 @@ impl LogCache {
     }
 
     /// Check if an entry might exist (using bloom filter)
-    pub async fn might_exist(&self, namespace: &StorageNamespace, index: NonZero<u64>) -> bool {
+    pub async fn might_exist(&self, namespace: &StorageNamespace, index: LogIndex) -> bool {
         if !self.config.enable_bloom_filters {
             return true; // Conservative: assume it might exist
         }
@@ -178,7 +178,7 @@ impl LogCache {
     }
 
     /// Add entry to bloom filter
-    pub async fn add_to_bloom(&self, namespace: &StorageNamespace, index: NonZero<u64>) {
+    pub async fn add_to_bloom(&self, namespace: &StorageNamespace, index: LogIndex) {
         if !self.config.enable_bloom_filters {
             return;
         }
@@ -197,7 +197,7 @@ impl LogCache {
     }
 
     /// Get an entry from cache
-    pub async fn get(&self, namespace: &StorageNamespace, index: NonZero<u64>) -> Option<Bytes> {
+    pub async fn get(&self, namespace: &StorageNamespace, index: LogIndex) -> Option<Bytes> {
         let mut cache = self.cache.write().await;
         let mut stats = self.stats.write().await;
 
@@ -225,7 +225,7 @@ impl LogCache {
     }
 
     /// Put an entry in cache
-    pub async fn put(&self, namespace: &StorageNamespace, index: NonZero<u64>, data: Bytes) {
+    pub async fn put(&self, namespace: &StorageNamespace, index: LogIndex, data: Bytes) {
         let data_size = data.len();
         let mut size = self.current_size.write().await;
 
@@ -260,7 +260,7 @@ impl LogCache {
     }
 
     /// Put multiple entries in cache
-    pub async fn put_many(&self, namespace: &StorageNamespace, entries: &[(NonZero<u64>, Bytes)]) {
+    pub async fn put_many(&self, namespace: &StorageNamespace, entries: &[(LogIndex, Bytes)]) {
         let total_size: usize = entries.iter().map(|(_, data)| data.len()).sum();
 
         // Check if we need to evict
@@ -354,7 +354,7 @@ impl LogCache {
     }
 
     /// Invalidate a specific entry from the cache
-    pub async fn invalidate(&self, namespace: &StorageNamespace, index: NonZero<u64>) {
+    pub async fn invalidate(&self, namespace: &StorageNamespace, index: LogIndex) {
         let mut cache = self.cache.write().await;
         let key = (namespace.clone(), index);
 
@@ -421,17 +421,17 @@ mod tests {
         // Add entry
         let data = Bytes::from("test data");
         cache
-            .put(&namespace, NonZero::new(1).unwrap(), data.clone())
+            .put(&namespace, LogIndex::new(1).unwrap(), data.clone())
             .await;
 
         // Get entry
-        let retrieved = cache.get(&namespace, NonZero::new(1).unwrap()).await;
+        let retrieved = cache.get(&namespace, LogIndex::new(1).unwrap()).await;
         assert_eq!(retrieved, Some(data));
 
         // Check bloom filter
         assert!(
             cache
-                .might_exist(&namespace, NonZero::new(1).unwrap())
+                .might_exist(&namespace, LogIndex::new(1).unwrap())
                 .await
         );
     }

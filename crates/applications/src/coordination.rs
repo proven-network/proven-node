@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use proven_engine::Client;
+use proven_storage::LogIndex;
 use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
@@ -182,7 +183,7 @@ where
         state: Arc<RwLock<LeadershipState>>,
     ) -> Result<(), Error> {
         // Start from the beginning to build complete state
-        let start_seq = std::num::NonZero::new(1).unwrap();
+        let start_seq = LogIndex::new(1).unwrap();
 
         let mut stream = client
             .stream_messages(stream_name.clone(), start_seq, None)

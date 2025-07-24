@@ -1,7 +1,9 @@
 //! State access wrappers for enforcing read/write permissions at compile time
 
-use std::num::NonZero;
 use std::sync::Arc;
+
+use proven_storage::LogIndex;
+use proven_topology::NodeId;
 
 use super::global_state::GlobalState;
 use super::group_state::GroupState;
@@ -9,7 +11,6 @@ use crate::error::ConsensusResult;
 use crate::foundation::models::{GroupInfo, NodeInfo, StreamInfo, StreamState};
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::stream::{StreamConfig, StreamName};
-use proven_topology::NodeId;
 
 /// Trait for read-only operations on GlobalState
 #[async_trait::async_trait]
@@ -98,15 +99,10 @@ pub trait GroupStateWrite: GroupStateRead {
     ) -> Arc<Vec<bytes::Bytes>>;
 
     /// Trim a stream
-    async fn trim_stream(&self, name: &StreamName, up_to_seq: NonZero<u64>)
-    -> Option<NonZero<u64>>;
+    async fn trim_stream(&self, name: &StreamName, up_to_seq: LogIndex) -> Option<LogIndex>;
 
     /// Delete a message
-    async fn delete_message(
-        &self,
-        name: &StreamName,
-        sequence: NonZero<u64>,
-    ) -> Option<NonZero<u64>>;
+    async fn delete_message(&self, name: &StreamName, sequence: LogIndex) -> Option<LogIndex>;
 }
 
 /// Read-only access to GlobalState
@@ -315,19 +311,11 @@ impl GroupStateWrite for GroupStateWriter {
             .await
     }
 
-    async fn trim_stream(
-        &self,
-        name: &StreamName,
-        up_to_seq: NonZero<u64>,
-    ) -> Option<NonZero<u64>> {
+    async fn trim_stream(&self, name: &StreamName, up_to_seq: LogIndex) -> Option<LogIndex> {
         self.inner.trim_stream(name, up_to_seq).await
     }
 
-    async fn delete_message(
-        &self,
-        name: &StreamName,
-        sequence: NonZero<u64>,
-    ) -> Option<NonZero<u64>> {
+    async fn delete_message(&self, name: &StreamName, sequence: LogIndex) -> Option<LogIndex> {
         self.inner.delete_message(name, sequence).await
     }
 }
