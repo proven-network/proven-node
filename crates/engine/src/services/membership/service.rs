@@ -17,10 +17,7 @@ use proven_topology::{Node, NodeId, TopologyAdaptor, TopologyManager};
 use proven_transport::Transport;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::{
-    ServiceLifecycle,
-    traits::{HealthStatus, ServiceHealth},
-};
+use crate::foundation::ServiceLifecycle;
 use crate::services::event::bus::EventBus;
 
 use super::config::MembershipConfig;
@@ -682,6 +679,10 @@ where
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
 {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         let mut state = self.state.write().await;
         match *state {
@@ -800,28 +801,19 @@ where
         Ok(())
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         let state = self.state.read().await;
         *state == ServiceState::Running
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
+    async fn status(&self) -> crate::foundation::traits::lifecycle::ServiceStatus {
+        use crate::foundation::traits::lifecycle::ServiceStatus;
         let state = self.state.read().await;
-        if *state != ServiceState::Running {
-            return Ok(ServiceHealth {
-                name: "membership".to_string(),
-                status: HealthStatus::Unhealthy,
-                message: Some("Service not running".to_string()),
-                subsystems: Vec::new(),
-            });
+        match *state {
+            ServiceState::Running => ServiceStatus::Running,
+            ServiceState::Stopped => ServiceStatus::Stopped,
+            _ => ServiceStatus::Stopped,
         }
-
-        Ok(ServiceHealth {
-            name: "membership".to_string(),
-            status: HealthStatus::Healthy,
-            message: None,
-            subsystems: Vec::new(),
-        })
     }
 }
 

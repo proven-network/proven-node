@@ -18,8 +18,7 @@ use super::raft::GlobalTypeConfig;
 use super::snapshot::{GlobalSnapshot, GlobalSnapshotBuilder};
 use super::types::{GlobalRequest, GlobalResponse};
 use crate::foundation::{
-    GlobalStateWriter, global_state::GlobalState, state_access::GlobalStateWrite,
-    traits::OperationHandler,
+    GlobalState, GlobalStateWrite, GlobalStateWriter, traits::OperationHandler,
 };
 use proven_topology::NodeId;
 

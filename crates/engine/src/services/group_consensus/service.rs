@@ -14,10 +14,9 @@ use proven_transport::Transport;
 use tracing::info;
 
 use super::{callbacks, config::GroupConsensusConfig};
-use crate::foundation::group_state::StreamState;
-use crate::foundation::state_access::GroupStateRead;
 use crate::foundation::{
-    GroupState, GroupStateReader, GroupStateWriter, create_group_state_access,
+    GroupState, GroupStateRead, GroupStateReader, GroupStateWriter, StreamState,
+    create_group_state_access,
 };
 use crate::{
     consensus::group::GroupConsensusLayer,

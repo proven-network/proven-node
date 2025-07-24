@@ -576,6 +576,10 @@ impl Drop for RoutingService {
 
 #[async_trait::async_trait]
 impl crate::foundation::traits::ServiceLifecycle for RoutingService {
+    async fn initialize(&self) -> crate::error::ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> crate::error::ConsensusResult<()> {
         info!("ServiceLifecycle::start called for RoutingService");
         let result = self.start_internal().await.map_err(|e| {
@@ -599,40 +603,18 @@ impl crate::foundation::traits::ServiceLifecycle for RoutingService {
         })
     }
 
-    async fn is_running(&self) -> bool {
-        let state = self.state.read().await;
-        *state == ServiceState::Running
+    async fn is_healthy(&self) -> bool {
+        *self.state.read().await == ServiceState::Running
     }
 
-    async fn health_check(
-        &self,
-    ) -> crate::error::ConsensusResult<crate::foundation::traits::ServiceHealth> {
-        let _is_running = self.is_running().await;
-        let health = self.get_health().await.map_err(|e| {
-            crate::error::Error::with_context(
-                crate::error::ErrorKind::Service,
-                format!("Failed to get routing health: {e}"),
-            )
-        })?;
-
-        use crate::foundation::traits::{HealthStatus, ServiceHealth};
-
-        let status = match health.status {
-            super::types::HealthStatus::Healthy => HealthStatus::Healthy,
-            super::types::HealthStatus::Degraded => HealthStatus::Degraded,
-            super::types::HealthStatus::Unhealthy => HealthStatus::Unhealthy,
-        };
-
-        Ok(ServiceHealth {
-            name: "RoutingService".to_string(),
-            status,
-            message: if health.issues.is_empty() {
-                None
-            } else {
-                Some(health.issues.join("; "))
-            },
-            subsystems: vec![],
-        })
+    async fn status(&self) -> crate::foundation::traits::lifecycle::ServiceStatus {
+        use crate::foundation::traits::lifecycle::ServiceStatus;
+        match *self.state.read().await {
+            ServiceState::NotStarted => ServiceStatus::Stopped,
+            ServiceState::Running => ServiceStatus::Running,
+            ServiceState::Stopping => ServiceStatus::Running,
+            ServiceState::Stopped => ServiceStatus::Stopped,
+        }
     }
 }
 

@@ -4,9 +4,7 @@
 
 use std::sync::Arc;
 
-use crate::foundation::{
-    GlobalStateWriter, global_state::GlobalState, state_access::GlobalStateRead,
-};
+use crate::foundation::{GlobalState, GlobalStateRead, GlobalStateWriter};
 use openraft::{
     LogId, RaftSnapshotBuilder, SnapshotMeta, StorageError, StoredMembership, storage::Snapshot,
 };
@@ -172,7 +170,7 @@ pub struct StateSnapshotData {
     /// All groups in the system
     pub groups: Vec<crate::foundation::GroupInfo>,
     /// All streams in the system
-    pub streams: Vec<crate::foundation::global_state::StreamInfo>,
+    pub streams: Vec<crate::foundation::models::StreamInfo>,
 }
 
 /// Snapshot data structure that would be serialized

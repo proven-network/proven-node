@@ -5,7 +5,7 @@ use tokio::sync::RwLock;
 
 use crate::{
     error::ConsensusResult,
-    foundation::{group_state::GroupState, types::ConsensusGroupId},
+    foundation::{GroupState, types::ConsensusGroupId},
 };
 use proven_topology::NodeId;
 

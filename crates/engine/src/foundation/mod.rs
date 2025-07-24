@@ -3,23 +3,37 @@
 //! This module contains the fundamental building blocks used throughout
 //! the consensus system. It has no dependencies on other modules.
 
-pub mod global_state;
-pub mod group_state;
-pub mod message;
-pub mod message_format;
-pub mod state_access;
+pub mod messages;
+pub mod models;
+pub mod state;
 pub mod traits;
 pub mod types;
 pub mod validations;
 
-// Re-export commonly used types
-pub use global_state::{GlobalState, GroupInfo};
-pub use group_state::GroupState;
-pub use message::{Message, headers};
-pub use message_format::{deserialize_entry, serialize_entry};
-pub use state_access::{
-    GlobalStateReader, GlobalStateWriter, GroupStateReader, GroupStateWriter,
+// Re-export commonly used items for backward compatibility and convenience
+
+// From messages
+pub use messages::{Message, deserialize_entry, headers, serialize_entry};
+
+// From models
+pub use models::{GroupInfo, GroupMetadata, NodeInfo, StreamInfo, StreamState, StreamStats};
+
+// From state
+pub use state::{
+    GlobalState, GlobalStateRead, GlobalStateReader, GlobalStateWrite, GlobalStateWriter,
+    GroupState, GroupStateRead, GroupStateReader, GroupStateWrite, GroupStateWriter,
     create_group_state_access, create_state_access,
 };
-pub use traits::{ConsensusLayer, EventHandler, OperationHandler, ServiceLifecycle, StateStore};
-pub use types::{ConsensusGroupId, GroupState2, NodeState, OperationId};
+
+// From traits
+pub use traits::consensus::StateStore;
+pub use traits::{
+    ConsensusLayer, EventHandler, GroupManager, OperationHandler, ServiceCoordinator,
+    ServiceLifecycle, StreamManager,
+};
+
+// From types
+pub use types::{
+    ConsensusGroupId, ConsensusRole, ConsensusTimestamp, GroupStatus, LogIndex, NodeState,
+    OperationId, OperationPriority, Term,
+};

@@ -5,10 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::state_access::{GroupStateRead, GroupStateWrite};
 use crate::foundation::{
-    GroupStateWriter, group_state::GroupState, traits::OperationHandler, types::OperationId,
-    validations,
+    GroupState, GroupStateRead, GroupStateWrite, GroupStateWriter, traits::OperationHandler,
+    types::OperationId, validations,
 };
 
 use super::types::{AdminOperation, GroupRequest, GroupResponse, StreamOperation};

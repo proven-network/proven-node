@@ -8,8 +8,7 @@ use crate::{
     consensus::global::GlobalConsensusCallbacks,
     error::ConsensusResult,
     foundation::{
-        GlobalState, GlobalStateReader, GroupInfo, state_access::GlobalStateRead,
-        types::ConsensusGroupId,
+        GlobalState, GlobalStateRead, GlobalStateReader, GroupInfo, types::ConsensusGroupId,
     },
     services::{
         event::bus::EventBus,

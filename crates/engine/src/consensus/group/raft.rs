@@ -17,8 +17,7 @@ use proven_topology::NodeId;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
-    GroupStateWriter,
-    group_state::GroupState,
+    GroupState, GroupStateWriter,
     traits::ConsensusLayer,
     types::{ConsensusGroupId, ConsensusRole, OperationId, Term},
 };

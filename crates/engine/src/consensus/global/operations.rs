@@ -8,10 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::state_access::{GlobalStateRead, GlobalStateWrite};
 use crate::foundation::{
-    GlobalStateWriter, global_state::GlobalState, traits::OperationHandler, types::OperationId,
-    validations,
+    GlobalState, GlobalStateRead, GlobalStateWrite, GlobalStateWriter, traits::OperationHandler,
+    types::OperationId, validations,
 };
 
 use super::types::{GlobalRequest, GlobalResponse};
@@ -93,7 +92,7 @@ impl OperationHandler for GlobalOperationHandler {
                 }
 
                 // Create stream
-                let info = crate::foundation::global_state::StreamInfo {
+                let info = crate::foundation::models::StreamInfo {
                     name: name.clone(),
                     config,
                     group_id,
@@ -159,7 +158,7 @@ impl OperationHandler for GlobalOperationHandler {
             }
 
             GlobalRequest::AddNode { node_id, metadata } => {
-                let info = crate::foundation::global_state::NodeInfo {
+                let info = crate::foundation::models::NodeInfo {
                     node_id: node_id.clone(),
                     joined_at: operation.timestamp,
                     metadata,

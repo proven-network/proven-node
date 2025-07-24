@@ -17,7 +17,7 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::io::{self, Write};
 
-use super::message::{Message, headers};
+use super::types::{Message, headers};
 
 /// Errors that can occur during serialization/deserialization
 #[derive(Debug, thiserror::Error)]

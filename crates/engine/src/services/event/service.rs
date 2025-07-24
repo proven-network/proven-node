@@ -8,10 +8,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::{
-    ServiceLifecycle,
-    traits::{HealthStatus, ServiceHealth},
-};
+use crate::foundation::ServiceLifecycle;
 
 use super::bus::EventBus;
 use super::traits::ServiceEvent;
@@ -117,6 +114,10 @@ impl EventService {
 
 #[async_trait]
 impl ServiceLifecycle for EventService {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         let mut state = self.state.write().await;
         if *state != ServiceState::NotStarted {
@@ -161,24 +162,17 @@ impl ServiceLifecycle for EventService {
         Ok(())
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         *self.state.read().await == ServiceState::Running
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        let state = self.state.read().await;
-        let (status, message) = match *state {
-            ServiceState::Running => (HealthStatus::Healthy, None),
-            ServiceState::NotStarted => (HealthStatus::Unhealthy, Some("Not started".to_string())),
-            ServiceState::Stopped => (HealthStatus::Unhealthy, Some("Stopped".to_string())),
-        };
-
-        Ok(ServiceHealth {
-            name: "event".to_string(),
-            status,
-            message,
-            subsystems: Vec::new(),
-        })
+    async fn status(&self) -> crate::foundation::traits::lifecycle::ServiceStatus {
+        use crate::foundation::traits::lifecycle::ServiceStatus;
+        match *self.state.read().await {
+            ServiceState::NotStarted => ServiceStatus::Stopped,
+            ServiceState::Running => ServiceStatus::Running,
+            ServiceState::Stopped => ServiceStatus::Stopped,
+        }
     }
 }
 

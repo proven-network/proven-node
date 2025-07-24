@@ -9,7 +9,7 @@ use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::traits::ServiceLifecycle;
+use crate::foundation::traits::{ServiceLifecycle, lifecycle::ServiceStatus};
 use crate::services::{
     client::ClientService,
     event::{EventService, EventServiceConfig},
@@ -381,13 +381,16 @@ impl<S> ServiceWrapper<S> {
 }
 
 // Implement ServiceLifecycle for each service wrapper
-use crate::foundation::traits::{HealthStatus, ServiceHealth};
 use async_trait::async_trait;
 
 // ClusterService removed - functionality moved to GlobalConsensusService
 
 #[async_trait]
 impl ServiceLifecycle for ServiceWrapper<EventService> {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         // Already started in builder
         Ok(())
@@ -397,17 +400,12 @@ impl ServiceLifecycle for ServiceWrapper<EventService> {
         self.service.stop().await
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         true
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: HealthStatus::Healthy,
-            message: None,
-            subsystems: Vec::new(),
-        })
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
@@ -416,6 +414,10 @@ impl ServiceLifecycle for ServiceWrapper<EventService> {
 // Implement for MonitoringService
 #[async_trait]
 impl ServiceLifecycle for ServiceWrapper<MonitoringService> {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         Ok(())
     }
@@ -424,23 +426,22 @@ impl ServiceLifecycle for ServiceWrapper<MonitoringService> {
         Ok(())
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         true
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: HealthStatus::Healthy,
-            message: None,
-            subsystems: Vec::new(),
-        })
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
 // Implement for RoutingService
 #[async_trait]
 impl ServiceLifecycle for ServiceWrapper<RoutingService> {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
     }
@@ -449,18 +450,22 @@ impl ServiceLifecycle for ServiceWrapper<RoutingService> {
         self.service.stop().await
     }
 
-    async fn is_running(&self) -> bool {
-        self.service.is_running().await
+    async fn is_healthy(&self) -> bool {
+        true // Routing service is always healthy if started
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        self.service.health_check().await
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
 // Implement for MigrationService
 #[async_trait]
 impl ServiceLifecycle for ServiceWrapper<MigrationService> {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         Ok(())
     }
@@ -469,23 +474,22 @@ impl ServiceLifecycle for ServiceWrapper<MigrationService> {
         Ok(())
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         true
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: HealthStatus::Healthy,
-            message: None,
-            subsystems: Vec::new(),
-        })
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
 // Implement for LifecycleService
 #[async_trait]
 impl ServiceLifecycle for ServiceWrapper<LifecycleService> {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         Ok(())
     }
@@ -494,17 +498,12 @@ impl ServiceLifecycle for ServiceWrapper<LifecycleService> {
         Ok(())
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         true
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: HealthStatus::Healthy,
-            message: None,
-            subsystems: Vec::new(),
-        })
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
@@ -515,6 +514,10 @@ where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
 {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         // PubSubService needs to be mutable to start, so we'll handle this differently
         // For now, just return Ok as the service will be started separately
@@ -526,25 +529,12 @@ where
         Ok(())
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         true
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        match self.service.health_check().await {
-            Ok(_) => Ok(ServiceHealth {
-                name: self.name.clone(),
-                status: HealthStatus::Healthy,
-                message: None,
-                subsystems: Vec::new(),
-            }),
-            Err(e) => Ok(ServiceHealth {
-                name: self.name.clone(),
-                status: HealthStatus::Unhealthy,
-                message: Some(e.to_string()),
-                subsystems: Vec::new(),
-            }),
-        }
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
@@ -557,6 +547,10 @@ where
     G: TopologyAdaptor + Send + Sync + 'static,
     S: StorageAdaptor + Send + Sync + 'static,
 {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
     }
@@ -565,21 +559,12 @@ where
         self.service.stop().await
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         self.service.is_healthy().await
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: if self.service.is_healthy().await {
-                HealthStatus::Healthy
-            } else {
-                HealthStatus::Unhealthy
-            },
-            message: None,
-            subsystems: Vec::new(),
-        })
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
@@ -592,6 +577,10 @@ where
     G: TopologyAdaptor + Send + Sync + 'static,
     S: StorageAdaptor + Send + Sync + 'static,
 {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
     }
@@ -600,21 +589,12 @@ where
         self.service.stop().await
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         self.service.is_healthy().await
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        Ok(ServiceHealth {
-            name: self.name.clone(),
-            status: if self.service.is_healthy().await {
-                HealthStatus::Healthy
-            } else {
-                HealthStatus::Unhealthy
-            },
-            message: None,
-            subsystems: Vec::new(),
-        })
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
@@ -626,6 +606,10 @@ where
     G: TopologyAdaptor + Send + Sync + 'static,
     S: StorageAdaptor + Send + Sync + 'static,
 {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
     }
@@ -634,12 +618,12 @@ where
         self.service.stop().await
     }
 
-    async fn is_running(&self) -> bool {
-        self.service.is_running().await
+    async fn is_healthy(&self) -> bool {
+        true // Routing service is always healthy if started
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        self.service.health_check().await
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
@@ -649,6 +633,10 @@ impl<S> ServiceLifecycle for ServiceWrapper<crate::services::stream::StreamServi
 where
     S: StorageAdaptor + Send + Sync + 'static,
 {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        self.service.initialize().await
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
     }
@@ -657,12 +645,12 @@ where
         self.service.stop().await
     }
 
-    async fn is_running(&self) -> bool {
-        self.service.is_running().await
+    async fn is_healthy(&self) -> bool {
+        true // Routing service is always healthy if started
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        self.service.health_check().await
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }
 
@@ -675,6 +663,10 @@ where
     G: TopologyAdaptor + Send + Sync + 'static,
     S: StorageAdaptor + Send + Sync + 'static,
 {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         self.service.start().await
     }
@@ -683,24 +675,11 @@ where
         self.service.stop().await
     }
 
-    async fn is_running(&self) -> bool {
-        self.service.health_check().await.is_ok()
+    async fn is_healthy(&self) -> bool {
+        self.service.is_healthy().await
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        match self.service.health_check().await {
-            Ok(_) => Ok(ServiceHealth {
-                name: self.name.clone(),
-                status: HealthStatus::Healthy,
-                message: None,
-                subsystems: Vec::new(),
-            }),
-            Err(e) => Ok(ServiceHealth {
-                name: self.name.clone(),
-                status: HealthStatus::Unhealthy,
-                message: Some(e.to_string()),
-                subsystems: Vec::new(),
-            }),
-        }
+    async fn status(&self) -> ServiceStatus {
+        ServiceStatus::Running
     }
 }

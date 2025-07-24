@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::{
     error::ConsensusResult,
-    foundation::{group_state::GroupState, types::ConsensusGroupId},
+    foundation::{GroupState, types::ConsensusGroupId},
 };
 use proven_topology::NodeId;
 

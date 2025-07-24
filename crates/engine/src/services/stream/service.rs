@@ -17,10 +17,7 @@ use proven_storage::{
 };
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::{
-    ConsensusGroupId,
-    traits::{HealthStatus, ServiceHealth, ServiceLifecycle, SubsystemHealth},
-};
+use crate::foundation::{ConsensusGroupId, traits::ServiceLifecycle};
 use crate::services::event::{EventBus, EventHandler};
 use crate::services::stream::config::RetentionPolicy;
 use crate::services::stream::events::StreamEvent;
@@ -529,6 +526,10 @@ impl<S: StorageAdaptor> Clone for StreamService<S> {
 
 #[async_trait::async_trait]
 impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         info!("Starting StreamService");
 
@@ -604,51 +605,17 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
         Ok(())
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         *self.is_running.read().await
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        let is_running = self.is_running().await;
-        let has_event_bus = true; // Event bus is always present now
-        let stream_count = self.streams.read().await.len();
-
-        let mut subsystems = vec![];
-
-        // Check event service subsystem
-        subsystems.push(SubsystemHealth {
-            name: "event_bus".to_string(),
-            status: HealthStatus::Healthy,
-            message: None,
-        });
-
-        // Check storage subsystem
-        subsystems.push(SubsystemHealth {
-            name: "storage".to_string(),
-            status: HealthStatus::Healthy,
-            message: Some(format!("{stream_count} streams loaded")),
-        });
-
-        let (status, message) = if !is_running {
-            (
-                HealthStatus::Unhealthy,
-                Some("Service not running".to_string()),
-            )
-        } else if !has_event_bus {
-            (
-                HealthStatus::Degraded,
-                Some("Event service not available".to_string()),
-            )
+    async fn status(&self) -> crate::foundation::traits::lifecycle::ServiceStatus {
+        use crate::foundation::traits::lifecycle::ServiceStatus;
+        if *self.is_running.read().await {
+            ServiceStatus::Running
         } else {
-            (HealthStatus::Healthy, None)
-        };
-
-        Ok(ServiceHealth {
-            name: "StreamService".to_string(),
-            status,
-            message,
-            subsystems,
-        })
+            ServiceStatus::Stopped
+        }
     }
 }
 
@@ -769,18 +736,18 @@ mod tests {
         let service = StreamService::new(config, storage_manager, event_bus);
 
         // Should not be running initially
-        assert!(!service.is_running().await);
+        assert!(!service.is_healthy().await);
 
         // Start service
         assert!(service.start().await.is_ok());
-        assert!(service.is_running().await);
+        assert!(service.is_healthy().await);
 
         // Should fail to start again
         assert!(service.start().await.is_err());
 
         // Stop service
         assert!(service.stop().await.is_ok());
-        assert!(!service.is_running().await);
+        assert!(!service.is_healthy().await);
     }
 
     #[tokio::test]

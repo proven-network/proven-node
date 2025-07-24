@@ -11,7 +11,7 @@ use tracing::{error, info, warn};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::{
-    HealthStatus, ServiceCoordinator as ServiceCoordinatorTrait, ServiceHealth, ServiceLifecycle,
+    ServiceCoordinator as ServiceCoordinatorTrait, ServiceLifecycle, lifecycle::ServiceStatus,
 };
 
 /// Service coordinator implementation
@@ -118,7 +118,7 @@ impl ServiceCoordinatorTrait for ServiceCoordinator {
 
         for name in &order {
             if let Some(service) = services.get(name)
-                && service.is_running().await
+                && service.is_healthy().await
             {
                 info!("Stopping service: {}", name);
 
@@ -142,8 +142,16 @@ impl ServiceCoordinatorTrait for ServiceCoordinator {
         }
     }
 
-    async fn get_service(&self, name: &str) -> Option<Arc<dyn ServiceLifecycle>> {
-        self.services.read().await.get(name).cloned()
+    async fn get_status(&self) -> Vec<(String, ServiceStatus)> {
+        let services = self.services.read().await;
+        let mut status_list = Vec::new();
+
+        for (name, service) in services.iter() {
+            let status = service.status().await;
+            status_list.push((name.clone(), status));
+        }
+
+        status_list
     }
 }
 
@@ -158,7 +166,7 @@ impl ServiceCoordinator {
             }
 
             if let Some(service) = services.get(name)
-                && service.is_running().await
+                && service.is_healthy().await
             {
                 warn!("Stopping service {} due to startup failure", name);
                 if let Err(e) = service.stop().await {
@@ -168,33 +176,14 @@ impl ServiceCoordinator {
         }
     }
 
-    /// Get health status of all services
-    pub async fn get_all_health(&self) -> ConsensusResult<Vec<ServiceHealth>> {
-        let services = self.services.read().await;
-        let mut health_reports = Vec::new();
-
-        for (name, service) in services.iter() {
-            match service.health_check().await {
-                Ok(health) => health_reports.push(health),
-                Err(e) => {
-                    health_reports.push(ServiceHealth {
-                        name: name.clone(),
-                        status: HealthStatus::Unhealthy,
-                        message: Some(format!("Health check failed: {e}")),
-                        subsystems: Vec::new(),
-                    });
-                }
-            }
-        }
-
-        Ok(health_reports)
-    }
-
     /// Check if all services are healthy
     pub async fn all_healthy(&self) -> bool {
-        match self.get_all_health().await {
-            Ok(reports) => reports.iter().all(|h| h.status == HealthStatus::Healthy),
-            Err(_) => false,
+        let services = self.services.read().await;
+        for service in services.values() {
+            if !service.is_healthy().await {
+                return false;
+            }
         }
+        true
     }
 }

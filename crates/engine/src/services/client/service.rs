@@ -13,10 +13,7 @@ use tracing::{debug, info};
 
 use crate::{
     error::{ConsensusResult, Error},
-    foundation::{
-        traits::{ServiceHealth, ServiceLifecycle},
-        types::ConsensusGroupId,
-    },
+    foundation::{traits::ServiceLifecycle, types::ConsensusGroupId},
     services::{
         event::{EventBus, EventService},
         global_consensus::GlobalConsensusService,
@@ -1011,6 +1008,10 @@ where
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
 {
+    async fn initialize(&self) -> ConsensusResult<()> {
+        Ok(())
+    }
+
     async fn start(&self) -> ConsensusResult<()> {
         info!("Starting ClientService");
 
@@ -1089,42 +1090,16 @@ where
         Ok(())
     }
 
-    async fn is_running(&self) -> bool {
+    async fn is_healthy(&self) -> bool {
         *self.is_running.read().await
     }
 
-    async fn health_check(&self) -> ConsensusResult<ServiceHealth> {
-        use crate::foundation::traits::HealthStatus;
-
-        let has_global = self.global_consensus.read().await.is_some();
-        let has_group = self.group_consensus.read().await.is_some();
-        let has_routing = self.routing_service.read().await.is_some();
-        let has_handlers = self.handlers.read().await.is_some();
-
-        let (status, message) = if !has_global || !has_group || !has_routing {
-            (
-                HealthStatus::Unhealthy,
-                Some("Required services not available".to_string()),
-            )
-        } else if !has_handlers {
-            (
-                HealthStatus::Unhealthy,
-                Some("Handlers not initialized".to_string()),
-            )
-        } else if !self.is_running().await {
-            (
-                HealthStatus::Degraded,
-                Some("Service not running".to_string()),
-            )
+    async fn status(&self) -> crate::foundation::traits::lifecycle::ServiceStatus {
+        use crate::foundation::traits::lifecycle::ServiceStatus;
+        if *self.is_running.read().await {
+            ServiceStatus::Running
         } else {
-            (HealthStatus::Healthy, None)
-        };
-
-        Ok(ServiceHealth {
-            name: "ClientService".to_string(),
-            status,
-            message,
-            subsystems: vec![],
-        })
+            ServiceStatus::Stopped
+        }
     }
 }

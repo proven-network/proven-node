@@ -4,10 +4,7 @@ use async_trait::async_trait;
 
 use crate::{
     error::ConsensusResult,
-    foundation::{
-        global_state::{GlobalState, GroupInfo},
-        types::ConsensusGroupId,
-    },
+    foundation::{GroupInfo, types::ConsensusGroupId},
     services::stream::StreamName,
 };
 use proven_topology::NodeId;

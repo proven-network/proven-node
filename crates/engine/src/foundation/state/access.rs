@@ -2,11 +2,11 @@
 
 use std::num::NonZero;
 use std::sync::Arc;
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use super::global_state::{GlobalState, GroupInfo, NodeInfo, StreamInfo};
-use super::group_state::{GroupState, StreamState};
+use super::global_state::GlobalState;
+use super::group_state::GroupState;
 use crate::error::ConsensusResult;
+use crate::foundation::models::{GroupInfo, NodeInfo, StreamInfo, StreamState};
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::stream::{StreamConfig, StreamName};
 use proven_topology::NodeId;

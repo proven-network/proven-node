@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use proven_storage::{LogStorageWithDelete, StorageError, StorageNamespace, StorageResult};
 
 use super::types::{MessageData, StoredMessage};
-use crate::foundation::message_format;
+use crate::foundation::messages::format as message_format;
 use crate::services::stream::StreamName;
 
 /// Stream storage reader interface

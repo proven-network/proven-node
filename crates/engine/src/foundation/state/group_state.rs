@@ -2,14 +2,14 @@
 //!
 //! Pure state container for group consensus operations.
 
-use std::collections::HashMap;
 use std::num::NonZero;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use dashmap::DashMap;
 
-use crate::foundation::Message;
+use crate::foundation::messages::Message;
+use crate::foundation::models::{GroupMetadata, StreamState, StreamStats};
 use crate::services::stream::StreamName;
 
 /// Group consensus state
@@ -23,43 +23,6 @@ pub struct GroupState {
     stream_count: Arc<AtomicUsize>,
     total_messages: Arc<AtomicU64>,
     total_bytes: Arc<AtomicU64>,
-}
-
-/// State for a single stream
-#[derive(Debug, Clone)]
-pub struct StreamState {
-    /// Stream name
-    pub name: StreamName,
-    /// Next sequence number
-    pub next_sequence: NonZero<u64>,
-    /// First sequence (for trimmed streams)
-    pub first_sequence: NonZero<u64>,
-    /// Stream statistics
-    pub stats: StreamStats,
-}
-
-/// Stream statistics
-#[derive(Debug, Clone, Default)]
-pub struct StreamStats {
-    /// Total messages
-    pub message_count: u64,
-    /// Total bytes
-    pub total_bytes: u64,
-    /// Last update timestamp
-    pub last_update: u64,
-}
-
-/// Group metadata
-#[derive(Debug, Clone)]
-pub struct GroupMetadata {
-    /// Group creation time
-    pub created_at: u64,
-    /// Number of streams
-    pub stream_count: usize,
-    /// Total messages across all streams
-    pub total_messages: u64,
-    /// Total storage used
-    pub total_bytes: u64,
 }
 
 impl GroupState {

@@ -18,7 +18,7 @@ use super::raft::GroupTypeConfig;
 use super::snapshot::{GroupSnapshot, GroupSnapshotBuilder};
 use super::types::{GroupRequest, GroupResponse, StreamOperation};
 use crate::foundation::{
-    GroupStateWriter, group_state::GroupState, traits::OperationHandler, types::ConsensusGroupId,
+    GroupState, GroupStateWriter, traits::OperationHandler, types::ConsensusGroupId,
 };
 use proven_topology::NodeId;
 

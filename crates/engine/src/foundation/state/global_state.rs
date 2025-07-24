@@ -3,30 +3,14 @@
 //! Pure state container for global consensus operations.
 //! This module only manages state - all validation happens elsewhere.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
 
-use crate::{
-    foundation::types::ConsensusGroupId,
-    services::stream::{StreamConfig, StreamName},
-};
+use crate::foundation::models::{GroupInfo, NodeInfo, StreamInfo};
+use crate::foundation::types::ConsensusGroupId;
+use crate::services::stream::{StreamConfig, StreamName};
 use proven_topology::NodeId;
-
-/// Consensus group information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GroupInfo {
-    /// Group ID
-    pub id: ConsensusGroupId,
-    /// Member nodes
-    pub members: Vec<NodeId>,
-    /// Creation timestamp
-    pub created_at: u64,
-    /// Group metadata
-    pub metadata: HashMap<String, String>,
-}
 
 /// Global consensus state
 #[derive(Clone)]
@@ -42,30 +26,6 @@ pub struct GlobalState {
 
     /// Cluster members
     members: Arc<DashMap<NodeId, NodeInfo>>,
-}
-
-/// Stream information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StreamInfo {
-    /// Stream name
-    pub name: StreamName,
-    /// Stream configuration
-    pub config: StreamConfig,
-    /// Assigned consensus group
-    pub group_id: ConsensusGroupId,
-    /// Creation timestamp
-    pub created_at: u64,
-}
-
-/// Node information
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeInfo {
-    /// Node ID
-    pub node_id: NodeId,
-    /// When the node joined
-    pub joined_at: u64,
-    /// Node metadata
-    pub metadata: HashMap<String, String>,
 }
 
 impl GlobalState {

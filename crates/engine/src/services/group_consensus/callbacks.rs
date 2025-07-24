@@ -6,7 +6,7 @@ use std::{num::NonZero, sync::Arc};
 use crate::{
     consensus::group::callbacks::GroupConsensusCallbacks,
     error::ConsensusResult,
-    foundation::{group_state::GroupState, types::ConsensusGroupId},
+    foundation::{GroupState, types::ConsensusGroupId},
     services::{event::bus::EventBus, group_consensus::GroupConsensusEvent},
 };
 use proven_storage::StorageAdaptor;
