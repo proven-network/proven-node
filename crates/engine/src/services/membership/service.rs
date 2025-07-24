@@ -26,13 +26,13 @@ use super::events::MembershipEvent;
 use super::handlers;
 use super::health::HealthMonitor;
 use super::messages::{
-    self, AcceptProposalRequest, AcceptProposalResponse, ClusterState, DiscoverClusterResponse,
-    GlobalConsensusInfo, GracefulShutdownRequest, GracefulShutdownResponse, HealthCheckResponse,
+    self, AcceptProposalRequest, AcceptProposalResponse, GracefulShutdownRequest,
     MembershipMessage, MembershipResponse, ProposeClusterRequest, ProposeClusterResponse,
 };
 use super::types::{
     ClusterFormationState, HealthInfo, MembershipView, NodeMembership, NodeRole, NodeStatus,
 };
+use super::utils::now_timestamp;
 
 /// Service state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -538,113 +538,71 @@ where
         message: MembershipMessage,
     ) -> Result<MembershipResponse, proven_network::error::NetworkError> {
         match message {
-            MembershipMessage::DiscoverCluster(_req) => {
-                let view = self.membership_view.read().await;
-
-                // Convert cluster state and find the leader
-                let mut cluster_state: ClusterState = view.cluster_state.clone().into();
-
-                // If we have an active cluster, find who has the GlobalConsensusLeader role
-                if let ClusterState::Active { ref mut leader, .. } = cluster_state {
-                    *leader = view
-                        .nodes_with_role(&NodeRole::GlobalConsensusLeader)
-                        .first()
-                        .map(|member| member.node_id.clone());
+            MembershipMessage::DiscoverCluster(req) => {
+                let handler = handlers::DiscoverClusterHandler::new(
+                    self.node_id.clone(),
+                    self.membership_view.clone(),
+                );
+                match handler.handle(sender, req).await {
+                    Ok(response) => Ok(MembershipResponse::DiscoverCluster(response)),
+                    Err(e) => {
+                        error!("Failed to handle discover request: {}", e);
+                        Err(proven_network::error::NetworkError::Internal(e.to_string()))
+                    }
                 }
-
-                let response = DiscoverClusterResponse {
-                    from_node: self.node_id.clone(),
-                    cluster_state,
-                    node_status: NodeStatus::Online, // TODO: Get from service state
-                    timestamp: now_timestamp(),
-                };
-                Ok(MembershipResponse::DiscoverCluster(response))
             }
             MembershipMessage::ProposeCluster(req) => {
-                // Accept if we're not already in a cluster
-                let view = self.membership_view.read().await;
-                let accepted = matches!(view.cluster_state, ClusterFormationState::NotFormed);
-                drop(view);
-
-                if accepted {
-                    // Update our state
-                    let mut view = self.membership_view.write().await;
-                    view.cluster_state = ClusterFormationState::Forming {
-                        coordinator: req.coordinator.clone(),
-                        formation_id: req.formation_id,
-                        proposed_members: req
-                            .proposed_members
-                            .iter()
-                            .map(|(id, _)| id.clone())
-                            .collect(),
-                    };
+                let handler = handlers::ProposeClusterHandler::new(
+                    self.node_id.clone(),
+                    self.membership_view.clone(),
+                );
+                match handler.handle(sender, req).await {
+                    Ok(response) => Ok(MembershipResponse::ProposeCluster(response)),
+                    Err(e) => {
+                        error!("Failed to handle propose request: {}", e);
+                        Err(proven_network::error::NetworkError::Internal(e.to_string()))
+                    }
                 }
-
-                Ok(MembershipResponse::ProposeCluster(ProposeClusterResponse {
-                    accepted,
-                    rejection_reason: if !accepted {
-                        Some("Already in cluster".to_string())
-                    } else {
-                        None
-                    },
-                }))
             }
-            MembershipMessage::AcceptProposal(_req) => {
-                // TODO: Handle acceptance from a node
-                let view = self.membership_view.read().await;
-                Ok(MembershipResponse::AcceptProposal(AcceptProposalResponse {
-                    success: true,
-                    cluster_state: view.cluster_state.clone(),
-                }))
+            MembershipMessage::AcceptProposal(req) => {
+                let handler = handlers::AcceptProposalHandler::new(
+                    self.node_id.clone(),
+                    self.membership_view.clone(),
+                );
+                match handler.handle(sender, req).await {
+                    Ok(response) => Ok(MembershipResponse::AcceptProposal(response)),
+                    Err(e) => {
+                        error!("Failed to handle accept proposal request: {}", e);
+                        Err(proven_network::error::NetworkError::Internal(e.to_string()))
+                    }
+                }
             }
-            MembershipMessage::HealthCheck(_req) => {
-                // TODO: Get actual consensus info
-                let response = HealthCheckResponse {
-                    status: NodeStatus::Online,
-                    load: None,
-                    global_consensus_info: None,
-                    timestamp: now_timestamp(),
-                };
-                Ok(MembershipResponse::HealthCheck(response))
+            MembershipMessage::HealthCheck(req) => {
+                let handler = handlers::HealthCheckHandler::new(
+                    self.node_id.clone(),
+                    self.membership_view.clone(),
+                );
+                match handler.handle(sender, req).await {
+                    Ok(response) => Ok(MembershipResponse::HealthCheck(response)),
+                    Err(e) => {
+                        error!("Failed to handle health check request: {}", e);
+                        Err(proven_network::error::NetworkError::Internal(e.to_string()))
+                    }
+                }
             }
             MembershipMessage::GracefulShutdown(req) => {
-                info!(
-                    "Node {} announced graceful shutdown: {:?}",
-                    sender, req.reason
+                let handler = handlers::GracefulShutdownHandler::new(
+                    self.node_id.clone(),
+                    self.membership_view.clone(),
+                    self.event_bus.clone(),
                 );
-
-                // Immediately mark the node as offline
-                let mut view = self.membership_view.write().await;
-                if let Some(member) = view.nodes.get_mut(&sender) {
-                    member.status = NodeStatus::Offline {
-                        since_ms: now_timestamp(),
-                    };
-                    info!("Marked node {} as offline due to graceful shutdown", sender);
+                match handler.handle(sender, req).await {
+                    Ok(response) => Ok(MembershipResponse::GracefulShutdown(response)),
+                    Err(e) => {
+                        error!("Failed to handle graceful shutdown request: {}", e);
+                        Err(proven_network::error::NetworkError::Internal(e.to_string()))
+                    }
                 }
-                drop(view);
-
-                // Publish event for immediate membership change
-                self.publish_event(MembershipEvent::NodeGracefulShutdown {
-                    node_id: sender.clone(),
-                    reason: req.reason.clone(),
-                })
-                .await;
-
-                // Also publish membership change required event
-                self.publish_event(MembershipEvent::MembershipChangeRequired {
-                    add_nodes: vec![],
-                    remove_nodes: vec![sender],
-                    reason: format!(
-                        "Node gracefully shut down: {:?}",
-                        req.reason
-                            .unwrap_or_else(|| "No reason provided".to_string())
-                    ),
-                })
-                .await;
-
-                Ok(MembershipResponse::GracefulShutdown(
-                    GracefulShutdownResponse { acknowledged: true },
-                ))
             }
             MembershipMessage::JoinCluster(req) => {
                 // Use the join handler
@@ -841,12 +799,4 @@ where
             _phantom: std::marker::PhantomData,
         }
     }
-}
-
-/// Get current timestamp in milliseconds
-fn now_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
 }

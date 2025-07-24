@@ -14,6 +14,7 @@ mod health;
 mod messages;
 mod service;
 mod types;
+mod utils;
 
 pub use config::MembershipConfig;
 pub use events::MembershipEvent;
