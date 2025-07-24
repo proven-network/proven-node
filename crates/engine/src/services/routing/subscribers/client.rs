@@ -87,6 +87,13 @@ impl EventHandler<ClientServiceEvent> for ClientServiceSubscriber {
                     }
                 }
             }
+
+            // Ignore PubSub-related events (handled by PubSub service)
+            ClientServiceEvent::PubSubPublish { .. }
+            | ClientServiceEvent::PubSubSubscribe { .. }
+            | ClientServiceEvent::PubSubUnsubscribe { .. } => {
+                // These events are handled by the PubSub service subscriber
+            }
         }
     }
 }

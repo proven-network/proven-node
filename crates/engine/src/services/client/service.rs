@@ -90,6 +90,9 @@ where
     /// Event bus for publishing events
     event_bus: Arc<EventBus>,
 
+    /// PubSub event subscriber
+    pubsub_subscriber: Arc<super::subscribers::PubSubServiceSubscriber>,
+
     /// Whether the service is running
     is_running: Arc<RwLock<bool>>,
 
@@ -121,6 +124,9 @@ where
             routing_service.clone(),
         ));
 
+        // Create PubSub subscriber
+        let pubsub_subscriber = Arc::new(super::subscribers::PubSubServiceSubscriber::new());
+
         Self {
             name: "ClientService".to_string(),
             node_id,
@@ -134,6 +140,7 @@ where
             stream_service,
             network_manager,
             event_bus,
+            pubsub_subscriber,
             is_running: Arc::new(RwLock::new(false)),
             shutdown: Arc::new(RwLock::new(None)),
         }
@@ -999,6 +1006,161 @@ where
             }
         });
     }
+
+    // ===== PubSub Methods =====
+
+    /// Publish a message to a PubSub subject
+    pub async fn publish_message(
+        &self,
+        subject: &str,
+        payload: bytes::Bytes,
+        headers: Vec<(String, String)>,
+    ) -> ConsensusResult<()> {
+        use crate::foundation::types::Subject;
+        use crate::services::client::events::ClientServiceEvent;
+        use uuid::Uuid;
+
+        // Validate subject
+        let subject = Subject::new(subject.to_string()).map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::InvalidState,
+                format!("Invalid subject: {e}"),
+            )
+        })?;
+
+        // Create request
+        let request_id = Uuid::new_v4();
+        let event = ClientServiceEvent::PubSubPublish {
+            request_id,
+            subject,
+            payload,
+            headers,
+        };
+
+        // Publish event
+        self.event_bus.publish(event).await;
+
+        // Wait for response using the subscriber
+        let subscriber = self.get_pubsub_subscriber().await?;
+        let response_rx = subscriber.register_publish(request_id).await;
+
+        match tokio::time::timeout(std::time::Duration::from_secs(5), response_rx).await {
+            Ok(Ok(Ok(()))) => Ok(()),
+            Ok(Ok(Err(e))) => Err(Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Publish failed: {e}"),
+            )),
+            Ok(Err(_)) => Err(Error::with_context(
+                crate::error::ErrorKind::Service,
+                "PubSub service response channel closed",
+            )),
+            Err(_) => Err(Error::with_context(
+                crate::error::ErrorKind::Timeout,
+                "Publish request timed out",
+            )),
+        }
+    }
+
+    /// Subscribe to a PubSub subject pattern
+    pub async fn subscribe_to_subject(
+        &self,
+        subject_pattern: &str,
+        queue_group: Option<String>,
+    ) -> ConsensusResult<(
+        String,
+        tokio::sync::broadcast::Receiver<crate::services::pubsub::PubSubMessage>,
+    )> {
+        use crate::foundation::types::SubjectPattern;
+        use crate::services::client::events::ClientServiceEvent;
+        use crate::services::pubsub::PubSubMessage;
+        use uuid::Uuid;
+
+        // Validate subject pattern
+        let subject_pattern = SubjectPattern::new(subject_pattern.to_string()).map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::InvalidState,
+                format!("Invalid subject pattern: {e}"),
+            )
+        })?;
+
+        // Create broadcast channel for messages
+        let (message_tx, message_rx) = tokio::sync::broadcast::channel::<PubSubMessage>(1000);
+
+        // Create request
+        let request_id = Uuid::new_v4();
+        let event = ClientServiceEvent::PubSubSubscribe {
+            request_id,
+            subject_pattern,
+            queue_group,
+            message_tx,
+        };
+
+        // Publish event
+        self.event_bus.publish(event).await;
+
+        // Wait for response using the subscriber
+        let subscriber = self.get_pubsub_subscriber().await?;
+        let response_rx = subscriber.register_subscribe(request_id).await;
+
+        match tokio::time::timeout(std::time::Duration::from_secs(5), response_rx).await {
+            Ok(Ok(Ok(subscription_id))) => Ok((subscription_id, message_rx)),
+            Ok(Ok(Err(e))) => Err(Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Subscribe failed: {e}"),
+            )),
+            Ok(Err(_)) => Err(Error::with_context(
+                crate::error::ErrorKind::Service,
+                "PubSub service response channel closed",
+            )),
+            Err(_) => Err(Error::with_context(
+                crate::error::ErrorKind::Timeout,
+                "Subscribe request timed out",
+            )),
+        }
+    }
+
+    /// Unsubscribe from a PubSub subscription
+    pub async fn unsubscribe_from_subject(&self, subscription_id: &str) -> ConsensusResult<()> {
+        use crate::services::client::events::ClientServiceEvent;
+        use uuid::Uuid;
+
+        // Create request
+        let request_id = Uuid::new_v4();
+        let event = ClientServiceEvent::PubSubUnsubscribe {
+            request_id,
+            subscription_id: subscription_id.to_string(),
+        };
+
+        // Publish event
+        self.event_bus.publish(event).await;
+
+        // Wait for response using the subscriber
+        let subscriber = self.get_pubsub_subscriber().await?;
+        let response_rx = subscriber.register_unsubscribe(request_id).await;
+
+        match tokio::time::timeout(std::time::Duration::from_secs(5), response_rx).await {
+            Ok(Ok(Ok(()))) => Ok(()),
+            Ok(Ok(Err(e))) => Err(Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Unsubscribe failed: {e}"),
+            )),
+            Ok(Err(_)) => Err(Error::with_context(
+                crate::error::ErrorKind::Service,
+                "PubSub service response channel closed",
+            )),
+            Err(_) => Err(Error::with_context(
+                crate::error::ErrorKind::Timeout,
+                "Unsubscribe request timed out",
+            )),
+        }
+    }
+
+    /// Get the PubSub subscriber instance
+    async fn get_pubsub_subscriber(
+        &self,
+    ) -> ConsensusResult<Arc<super::subscribers::PubSubServiceSubscriber>> {
+        Ok(self.pubsub_subscriber.clone())
+    }
 }
 
 #[async_trait::async_trait]
@@ -1045,6 +1207,11 @@ where
             tracing::warn!("Failed to register network handlers: {}", e);
             // Continue anyway - the service can still work for local requests
         }
+
+        // Subscribe to PubSub events
+        self.event_bus
+            .subscribe((*self.pubsub_subscriber).clone())
+            .await;
 
         // Mark as running
         *self.is_running.write().await = true;

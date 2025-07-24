@@ -7,71 +7,45 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
+use crate::foundation::types::subject::{Subject, SubjectPattern};
+
+/// Single message notification for forwarding
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageNotification {
+    /// Unique message ID
+    pub id: Uuid,
+    /// Subject the message was published to
+    pub subject: Subject,
+    /// Message payload
+    pub payload: Bytes,
+    /// Optional headers
+    pub headers: Vec<(String, String)>,
+    /// Timestamp when created
+    pub timestamp: SystemTime,
+    /// Source node
+    pub source: NodeId,
+}
+
 /// PubSub service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum PubSubServiceMessage {
-    /// Regular publish message
-    Publish {
-        /// Unique message ID
-        id: Uuid,
-        /// Subject the message was published to
-        subject: String,
-        /// Message payload
-        payload: Bytes,
-        /// Optional headers
-        headers: Vec<(String, String)>,
-        /// Timestamp when created
-        timestamp: SystemTime,
-        /// Source node
-        source: NodeId,
-        /// Optional reply subject for request-response
-        reply_to: Option<String>,
-        /// Optional correlation ID
-        correlation_id: Option<Uuid>,
+    /// Notify peer nodes of messages (supports batching)
+    Notify {
+        /// Batch of messages to forward
+        messages: Vec<MessageNotification>,
     },
-    /// Request expecting a response
-    Request {
-        /// Unique message ID
-        id: Uuid,
-        /// Subject the message was published to
-        subject: String,
-        /// Message payload
-        payload: Bytes,
-        /// Optional headers
-        headers: Vec<(String, String)>,
-        /// Timestamp when created
-        timestamp: SystemTime,
-        /// Source node
-        source: NodeId,
-        /// Reply subject for response
-        reply_to: String,
-        /// Correlation ID
-        correlation_id: Uuid,
-    },
-    /// Response to a request
-    Response {
-        /// Unique message ID
-        id: Uuid,
-        /// Original subject
-        subject: String,
-        /// Message payload
-        payload: Bytes,
-        /// Optional headers
-        headers: Vec<(String, String)>,
-        /// Timestamp when created
-        timestamp: SystemTime,
-        /// Source node
-        source: NodeId,
-        /// Correlation ID from request
-        correlation_id: Uuid,
-    },
-    /// Interest update message for peer coordination
-    InterestUpdate {
-        /// Node ID
-        node_id: NodeId,
+    /// Register interest in subject patterns
+    RegisterInterest {
         /// Subject patterns this node is interested in
-        interests: Vec<String>,
+        patterns: Vec<SubjectPattern>,
+        /// Timestamp
+        timestamp: SystemTime,
+    },
+    /// Unregister interest in subject patterns
+    UnregisterInterest {
+        /// Subject patterns to remove interest in
+        patterns: Vec<SubjectPattern>,
         /// Timestamp
         timestamp: SystemTime,
     },
@@ -81,22 +55,13 @@ pub enum PubSubServiceMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum PubSubServiceResponse {
-    /// Acknowledgment of publish
-    PublishAck {
-        /// Message ID that was published
-        message_id: Uuid,
-        /// Number of subscribers who received it
-        subscriber_count: usize,
+    /// Acknowledgment
+    Ack,
+    /// Error occurred
+    Error {
+        /// Error message
+        message: String,
     },
-    /// Response data
-    Response {
-        /// Response payload
-        payload: Bytes,
-        /// Optional headers
-        headers: Vec<(String, String)>,
-    },
-    /// Interest update acknowledgment
-    InterestUpdateAck,
 }
 
 impl ServiceMessage for PubSubServiceMessage {

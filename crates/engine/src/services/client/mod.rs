@@ -9,6 +9,7 @@ mod handlers;
 mod messages;
 mod network;
 mod service;
+pub mod subscribers;
 mod types;
 
 pub use events::ClientServiceEvent;

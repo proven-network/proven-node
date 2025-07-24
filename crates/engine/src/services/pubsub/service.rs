@@ -3,17 +3,17 @@
 use base64::Engine as _;
 use base64::engine::general_purpose;
 use bytes::Bytes;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
-use tokio::sync::{RwLock, mpsc, oneshot};
-use tokio::time::timeout;
+use tokio::sync::{RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use proven_topology::NodeId;
 
 use crate::foundation::types::ConsensusGroupId;
+use crate::services::event::{EventBus, EventHandler, EventPriority};
 use crate::services::lifecycle::ComponentState;
 use proven_network::NetworkManager;
 use proven_topology::TopologyAdaptor;
@@ -22,8 +22,8 @@ use proven_transport::Transport;
 use super::interest::InterestTracker;
 use super::messages::{PubSubServiceMessage, PubSubServiceResponse};
 use super::router::MessageRouter;
-use super::subject::{Subject, SubjectPattern, subject_matches_pattern};
 use super::types::*;
+use crate::foundation::types::{Subject, SubjectPattern, subject_matches_pattern};
 
 /// Configuration for PubSub service
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -34,8 +34,6 @@ pub struct PubSubConfig {
     pub default_request_timeout: Duration,
     /// Interest update interval
     pub interest_update_interval: Duration,
-    /// Enable persistence for matching patterns
-    pub persistence_patterns: Vec<String>,
     /// Maximum subscriptions per node
     pub max_subscriptions_per_node: usize,
 }
@@ -46,7 +44,6 @@ impl Default for PubSubConfig {
             max_message_size: 1024 * 1024, // 1MB
             default_request_timeout: Duration::from_secs(30),
             interest_update_interval: Duration::from_secs(60),
-            persistence_patterns: vec!["stream.>".to_string(), "consensus.>".to_string()],
             max_subscriptions_per_node: 1000,
         }
     }
@@ -66,11 +63,10 @@ where
     interest_tracker: InterestTracker,
     /// Local message router
     message_router: MessageRouter,
-    /// Pending requests waiting for responses
-    pending_requests: Arc<RwLock<HashMap<Uuid, oneshot::Sender<PubSubResponse>>>>,
     /// Network manager
-    network: Option<Arc<NetworkManager<T, G>>>,
-    // Event publishing removed - TODO: Add new event system if needed
+    network: Arc<NetworkManager<T, G>>,
+    /// Event bus for publishing events
+    event_bus: Arc<EventBus>,
     /// Global consensus handle for querying stream mappings
     global_consensus_handle: Option<Arc<dyn GlobalConsensusHandle>>,
     /// Group consensus handle for stream writes
@@ -88,6 +84,8 @@ where
         mpsc::Sender<PubSubNetworkMessage>,
         Option<mpsc::Receiver<PubSubNetworkMessage>>,
     ),
+    /// Known cluster members (maintained by membership events)
+    cluster_members: Arc<RwLock<HashSet<NodeId>>>,
     /// Type markers
     _transport: std::marker::PhantomData<T>,
     _governance: std::marker::PhantomData<G>,
@@ -99,15 +97,21 @@ where
     G: TopologyAdaptor,
 {
     /// Create a new PubSub service
-    pub fn new(config: PubSubConfig, node_id: NodeId) -> Self {
+    pub async fn new(
+        config: PubSubConfig,
+        node_id: NodeId,
+        network: Arc<NetworkManager<T, G>>,
+        event_bus: Arc<EventBus>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(10000);
+
         Self {
             config,
-            node_id,
+            node_id: node_id.clone(),
             interest_tracker: InterestTracker::new(),
             message_router: MessageRouter::new(),
-            pending_requests: Arc::new(RwLock::new(HashMap::new())),
-            network: None,
+            network: network.clone(),
+            event_bus,
             global_consensus_handle: None,
             group_consensus_handle: None,
             stream_mappings_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -115,23 +119,100 @@ where
             state: Arc::new(RwLock::new(ComponentState::NotInitialized)),
             stats: Arc::new(RwLock::new(PubSubStats::default())),
             message_channel: (tx, Some(rx)),
+            cluster_members: Arc::new(RwLock::new(HashSet::new())),
             _transport: std::marker::PhantomData,
             _governance: std::marker::PhantomData,
         }
     }
 
-    /// Set the network manager
-    pub fn set_network(&mut self, network: Arc<NetworkManager<T, G>>) {
-        self.network = Some(network);
+    /// Register network handlers (call after wrapping in Arc)
+    pub async fn register_network_handlers(
+        self: Arc<Self>,
+        network: Arc<NetworkManager<T, G>>,
+    ) -> PubSubResult<()> {
+        let service = self.clone();
+
+        network
+            .register_service::<PubSubServiceMessage, _>(move |sender, message| {
+                let service = service.clone();
+
+                Box::pin(async move {
+                    match message {
+                        PubSubServiceMessage::Notify { messages } => {
+                            // Handle batch of message notifications
+                            for msg in messages {
+                                debug!(
+                                    "Processing message {} on subject {} from {}",
+                                    msg.id, msg.subject, msg.source
+                                );
+
+                                // Convert to internal format and route
+                                let network_msg = PubSubNetworkMessage {
+                                    id: msg.id,
+                                    subject: msg.subject,
+                                    payload: msg.payload,
+                                    headers: msg.headers,
+                                    timestamp: msg.timestamp,
+                                    source: msg.source,
+                                    msg_type: PubSubMessageType::Publish,
+                                };
+
+                                service.message_router.route(&network_msg).await;
+                            }
+                            Ok(PubSubServiceResponse::Ack)
+                        }
+                        PubSubServiceMessage::RegisterInterest {
+                            patterns,
+                            timestamp: _,
+                        } => {
+                            // Update interest tracker with peer's interests
+                            debug!(
+                                "Received interest registration from {} with {} patterns",
+                                sender,
+                                patterns.len()
+                            );
+                            for pattern in &patterns {
+                                debug!(
+                                    "Adding interest from {} for pattern {}",
+                                    sender,
+                                    pattern.as_ref()
+                                );
+                                service
+                                    .interest_tracker
+                                    .add_interest(sender.clone(), pattern.clone())
+                                    .await;
+                            }
+                            Ok(PubSubServiceResponse::Ack)
+                        }
+                        PubSubServiceMessage::UnregisterInterest {
+                            patterns,
+                            timestamp: _,
+                        } => {
+                            // Remove interests from tracker
+                            for pattern in patterns {
+                                service
+                                    .interest_tracker
+                                    .remove_interest(sender.clone(), &pattern)
+                                    .await;
+                            }
+                            Ok(PubSubServiceResponse::Ack)
+                        }
+                    }
+                })
+            })
+            .await
+            .map_err(|e| PubSubError::Network(format!("Failed to register service: {e}")))?;
+
+        Ok(())
     }
 
-    /// Publish a message
+    /// Publish a message to a subject (Core NATS semantics: fire-and-forget)
     pub async fn publish(
         &self,
         subject: String,
         payload: Bytes,
         headers: Vec<(String, String)>,
-    ) -> PubSubResult<Uuid> {
+    ) -> PubSubResult<()> {
         // Validate subject
         let subject = Subject::new(&subject)?;
 
@@ -143,96 +224,37 @@ where
             ));
         }
 
+        let id = Uuid::new_v4();
+
         // Create message
         let message = PubSubNetworkMessage {
-            id: Uuid::new_v4(),
-            subject: subject.to_string(),
+            id,
+            subject,
             payload,
             headers,
             timestamp: std::time::SystemTime::now(),
             source: self.node_id.clone(),
             msg_type: PubSubMessageType::Publish,
-            reply_to: None,
-            correlation_id: None,
         };
-
-        // Route locally
-        self.route_local_message(&message).await?;
-
-        // Route to interested remote nodes
-        self.route_remote_message(&message).await?;
 
         // Update stats
         self.stats.write().await.messages_published += 1;
 
-        Ok(message.id)
-    }
+        // Route locally first
+        let local_count = self.route_local_message(&message).await?;
 
-    /// Send a request and wait for response
-    pub async fn request(
-        &self,
-        subject: String,
-        payload: Bytes,
-        headers: Vec<(String, String)>,
-        timeout_duration: Option<Duration>,
-    ) -> PubSubResult<PubSubResponse> {
-        // Validate subject
-        let subject = Subject::new(&subject)?;
+        // Route to remote subscribers
+        let remote_count = self.route_remote_message(&message).await?;
 
-        // Create reply subject
-        let reply_subject = format!("_INBOX.{}", Uuid::new_v4());
+        // Update stats
+        if local_count == 0 && remote_count == 0 {
+            self.stats.write().await.messages_dropped += 1;
+        }
 
-        // Create request message
-        let message = PubSubNetworkMessage {
-            id: Uuid::new_v4(),
-            subject: subject.to_string(),
-            payload,
-            headers,
-            timestamp: std::time::SystemTime::now(),
-            source: self.node_id.clone(),
-            msg_type: PubSubMessageType::Request,
-            reply_to: Some(reply_subject.clone()),
-            correlation_id: None,
-        };
+        // Check if message should be persisted by streams
+        self.handle_stream_subscriptions(&message).await?;
 
-        // Create response channel
-        let (tx, rx) = oneshot::channel();
-        self.pending_requests.write().await.insert(message.id, tx);
-
-        // Subscribe to reply subject temporarily
-        let reply_sub = Subscription {
-            id: format!("reply_{}", message.id),
-            subject_pattern: reply_subject,
-            node_id: self.node_id.clone(),
-            persist: false,
-            queue_group: None,
-            delivery_mode: DeliveryMode::BestEffort,
-            created_at: std::time::SystemTime::now(),
-        };
-        self.message_router
-            .add_subscription(reply_sub.clone())
-            .await;
-
-        // Route the request
-        self.route_local_message(&message).await?;
-        self.route_remote_message(&message).await?;
-
-        // Wait for response with timeout
-        let timeout_duration = timeout_duration.unwrap_or(self.config.default_request_timeout);
-        let result = match timeout(timeout_duration, rx).await {
-            Ok(Ok(response)) => Ok(response),
-            Ok(Err(_)) => Err(PubSubError::Internal("Response channel closed".to_string())),
-            Err(_) => {
-                self.stats.write().await.request_timeouts += 1;
-                Err(PubSubError::RequestTimeout)
-            }
-        };
-
-        // Clean up
-        self.pending_requests.write().await.remove(&message.id);
-        self.message_router.remove_subscription(&reply_sub.id).await;
-
-        result
+        Ok(())
     }
 
     /// Subscribe to a subject pattern
@@ -240,9 +262,7 @@ where
         &self,
         subject_pattern: String,
         queue_group: Option<String>,
-        delivery_mode: DeliveryMode,
-        persist: bool,
-    ) -> PubSubResult<String> {
+    ) -> PubSubResult<Subscription> {
         // Validate pattern
         let pattern = SubjectPattern::new(&subject_pattern)?;
 
@@ -252,36 +272,41 @@ where
             .get_node_subscriptions(&self.node_id)
             .await;
         if current_subs.len() >= self.config.max_subscriptions_per_node {
-            return Err(PubSubError::Internal(format!(
-                "Subscription limit reached: {}",
-                self.config.max_subscriptions_per_node
-            )));
+            return Err(PubSubError::MaxSubscriptionsExceeded(
+                self.config.max_subscriptions_per_node,
+            ));
         }
+
+        let id = Uuid::new_v4().to_string();
 
         // Create subscription
         let subscription = Subscription {
-            id: Uuid::new_v4().to_string(),
-            subject_pattern: pattern.to_string(),
+            id: id.clone(),
+            subject_pattern: pattern.clone(),
             node_id: self.node_id.clone(),
-            persist,
-            queue_group,
-            delivery_mode,
+            queue_group: queue_group.clone(),
             created_at: std::time::SystemTime::now(),
         };
 
         // Add to router
-        let sub_id = self
-            .message_router
+        self.message_router
             .add_subscription(subscription.clone())
             .await;
 
         // Update local interests
-        self.update_local_interests().await?;
+        self.interest_tracker
+            .add_interest(self.node_id.clone(), pattern)
+            .await;
 
         // Update stats
         self.stats.write().await.active_subscriptions += 1;
 
-        Ok(sub_id)
+        // Interest updates are handled by update_local_interests below
+
+        // Broadcast interest update
+        self.update_local_interests().await?;
+
+        Ok(subscription)
     }
 
     /// Unsubscribe from a subscription
@@ -292,8 +317,14 @@ where
             .await
             .is_some()
         {
-            self.update_local_interests().await?;
+            // Update stats
             self.stats.write().await.active_subscriptions -= 1;
+
+            // Interest updates are handled by update_local_interests below
+
+            // Update interests
+            self.update_local_interests().await?;
+
             Ok(())
         } else {
             Err(PubSubError::SubscriptionNotFound(
@@ -302,53 +333,60 @@ where
         }
     }
 
-    /// Route message to local subscribers
-    async fn route_local_message(&self, message: &PubSubNetworkMessage) -> PubSubResult<()> {
-        let subscriptions = self.message_router.route_message(&message.subject).await;
-
-        for subscription in subscriptions {
-            if subscription.node_id == self.node_id {
-                // Handle local delivery
-                debug!(
-                    "Delivering message {} to local subscription {}",
-                    message.id, subscription.id
-                );
-
-                // Check if we need to persist
-                if subscription.persist || self.should_persist(&message.subject) {
-                    // Event publishing removed - just update stats
-                    self.stats.write().await.messages_persisted += 1;
-                }
-
-                // Check for stream subscriptions
-                self.handle_stream_subscriptions(message).await?;
-            }
-        }
-
-        Ok(())
+    /// Route message to local subscribers and return count
+    async fn route_local_message(&self, message: &PubSubNetworkMessage) -> PubSubResult<usize> {
+        let count = self.message_router.route(message).await;
+        Ok(count)
     }
 
-    /// Route message to remote interested nodes
-    async fn route_remote_message(&self, message: &PubSubNetworkMessage) -> PubSubResult<()> {
+    /// Route message to remote subscribers and return count
+    async fn route_remote_message(&self, message: &PubSubNetworkMessage) -> PubSubResult<usize> {
+        // Get interested nodes from interest tracker
         let interested_nodes = self
             .interest_tracker
-            .find_interested_nodes(&message.subject)
+            .find_interested_nodes(message.subject.as_str())
             .await;
 
-        for node_id in interested_nodes {
-            if node_id != self.node_id {
-                debug!("Routing message {} to remote node {}", message.id, node_id);
+        debug!(
+            "Found {} interested nodes for subject {}",
+            interested_nodes.len(),
+            message.subject.as_str()
+        );
 
-                // Send via network
-                if let Some(_network) = &self.network {
-                    // In a real implementation, we'd send via the network service
-                    // For now, this is a placeholder
-                    debug!("Would send PubSub message to {}", node_id);
-                }
+        let mut count = 0;
+
+        // Create message notification
+        let notification = super::messages::MessageNotification {
+            id: message.id,
+            subject: message.subject.clone(),
+            payload: message.payload.clone(),
+            headers: message.headers.clone(),
+            timestamp: message.timestamp,
+            source: message.source.clone(),
+        };
+
+        // Batch messages for efficiency (we're sending one at a time for now)
+        let service_msg = PubSubServiceMessage::Notify {
+            messages: vec![notification],
+        };
+
+        // Send to interested remote nodes
+        for node in interested_nodes {
+            if node != self.node_id {
+                // Use service_request with a short timeout for fire-and-forget behavior
+                let _ = self
+                    .network
+                    .service_request(node, service_msg.clone(), Duration::from_millis(100))
+                    .await;
+                count += 1;
             }
         }
 
-        Ok(())
+        if count > 0 {
+            self.stats.write().await.messages_routed_remote += count as u64;
+        }
+
+        Ok(count)
     }
 
     /// Handle incoming message from network
@@ -359,42 +397,17 @@ where
         match message.msg_type {
             PubSubMessageType::Publish => {
                 // Route to local subscribers only (already routed remotely by sender)
-                self.route_local_message(&message).await?;
-            }
-            PubSubMessageType::Request => {
-                // Handle request - route and potentially respond
-                self.route_local_message(&message).await?;
-            }
-            PubSubMessageType::Response => {
-                // Handle response to a pending request
-                if let Some(correlation_id) = message.correlation_id
-                    && let Some(sender) =
-                        self.pending_requests.write().await.remove(&correlation_id)
-                {
-                    let response = PubSubResponse::Response {
-                        payload: message.payload,
-                        headers: message.headers,
-                    };
-                    let _ = sender.send(response);
+                let count = self.route_local_message(&message).await?;
+                if count == 0 {
+                    self.stats.write().await.messages_dropped += 1;
                 }
             }
             PubSubMessageType::Control => {
-                // Handle control messages (interest updates, etc.)
-                self.handle_control_message(message).await?;
+                // Control messages are handled at the service message level
+                // This should not be reached in normal operation
             }
         }
 
-        Ok(())
-    }
-
-    /// Handle control messages
-    async fn handle_control_message(&self, message: PubSubNetworkMessage) -> PubSubResult<()> {
-        // For now, assume control messages are interest updates
-        if let Ok(update) = serde_json::from_slice::<InterestUpdateMessage>(&message.payload) {
-            self.interest_tracker
-                .update_interests(update.node_id, update.interests)
-                .await;
-        }
         Ok(())
     }
 
@@ -404,7 +417,7 @@ where
             .message_router
             .get_node_subscriptions(&self.node_id)
             .await;
-        let patterns: Vec<String> = subscriptions
+        let patterns: Vec<SubjectPattern> = subscriptions
             .into_iter()
             .map(|sub| sub.subject_pattern)
             .collect();
@@ -414,49 +427,61 @@ where
             .update_interests(self.node_id.clone(), patterns.clone())
             .await;
 
+        // Send to all cluster members (not just nodes with interests)
+        let cluster_members = self.cluster_members.read().await.clone();
+        debug!(
+            "Broadcasting interests to {} cluster members (patterns: {:?})",
+            cluster_members.len(),
+            patterns.len()
+        );
+
         // Broadcast to peers
-        let update = InterestUpdateMessage {
-            node_id: self.node_id.clone(),
-            interests: patterns,
+        let msg = PubSubServiceMessage::RegisterInterest {
+            patterns,
             timestamp: std::time::SystemTime::now(),
         };
-
-        let payload =
-            serde_json::to_vec(&update).map_err(|e| PubSubError::Internal(e.to_string()))?;
-
-        let _control_msg = PubSubNetworkMessage {
-            id: Uuid::new_v4(),
-            subject: "_CONTROL.interest.update".to_string(),
-            payload: Bytes::from(payload),
-            headers: vec![],
-            timestamp: std::time::SystemTime::now(),
-            source: self.node_id.clone(),
-            msg_type: PubSubMessageType::Control,
-            reply_to: None,
-            correlation_id: None,
-        };
-
-        // Send to all known nodes
-        if let Some(_network) = &self.network {
-            // In a real implementation, we'd broadcast the control message
-            // For now, this is a placeholder
-            debug!("Would broadcast interest update");
+        for node in cluster_members {
+            if node != self.node_id {
+                debug!("Sending interests to node {}", node);
+                let _ = self
+                    .network
+                    .service_request(node, msg.clone(), Duration::from_millis(100))
+                    .await;
+            }
         }
 
         Ok(())
     }
 
-    /// Check if a subject should be persisted
-    fn should_persist(&self, subject: &str) -> bool {
-        self.config
-            .persistence_patterns
-            .iter()
-            .any(|pattern| subject_matches_pattern(subject, pattern))
-    }
-
     /// Get service statistics
     pub async fn get_stats(&self) -> PubSubStats {
         self.stats.read().await.clone()
+    }
+
+    /// Get the message router (for subscribers)
+    pub fn message_router(&self) -> &MessageRouter {
+        &self.message_router
+    }
+
+    /// Setup event handler for PubSub events (call after wrapping in Arc)
+    pub async fn setup_event_handler(self: Arc<Self>) {
+        use super::subscribers::{
+            ClientServiceSubscriber, GlobalConsensusEventSubscriber, MembershipEventSubscriber,
+        };
+
+        // Subscribe to client service events
+        let client_subscriber = ClientServiceSubscriber::new(self.clone(), self.event_bus.clone());
+        self.event_bus.subscribe(client_subscriber).await;
+
+        // Subscribe to membership events
+        let membership_subscriber =
+            MembershipEventSubscriber::new(self.clone(), self.event_bus.clone());
+        self.event_bus.subscribe(membership_subscriber).await;
+
+        // Subscribe to global consensus events
+        let global_consensus_subscriber =
+            GlobalConsensusEventSubscriber::new(self.clone(), self.event_bus.clone());
+        self.event_bus.subscribe(global_consensus_subscriber).await;
     }
 
     /// Refresh stream mappings from global consensus
@@ -511,7 +536,7 @@ where
 
         // Find matching stream mappings
         for (pattern, stream_mappings) in mappings.iter() {
-            if subject_matches_pattern(&message.subject, pattern) {
+            if subject_matches_pattern(message.subject.as_str(), pattern) {
                 for mapping in stream_mappings {
                     if mapping.auto_publish {
                         self.publish_to_stream_via_consensus(mapping, message)
@@ -575,6 +600,60 @@ where
     /// Set the group consensus handle
     pub fn set_group_consensus_handle(&mut self, handle: Arc<dyn GroupConsensusHandle>) {
         self.group_consensus_handle = Some(handle);
+    }
+
+    /// Broadcast current interests to specific nodes
+    pub async fn broadcast_interests_to_nodes(&self, nodes: &[NodeId]) -> PubSubResult<()> {
+        let subscriptions = self
+            .message_router
+            .get_node_subscriptions(&self.node_id)
+            .await;
+
+        if subscriptions.is_empty() {
+            return Ok(());
+        }
+
+        let patterns: Vec<SubjectPattern> = subscriptions
+            .into_iter()
+            .map(|sub| sub.subject_pattern)
+            .collect();
+
+        let msg = PubSubServiceMessage::RegisterInterest {
+            patterns,
+            timestamp: std::time::SystemTime::now(),
+        };
+
+        // Send to specified nodes
+        for node in nodes {
+            if node != &self.node_id
+                && let Err(e) = self
+                    .network
+                    .service_request(node.clone(), msg.clone(), Duration::from_millis(100))
+                    .await
+            {
+                debug!("Failed to send interests to node {}: {}", node, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Remove a node's interests from the tracker
+    pub async fn remove_node_interests(&self, node_id: &NodeId) {
+        self.interest_tracker.remove_node(node_id).await;
+        self.cluster_members.write().await.remove(node_id);
+    }
+
+    /// Update cluster members list (called by membership subscriber)
+    pub async fn update_cluster_members(&self, members: &[NodeId]) {
+        let mut cluster_members = self.cluster_members.write().await;
+        cluster_members.clear();
+        cluster_members.extend(members.iter().cloned());
+    }
+
+    /// Add a cluster member
+    pub async fn add_cluster_member(&self, node_id: &NodeId) {
+        self.cluster_members.write().await.insert(node_id.clone());
     }
 }
 

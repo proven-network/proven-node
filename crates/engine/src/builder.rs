@@ -197,12 +197,6 @@ where
 
         let lifecycle_service = Arc::new(LifecycleService::new(config.services.lifecycle.clone()));
 
-        // Create PubSub service
-        let pubsub_service = Arc::new(PubSubService::new(
-            config.services.pubsub.clone(),
-            self.node_id.clone(),
-        ));
-
         // Create ClientService with event bus
         let client_service = Arc::new(ClientService::new(
             self.node_id.clone(),
@@ -233,7 +227,6 @@ where
             Arc::new(ServiceWrapper::new("migration", migration_service.clone()));
         let lifecycle_wrapper =
             Arc::new(ServiceWrapper::new("lifecycle", lifecycle_service.clone()));
-        let pubsub_wrapper = Arc::new(ServiceWrapper::new("pubsub", pubsub_service.clone()));
         let client_wrapper = Arc::new(ServiceWrapper::new("client", client_service.clone()));
         let stream_wrapper = Arc::new(ServiceWrapper::new("stream", stream_service.clone()));
 
@@ -266,9 +259,6 @@ where
             .await;
         coordinator
             .register("lifecycle".to_string(), lifecycle_wrapper)
-            .await;
-        coordinator
-            .register("pubsub".to_string(), pubsub_wrapper)
             .await;
         coordinator
             .register("global_consensus".to_string(), global_consensus_wrapper)
@@ -313,6 +303,36 @@ where
         // They communicate through events instead
         global_consensus_service
             .set_membership_service(membership_service.clone())
+            .await;
+
+        // Create PubSub service with network manager and event bus
+        let pubsub_service = Arc::new(
+            PubSubService::new(
+                config.services.pubsub.clone(),
+                self.node_id.clone(),
+                network_manager.clone(),
+                event_service.bus(),
+            )
+            .await,
+        );
+
+        // Register network handlers
+        if let Err(e) = pubsub_service
+            .clone()
+            .register_network_handlers(network_manager.clone())
+            .await
+        {
+            error!("Failed to register PubSub network handlers: {}", e);
+        }
+
+        // Setup event handler
+        pubsub_service.clone().setup_event_handler().await;
+
+        let pubsub_wrapper = Arc::new(ServiceWrapper::new("pubsub", pubsub_service.clone()));
+
+        // Register PubSub service with coordinator
+        coordinator
+            .register("pubsub".to_string(), pubsub_wrapper)
             .await;
 
         // Set start order

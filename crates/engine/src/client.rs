@@ -24,6 +24,7 @@ use crate::{
     error::ConsensusResult,
     foundation::types::ConsensusGroupId,
     services::client::{ClientService, GroupInfo, StreamInfo},
+    services::pubsub::PubSubMessage,
     services::stream::{MessageData, StoredMessage, StreamConfig},
 };
 
@@ -306,6 +307,78 @@ where
             end_sequence,
         )
         .await
+    }
+
+    // PubSub Operations
+
+    /// Publish a message to a PubSub subject
+    ///
+    /// This uses Core NATS semantics - fire-and-forget with at-most-once delivery.
+    /// Messages are ephemeral and not persisted unless a stream subscription is configured.
+    pub async fn pubsub_publish(
+        &self,
+        subject: &str,
+        payload: bytes::Bytes,
+        headers: Vec<(String, String)>,
+    ) -> ConsensusResult<()> {
+        self.client_service
+            .publish_message(subject, payload, headers)
+            .await
+    }
+
+    /// Subscribe to messages on a subject pattern
+    ///
+    /// Returns a subscription ID and a broadcast receiver for messages.
+    /// Supports wildcards: * for single token, > for multiple tokens.
+    ///
+    /// Example patterns:
+    /// - "metrics.cpu" - exact match
+    /// - "metrics.*" - matches metrics.cpu, metrics.memory, etc.
+    /// - "logs.>" - matches logs.app, logs.app.error, etc.
+    pub async fn pubsub_subscribe(
+        &self,
+        subject_pattern: &str,
+        queue_group: Option<String>,
+    ) -> ConsensusResult<(String, tokio::sync::broadcast::Receiver<PubSubMessage>)> {
+        self.client_service
+            .subscribe_to_subject(subject_pattern, queue_group)
+            .await
+    }
+
+    /// Unsubscribe from a PubSub subscription
+    pub async fn pubsub_unsubscribe(&self, subscription_id: &str) -> ConsensusResult<()> {
+        self.client_service
+            .unsubscribe_from_subject(subscription_id)
+            .await
+    }
+
+    /// Create a stream that yields PubSub messages for a subscription
+    ///
+    /// This is a convenience method that wraps the broadcast receiver in an async stream.
+    pub async fn pubsub_subscribe_stream(
+        &self,
+        subject_pattern: &str,
+        queue_group: Option<String>,
+    ) -> ConsensusResult<(String, Pin<Box<dyn Stream<Item = PubSubMessage> + Send>>)> {
+        let (sub_id, mut receiver) = self.pubsub_subscribe(subject_pattern, queue_group).await?;
+
+        let stream = async_stream::stream! {
+            loop {
+                match receiver.recv().await {
+                    Ok(msg) => yield msg,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                        tracing::warn!("PubSub subscription lagged by {} messages", count);
+                        // Continue receiving despite lag
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        // Channel closed, end stream
+                        break;
+                    }
+                }
+            }
+        };
+
+        Ok((sub_id, Box::pin(stream)))
     }
 }
 

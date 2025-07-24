@@ -7,20 +7,21 @@
 //! - Optional persistence through event bridge
 //! - Request-response messaging patterns
 
+pub mod events;
 pub mod interest;
 pub mod messages;
 pub mod router;
 pub mod service;
-pub mod subject;
+pub mod subscribers;
 pub mod types;
 
+pub use events::{PubSubMessage, PubSubServiceEvent};
 pub use interest::InterestTracker;
-pub use messages::{PubSubServiceMessage, PubSubServiceResponse};
+pub use messages::{MessageNotification, PubSubServiceMessage, PubSubServiceResponse};
 pub use router::MessageRouter;
 pub use service::PubSubService;
-pub use subject::{Subject, SubjectPattern, subject_matches_pattern};
 pub use types::{
-    DeliveryMode, GlobalConsensusHandle, GroupConsensusHandle, InterestUpdateMessage, PubSubError,
+    GlobalConsensusHandle, GroupConsensusHandle, InterestUpdateMessage, PubSubError,
     PubSubMessageType, PubSubNetworkMessage, PubSubRequest, PubSubResponse, PubSubResult,
     StreamMapping, Subscription,
 };
