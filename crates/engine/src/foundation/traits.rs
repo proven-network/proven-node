@@ -23,9 +23,6 @@ pub trait ConsensusLayer: Send + Sync {
     /// Propose an operation
     async fn propose(&self, operation: Self::Operation) -> ConsensusResult<OperationId>;
 
-    /// Get current state
-    async fn get_state(&self) -> ConsensusResult<Arc<Self::State>>;
-
     /// Check if this node is the leader
     async fn is_leader(&self) -> bool;
 

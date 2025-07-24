@@ -18,7 +18,7 @@ pub trait GlobalConsensusCallbacks: Send + Sync {
     /// Called when state machine has synchronized to current state after replay
     /// This is called once when the state machine has caught up to the last
     /// persisted log entry and is ready to process new operations.
-    async fn on_state_synchronized(&self, state: &GlobalState) -> ConsensusResult<()>;
+    async fn on_state_synchronized(&self) -> ConsensusResult<()>;
 
     // Real-time operation callbacks (only called for new operations, not replay)
 

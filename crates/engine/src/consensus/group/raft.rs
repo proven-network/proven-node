@@ -17,6 +17,7 @@ use proven_topology::NodeId;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
+    GroupStateWriter,
     group_state::GroupState,
     traits::ConsensusLayer,
     types::{ConsensusGroupId, ConsensusRole, OperationId, Term},
@@ -80,7 +81,7 @@ pub struct GroupConsensusLayer<L: LogStorage> {
     /// Raft instance
     raft: Raft<GroupTypeConfig>,
     /// Group state
-    state: Arc<GroupState>,
+    state: GroupStateWriter,
     /// Operation handler
     handler: Arc<GroupOperationHandler>,
     /// Log storage (consensus logs - no deletion allowed)
@@ -115,7 +116,7 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
         network_factory: NF,
         log_storage: L,
         callbacks: Arc<dyn GroupConsensusCallbacks>,
-        state: Arc<GroupState>,
+        state: GroupStateWriter,
     ) -> ConsensusResult<Self>
     where
         NF: RaftNetworkFactory<GroupTypeConfig>,
@@ -187,11 +188,6 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
         &self.raft
     }
 
-    /// Get the group state
-    pub fn state(&self) -> &Arc<GroupState> {
-        &self.state
-    }
-
     /// Get the state machine
     pub fn state_machine(&self) -> &Arc<GroupStateMachine> {
         &self.state_machine
@@ -247,10 +243,6 @@ impl<L: LogStorage> ConsensusLayer for GroupConsensusLayer<L> {
         self.submit_request(operation.request).await?;
 
         Ok(id)
-    }
-
-    async fn get_state(&self) -> ConsensusResult<Arc<Self::State>> {
-        Ok(self.state.clone())
     }
 
     async fn is_leader(&self) -> bool {

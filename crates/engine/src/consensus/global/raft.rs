@@ -17,6 +17,7 @@ use proven_topology::NodeId;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
+    GlobalStateWriter,
     global_state::GlobalState,
     traits::ConsensusLayer,
     types::{ConsensusRole, OperationId, Term},
@@ -78,7 +79,7 @@ pub struct GlobalConsensusLayer<L: LogStorage> {
     /// Raft instance
     raft: Raft<GlobalTypeConfig>,
     /// Global state
-    state: Arc<GlobalState>,
+    state: GlobalStateWriter,
     /// Operation handler
     handler: Arc<GlobalOperationHandler>,
     /// Log storage
@@ -194,7 +195,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         network_factory: NF,
         storage: L,
         callbacks: Arc<dyn GlobalConsensusCallbacks>,
-        state: Arc<GlobalState>,
+        state: GlobalStateWriter,
     ) -> ConsensusResult<Self>
     where
         NF: RaftNetworkFactory<GlobalTypeConfig>,
@@ -253,11 +254,6 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         })
     }
 
-    /// Get the global state
-    pub fn state(&self) -> &Arc<GlobalState> {
-        &self.state
-    }
-
     /// Get the state machine
     pub fn state_machine(&self) -> &Arc<GlobalStateMachine> {
         &self.state_machine
@@ -309,10 +305,6 @@ impl<L: LogStorage> ConsensusLayer for GlobalConsensusLayer<L> {
         self.submit_request(operation.request).await?;
 
         Ok(id)
-    }
-
-    async fn get_state(&self) -> ConsensusResult<Arc<Self::State>> {
-        Ok(self.state.clone())
     }
 
     async fn is_leader(&self) -> bool {

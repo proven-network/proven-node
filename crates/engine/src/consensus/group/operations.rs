@@ -5,8 +5,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
+use crate::foundation::state_access::{GroupStateRead, GroupStateWrite};
 use crate::foundation::{
-    group_state::GroupState, traits::OperationHandler, types::OperationId, validations,
+    GroupStateWriter, group_state::GroupState, traits::OperationHandler, types::OperationId,
+    validations,
 };
 
 use super::types::{AdminOperation, GroupRequest, GroupResponse, StreamOperation};
@@ -41,14 +43,14 @@ pub struct GroupOperationHandler {
     /// Group ID
     group_id: crate::foundation::types::ConsensusGroupId,
     /// Group state
-    state: Arc<GroupState>,
+    state: GroupStateWriter,
 }
 
 impl GroupOperationHandler {
     /// Create a new handler
     pub fn new(
         group_id: crate::foundation::types::ConsensusGroupId,
-        state: Arc<GroupState>,
+        state: GroupStateWriter,
     ) -> Self {
         Self { group_id, state }
     }

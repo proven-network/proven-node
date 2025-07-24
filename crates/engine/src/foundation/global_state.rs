@@ -5,8 +5,8 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -32,16 +32,16 @@ pub struct GroupInfo {
 #[derive(Clone)]
 pub struct GlobalState {
     /// Stream configurations
-    streams: Arc<RwLock<HashMap<StreamName, StreamInfo>>>,
+    streams: Arc<DashMap<StreamName, StreamInfo>>,
 
     /// Consensus groups
-    groups: Arc<RwLock<HashMap<ConsensusGroupId, GroupInfo>>>,
+    groups: Arc<DashMap<ConsensusGroupId, GroupInfo>>,
 
     /// Node to groups mapping
-    node_groups: Arc<RwLock<HashMap<NodeId, Vec<ConsensusGroupId>>>>,
+    node_groups: Arc<DashMap<NodeId, Vec<ConsensusGroupId>>>,
 
     /// Cluster members
-    members: Arc<RwLock<HashMap<NodeId, NodeInfo>>>,
+    members: Arc<DashMap<NodeId, NodeInfo>>,
 }
 
 /// Stream information
@@ -72,46 +72,45 @@ impl GlobalState {
     /// Create new global state
     pub fn new() -> Self {
         Self {
-            streams: Arc::new(RwLock::new(HashMap::new())),
-            groups: Arc::new(RwLock::new(HashMap::new())),
-            node_groups: Arc::new(RwLock::new(HashMap::new())),
-            members: Arc::new(RwLock::new(HashMap::new())),
+            streams: Arc::new(DashMap::new()),
+            groups: Arc::new(DashMap::new()),
+            node_groups: Arc::new(DashMap::new()),
+            members: Arc::new(DashMap::new()),
         }
     }
 
     /// Clear all state (used when installing snapshots)
     pub async fn clear(&self) {
-        self.streams.write().await.clear();
-        self.groups.write().await.clear();
-        self.node_groups.write().await.clear();
-        self.members.write().await.clear();
+        self.streams.clear();
+        self.groups.clear();
+        self.node_groups.clear();
+        self.members.clear();
     }
 
     // Stream operations
 
     /// Add a stream
     pub async fn add_stream(&self, info: StreamInfo) -> crate::error::ConsensusResult<()> {
-        let mut streams = self.streams.write().await;
-        streams.insert(info.name.clone(), info);
+        self.streams.insert(info.name.clone(), info);
         Ok(())
     }
 
     /// Remove a stream
     pub async fn remove_stream(&self, name: &StreamName) -> Option<StreamInfo> {
-        let mut streams = self.streams.write().await;
-        streams.remove(name)
+        self.streams.remove(name).map(|(_, v)| v)
     }
 
     /// Get stream info
     pub async fn get_stream(&self, name: &StreamName) -> Option<StreamInfo> {
-        let streams = self.streams.read().await;
-        streams.get(name).cloned()
+        self.streams.get(name).map(|entry| entry.clone())
     }
 
     /// List all streams
     pub async fn list_streams(&self) -> Vec<StreamInfo> {
-        let streams = self.streams.read().await;
-        streams.values().cloned().collect()
+        self.streams
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     /// Get all streams (alias for list_streams for consistency)
@@ -121,9 +120,8 @@ impl GlobalState {
 
     /// Update stream config
     pub async fn update_stream_config(&self, name: &StreamName, config: StreamConfig) -> bool {
-        let mut streams = self.streams.write().await;
-        if let Some(info) = streams.get_mut(name) {
-            info.config = config;
+        if let Some(mut entry) = self.streams.get_mut(name) {
+            entry.config = config;
             true
         } else {
             false
@@ -132,9 +130,8 @@ impl GlobalState {
 
     /// Reassign stream to different group
     pub async fn reassign_stream(&self, name: &StreamName, group_id: ConsensusGroupId) -> bool {
-        let mut streams = self.streams.write().await;
-        if let Some(info) = streams.get_mut(name) {
-            info.group_id = group_id;
+        if let Some(mut entry) = self.streams.get_mut(name) {
+            entry.group_id = group_id;
             true
         } else {
             false
@@ -145,15 +142,13 @@ impl GlobalState {
 
     /// Add a consensus group
     pub async fn add_group(&self, info: GroupInfo) -> crate::error::ConsensusResult<()> {
-        let mut groups = self.groups.write().await;
-        groups.insert(info.id, info.clone());
+        self.groups.insert(info.id, info.clone());
 
         // Update node mappings
-        let mut node_groups = self.node_groups.write().await;
         for member in &info.members {
-            node_groups
+            self.node_groups
                 .entry(member.clone())
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(info.id);
         }
         Ok(())
@@ -161,12 +156,10 @@ impl GlobalState {
 
     /// Remove a consensus group
     pub async fn remove_group(&self, id: ConsensusGroupId) -> Option<GroupInfo> {
-        let mut groups = self.groups.write().await;
-        if let Some(info) = groups.remove(&id) {
+        if let Some((_, info)) = self.groups.remove(&id) {
             // Update node mappings
-            let mut node_groups = self.node_groups.write().await;
             for member in &info.members {
-                if let Some(groups) = node_groups.get_mut(member) {
+                if let Some(mut groups) = self.node_groups.get_mut(member) {
                     groups.retain(|&g| g != id);
                 }
             }
@@ -178,14 +171,15 @@ impl GlobalState {
 
     /// Get group info
     pub async fn get_group(&self, id: &ConsensusGroupId) -> Option<GroupInfo> {
-        let groups = self.groups.read().await;
-        groups.get(id).cloned()
+        self.groups.get(id).map(|entry| entry.clone())
     }
 
     /// List all groups
     pub async fn list_groups(&self) -> Vec<GroupInfo> {
-        let groups = self.groups.read().await;
-        groups.values().cloned().collect()
+        self.groups
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     /// Get all groups (alias for list_groups)
@@ -195,18 +189,12 @@ impl GlobalState {
 
     /// Add member to group
     pub async fn add_group_member(&self, group_id: ConsensusGroupId, node_id: NodeId) -> bool {
-        let mut groups = self.groups.write().await;
-        if let Some(info) = groups.get_mut(&group_id) {
+        if let Some(mut info) = self.groups.get_mut(&group_id) {
             if !info.members.contains(&node_id) {
                 info.members.push(node_id.clone());
 
                 // Update node mappings
-                drop(groups);
-                let mut node_groups = self.node_groups.write().await;
-                node_groups
-                    .entry(node_id)
-                    .or_insert_with(Vec::new)
-                    .push(group_id);
+                self.node_groups.entry(node_id).or_default().push(group_id);
                 true
             } else {
                 false
@@ -218,17 +206,14 @@ impl GlobalState {
 
     /// Remove member from group
     pub async fn remove_group_member(&self, group_id: ConsensusGroupId, node_id: &NodeId) -> bool {
-        let mut groups = self.groups.write().await;
-        if let Some(info) = groups.get_mut(&group_id) {
+        if let Some(mut info) = self.groups.get_mut(&group_id) {
             let before = info.members.len();
             info.members.retain(|n| n != node_id);
             let removed = before != info.members.len();
 
             if removed {
                 // Update node mappings
-                drop(groups);
-                let mut node_groups = self.node_groups.write().await;
-                if let Some(groups) = node_groups.get_mut(node_id) {
+                if let Some(mut groups) = self.node_groups.get_mut(node_id) {
                     groups.retain(|&g| g != group_id);
                 }
             }
@@ -242,49 +227,51 @@ impl GlobalState {
 
     /// Add cluster member
     pub async fn add_member(&self, info: NodeInfo) {
-        let mut members = self.members.write().await;
-        members.insert(info.node_id.clone(), info);
+        self.members.insert(info.node_id.clone(), info);
     }
 
     /// Remove cluster member
     pub async fn remove_member(&self, node_id: &NodeId) -> Option<NodeInfo> {
-        let mut members = self.members.write().await;
-        members.remove(node_id)
+        self.members.remove(node_id).map(|(_, v)| v)
     }
 
     /// Get member info
     pub async fn get_member(&self, node_id: &NodeId) -> Option<NodeInfo> {
-        let members = self.members.read().await;
-        members.get(node_id).cloned()
+        self.members.get(node_id).map(|entry| entry.clone())
     }
 
     /// List all members
     pub async fn list_members(&self) -> Vec<NodeInfo> {
-        let members = self.members.read().await;
-        members.values().cloned().collect()
+        self.members
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     /// Get groups for a node
     pub async fn get_node_groups(&self, node_id: &NodeId) -> Vec<ConsensusGroupId> {
-        let node_groups = self.node_groups.read().await;
-        node_groups.get(node_id).cloned().unwrap_or_default()
+        self.node_groups
+            .get(node_id)
+            .map(|entry| entry.clone())
+            .unwrap_or_default()
     }
 
     // Query operations
 
     /// Count streams in a group
     pub async fn count_streams_in_group(&self, group_id: ConsensusGroupId) -> usize {
-        let streams = self.streams.read().await;
-        streams.values().filter(|s| s.group_id == group_id).count()
+        self.streams
+            .iter()
+            .filter(|entry| entry.value().group_id == group_id)
+            .count()
     }
 
     /// Get streams for a group
     pub async fn get_streams_for_group(&self, group_id: ConsensusGroupId) -> Vec<StreamInfo> {
-        let streams = self.streams.read().await;
-        streams
-            .values()
-            .filter(|s| s.group_id == group_id)
-            .cloned()
+        self.streams
+            .iter()
+            .filter(|entry| entry.value().group_id == group_id)
+            .map(|entry| entry.value().clone())
             .collect()
     }
 }

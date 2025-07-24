@@ -4,7 +4,9 @@
 
 use std::sync::Arc;
 
-use crate::foundation::global_state::GlobalState;
+use crate::foundation::{
+    GlobalStateWriter, global_state::GlobalState, state_access::GlobalStateRead,
+};
 use openraft::{
     LogId, RaftSnapshotBuilder, SnapshotMeta, StorageError, StoredMembership, storage::Snapshot,
 };
@@ -98,7 +100,7 @@ impl std::marker::Unpin for GlobalSnapshot {}
 /// Global snapshot builder
 pub struct GlobalSnapshotBuilder {
     /// State to snapshot
-    state: Arc<GlobalState>,
+    state: GlobalStateWriter,
     /// Last applied log ID
     last_applied: Option<LogId<GlobalTypeConfig>>,
     /// Current membership
@@ -108,7 +110,7 @@ pub struct GlobalSnapshotBuilder {
 impl GlobalSnapshotBuilder {
     /// Create new snapshot builder
     pub fn new(
-        state: Arc<GlobalState>,
+        state: GlobalStateWriter,
         last_applied: Option<LogId<GlobalTypeConfig>>,
         membership: StoredMembership<GlobalTypeConfig>,
     ) -> Self {
@@ -124,7 +126,7 @@ impl RaftSnapshotBuilder<GlobalTypeConfig> for GlobalSnapshotBuilder {
     async fn build_snapshot(
         &mut self,
     ) -> Result<Snapshot<GlobalTypeConfig>, StorageError<GlobalTypeConfig>> {
-        // 1. Lock and read all state components
+        // 1. Get all groups and streams
         let all_groups = self.state.get_all_groups().await;
         let all_streams = self.state.get_all_streams().await;
 

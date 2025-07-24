@@ -28,6 +28,9 @@ tokio-tungstenite.workspace = true
 # Cryptography and security
 ed25519-dalek.workspace = true
 coset.workspace = true
+
+# Concurrent data structures
+dashmap.workspace = true
 hex.workspace = true
 
 # Consensus and Raft

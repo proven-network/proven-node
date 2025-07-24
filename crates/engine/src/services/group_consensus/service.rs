@@ -14,8 +14,11 @@ use proven_transport::Transport;
 use tracing::info;
 
 use super::{callbacks, config::GroupConsensusConfig};
-use crate::foundation::GroupState;
 use crate::foundation::group_state::StreamState;
+use crate::foundation::state_access::GroupStateRead;
+use crate::foundation::{
+    GroupState, GroupStateReader, GroupStateWriter, create_group_state_access,
+};
 use crate::{
     consensus::group::GroupConsensusLayer,
     error::{ConsensusResult, Error, ErrorKind},
@@ -33,7 +36,7 @@ type ConsensusLayers<S> = Arc<
     >,
 >;
 
-type States = Arc<RwLock<std::collections::HashMap<ConsensusGroupId, Arc<GroupState>>>>;
+type States = Arc<RwLock<std::collections::HashMap<ConsensusGroupId, GroupStateReader>>>;
 
 /// Group consensus service
 pub struct GroupConsensusService<T, G, S>
@@ -50,7 +53,7 @@ where
     network_manager: Arc<NetworkManager<T, G>>,
     /// Storage manager
     storage_manager: Arc<StorageManager<S>>,
-    /// Group states
+    /// Group states (read-only access)
     group_states: States,
     /// Group consensus layers
     consensus_layers: ConsensusLayers<S>,
@@ -230,11 +233,11 @@ where
             Some(self.event_bus.clone()),
         ));
 
-        let state = Arc::new(GroupState::new());
+        let (state_reader, state_writer) = create_group_state_access();
         self.group_states
             .write()
             .await
-            .insert(group_id, state.clone());
+            .insert(group_id, state_reader.clone());
 
         let layer = Arc::new(
             GroupConsensusLayer::new(
@@ -244,7 +247,7 @@ where
                 network_factory,
                 self.storage_manager.consensus_storage(),
                 callbacks,
-                state,
+                state_writer,
             )
             .await?,
         );
@@ -490,11 +493,19 @@ where
         stream_name: &str,
     ) -> ConsensusResult<Option<StreamState>> {
         let groups = self.consensus_layers.read().await;
-        let layer = groups.get(&group_id).ok_or_else(|| {
+        let _layer = groups.get(&group_id).ok_or_else(|| {
             Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
         })?;
 
-        let state = layer.state();
+        // Get the state from our own states map
+        let states = self.group_states.read().await;
+        let state = states.get(&group_id).ok_or_else(|| {
+            Error::with_context(
+                ErrorKind::NotFound,
+                format!("State for group {group_id} not found"),
+            )
+        })?;
+
         let stream_name = crate::services::stream::StreamName::new(stream_name);
         Ok(state.get_stream(&stream_name).await)
     }
@@ -520,7 +531,15 @@ where
         })?;
 
         // Get state from the layer
-        let state = layer.state();
+        let state = {
+            let states_guard = self.group_states.read().await;
+            states_guard.get(&group_id).cloned().ok_or_else(|| {
+                Error::with_context(
+                    ErrorKind::NotFound,
+                    format!("State for group {group_id} not found"),
+                )
+            })?
+        };
 
         // Get Raft metrics to find leader and term
         let metrics_rx = layer.metrics();

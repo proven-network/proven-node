@@ -7,6 +7,7 @@ pub mod global_state;
 pub mod group_state;
 pub mod message;
 pub mod message_format;
+pub mod state_access;
 pub mod traits;
 pub mod types;
 pub mod validations;
@@ -16,5 +17,9 @@ pub use global_state::{GlobalState, GroupInfo};
 pub use group_state::GroupState;
 pub use message::{Message, headers};
 pub use message_format::{deserialize_entry, serialize_entry};
+pub use state_access::{
+    GlobalStateReader, GlobalStateWriter, GroupStateReader, GroupStateWriter,
+    create_group_state_access, create_state_access,
+};
 pub use traits::{ConsensusLayer, EventHandler, OperationHandler, ServiceLifecycle, StateStore};
 pub use types::{ConsensusGroupId, GroupState2, NodeState, OperationId};

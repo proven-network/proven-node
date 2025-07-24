@@ -7,7 +7,10 @@ use proven_topology::NodeId;
 use crate::{
     consensus::global::GlobalConsensusCallbacks,
     error::ConsensusResult,
-    foundation::{GlobalState, GroupInfo, types::ConsensusGroupId},
+    foundation::{
+        GlobalState, GlobalStateReader, GroupInfo, state_access::GlobalStateRead,
+        types::ConsensusGroupId,
+    },
     services::{
         event::bus::EventBus,
         global_consensus::{
@@ -22,18 +25,27 @@ use crate::{
 pub struct GlobalConsensusCallbacksImpl {
     node_id: NodeId,
     event_bus: Option<Arc<EventBus>>,
+    global_state: GlobalStateReader,
 }
 
 impl GlobalConsensusCallbacksImpl {
     /// Create new callbacks implementation
-    pub fn new(node_id: NodeId, event_bus: Option<Arc<EventBus>>) -> Self {
-        Self { node_id, event_bus }
+    pub fn new(
+        node_id: NodeId,
+        event_bus: Option<Arc<EventBus>>,
+        global_state: GlobalStateReader,
+    ) -> Self {
+        Self {
+            node_id,
+            event_bus,
+            global_state,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
-    async fn on_state_synchronized(&self, state: &GlobalState) -> ConsensusResult<()> {
+    async fn on_state_synchronized(&self) -> ConsensusResult<()> {
         tracing::info!(
             "Global state synchronized - publishing snapshot for node {}",
             self.node_id
@@ -42,26 +54,28 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         // Publish event with complete state snapshot
         if let Some(ref event_bus) = self.event_bus {
             // Build the snapshot
-            let all_groups = state.get_all_groups().await;
-            let all_streams = state.get_all_streams().await;
+            let snapshot = {
+                let all_groups = self.global_state.get_all_groups().await;
+                let all_streams = self.global_state.get_all_streams().await;
 
-            let snapshot = GlobalStateSnapshot {
-                groups: all_groups
-                    .into_iter()
-                    .map(|g| GroupSnapshot {
-                        group_id: g.id,
-                        members: g.members,
-                    })
-                    .collect(),
-                streams: all_streams
-                    .into_iter()
-                    .map(|s| StreamSnapshot {
-                        stream_name: s.name,
-                        config: s.config,
-                        group_id: s.group_id,
-                    })
-                    .collect(),
-            };
+                GlobalStateSnapshot {
+                    groups: all_groups
+                        .into_iter()
+                        .map(|g| GroupSnapshot {
+                            group_id: g.id,
+                            members: g.members,
+                        })
+                        .collect(),
+                    streams: all_streams
+                        .into_iter()
+                        .map(|s| StreamSnapshot {
+                            stream_name: s.name,
+                            config: s.config,
+                            group_id: s.group_id,
+                        })
+                        .collect(),
+                }
+            }; // Lock is dropped here
 
             let event = GlobalConsensusEvent::StateSynchronized {
                 snapshot: Box::new(snapshot),

@@ -10,7 +10,7 @@ use openraft::{
 use serde::{Deserialize, Serialize};
 
 use super::raft::GroupTypeConfig;
-use crate::foundation::group_state::GroupState;
+use crate::foundation::{GroupStateWriter, group_state::GroupState};
 
 /// Group consensus snapshot - implements AsyncRead/Write/Seek for OpenRaft
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,7 +98,7 @@ impl std::marker::Unpin for GroupSnapshot {}
 /// Group snapshot builder
 pub struct GroupSnapshotBuilder {
     /// State to snapshot
-    state: Arc<GroupState>,
+    state: GroupStateWriter,
     /// Last applied log ID
     last_applied: Option<LogId<GroupTypeConfig>>,
     /// Current membership
@@ -108,7 +108,7 @@ pub struct GroupSnapshotBuilder {
 impl GroupSnapshotBuilder {
     /// Create new snapshot builder
     pub fn new(
-        state: Arc<GroupState>,
+        state: GroupStateWriter,
         last_applied: Option<LogId<GroupTypeConfig>>,
         membership: StoredMembership<GroupTypeConfig>,
     ) -> Self {

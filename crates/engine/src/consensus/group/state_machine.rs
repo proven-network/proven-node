@@ -18,7 +18,7 @@ use super::raft::GroupTypeConfig;
 use super::snapshot::{GroupSnapshot, GroupSnapshotBuilder};
 use super::types::{GroupRequest, GroupResponse, StreamOperation};
 use crate::foundation::{
-    group_state::GroupState, traits::OperationHandler, types::ConsensusGroupId,
+    GroupStateWriter, group_state::GroupState, traits::OperationHandler, types::ConsensusGroupId,
 };
 use proven_topology::NodeId;
 
@@ -28,7 +28,7 @@ pub struct GroupStateMachine {
     /// Group ID
     group_id: ConsensusGroupId,
     /// Group state that gets modified by applied entries
-    state: Arc<GroupState>,
+    state: GroupStateWriter,
     /// Handler for processing operations
     handler: Arc<GroupOperationHandler>,
     /// Callback dispatcher
@@ -47,7 +47,7 @@ impl GroupStateMachine {
     /// Create new state machine with handler and dispatcher
     pub fn new(
         group_id: ConsensusGroupId,
-        state: Arc<GroupState>,
+        state: GroupStateWriter,
         handler: Arc<GroupOperationHandler>,
         callback_dispatcher: Arc<GroupCallbackDispatcher>,
         replay_boundary: Option<NonZero<u64>>,
@@ -65,7 +65,7 @@ impl GroupStateMachine {
     }
 
     /// Get the state reference
-    pub fn state(&self) -> &Arc<GroupState> {
+    pub fn state(&self) -> &GroupStateWriter {
         &self.state
     }
 
@@ -104,8 +104,9 @@ impl GroupStateMachine {
                 *self.state_synced.write().await = true;
 
                 // Dispatch state sync callback
+                // Important: We don't hold any locks when dispatching to avoid deadlocks
                 self.callback_dispatcher
-                    .dispatch_state_sync(self.group_id, &self.state)
+                    .dispatch_state_sync(self.group_id)
                     .await;
             }
 

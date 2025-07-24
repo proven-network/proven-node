@@ -19,7 +19,7 @@ use super::{
     callbacks::GlobalConsensusCallbacksImpl,
     config::{GlobalConsensusConfig, ServiceState},
 };
-use crate::foundation::GlobalState;
+use crate::foundation::{GlobalState, GlobalStateReader, GlobalStateWriter, create_state_access};
 use crate::services::global_consensus::subscribers::MembershipEventSubscriber;
 use crate::{
     consensus::global::{
@@ -69,8 +69,8 @@ where
     network_manager: Arc<NetworkManager<T, G>>,
     /// Storage manager
     storage_manager: Arc<StorageManager<S>>,
-    /// Global state
-    global_state: Arc<RwLock<Option<Arc<GlobalState>>>>,
+    /// Global state (read-only access)
+    global_state: Arc<RwLock<Option<GlobalStateReader>>>,
     /// Consensus layer (initialized after cluster formation)
     consensus_layer: ConsensusLayer<S>,
     /// Service state
@@ -174,8 +174,8 @@ where
             }
         }
 
-        let global_state = Arc::new(GlobalState::new());
-        *self.global_state.write().await = Some(global_state.clone());
+        let (state_reader, state_writer) = create_state_access();
+        *self.global_state.write().await = Some(state_reader.clone());
 
         // Create new task tracker and cancellation token
         let task_tracker = TaskTracker::new();
@@ -195,6 +195,7 @@ where
             let callbacks = Arc::new(GlobalConsensusCallbacksImpl::new(
                 self.node_id.clone(),
                 Some(self.event_bus.clone()),
+                state_reader.clone(),
             ));
 
             let layer = Self::create_consensus_layer(
@@ -203,7 +204,7 @@ where
                 self.network_manager.clone(),
                 consensus_storage,
                 callbacks.clone(),
-                global_state,
+                state_writer,
             )
             .await?;
 
@@ -232,7 +233,7 @@ where
         let membership_subscriber = MembershipEventSubscriber::new(
             self.node_id.clone(),
             self.consensus_layer.clone(),
-            self.storage_manager.clone(),
+            state_reader.clone(),
             self.topology_manager.clone(),
         );
 
@@ -332,7 +333,7 @@ where
         network_manager: Arc<NetworkManager<T, G>>,
         storage: L,
         callbacks: Arc<dyn GlobalConsensusCallbacks>,
-        global_state: Arc<GlobalState>,
+        state_writer: GlobalStateWriter,
     ) -> ConsensusResult<Arc<GlobalConsensusLayer<L>>>
     where
         L: LogStorage + 'static,
@@ -359,7 +360,7 @@ where
             network_factory,
             storage,
             callbacks,
-            global_state.clone(),
+            state_writer,
         )
         .await?;
 

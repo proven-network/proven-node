@@ -18,11 +18,7 @@ pub trait GroupConsensusCallbacks: Send + Sync {
     /// Called when state machine has synchronized to current state after replay
     /// This is called once when the state machine has caught up to the last
     /// persisted log entry and is ready to process new operations.
-    async fn on_state_synchronized(
-        &self,
-        group_id: ConsensusGroupId,
-        state: &GroupState,
-    ) -> ConsensusResult<()>;
+    async fn on_state_synchronized(&self, group_id: ConsensusGroupId) -> ConsensusResult<()>;
 
     // Real-time operation callbacks (only called for new operations, not replay)
 

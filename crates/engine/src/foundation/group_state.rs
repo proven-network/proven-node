@@ -5,7 +5,9 @@
 use std::collections::HashMap;
 use std::num::NonZero;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
+use dashmap::DashMap;
 
 use crate::foundation::Message;
 use crate::services::stream::StreamName;
@@ -14,10 +16,13 @@ use crate::services::stream::StreamName;
 #[derive(Clone)]
 pub struct GroupState {
     /// Stream states
-    streams: Arc<RwLock<HashMap<StreamName, StreamState>>>,
+    streams: Arc<DashMap<StreamName, StreamState>>,
 
-    /// Group metadata
-    metadata: Arc<RwLock<GroupMetadata>>,
+    /// Group metadata - using atomics for lock-free access
+    created_at: Arc<AtomicU64>,
+    stream_count: Arc<AtomicUsize>,
+    total_messages: Arc<AtomicU64>,
+    total_bytes: Arc<AtomicU64>,
 }
 
 /// State for a single stream
@@ -61,16 +66,16 @@ impl GroupState {
     /// Create new group state
     pub fn new() -> Self {
         Self {
-            streams: Arc::new(RwLock::new(HashMap::new())),
-            metadata: Arc::new(RwLock::new(GroupMetadata {
-                created_at: std::time::SystemTime::now()
+            streams: Arc::new(DashMap::new()),
+            created_at: Arc::new(AtomicU64::new(
+                std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap()
                     .as_secs(),
-                stream_count: 0,
-                total_messages: 0,
-                total_bytes: 0,
-            })),
+            )),
+            stream_count: Arc::new(AtomicUsize::new(0)),
+            total_messages: Arc::new(AtomicU64::new(0)),
+            total_bytes: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -78,13 +83,11 @@ impl GroupState {
 
     /// Initialize a stream
     pub async fn initialize_stream(&self, name: StreamName) -> bool {
-        let mut streams = self.streams.write().await;
-
-        if streams.contains_key(&name) {
+        if self.streams.contains_key(&name) {
             return false;
         }
 
-        streams.insert(
+        self.streams.insert(
             name.clone(),
             StreamState {
                 name,
@@ -95,22 +98,22 @@ impl GroupState {
         );
 
         // Update metadata
-        let mut metadata = self.metadata.write().await;
-        metadata.stream_count = streams.len();
+        self.stream_count
+            .store(self.streams.len(), Ordering::Relaxed);
 
         true
     }
 
     /// Remove a stream
     pub async fn remove_stream(&self, name: &StreamName) -> bool {
-        let mut streams = self.streams.write().await;
-
-        if let Some(state) = streams.remove(name) {
+        if let Some((_, state)) = self.streams.remove(name) {
             // Update metadata
-            let mut metadata = self.metadata.write().await;
-            metadata.stream_count = streams.len();
-            metadata.total_messages -= state.stats.message_count;
-            metadata.total_bytes -= state.stats.total_bytes;
+            self.stream_count
+                .store(self.streams.len(), Ordering::Relaxed);
+            self.total_messages
+                .fetch_sub(state.stats.message_count, Ordering::Relaxed);
+            self.total_bytes
+                .fetch_sub(state.stats.total_bytes, Ordering::Relaxed);
 
             true
         } else {
@@ -129,9 +132,7 @@ impl GroupState {
             return Arc::new(vec![]);
         }
 
-        let mut streams = self.streams.write().await;
-
-        if let Some(state) = streams.get_mut(stream) {
+        if let Some(mut state) = self.streams.get_mut(stream) {
             let mut entries = Vec::with_capacity(messages.len());
             let start_sequence = state.next_sequence;
 
@@ -164,10 +165,10 @@ impl GroupState {
             state.stats.last_update = timestamp_millis / 1000; // Convert to seconds
 
             // Update metadata
-            drop(streams);
-            let mut metadata = self.metadata.write().await;
-            metadata.total_messages += message_count;
-            metadata.total_bytes += total_size;
+            drop(state);
+            self.total_messages
+                .fetch_add(message_count, Ordering::Relaxed);
+            self.total_bytes.fetch_add(total_size, Ordering::Relaxed);
 
             Arc::new(entries)
         } else {
@@ -183,9 +184,7 @@ impl GroupState {
         stream: &StreamName,
         up_to_seq: NonZero<u64>,
     ) -> Option<NonZero<u64>> {
-        let mut streams = self.streams.write().await;
-
-        if let Some(state) = streams.get_mut(stream) {
+        if let Some(mut state) = self.streams.get_mut(stream) {
             // Can only trim if up_to_seq is valid
             if up_to_seq >= state.first_sequence && up_to_seq < state.next_sequence {
                 // Update first sequence
@@ -213,9 +212,7 @@ impl GroupState {
         stream: &StreamName,
         sequence: NonZero<u64>,
     ) -> Option<NonZero<u64>> {
-        let streams = self.streams.read().await;
-
-        if let Some(state) = streams.get(stream) {
+        if let Some(state) = self.streams.get(stream) {
             // Validate sequence is valid
             if sequence >= state.next_sequence {
                 return None;
@@ -233,29 +230,35 @@ impl GroupState {
 
     /// Get stream state
     pub async fn get_stream(&self, name: &StreamName) -> Option<StreamState> {
-        let streams = self.streams.read().await;
-        streams.get(name).cloned()
+        self.streams.get(name).map(|entry| entry.clone())
     }
 
     /// List all streams
     pub async fn list_streams(&self) -> Vec<StreamName> {
-        let streams = self.streams.read().await;
-        streams.keys().cloned().collect()
+        self.streams
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     /// Get group metadata
     pub async fn get_metadata(&self) -> GroupMetadata {
-        self.metadata.read().await.clone()
+        GroupMetadata {
+            created_at: self.created_at.load(Ordering::Relaxed),
+            stream_count: self.stream_count.load(Ordering::Relaxed),
+            total_messages: self.total_messages.load(Ordering::Relaxed),
+            total_bytes: self.total_bytes.load(Ordering::Relaxed),
+        }
     }
 
     /// Get stream count
     pub async fn stream_count(&self) -> usize {
-        self.streams.read().await.len()
+        self.streams.len()
     }
 
     /// Get total message count
     pub async fn total_messages(&self) -> u64 {
-        self.metadata.read().await.total_messages
+        self.total_messages.load(Ordering::Relaxed)
     }
 }
 

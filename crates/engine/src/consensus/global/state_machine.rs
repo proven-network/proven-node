@@ -17,14 +17,17 @@ use super::operations::{GlobalOperation, GlobalOperationHandler};
 use super::raft::GlobalTypeConfig;
 use super::snapshot::{GlobalSnapshot, GlobalSnapshotBuilder};
 use super::types::{GlobalRequest, GlobalResponse};
-use crate::foundation::{global_state::GlobalState, traits::OperationHandler};
+use crate::foundation::{
+    GlobalStateWriter, global_state::GlobalState, state_access::GlobalStateWrite,
+    traits::OperationHandler,
+};
 use proven_topology::NodeId;
 
 /// Raft state machine - handles applying committed entries
 #[derive(Clone)]
 pub struct GlobalStateMachine {
     /// Global state that gets modified by applied entries
-    state: Arc<GlobalState>,
+    state: GlobalStateWriter,
     /// Handler for processing operations
     handler: Arc<GlobalOperationHandler>,
     /// Callback dispatcher
@@ -42,7 +45,7 @@ pub struct GlobalStateMachine {
 impl GlobalStateMachine {
     /// Create new state machine with handler and dispatcher
     pub fn new(
-        state: Arc<GlobalState>,
+        state: GlobalStateWriter,
         handler: Arc<GlobalOperationHandler>,
         callback_dispatcher: Arc<GlobalCallbackDispatcher>,
         replay_boundary: Option<NonZero<u64>>,
@@ -59,7 +62,7 @@ impl GlobalStateMachine {
     }
 
     /// Get the state reference
-    pub fn state(&self) -> &Arc<GlobalState> {
+    pub fn state(&self) -> &GlobalStateWriter {
         &self.state
     }
 
@@ -104,9 +107,8 @@ impl GlobalStateMachine {
                 *self.state_synced.write().await = true;
 
                 // Dispatch state sync callback
-                self.callback_dispatcher
-                    .dispatch_state_sync(&self.state)
-                    .await;
+                // Important: We don't hold any locks when dispatching to avoid deadlocks
+                self.callback_dispatcher.dispatch_state_sync().await;
             }
 
             match &entry.payload {
@@ -292,9 +294,8 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
 
         // 4. Mark state as synced and fire the state sync callback
         *self.state_synced.write().await = true;
-        self.callback_dispatcher
-            .dispatch_state_sync(&self.state)
-            .await;
+        // Important: We don't hold any locks when dispatching to avoid deadlocks
+        self.callback_dispatcher.dispatch_state_sync().await;
 
         tracing::info!(
             "Installed snapshot with {} groups and {} streams",

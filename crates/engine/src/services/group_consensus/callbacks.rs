@@ -38,11 +38,7 @@ impl<S: StorageAdaptor> GroupConsensusCallbacksImpl<S> {
 
 #[async_trait]
 impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCallbacksImpl<S> {
-    async fn on_state_synchronized(
-        &self,
-        group_id: ConsensusGroupId,
-        _state: &GroupState,
-    ) -> ConsensusResult<()> {
+    async fn on_state_synchronized(&self, group_id: ConsensusGroupId) -> ConsensusResult<()> {
         tracing::info!(
             "Group {:?} state synchronized on node {}",
             group_id,

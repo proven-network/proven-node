@@ -27,8 +27,8 @@ impl GlobalCallbackDispatcher {
     }
 
     /// Handle state synchronization after replay completes
-    pub async fn dispatch_state_sync(&self, state: &GlobalState) {
-        if let Err(e) = self.callbacks.on_state_synchronized(state).await {
+    pub async fn dispatch_state_sync(&self) {
+        if let Err(e) = self.callbacks.on_state_synchronized().await {
             tracing::error!("State sync callback failed: {}", e);
         } else {
             tracing::info!("State synchronized - replay complete");

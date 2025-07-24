@@ -1,6 +1,7 @@
 use crate::consensus::global::raft::GlobalRaftMessageHandler;
 use crate::consensus::global::{GlobalConsensusLayer, GlobalRequest};
-use crate::foundation::{GroupInfo, types::ConsensusGroupId};
+use crate::foundation::state_access::GlobalStateRead;
+use crate::foundation::{GlobalStateReader, GroupInfo, types::ConsensusGroupId};
 use crate::services::event::{EventHandler, EventPriority};
 use crate::services::membership::MembershipEvent;
 use proven_storage::{StorageAdaptor, StorageManager};
@@ -23,6 +24,8 @@ where
     node_id: NodeId,
     /// Reference to global consensus layer
     consensus_layer: ConsensusLayer<S>,
+    /// Global state reader
+    global_state: GlobalStateReader,
     /// Topology manager to get node information
     topology_manager: Option<Arc<TopologyManager<G>>>,
 }
@@ -36,12 +39,13 @@ where
     pub fn new(
         node_id: NodeId,
         consensus_layer: ConsensusLayer<S>,
-        _storage_manager: Arc<StorageManager<S>>,
+        global_state: GlobalStateReader,
         topology_manager: Option<Arc<TopologyManager<G>>>,
     ) -> Self {
         Self {
             node_id,
             consensus_layer,
+            global_state,
             topology_manager,
         }
     }
@@ -137,10 +141,14 @@ where
 
                     // Now handle default group creation
                     // Check if default group already exists
-                    let state = consensus.state();
                     let default_group_id = ConsensusGroupId::new(1);
 
-                    if state.get_group(&default_group_id).await.is_some() {
+                    if self
+                        .global_state
+                        .get_group(&default_group_id)
+                        .await
+                        .is_some()
+                    {
                         debug!("Default group already exists");
                         return;
                     }

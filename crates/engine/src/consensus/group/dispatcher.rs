@@ -26,8 +26,8 @@ impl GroupCallbackDispatcher {
     }
 
     /// Handle state synchronization after replay completes
-    pub async fn dispatch_state_sync(&self, group_id: ConsensusGroupId, state: &GroupState) {
-        if let Err(e) = self.callbacks.on_state_synchronized(group_id, state).await {
+    pub async fn dispatch_state_sync(&self, group_id: ConsensusGroupId) {
+        if let Err(e) = self.callbacks.on_state_synchronized(group_id).await {
             tracing::error!("State sync callback failed for group {:?}: {}", group_id, e);
         } else {
             tracing::info!(

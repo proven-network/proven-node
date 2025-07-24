@@ -8,8 +8,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
+use crate::foundation::state_access::{GlobalStateRead, GlobalStateWrite};
 use crate::foundation::{
-    global_state::GlobalState, traits::OperationHandler, types::OperationId, validations,
+    GlobalStateWriter, global_state::GlobalState, traits::OperationHandler, types::OperationId,
+    validations,
 };
 
 use super::types::{GlobalRequest, GlobalResponse};
@@ -42,12 +44,12 @@ impl GlobalOperation {
 /// Handler for global consensus operations
 pub struct GlobalOperationHandler {
     /// Global state
-    state: Arc<GlobalState>,
+    state: GlobalStateWriter,
 }
 
 impl GlobalOperationHandler {
     /// Create a new handler
-    pub fn new(state: Arc<GlobalState>) -> Self {
+    pub fn new(state: GlobalStateWriter) -> Self {
         Self { state }
     }
 }
