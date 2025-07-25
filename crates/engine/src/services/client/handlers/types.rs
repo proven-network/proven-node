@@ -10,7 +10,7 @@ use proven_transport::Transport;
 
 use crate::services::{
     global_consensus::GlobalConsensusService, group_consensus::GroupConsensusService,
-    routing::RoutingService, stream::StreamService,
+    stream::StreamService,
 };
 
 /// Type alias for service references
@@ -21,9 +21,6 @@ pub type GlobalConsensusRef<T, G, S> = ServiceRef<GlobalConsensusService<T, G, S
 
 /// Type alias for group consensus service reference
 pub type GroupConsensusRef<T, G, S> = ServiceRef<GroupConsensusService<T, G, S>>;
-
-/// Type alias for routing service reference
-pub type RoutingServiceRef = ServiceRef<RoutingService>;
 
 /// Type alias for stream service reference
 pub type StreamServiceRef<S> = ServiceRef<StreamService<S>>;

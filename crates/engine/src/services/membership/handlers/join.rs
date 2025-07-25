@@ -102,6 +102,33 @@ impl JoinClusterHandler {
         // Emit event
         self.event_bus.emit(event);
 
+        // Update global consensus membership to include the new node
+        info!(
+            "Updating global consensus membership to add node {}",
+            sender
+        );
+
+        use crate::services::global_consensus::commands::AddNodeToConsensus;
+        let add_node_cmd = AddNodeToConsensus {
+            node_id: sender.clone(),
+        };
+
+        match self.event_bus.request(add_node_cmd).await {
+            Ok(members) => {
+                info!(
+                    "Successfully added node {} to global consensus membership. Current members: {:?}",
+                    sender, members
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to add node {} to global consensus membership: {}",
+                    sender, e
+                );
+                // Continue anyway - the membership monitor will retry
+            }
+        }
+
         info!("Node {} join request approved", sender);
 
         // Get current cluster state for the response

@@ -46,4 +46,12 @@ pub trait GlobalConsensusCallbacks: Send + Sync {
         added_members: &[NodeId],
         removed_members: &[NodeId],
     ) -> ConsensusResult<()>;
+
+    /// Called when the global consensus leader changes
+    async fn on_leader_changed(
+        &self,
+        old_leader: Option<NodeId>,
+        new_leader: Option<NodeId>,
+        term: u64,
+    ) -> ConsensusResult<()>;
 }

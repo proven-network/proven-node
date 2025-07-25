@@ -12,7 +12,7 @@ use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::{ServiceLifecycle, lifecycle::ServiceStatus};
 use crate::services::{
     client::ClientService, lifecycle::LifecycleService, migration::MigrationService,
-    monitoring::MonitoringService, pubsub::PubSubService, routing::RoutingService,
+    monitoring::MonitoringService, pubsub::PubSubService,
 };
 use tracing::{error, info};
 
@@ -113,6 +113,11 @@ where
                 .build(),
         );
 
+        // Create routing table
+        let routing_table = Arc::new(crate::foundation::routing::RoutingTable::new(
+            self.node_id.clone(),
+        ));
+
         // Create consensus services
         use crate::services::global_consensus::{GlobalConsensusConfig, GlobalConsensusService};
         use crate::services::group_consensus::{GroupConsensusConfig, GroupConsensusService};
@@ -154,6 +159,7 @@ where
                 network_manager.clone(),
                 storage_manager.clone(),
                 new_event_bus.clone(),
+                routing_table.clone(),
             )
             .with_topology(topology_manager.clone()),
         );
@@ -173,6 +179,7 @@ where
                 network_manager.clone(),
                 storage_manager.clone(),
                 new_event_bus.clone(),
+                routing_table.clone(),
             )
             .with_topology(topology_manager.clone()),
         );
@@ -187,12 +194,6 @@ where
             system_view,
         ));
 
-        let routing_service = Arc::new(RoutingService::new(
-            config.services.routing.clone(),
-            self.node_id.clone(),
-            new_event_bus.clone(),
-        ));
-
         let migration_service = Arc::new(MigrationService::new(config.services.migration.clone()));
 
         let lifecycle_service = Arc::new(LifecycleService::new(config.services.lifecycle.clone()));
@@ -201,6 +202,7 @@ where
         let client_service = Arc::new(ClientService::new(
             self.node_id.clone(),
             new_event_bus.clone(),
+            routing_table.clone(),
         ));
 
         // Create StreamService with storage manager
@@ -221,7 +223,6 @@ where
             "monitoring",
             monitoring_service.clone(),
         ));
-        let routing_wrapper = Arc::new(ServiceWrapper::new("routing", routing_service.clone()));
         let migration_wrapper =
             Arc::new(ServiceWrapper::new("migration", migration_service.clone()));
         let lifecycle_wrapper =
@@ -245,9 +246,6 @@ where
             .await;
         coordinator
             .register("monitoring".to_string(), monitoring_wrapper)
-            .await;
-        coordinator
-            .register("routing".to_string(), routing_wrapper)
             .await;
         coordinator
             .register("migration".to_string(), migration_wrapper)
@@ -338,8 +336,7 @@ where
             .set_start_order(vec![
                 "event".to_string(),
                 "monitoring".to_string(),
-                "routing".to_string(), // Start routing before consensus services
-                "stream".to_string(),  // Start stream service before consensus
+                "stream".to_string(), // Start stream service before consensus
                 "group_consensus".to_string(), // Start group_consensus before global_consensus
                 "global_consensus".to_string(), // So it's ready to receive events
                 "pubsub".to_string(),
@@ -356,7 +353,6 @@ where
             config,
             coordinator,
             monitoring_service,
-            routing_service,
             migration_service,
             lifecycle_service,
             pubsub_service,
@@ -364,6 +360,7 @@ where
             stream_service,
             network_manager,
             storage_manager,
+            routing_table,
         );
 
         // Set consensus services
@@ -417,30 +414,6 @@ impl ServiceLifecycle for ServiceWrapper<MonitoringService> {
 
     async fn is_healthy(&self) -> bool {
         true
-    }
-
-    async fn status(&self) -> ServiceStatus {
-        ServiceStatus::Running
-    }
-}
-
-// Implement for RoutingService
-#[async_trait]
-impl ServiceLifecycle for ServiceWrapper<RoutingService> {
-    async fn initialize(&self) -> ConsensusResult<()> {
-        Ok(())
-    }
-
-    async fn start(&self) -> ConsensusResult<()> {
-        self.service.start().await
-    }
-
-    async fn stop(&self) -> ConsensusResult<()> {
-        self.service.stop().await
-    }
-
-    async fn is_healthy(&self) -> bool {
-        true // Routing service is always healthy if started
     }
 
     async fn status(&self) -> ServiceStatus {

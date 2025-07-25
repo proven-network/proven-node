@@ -1,10 +1,18 @@
 //! Global consensus service
+//!
+//! This service manages the global Raft consensus layer that maintains cluster-wide state including:
+//! - Consensus group definitions
+//! - Stream metadata
+//! - Cluster membership
+//!
+//! The service provides:
+//! - Cluster initialization and membership management
+//! - Request submission to the consensus layer
+//! - Command handlers for external services to interact with global state
 
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use tokio_util::sync::CancellationToken;
-use tokio_util::task::TaskTracker;
 
 use proven_network::NetworkManager;
 use proven_storage::StorageNamespace;
@@ -19,6 +27,7 @@ use super::{
     callbacks::GlobalConsensusCallbacksImpl,
     config::{GlobalConsensusConfig, ServiceState},
 };
+use crate::foundation::routing::RoutingTable;
 use crate::foundation::state::access::GlobalStateRead;
 use crate::foundation::{GlobalState, GlobalStateReader, GlobalStateWriter, create_state_access};
 use crate::{
@@ -79,17 +88,13 @@ where
     topology_manager: Option<Arc<proven_topology::TopologyManager<G>>>,
     /// Event bus
     event_bus: Arc<EventBus>,
-    /// Track if handlers have been registered
-    handlers_registered: Arc<RwLock<bool>>,
-    /// Task tracker for background tasks
-    task_tracker: Arc<RwLock<Option<TaskTracker>>>,
-    /// Cancellation token for graceful shutdown
-    cancellation_token: Arc<RwLock<Option<CancellationToken>>>,
-    /// Group consensus service for direct group creation
+    /// Routing table
+    routing_table: Arc<RoutingTable>,
+    /// Group consensus service reference (set by external services for cross-service coordination)
     group_consensus_service: GroupConsensusServiceRef<T, G, S>,
-    /// Stream service for stream restoration
+    /// Stream service reference (set by external services for cross-service coordination)
     stream_service: StreamServiceRef<S>,
-    /// Membership service for cluster membership management
+    /// Membership service reference (set by external services for cross-service coordination)
     membership_service: MembershipServiceRef<T, G, S>,
     /// Raft metrics receiver (kept alive for the service lifetime)
     raft_metrics_rx: RaftMetricsReceiverRef,
@@ -108,6 +113,7 @@ where
         network_manager: Arc<NetworkManager<T, G>>,
         storage_manager: Arc<StorageManager<S>>,
         event_bus: Arc<EventBus>,
+        routing_table: Arc<RoutingTable>,
     ) -> Self {
         Self {
             config,
@@ -119,9 +125,7 @@ where
             state: Arc::new(RwLock::new(ServiceState::NotInitialized)),
             topology_manager: None,
             event_bus,
-            handlers_registered: Arc::new(RwLock::new(false)),
-            task_tracker: Arc::new(RwLock::new(None)),
-            cancellation_token: Arc::new(RwLock::new(None)),
+            routing_table,
             group_consensus_service: Arc::new(RwLock::new(None)),
             stream_service: Arc::new(RwLock::new(None)),
             membership_service: Arc::new(RwLock::new(None)),
@@ -182,18 +186,6 @@ where
         let (state_reader, state_writer) = create_state_access();
         *self.global_state.write().await = Some(state_reader.clone());
 
-        // Create new task tracker and cancellation token
-        let task_tracker = TaskTracker::new();
-        let cancellation_token = CancellationToken::new();
-
-        {
-            let mut tracker_guard = self.task_tracker.write().await;
-            *tracker_guard = Some(task_tracker.clone());
-
-            let mut token_guard = self.cancellation_token.write().await;
-            *token_guard = Some(cancellation_token.clone());
-        }
-
         // Create consensus layer early to handle messages
         if self.consensus_layer.read().await.is_none() {
             let consensus_storage = self.storage_manager.consensus_storage();
@@ -201,6 +193,7 @@ where
                 self.node_id.clone(),
                 Some(self.event_bus.clone()),
                 state_reader.clone(),
+                self.routing_table.clone(),
             ));
 
             let layer = Self::create_consensus_layer(
@@ -226,6 +219,9 @@ where
                 *metrics_guard = Some(metrics_rx);
             }
 
+            // Start leader monitoring
+            layer.start_leader_monitoring(callbacks);
+
             // Register message handlers
             Self::register_message_handlers_static(
                 self.consensus_layer.clone(),
@@ -233,11 +229,6 @@ where
             )
             .await?;
         }
-
-        // Membership events are now handled via InitializeGlobalConsensus command
-
-        // Start membership monitoring task
-        self.spawn_membership_monitor(&task_tracker, &cancellation_token);
 
         *state = ServiceState::Running;
         Ok(())
@@ -248,42 +239,6 @@ where
         let mut state = self.state.write().await;
         *state = ServiceState::Stopped;
         drop(state);
-
-        // Signal shutdown and wait for tasks
-        let (task_tracker, cancellation_token) = {
-            let tracker_guard = self.task_tracker.write().await;
-            let token_guard = self.cancellation_token.write().await;
-
-            (tracker_guard.clone(), token_guard.clone())
-        };
-
-        if let Some(token) = cancellation_token {
-            tracing::debug!("Signaling cancellation to background tasks");
-            token.cancel();
-        }
-
-        if let Some(tracker) = task_tracker {
-            tracing::debug!("Waiting for background tasks to complete");
-            tracker.close();
-
-            match tokio::time::timeout(std::time::Duration::from_secs(5), tracker.wait()).await {
-                Ok(()) => {
-                    tracing::debug!("All background tasks completed successfully");
-                }
-                Err(_) => {
-                    tracing::warn!("Background tasks did not complete within 5 seconds timeout");
-                }
-            }
-        }
-
-        // Clear the task tracker and cancellation token
-        {
-            let mut tracker_guard = self.task_tracker.write().await;
-            *tracker_guard = None;
-
-            let mut token_guard = self.cancellation_token.write().await;
-            *token_guard = None;
-        }
 
         // Shutdown the Raft instance if it exists
         let mut consensus_layer = self.consensus_layer.write().await;
@@ -650,49 +605,103 @@ where
         }
     }
 
-    /// Start monitoring the consensus layer for events
-    fn start_event_monitoring(mut metrics_rx: RaftMetricsReceiver, event_bus: Arc<EventBus>) {
-        // Monitor for leader changes
-        let event_bus_clone = event_bus.clone();
+    /// Add a node to global consensus
+    pub async fn add_node_to_consensus(&self, node_id: NodeId) -> ConsensusResult<Vec<NodeId>> {
+        info!("Adding node {} to global consensus", node_id);
 
-        tokio::spawn(async move {
-            let mut current_leader: Option<NodeId> = None;
-            let mut current_term: u64 = 0;
-
-            loop {
-                tokio::select! {
-                    Ok(_) = metrics_rx.changed() => {
-                        let metrics = metrics_rx.borrow().clone();
-
-                        // Check for leader change
-                        if metrics.current_leader != current_leader || metrics.current_term != current_term {
-                            let old_leader = current_leader.clone();
-                            current_leader = metrics.current_leader.clone();
-                            current_term = metrics.current_term;
-
-                            if let Some(new_leader) = &current_leader {
-                                tracing::info!(
-                                    "Global consensus leader changed: {:?} -> {} (term {})",
-                                    old_leader, new_leader, current_term
-                                );
-
-                                // Publish event
-                                let event = GlobalConsensusEvent::LeaderChanged {
-                                    old_leader,
-                                    new_leader: Some(new_leader.clone()),
-                                    term: current_term,
-                                };
-
-                                event_bus_clone.emit(event);
-                            }
-                        }
-                    }
-                    else => break,
-                }
+        // Ensure consensus is initialized
+        let consensus_guard = self.consensus_layer.read().await;
+        let consensus = match consensus_guard.as_ref() {
+            Some(c) => c,
+            None => {
+                return Err(Error::with_context(
+                    ErrorKind::InvalidState,
+                    "Global consensus not initialized",
+                ));
             }
+        };
 
-            tracing::debug!("Leader monitoring task stopped");
-        });
+        // Get node information from topology
+        let node_info = if let Some(topology_mgr) = &self.topology_manager {
+            topology_mgr.get_node(&node_id).await.ok_or_else(|| {
+                Error::with_context(
+                    ErrorKind::NotFound,
+                    format!("Could not find node info for {node_id}"),
+                )
+            })?
+        } else {
+            return Err(Error::with_context(
+                ErrorKind::InvalidState,
+                "No topology manager available",
+            ));
+        };
+
+        // Let the consensus layer handle adding the node
+        consensus.add_node(node_id.clone(), node_info).await?;
+
+        info!("Successfully added node {} to global consensus", node_id);
+
+        // Return the updated membership
+        let updated_metrics = consensus.metrics().borrow().clone();
+        let updated_membership = &updated_metrics.membership_config;
+        Ok(updated_membership.membership().voter_ids().collect())
+    }
+
+    /// Remove a node from global consensus
+    pub async fn remove_node_from_consensus(
+        &self,
+        node_id: NodeId,
+    ) -> ConsensusResult<Vec<NodeId>> {
+        info!("Removing node {} from global consensus", node_id);
+
+        // Ensure consensus is initialized
+        let consensus_guard = self.consensus_layer.read().await;
+        let consensus = match consensus_guard.as_ref() {
+            Some(c) => c,
+            None => {
+                return Err(Error::with_context(
+                    ErrorKind::InvalidState,
+                    "Global consensus not initialized",
+                ));
+            }
+        };
+
+        // Let the consensus layer handle removing the node
+        consensus.remove_node(node_id.clone()).await?;
+
+        info!(
+            "Successfully removed node {} from global consensus",
+            node_id
+        );
+
+        // Return the updated membership
+        let updated_metrics = consensus.metrics().borrow().clone();
+        let updated_membership = &updated_metrics.membership_config;
+        Ok(updated_membership.membership().voter_ids().collect())
+    }
+
+    /// Update global consensus membership (legacy method)
+    pub async fn update_membership(
+        &self,
+        add_members: Vec<NodeId>,
+        remove_members: Vec<NodeId>,
+    ) -> ConsensusResult<()> {
+        info!(
+            "Updating global consensus membership - add: {:?}, remove: {:?}",
+            add_members, remove_members
+        );
+
+        // Process removals first
+        for node_id in remove_members {
+            self.remove_node_from_consensus(node_id).await?;
+        }
+
+        // Then process additions
+        for node_id in add_members {
+            self.add_node_to_consensus(node_id).await?;
+        }
+
+        Ok(())
     }
 
     /// Check if a cluster already exists by querying peers
@@ -758,7 +767,7 @@ where
 
     /// Register command handlers for global consensus
     pub async fn register_command_handlers(self: Arc<Self>) {
-        use crate::services::global_consensus::command_handlers::commands::*;
+        use crate::services::global_consensus::command_handlers::*;
         use crate::services::global_consensus::commands::*;
 
         // Register SubmitGlobalRequest handler
@@ -772,170 +781,29 @@ where
         self.event_bus
             .handle_requests::<InitializeGlobalConsensus, _>(init_handler)
             .expect("Failed to register InitializeGlobalConsensus handler");
-    }
 
-    /// Spawn the membership monitor background task
-    fn spawn_membership_monitor(
-        &self,
-        task_tracker: &TaskTracker,
-        cancellation_token: &CancellationToken,
-    ) {
-        let consensus_layer = self.consensus_layer.clone();
-        let node_id = self.node_id.clone();
-        let event_bus = self.event_bus.clone();
-        let token = cancellation_token.clone();
+        // Register AddNodeToConsensus handler
+        let add_node_handler = AddNodeToConsensusHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<AddNodeToConsensus, _>(add_node_handler)
+            .expect("Failed to register AddNodeToConsensus handler");
 
-        task_tracker.spawn(async move {
-            tracing::info!("Starting membership monitor for global consensus");
+        // Register RemoveNodeFromConsensus handler
+        let remove_node_handler = RemoveNodeFromConsensusHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<RemoveNodeFromConsensus, _>(remove_node_handler)
+            .expect("Failed to register RemoveNodeFromConsensus handler");
 
-            // TODO: We need access to the EventService to subscribe to events
-            // For now, we'll use a polling approach instead
-            let mut check_interval = tokio::time::interval(std::time::Duration::from_secs(10));
+        // Register GetGlobalConsensusMembers handler
+        let get_members_handler = GetGlobalConsensusMembersHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<GetGlobalConsensusMembers, _>(get_members_handler)
+            .expect("Failed to register GetGlobalConsensusMembers handler");
 
-            loop {
-                tokio::select! {
-                    _ = check_interval.tick() => {
-                        // Periodically check membership and update Raft if needed
-                        if let Err(e) = Self::update_raft_membership(
-                            &consensus_layer,
-                            &event_bus,
-                            &node_id,
-                        ).await {
-                            tracing::error!("Failed to update Raft membership: {}", e);
-                        }
-                    }
-                    _ = token.cancelled() => {
-                        tracing::info!("Membership monitor shutting down");
-                        return;
-                    }
-                }
-            }
-        });
-    }
-
-    /// Update Raft membership based on current membership view
-    async fn update_raft_membership(
-        consensus_layer: &ConsensusLayer<S>,
-        event_bus: &Arc<EventBus>,
-        _node_id: &NodeId,
-    ) -> ConsensusResult<()> {
-        // Get consensus layer
-        let consensus_guard = consensus_layer.read().await;
-        let consensus = match consensus_guard.as_ref() {
-            Some(c) => c,
-            None => {
-                return Ok(());
-            }
-        };
-
-        // Only the leader should propose membership changes
-        let is_leader = consensus.is_leader().await;
-        if !is_leader {
-            tracing::trace!("Not the leader, skipping membership update");
-            return Ok(());
-        }
-
-        // Get online members using event bus
-        use crate::services::membership::commands::GetOnlineMembers;
-
-        let online_members = event_bus.request(GetOnlineMembers).await.map_err(|e| {
-            Error::with_context(
-                ErrorKind::Service,
-                format!("Failed to get online members: {e}"),
-            )
-        })?;
-        let target_members: std::collections::BTreeSet<NodeId> =
-            online_members.iter().map(|(id, _)| id.clone()).collect();
-
-        // Get current Raft membership
-        let raft_metrics = consensus.metrics();
-        let current_membership = {
-            let metrics = raft_metrics.borrow();
-            metrics.membership_config.membership().clone()
-        };
-
-        let current_voters: std::collections::BTreeSet<NodeId> =
-            current_membership.voter_ids().collect();
-        let current_learners: std::collections::BTreeSet<NodeId> =
-            current_membership.learner_ids().collect();
-        let all_current: std::collections::BTreeSet<NodeId> =
-            current_voters.union(&current_learners).cloned().collect();
-
-        // Check if membership has changed
-        if target_members == all_current {
-            tracing::debug!("No membership changes needed");
-            return Ok(());
-        }
-
-        tracing::info!(
-            "Updating Raft membership. Current: {:?}, Target: {:?}",
-            all_current,
-            target_members
-        );
-
-        // Determine nodes to add and remove
-        let nodes_to_add: Vec<NodeId> = target_members.difference(&all_current).cloned().collect();
-        let nodes_to_remove: Vec<NodeId> =
-            all_current.difference(&target_members).cloned().collect();
-
-        // First, add new nodes as learners
-        for node_id in &nodes_to_add {
-            tracing::info!("Adding node {} as learner", node_id);
-
-            // Find the node info from membership
-            let node_info = online_members
-                .iter()
-                .find(|(id, _)| id == node_id)
-                .map(|(_, info)| info.clone())
-                .ok_or_else(|| {
-                    Error::with_context(
-                        ErrorKind::NotFound,
-                        format!("Node {node_id} not found in online members"),
-                    )
-                })?;
-
-            // Add as learner
-            match consensus.add_learner(node_id.clone(), node_info).await {
-                Ok(_) => tracing::info!("Successfully added {} as learner", node_id),
-                Err(e) => {
-                    tracing::warn!("Failed to add {} as learner: {}", node_id, e);
-                    // Continue with other nodes
-                }
-            }
-        }
-
-        // Give learners time to catch up
-        if !nodes_to_add.is_empty() {
-            tracing::info!("Waiting for learners to catch up...");
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-        }
-
-        // Now update membership to include new nodes as voters
-        let mut new_voters = current_voters.clone();
-        for node_id in nodes_to_add {
-            new_voters.insert(node_id);
-        }
-
-        // Remove nodes that are no longer online
-        for node_id in nodes_to_remove {
-            new_voters.remove(&node_id);
-        }
-
-        // Propose membership change
-        if new_voters != current_voters {
-            tracing::info!("Proposing membership change: {:?}", new_voters);
-
-            match consensus.change_membership(new_voters.clone(), false).await {
-                Ok(_) => {
-                    tracing::info!("Successfully updated membership");
-                }
-                Err(e) => {
-                    tracing::error!("Failed to update membership: {}", e);
-                    return Err(e);
-                }
-            }
-        }
-
-        Ok(())
+        // Register UpdateGlobalMembership handler
+        let update_membership_handler = UpdateGlobalMembershipHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<UpdateGlobalMembership, _>(update_membership_handler)
+            .expect("Failed to register UpdateGlobalMembership handler");
     }
 }

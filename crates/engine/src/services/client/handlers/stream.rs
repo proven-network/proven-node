@@ -9,10 +9,12 @@ use proven_transport::Transport;
 use crate::{
     consensus::group::{GroupRequest, GroupResponse},
     error::{ConsensusResult, Error, ErrorKind},
-    services::{client::handlers::GroupHandler, routing::RouteDecision},
+    foundation::{
+        events::EventBus,
+        routing::{RoutingDecision, RoutingTable},
+    },
+    services::client::handlers::GroupHandler,
 };
-
-use crate::foundation::events::EventBus;
 
 /// Handles stream operations by routing them to the appropriate group
 pub struct StreamHandler<T, G, S>
@@ -25,6 +27,8 @@ where
     event_bus: Arc<EventBus>,
     /// Group handler
     group_handler: Arc<GroupHandler<T, G, S>>,
+    /// Routing table
+    routing_table: Arc<RoutingTable>,
 }
 
 impl<T, G, S> StreamHandler<T, G, S>
@@ -34,10 +38,15 @@ where
     S: StorageAdaptor + 'static,
 {
     /// Create a new stream handler
-    pub fn new(event_bus: Arc<EventBus>, group_handler: Arc<GroupHandler<T, G, S>>) -> Self {
+    pub fn new(
+        event_bus: Arc<EventBus>,
+        group_handler: Arc<GroupHandler<T, G, S>>,
+        routing_table: Arc<RoutingTable>,
+    ) -> Self {
         Self {
             event_bus,
             group_handler,
+            routing_table,
         }
     }
 
@@ -48,13 +57,9 @@ where
         request: GroupRequest,
     ) -> ConsensusResult<GroupResponse> {
         // Get stream routing info to determine target group
-        use crate::services::routing::commands::GetStreamRoutingInfo;
-
-        let route_info = self
-            .event_bus
-            .request(GetStreamRoutingInfo {
-                stream_name: stream_name.to_string(),
-            })
+        let route = self
+            .routing_table
+            .get_stream_route(stream_name)
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -63,7 +68,7 @@ where
                 )
             })?;
 
-        match route_info {
+        match route {
             Some(route) => {
                 tracing::debug!(
                     "Stream {} routed to group {:?}",
@@ -91,6 +96,7 @@ where
         Self {
             event_bus: self.event_bus.clone(),
             group_handler: self.group_handler.clone(),
+            routing_table: self.routing_table.clone(),
         }
     }
 }

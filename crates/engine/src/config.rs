@@ -6,7 +6,7 @@ use std::{num::NonZero, time::Duration};
 
 use crate::services::{
     lifecycle::LifecycleConfig, migration::MigrationConfig, monitoring::MonitoringConfig,
-    pubsub::service::PubSubConfig, routing::RoutingConfig,
+    pubsub::service::PubSubConfig,
 };
 
 /// Engine configuration
@@ -33,9 +33,6 @@ pub struct EngineConfig {
 pub struct ServiceConfig {
     /// Monitoring service config
     pub monitoring: MonitoringConfig,
-
-    /// Routing service config
-    pub routing: RoutingConfig,
 
     /// Migration service config
     pub migration: MigrationConfig,

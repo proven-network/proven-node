@@ -88,8 +88,17 @@ impl GlobalCallbackDispatcher {
             }
 
             (GlobalRequest::CreateGroup { info }, GlobalResponse::GroupCreated { .. }) => {
+                tracing::info!(
+                    "GlobalCallbackDispatcher: Dispatching on_group_created callback for group {:?}",
+                    info.id
+                );
                 if let Err(e) = self.callbacks.on_group_created(info.id, info).await {
                     tracing::error!("Group creation callback failed: {}", e);
+                } else {
+                    tracing::info!(
+                        "GlobalCallbackDispatcher: Successfully dispatched on_group_created for group {:?}",
+                        info.id
+                    );
                 }
             }
 

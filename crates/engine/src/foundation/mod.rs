@@ -6,6 +6,7 @@
 pub mod events;
 pub mod messages;
 pub mod models;
+pub mod routing;
 pub mod state;
 pub mod traits;
 pub mod types;
@@ -18,6 +19,9 @@ pub use messages::{Message, deserialize_entry, headers, serialize_entry};
 
 // From models
 pub use models::{GroupInfo, GroupMetadata, NodeInfo, StreamInfo, StreamState, StreamStats};
+
+// From routing
+pub use routing::{GroupLocation, GroupRoute, RoutingDecision, RoutingTable, StreamRoute};
 
 // From state
 pub use state::{

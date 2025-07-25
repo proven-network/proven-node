@@ -16,6 +16,7 @@ use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
+use crate::foundation::RoutingTable;
 use crate::foundation::{
     traits::ServiceCoordinator as ServiceCoordinatorTrait, types::ConsensusGroupId,
 };
@@ -24,7 +25,7 @@ use crate::services::group_consensus::GroupConsensusService;
 use crate::services::stream::StreamService;
 use crate::services::{
     client::ClientService, lifecycle::LifecycleService, migration::MigrationService,
-    monitoring::MonitoringService, pubsub::PubSubService, routing::RoutingService,
+    monitoring::MonitoringService, pubsub::PubSubService,
 };
 
 use super::config::EngineConfig;
@@ -48,7 +49,6 @@ where
 
     /// Services
     monitoring_service: Arc<MonitoringService>,
-    routing_service: Arc<RoutingService>,
     migration_service: Arc<MigrationService>,
     lifecycle_service: Arc<LifecycleService>,
     pubsub_service: Arc<PubSubService<T, G>>,
@@ -68,6 +68,9 @@ where
 
     /// Engine state
     state: Arc<tokio::sync::RwLock<EngineState>>,
+
+    /// Routing table
+    routing_table: Arc<RoutingTable>,
 }
 
 /// Engine state
@@ -98,7 +101,6 @@ where
         config: EngineConfig,
         coordinator: Arc<ServiceCoordinator>,
         monitoring_service: Arc<MonitoringService>,
-        routing_service: Arc<RoutingService>,
         migration_service: Arc<MigrationService>,
         lifecycle_service: Arc<LifecycleService>,
         pubsub_service: Arc<PubSubService<T, G>>,
@@ -106,13 +108,13 @@ where
         stream_service: Arc<StreamService<S>>,
         network_manager: Arc<NetworkManager<T, G>>,
         storage_manager: Arc<StorageManager<S>>,
+        routing_table: Arc<RoutingTable>,
     ) -> Self {
         Self {
             node_id,
             config,
             coordinator,
             monitoring_service,
-            routing_service,
             migration_service,
             lifecycle_service,
             pubsub_service,
@@ -124,6 +126,7 @@ where
             storage_manager,
             state: Arc::new(tokio::sync::RwLock::new(EngineState::NotInitialized)),
             topology_manager: None,
+            routing_table,
         }
     }
 
@@ -192,7 +195,7 @@ where
         let timeout = Duration::from_secs(30);
 
         loop {
-            if let Some(leader) = self.routing_service.get_global_leader().await {
+            if let Some(leader) = self.routing_table.get_global_leader().await {
                 info!("Global consensus leader elected: {leader}");
                 break;
             }
@@ -268,93 +271,21 @@ where
 
     /// Wait for the default group to be created
     async fn wait_for_default_group(&self, timeout: Duration) -> ConsensusResult<()> {
-        use tokio::time::timeout as tokio_timeout;
+        info!(
+            "wait_for_default_group: Starting to wait for default group (ID 1) in routing table with timeout {:?}",
+            timeout
+        );
 
-        let start = std::time::Instant::now();
-        let default_group_id = crate::foundation::types::ConsensusGroupId::new(1);
-
-        // Try to wait for the default group to exist in the routing table
-        let result = tokio_timeout(timeout, async {
-            loop {
-                // Check if the routing service knows about the default group
-                match self
-                    .routing_service
-                    .get_group_location(default_group_id)
-                    .await
-                {
-                    Ok(location_info) => {
-                        info!(
-                            "Default group (ID 1) found in routing table with {} nodes",
-                            location_info.nodes.len()
-                        );
-
-                        // If we're a member of this group, wait for it to be fully initialized
-                        if location_info.is_local
-                            && let Some(ref group_consensus) = self.group_consensus_service {
-                                // Check if the group has a leader elected
-                                loop {
-                                    match group_consensus.get_group_state_info(default_group_id).await {
-                                        Ok(state_info) => {
-                                            if state_info.leader.is_some() {
-                                                info!(
-                                                    "Default group has elected leader: {:?}",
-                                                    state_info.leader
-                                                );
-                                                return Ok(());
-                                            } else {
-                                                tracing::debug!("Default group exists but no leader elected yet");
-                                            }
-                                        }
-                                        Err(e) => {
-                                            tracing::debug!("Default group not fully initialized yet: {}", e);
-                                        }
-                                    }
-
-                                    // Check timeout
-                                    if start.elapsed() > timeout {
-                                        return Err(Error::with_context(
-                                            ErrorKind::Timeout,
-                                            format!("Timeout waiting for default group leader election after {timeout:?}"),
-                                        ));
-                                    }
-
-                                    tokio::time::sleep(Duration::from_millis(200)).await;
-                                }
-                            }
-
-                        // For non-members, just having the group in routing is sufficient
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        // Group might not exist in routing table yet
-                        tracing::debug!("Default group not in routing table yet: {}", e);
-                    }
-                }
-
-                // Check timeout
-                if start.elapsed() > timeout {
-                    break;
-                }
-
-                // Wait a bit before checking again
-                tokio::time::sleep(Duration::from_millis(500)).await;
-            }
-
-            Err(Error::with_context(
-                ErrorKind::Timeout,
-                format!("Timeout waiting for default group after {timeout:?}"),
-            ))
-        })
-        .await;
-
-        match result {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(e),
-            Err(_) => Err(Error::with_context(
-                ErrorKind::Timeout,
-                format!("Timeout waiting for default group after {timeout:?}"),
-            )),
-        }
+        // Use the routing table's built-in wait_for_default_group method
+        self.routing_table
+            .wait_for_default_group(timeout)
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    ErrorKind::Timeout,
+                    format!("Failed to wait for default group: {e}"),
+                )
+            })
     }
 
     /// Get engine health

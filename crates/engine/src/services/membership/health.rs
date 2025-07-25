@@ -237,6 +237,37 @@ where
                                             reason: "Node offline due to failed health checks"
                                                 .to_string(),
                                         });
+
+                                        // Update global consensus membership to remove the failed node
+                                        info!(
+                                            "Updating global consensus membership to remove failed node {}",
+                                            node_id
+                                        );
+
+                                        use crate::services::global_consensus::commands::RemoveNodeFromConsensus;
+                                        let remove_node_cmd = RemoveNodeFromConsensus {
+                                            node_id: node_id.clone(),
+                                        };
+
+                                        let event_bus_clone = event_bus.clone();
+                                        let node_id_clone = node_id.clone();
+                                        tokio::spawn(async move {
+                                            match event_bus_clone.request(remove_node_cmd).await {
+                                                Ok(members) => {
+                                                    info!(
+                                                        "Successfully removed failed node {} from global consensus membership. Current members: {:?}",
+                                                        node_id_clone, members
+                                                    );
+                                                }
+                                                Err(e) => {
+                                                    warn!(
+                                                        "Failed to remove failed node {} from global consensus membership: {}",
+                                                        node_id_clone, e
+                                                    );
+                                                    // Continue anyway - the membership monitor will retry
+                                                }
+                                            }
+                                        });
                                     }
                                 }
                                 _ => {}

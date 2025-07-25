@@ -126,13 +126,25 @@ impl GlobalStateMachine {
                         .unwrap_or(false);
 
                     let response = match self.handler.handle(operation.clone(), is_replay).await {
-                        Ok(resp) => resp,
+                        Ok(resp) => {
+                            tracing::info!(
+                                "GlobalStateMachine: Successfully handled operation {:?}, response: {:?}",
+                                operation.request,
+                                resp
+                            );
+                            resp
+                        }
                         Err(e) => GlobalResponse::Error {
                             message: e.to_string(),
                         },
                     };
 
                     // Dispatch callbacks based on operation result
+                    tracing::info!(
+                        "GlobalStateMachine: Dispatching callbacks for operation {:?} with response {:?}",
+                        operation.request,
+                        response
+                    );
                     self.callback_dispatcher
                         .dispatch_operation(&operation.request, &response, is_replay)
                         .await;

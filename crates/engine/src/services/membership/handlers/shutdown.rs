@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use proven_topology::NodeId;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::{
     error::ConsensusResult,
@@ -76,6 +76,33 @@ impl GracefulShutdownHandler {
                 remove_nodes: vec![sender.clone()],
                 reason: format!("Node {sender} gracefully shutting down"),
             });
+
+        // Update global consensus membership to remove the node
+        info!(
+            "Updating global consensus membership to remove node {}",
+            sender
+        );
+
+        use crate::services::global_consensus::commands::RemoveNodeFromConsensus;
+        let remove_node_cmd = RemoveNodeFromConsensus {
+            node_id: sender.clone(),
+        };
+
+        match self.event_bus.request(remove_node_cmd).await {
+            Ok(members) => {
+                info!(
+                    "Successfully removed node {} from global consensus membership. Current members: {:?}",
+                    sender, members
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to remove node {} from global consensus membership: {}",
+                    sender, e
+                );
+                // Continue anyway - the membership monitor will retry
+            }
+        }
 
         Ok(GracefulShutdownResponse { acknowledged: true })
     }

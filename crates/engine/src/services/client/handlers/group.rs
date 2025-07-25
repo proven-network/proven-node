@@ -9,7 +9,7 @@ use proven_transport::Transport;
 use crate::{
     consensus::group::{GroupRequest, GroupResponse},
     error::{ConsensusResult, Error, ErrorKind},
-    foundation::{events::EventBus, types::ConsensusGroupId},
+    foundation::{events::EventBus, routing::RoutingTable, types::ConsensusGroupId},
     services::{client::network::RequestForwarder, group_consensus::commands::SubmitToGroup},
 };
 
@@ -24,6 +24,8 @@ where
     event_bus: Arc<EventBus>,
     /// Request forwarder
     forwarder: Arc<RequestForwarder<T, G>>,
+    /// Routing table
+    routing_table: Arc<RoutingTable>,
     /// Phantom data for S
     _phantom: std::marker::PhantomData<S>,
 }
@@ -35,10 +37,15 @@ where
     S: StorageAdaptor + 'static,
 {
     /// Create a new group handler
-    pub fn new(event_bus: Arc<EventBus>, forwarder: Arc<RequestForwarder<T, G>>) -> Self {
+    pub fn new(
+        event_bus: Arc<EventBus>,
+        forwarder: Arc<RequestForwarder<T, G>>,
+        routing_table: Arc<RoutingTable>,
+    ) -> Self {
         Self {
             event_bus,
             forwarder,
+            routing_table,
             _phantom: std::marker::PhantomData,
         }
     }
@@ -49,12 +56,10 @@ where
         group_id: ConsensusGroupId,
         request: GroupRequest,
     ) -> ConsensusResult<GroupResponse> {
-        // Check if group is local using event bus
-        use crate::services::routing::commands::IsGroupLocal;
-
+        // Check if group is local using routing table
         let is_local = self
-            .event_bus
-            .request(IsGroupLocal { group_id })
+            .routing_table
+            .is_group_local(group_id)
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -123,6 +128,7 @@ where
         Self {
             event_bus: self.event_bus.clone(),
             forwarder: self.forwarder.clone(),
+            routing_table: self.routing_table.clone(),
             _phantom: std::marker::PhantomData,
         }
     }

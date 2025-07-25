@@ -13,8 +13,8 @@ use crate::{
         group::{GroupOperation, GroupRequest, GroupResponse},
     },
     error::ConsensusResult,
+    foundation::routing::StreamRoute,
     foundation::types::ConsensusGroupId,
-    services::routing::StreamRoute,
     services::stream::{MessageData, StreamConfig},
 };
 
@@ -54,9 +54,6 @@ pub enum ClientRequest {
     },
 }
 
-/// Type alias for a routing service reference
-pub type RoutingServiceRef = Arc<RwLock<Option<Arc<crate::services::routing::RoutingService>>>>;
-
 /// Stream routing info for query operations
 #[derive(Debug, Clone)]
 pub struct StreamRouteInfo {
@@ -68,7 +65,7 @@ impl From<StreamRoute> for StreamRouteInfo {
     fn from(route: StreamRoute) -> Self {
         Self {
             group_id: route.group_id,
-            config: route.config,
+            config: None, // StreamRoute in foundation doesn't have config
         }
     }
 }

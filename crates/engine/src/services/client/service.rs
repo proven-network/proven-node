@@ -13,10 +13,12 @@ use tracing::{debug, info};
 
 use crate::{
     error::{ConsensusResult, Error},
-    foundation::{events::EventBus, traits::ServiceLifecycle, types::ConsensusGroupId},
+    foundation::{
+        events::EventBus, routing::RoutingTable, traits::ServiceLifecycle, types::ConsensusGroupId,
+    },
     services::{
         global_consensus::GlobalConsensusService, group_consensus::GroupConsensusService,
-        routing::RoutingService, stream::StreamService,
+        stream::StreamService,
     },
 };
 
@@ -86,6 +88,9 @@ where
     /// Event bus for publishing events
     event_bus: Arc<EventBus>,
 
+    /// Routing table
+    routing_table: Arc<RoutingTable>,
+
     /// Whether the service is running
     is_running: Arc<RwLock<bool>>,
 
@@ -100,7 +105,11 @@ where
     S: StorageAdaptor + 'static,
 {
     /// Create a new client service
-    pub fn new(node_id: NodeId, event_bus: Arc<EventBus>) -> Self {
+    pub fn new(
+        node_id: NodeId,
+        event_bus: Arc<EventBus>,
+        routing_table: Arc<RoutingTable>,
+    ) -> Self {
         let (request_tx, request_rx) = mpsc::channel(1000);
 
         // Service references
@@ -114,6 +123,7 @@ where
             node_id.clone(),
             network_manager.clone(),
             event_bus.clone(),
+            routing_table.clone(),
         ));
 
         Self {
@@ -128,6 +138,7 @@ where
             stream_service,
             network_manager,
             event_bus,
+            routing_table,
             is_running: Arc::new(RwLock::new(false)),
             shutdown: Arc::new(RwLock::new(None)),
         }
@@ -160,70 +171,13 @@ where
 
     /// Get a suitable group for stream creation
     pub async fn get_suitable_group(&self) -> ConsensusResult<ConsensusGroupId> {
-        use crate::services::routing::commands::GetRoutingInfo;
-
-        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                format!("Failed to get routing info: {e}"),
-            )
-        })?;
-
-        // Find local groups
-        let mut local_groups: Vec<_> = routing_info
-            .group_routes
-            .iter()
-            .filter(|(_, group)| {
-                group.location == crate::services::routing::GroupLocation::Local
-                    || group.location == crate::services::routing::GroupLocation::Distributed
+        // Use routing table to find least loaded group
+        self.routing_table
+            .find_least_loaded_group()
+            .await
+            .ok_or_else(|| {
+                Error::with_context(crate::error::ErrorKind::NotFound, "No groups available")
             })
-            .collect();
-
-        if local_groups.is_empty() {
-            // Try remote groups
-            let mut remote_groups: Vec<_> = routing_info
-                .group_routes
-                .iter()
-                .filter(|(_, group)| {
-                    group.location == crate::services::routing::GroupLocation::Remote
-                })
-                .collect();
-
-            if remote_groups.is_empty() {
-                return Err(Error::with_context(
-                    crate::error::ErrorKind::InvalidState,
-                    "No consensus groups available",
-                ));
-            }
-
-            // Sort by preference: default group first, then by stream count
-            remote_groups.sort_by(|(id_a, group_a), (id_b, group_b)| {
-                let default_id = ConsensusGroupId::new(1);
-                if **id_a == default_id && **id_b != default_id {
-                    std::cmp::Ordering::Less
-                } else if **id_a != default_id && **id_b == default_id {
-                    std::cmp::Ordering::Greater
-                } else {
-                    group_a.stream_count.cmp(&group_b.stream_count)
-                }
-            });
-
-            return Ok(*remote_groups[0].0);
-        }
-
-        // Sort local groups by preference
-        local_groups.sort_by(|(id_a, group_a), (id_b, group_b)| {
-            let default_id = ConsensusGroupId::new(1);
-            if **id_a == default_id && **id_b != default_id {
-                std::cmp::Ordering::Less
-            } else if **id_b == default_id && **id_a != default_id {
-                std::cmp::Ordering::Greater
-            } else {
-                group_a.stream_count.cmp(&group_b.stream_count)
-            }
-        });
-
-        Ok(*local_groups[0].0)
     }
 
     /// Read messages directly from a stream
@@ -233,13 +187,9 @@ where
         start_sequence: LogIndex,
         count: LogIndex,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
-        use crate::services::routing::commands::{GetRoutingInfo, GetStreamRoutingInfo};
-
         let route_info = self
-            .event_bus
-            .request(GetStreamRoutingInfo {
-                stream_name: stream_name.to_string(),
-            })
+            .routing_table
+            .get_stream_route(stream_name)
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -254,44 +204,36 @@ where
                 )
             })?;
 
-        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                format!("Failed to get routing info: {e}"),
-            )
-        })?;
+        let is_local = self
+            .routing_table
+            .is_group_local(route_info.group_id)
+            .await
+            .unwrap_or(false);
 
-        if let Some(group_info) = routing_info.group_routes.get(&route_info.group_id) {
-            if group_info.members.contains(&self.node_id) {
-                // Stream is local - use event bus to read messages
-                use crate::services::stream::StreamName;
-                use crate::services::stream::commands::ReadMessages;
+        if is_local {
+            // Stream is local - use event bus to read messages
+            use crate::services::stream::StreamName;
+            use crate::services::stream::commands::ReadMessages;
 
-                Ok(self
-                    .event_bus
-                    .request(ReadMessages {
-                        stream_name: StreamName::new(stream_name),
-                        start_offset: start_sequence.get(),
-                        count: count.get(),
-                    })
-                    .await
-                    .map_err(|e| {
-                        Error::with_context(
-                            crate::error::ErrorKind::Service,
-                            format!("Failed to read messages: {e}"),
-                        )
-                    })?)
-            } else {
-                // Stream is remote
-                self.forwarder
-                    .forward_read_request(route_info.group_id, stream_name, start_sequence, count)
-                    .await
-            }
+            Ok(self
+                .event_bus
+                .request(ReadMessages {
+                    stream_name: StreamName::new(stream_name),
+                    start_offset: start_sequence.get(),
+                    count: count.get(),
+                })
+                .await
+                .map_err(|e| {
+                    Error::with_context(
+                        crate::error::ErrorKind::Service,
+                        format!("Failed to read messages: {e}"),
+                    )
+                })?)
         } else {
-            Err(Error::with_context(
-                crate::error::ErrorKind::NotFound,
-                format!("Group {:?} not found", route_info.group_id),
-            ))
+            // Stream is remote
+            self.forwarder
+                .forward_read_request(route_info.group_id, stream_name, start_sequence, count)
+                .await
         }
     }
 
@@ -304,17 +246,28 @@ where
             self.event_bus.clone(),
         );
 
-        let group_handler = GroupHandler::new(self.event_bus.clone(), self.forwarder.clone());
+        let group_handler = GroupHandler::new(
+            self.event_bus.clone(),
+            self.forwarder.clone(),
+            self.routing_table.clone(),
+        );
 
-        let stream_handler =
-            StreamHandler::new(self.event_bus.clone(), Arc::new(group_handler.clone()));
+        let stream_handler = StreamHandler::new(
+            self.event_bus.clone(),
+            Arc::new(group_handler.clone()),
+            self.routing_table.clone(),
+        );
 
         let stream_read_handler = StreamReadHandler::new(self.stream_service.clone());
 
         // Create streaming handler - StorageAdaptor now requires LogStorageStreaming
         let stream_streaming = Some(StreamStreamingHandler::new(self.stream_service.clone()));
 
-        let query_handler = QueryHandler::new(self.event_bus.clone(), self.forwarder.clone());
+        let query_handler = QueryHandler::new(
+            self.event_bus.clone(),
+            self.forwarder.clone(),
+            self.routing_table.clone(),
+        );
 
         let handlers = Arc::new(ClientHandlers {
             global: global_handler,
@@ -759,13 +712,9 @@ where
 
     /// Check if a stream is local to this node
     pub async fn is_stream_local(&self, stream_name: &str) -> ConsensusResult<bool> {
-        use crate::services::routing::commands::{GetRoutingInfo, GetStreamRoutingInfo};
-
         let route_info = self
-            .event_bus
-            .request(GetStreamRoutingInfo {
-                stream_name: stream_name.to_string(),
-            })
+            .routing_table
+            .get_stream_route(stream_name)
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -780,18 +729,12 @@ where
                 )
             })?;
 
-        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                format!("Failed to get routing info: {e}"),
-            )
-        })?;
-
-        if let Some(group_info) = routing_info.group_routes.get(&route_info.group_id) {
-            Ok(group_info.members.contains(&self.node_id))
-        } else {
-            Ok(false)
-        }
+        // Check if the group that owns this stream is local
+        Ok(self
+            .routing_table
+            .is_group_local(route_info.group_id)
+            .await
+            .unwrap_or(false))
     }
 
     /// Start a streaming session for a stream
@@ -806,13 +749,9 @@ where
         Vec<crate::services::stream::StoredMessage>,
         bool,
     )> {
-        use crate::services::routing::commands::{GetRoutingInfo, GetStreamRoutingInfo};
-
         let route_info = self
-            .event_bus
-            .request(GetStreamRoutingInfo {
-                stream_name: stream_name.to_string(),
-            })
+            .routing_table
+            .get_stream_route(stream_name)
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -827,56 +766,45 @@ where
                 )
             })?;
 
-        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                format!("Failed to get routing info: {e}"),
-            )
-        })?;
+        let is_local = self
+            .routing_table
+            .is_group_local(route_info.group_id)
+            .await
+            .unwrap_or(false);
 
-        if let Some(group_info) = routing_info.group_routes.get(&route_info.group_id) {
-            if group_info.members.contains(&self.node_id) {
-                // Stream is local
-                let handlers_guard = self.handlers.read().await;
-                let handlers = handlers_guard.as_ref().ok_or_else(|| {
-                    Error::with_context(
-                        crate::error::ErrorKind::Service,
-                        "Handlers not initialized",
-                    )
-                })?;
+        if is_local {
+            // Stream is local
+            let handlers_guard = self.handlers.read().await;
+            let handlers = handlers_guard.as_ref().ok_or_else(|| {
+                Error::with_context(crate::error::ErrorKind::Service, "Handlers not initialized")
+            })?;
 
-                let streaming_handler = handlers.stream_streaming.as_ref().ok_or_else(|| {
-                    Error::with_context(crate::error::ErrorKind::Service, "Streaming not supported")
-                })?;
+            let streaming_handler = handlers.stream_streaming.as_ref().ok_or_else(|| {
+                Error::with_context(crate::error::ErrorKind::Service, "Streaming not supported")
+            })?;
 
-                let (session_id, messages, has_more, _next) = streaming_handler
-                    .start_stream(
-                        self.node_id.clone(),
-                        stream_name.to_string(),
-                        start_sequence,
-                        end_sequence,
-                        batch_size,
-                    )
-                    .await?;
+            let (session_id, messages, has_more, _next) = streaming_handler
+                .start_stream(
+                    self.node_id.clone(),
+                    stream_name.to_string(),
+                    start_sequence,
+                    end_sequence,
+                    batch_size,
+                )
+                .await?;
 
-                Ok((session_id, messages, has_more))
-            } else {
-                // Stream is remote
-                self.forwarder
-                    .forward_streaming_start(
-                        route_info.group_id,
-                        stream_name,
-                        start_sequence,
-                        end_sequence,
-                        batch_size,
-                    )
-                    .await
-            }
+            Ok((session_id, messages, has_more))
         } else {
-            Err(Error::with_context(
-                crate::error::ErrorKind::NotFound,
-                format!("Group {:?} not found", route_info.group_id),
-            ))
+            // Stream is remote
+            self.forwarder
+                .forward_streaming_start(
+                    route_info.group_id,
+                    stream_name,
+                    start_sequence,
+                    end_sequence,
+                    batch_size,
+                )
+                .await
         }
     }
 

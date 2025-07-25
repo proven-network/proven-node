@@ -6,5 +6,4 @@ pub mod membership;
 pub mod migration;
 pub mod monitoring;
 pub mod pubsub;
-pub mod routing;
 pub mod stream;

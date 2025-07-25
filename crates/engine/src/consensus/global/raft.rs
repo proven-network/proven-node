@@ -48,6 +48,13 @@ pub trait GlobalRaftMessageHandler: Send + Sync {
         &self,
         members: std::collections::BTreeMap<NodeId, proven_topology::Node>,
     ) -> ConsensusResult<()>;
+
+    /// Change membership
+    async fn change_membership(
+        &self,
+        members: std::collections::BTreeMap<NodeId, proven_topology::Node>,
+        retain: bool,
+    ) -> ConsensusResult<()>;
 }
 
 use super::callbacks::GlobalConsensusCallbacks;
@@ -131,6 +138,16 @@ impl<L: LogStorage> GlobalRaftMessageHandler for GlobalConsensusLayer<L> {
             )
         })
     }
+
+    async fn change_membership(
+        &self,
+        members: std::collections::BTreeMap<NodeId, proven_topology::Node>,
+        retain: bool,
+    ) -> ConsensusResult<()> {
+        // Convert BTreeMap to BTreeSet for the membership change
+        let member_ids: std::collections::BTreeSet<NodeId> = members.keys().cloned().collect();
+        self.change_membership(member_ids, retain).await
+    }
 }
 
 impl<L: LogStorage> GlobalConsensusLayer<L> {
@@ -156,6 +173,67 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
             .map_err(|e| {
                 Error::with_context(ErrorKind::Consensus, format!("Failed to add learner: {e}"))
             })?;
+        Ok(())
+    }
+
+    /// Add a node to the consensus cluster
+    pub async fn add_node(
+        &self,
+        node_id: NodeId,
+        node_info: proven_topology::Node,
+    ) -> ConsensusResult<()> {
+        // Get current membership
+        let metrics = self.raft.metrics().borrow().clone();
+        let current_membership = &metrics.membership_config;
+        let current_members: Vec<NodeId> = current_membership.membership().voter_ids().collect();
+
+        // Check if node is already a member
+        if current_members.contains(&node_id) {
+            return Ok(());
+        }
+
+        // Add as learner first
+        self.add_learner(node_id.clone(), node_info).await?;
+
+        // Give learner time to catch up
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Build new membership including the new node
+        let mut new_members = std::collections::BTreeSet::new();
+        for member in current_members {
+            new_members.insert(member);
+        }
+        new_members.insert(node_id);
+
+        // Promote to voter
+        self.change_membership(new_members, false).await?;
+
+        Ok(())
+    }
+
+    /// Remove a node from the consensus cluster
+    pub async fn remove_node(&self, node_id: NodeId) -> ConsensusResult<()> {
+        // Get current membership
+        let metrics = self.raft.metrics().borrow().clone();
+        let current_membership = &metrics.membership_config;
+        let current_members: Vec<NodeId> = current_membership.membership().voter_ids().collect();
+
+        // Check if node is not a member
+        if !current_members.contains(&node_id) {
+            return Ok(());
+        }
+
+        // Build new membership without the removed node
+        let mut new_members = std::collections::BTreeSet::new();
+        for member in current_members {
+            if member != node_id {
+                new_members.insert(member);
+            }
+        }
+
+        // Update membership
+        self.change_membership(new_members, false).await?;
+
         Ok(())
     }
 
@@ -283,6 +361,49 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
     /// Get metrics
     pub fn metrics(&self) -> tokio::sync::watch::Receiver<RaftMetrics<GlobalTypeConfig>> {
         self.raft.metrics()
+    }
+
+    /// Start monitoring for leader changes
+    pub fn start_leader_monitoring(&self, callbacks: Arc<dyn GlobalConsensusCallbacks>) {
+        let mut metrics_rx = self.raft.metrics();
+
+        tokio::spawn(async move {
+            let mut current_leader: Option<NodeId> = None;
+            let mut current_term: u64 = 0;
+
+            loop {
+                tokio::select! {
+                    Ok(_) = metrics_rx.changed() => {
+                        let metrics = metrics_rx.borrow().clone();
+
+                        // Check for leader change or term change
+                        if metrics.current_leader != current_leader || metrics.current_term != current_term {
+                            let old_leader = current_leader.clone();
+                            current_leader = metrics.current_leader.clone();
+                            current_term = metrics.current_term;
+
+                            tracing::info!(
+                                "Global consensus leader changed: {:?} -> {:?} (term {})",
+                                old_leader, current_leader, current_term
+                            );
+
+                            // Call the callback with proper term
+                            if let Err(e) = callbacks.on_leader_changed(
+                                old_leader,
+                                current_leader.clone(),
+                                current_term
+                            ).await {
+                                tracing::error!("Failed to handle leader change: {}", e);
+                            }
+                        }
+                    }
+                    else => {
+                        tracing::debug!("Leader monitoring task stopped");
+                        break;
+                    }
+                }
+            }
+        });
     }
 }
 

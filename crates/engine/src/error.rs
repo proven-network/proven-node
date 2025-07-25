@@ -234,8 +234,8 @@ impl From<crate::services::monitoring::MonitoringError> for Error {
     }
 }
 
-impl From<crate::services::routing::RoutingError> for Error {
-    fn from(err: crate::services::routing::RoutingError) -> Self {
+impl From<crate::foundation::routing::RoutingError> for Error {
+    fn from(err: crate::foundation::routing::RoutingError) -> Self {
         Self::with_context(ErrorKind::Service, format!("Routing error: {err}"))
     }
 }

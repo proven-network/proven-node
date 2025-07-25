@@ -100,7 +100,59 @@ impl Request for DeleteStream {
     }
 }
 
-/// Update global consensus membership
+/// Add a node to global consensus
+#[derive(Debug, Clone)]
+pub struct AddNodeToConsensus {
+    pub node_id: NodeId,
+}
+
+impl Request for AddNodeToConsensus {
+    type Response = Vec<NodeId>; // Returns current members after addition
+
+    fn request_type() -> &'static str {
+        "AddNodeToConsensus"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(30)
+    }
+}
+
+/// Remove a node from global consensus
+#[derive(Debug, Clone)]
+pub struct RemoveNodeFromConsensus {
+    pub node_id: NodeId,
+}
+
+impl Request for RemoveNodeFromConsensus {
+    type Response = Vec<NodeId>; // Returns current members after removal
+
+    fn request_type() -> &'static str {
+        "RemoveNodeFromConsensus"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(30)
+    }
+}
+
+/// Get current global consensus members
+#[derive(Debug, Clone)]
+pub struct GetGlobalConsensusMembers;
+
+impl Request for GetGlobalConsensusMembers {
+    type Response = Vec<NodeId>;
+
+    fn request_type() -> &'static str {
+        "GetGlobalConsensusMembers"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(10)
+    }
+}
+
+/// Update global consensus membership (legacy - prefer AddNodeToConsensus/RemoveNodeFromConsensus)
 #[derive(Debug, Clone)]
 pub struct UpdateGlobalMembership {
     pub add_members: Vec<NodeId>,

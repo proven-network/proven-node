@@ -8,7 +8,7 @@ use proven_topology::NodeId;
 use crate::consensus::group::types::{GroupRequest, GroupResponse};
 use crate::foundation::events::Request;
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamName, StreamState};
+use crate::services::stream::{StreamConfig, StreamName, StreamState};
 
 /// Create a new consensus group
 #[derive(Debug, Clone)]

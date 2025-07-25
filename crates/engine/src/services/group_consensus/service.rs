@@ -22,6 +22,7 @@ use crate::{
     consensus::group::GroupConsensusLayer,
     error::{ConsensusResult, Error, ErrorKind},
     foundation::events::EventBus,
+    foundation::routing::RoutingTable,
     foundation::types::ConsensusGroupId,
     services::group_consensus::events::GroupConsensusEvent,
     services::stream::StreamService,
@@ -62,6 +63,8 @@ where
     topology_manager: Option<Arc<proven_topology::TopologyManager<G>>>,
     /// Stream service for message persistence
     stream_service: Arc<RwLock<Option<Arc<StreamService<S>>>>>,
+    /// Routing table
+    routing_table: Arc<RoutingTable>,
 }
 
 impl<T, G, S> GroupConsensusService<T, G, S>
@@ -77,6 +80,7 @@ where
         network_manager: Arc<NetworkManager<T, G>>,
         storage_manager: Arc<StorageManager<S>>,
         event_bus: Arc<EventBus>,
+        routing_table: Arc<RoutingTable>,
     ) -> Self {
         Self {
             config,
@@ -88,12 +92,19 @@ where
             event_bus,
             topology_manager: None,
             stream_service: Arc::new(RwLock::new(None)),
+            routing_table,
         }
     }
 
     /// Set topology manager
     pub fn with_topology(mut self, topology: Arc<proven_topology::TopologyManager<G>>) -> Self {
         self.topology_manager = Some(topology);
+        self
+    }
+
+    /// Set routing table
+    pub fn with_routing_table(mut self, routing_table: Arc<RoutingTable>) -> Self {
+        self.routing_table = routing_table;
         self
     }
 
@@ -311,6 +322,7 @@ where
             self.event_bus.clone(),
             self.node_id.clone(),
             group_id,
+            self.routing_table.clone(),
         );
 
         // Initialize the group (we already checked that we're a member)
@@ -646,6 +658,7 @@ where
         event_bus: Arc<EventBus>,
         _node_id: NodeId,
         group_id: ConsensusGroupId,
+        routing_table: Arc<RoutingTable>,
     ) where
         L: LogStorage + 'static,
     {
@@ -674,6 +687,34 @@ where
                                     "Group {} consensus leader changed: {:?} -> {} (term {})",
                                     group_id_clone, old_leader, new_leader, current_term
                                 );
+
+                                // Update routing table
+                                {
+                                    let routing_table_clone = routing_table.clone();
+                                    let new_leader_clone = new_leader.clone();
+                                    let group_id_for_update = group_id_clone;
+
+                                    tokio::spawn(async move {
+                                        if let Ok(Some(route)) = routing_table_clone.get_group_route(group_id_for_update).await {
+                                            if let Err(e) = routing_table_clone
+                                                .update_group_route(group_id_for_update, route.members, Some(new_leader_clone.clone()))
+                                                .await
+                                            {
+                                                tracing::error!(
+                                                    "Failed to update leader for group {:?}: {}",
+                                                    group_id_for_update,
+                                                    e
+                                                );
+                                            } else {
+                                                tracing::debug!(
+                                                    "Updated routing table: group {:?} leader = {:?}",
+                                                    group_id_for_update,
+                                                    new_leader_clone
+                                                );
+                                            }
+                                        }
+                                    });
+                                }
 
                                 // Publish event
                                 let event = GroupConsensusEvent::LeaderChanged {
@@ -713,6 +754,7 @@ where
             event_bus: self.event_bus.clone(),
             topology_manager: self.topology_manager.clone(),
             stream_service: self.stream_service.clone(),
+            routing_table: self.routing_table.clone(),
         }
     }
 }

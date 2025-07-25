@@ -6,11 +6,8 @@ use proven_transport::Transport;
 
 use crate::{
     error::{ConsensusResult, Error, ErrorKind},
-    foundation::{events::EventBus, types::ConsensusGroupId},
-    services::{
-        client::types::{GroupInfo, StreamInfo},
-        group_consensus::commands::GetStreamState,
-    },
+    foundation::{events::EventBus, routing::RoutingTable, types::ConsensusGroupId},
+    services::client::types::{GroupInfo, StreamInfo},
 };
 
 use crate::services::client::network::RequestForwarder;
@@ -27,6 +24,8 @@ where
     event_bus: Arc<EventBus>,
     /// Request forwarder
     forwarder: Arc<RequestForwarder<T, G>>,
+    /// Routing table
+    routing_table: Arc<RoutingTable>,
     /// Phantom data for S
     _phantom: std::marker::PhantomData<S>,
 }
@@ -38,24 +37,25 @@ where
     S: StorageAdaptor + 'static,
 {
     /// Create a new query handler
-    pub fn new(event_bus: Arc<EventBus>, forwarder: Arc<RequestForwarder<T, G>>) -> Self {
+    pub fn new(
+        event_bus: Arc<EventBus>,
+        forwarder: Arc<RequestForwarder<T, G>>,
+        routing_table: Arc<RoutingTable>,
+    ) -> Self {
         Self {
             event_bus,
             forwarder,
+            routing_table,
             _phantom: std::marker::PhantomData,
         }
     }
 
     /// Get stream information
     pub async fn get_stream_info(&self, stream_name: &str) -> ConsensusResult<Option<StreamInfo>> {
-        // Get stream routing info
-        use crate::services::routing::commands::{GetStreamRoutingInfo, IsGroupLocal};
-
+        // Get stream routing info directly from routing table
         match self
-            .event_bus
-            .request(GetStreamRoutingInfo {
-                stream_name: stream_name.to_string(),
-            })
+            .routing_table
+            .get_stream_route(stream_name)
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -64,79 +64,16 @@ where
                 )
             })? {
             Some(route) => {
-                // Check if the group is local or remote
-                let is_local = self
-                    .event_bus
-                    .request(IsGroupLocal {
-                        group_id: route.group_id,
-                    })
-                    .await
-                    .map_err(|e| {
-                        Error::with_context(
-                            ErrorKind::Service,
-                            format!("Failed to check if group is local: {e}"),
-                        )
-                    })?;
-
-                if is_local {
-                    // Query the local group consensus for stream state using event bus
-                    let get_stream_state = GetStreamState {
-                        group_id: route.group_id,
-                        stream_name: crate::services::stream::StreamName::new(stream_name),
-                    };
-
-                    // Get the stream state from the group
-                    match self.event_bus.request(get_stream_state).await {
-                        Ok(Some(stream_state)) => {
-                            // Stream exists with state info
-                            let stream_info = StreamInfo {
-                            name: stream_name.to_string(),
-                            config: route.config.unwrap_or({
-                                // Fallback config if not stored in route
-                                crate::services::stream::StreamConfig {
-                                    max_message_size: 1024 * 1024,
-                                    retention: crate::services::stream::config::RetentionPolicy::Forever,
-                                    persistence_type: crate::services::stream::config::PersistenceType::Persistent,
-                                    allow_auto_create: false,
-                                }
-                            }),
-                            group_id: route.group_id,
-                            last_sequence: LogIndex::new(stream_state.next_sequence.get().saturating_sub(1)).unwrap_or(stream_state.next_sequence),
-                            message_count: stream_state.stats.message_count,
-                        };
-                            Ok(Some(stream_info))
-                        }
-                        Ok(None) => {
-                            // Stream exists in routing but has no state yet (no messages)
-                            // Return info based on routing alone
-                            let stream_info = StreamInfo {
-                            name: stream_name.to_string(),
-                            config: route.config.unwrap_or({
-                                // Fallback config if not stored in route
-                                crate::services::stream::StreamConfig {
-                                    max_message_size: 1024 * 1024,
-                                    retention: crate::services::stream::config::RetentionPolicy::Forever,
-                                    persistence_type: crate::services::stream::config::PersistenceType::Persistent,
-                                    allow_auto_create: false,
-                                }
-                            }),
-                            group_id: route.group_id,
-                            last_sequence: LogIndex::new(1).unwrap(), // No messages yet, start at 1
-                            message_count: 0, // No messages yet
-                        };
-                            Ok(Some(stream_info))
-                        }
-                        Err(e) => {
-                            let consensus_err: Error = e.into();
-                            Err(consensus_err)
-                        }
-                    }
-                } else {
-                    // For remote groups, forward the query to a node in that group
-                    self.forwarder
-                        .forward_stream_info_query(route.group_id, stream_name)
-                        .await
-                }
+                // For now, return basic info from routing table
+                // TODO: Implement GetStreamState handler in group consensus
+                let stream_info = StreamInfo {
+                    name: stream_name.to_string(),
+                    config: Default::default(), // Use default config for now
+                    group_id: route.group_id,
+                    last_sequence: LogIndex::new(1).unwrap(), // Default to 1
+                    message_count: 0,                         // Unknown for now
+                };
+                Ok(Some(stream_info))
             }
             None => {
                 // Stream not found
@@ -169,6 +106,7 @@ where
         Self {
             event_bus: self.event_bus.clone(),
             forwarder: self.forwarder.clone(),
+            routing_table: self.routing_table.clone(),
             _phantom: std::marker::PhantomData,
         }
     }
