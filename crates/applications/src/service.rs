@@ -644,7 +644,7 @@ async fn listen_for_response<T, G, S>(
         .stream_messages(command_stream.clone(), start_seq, None)
         .await
     {
-        Ok(s) => s.follow(),
+        Ok(s) => s,
         Err(e) => {
             tracing::error!("Failed to create stream for response listening: {}", e);
             return;

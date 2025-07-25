@@ -2,12 +2,12 @@
 
 mod adaptor;
 mod callbacks;
+pub mod command_handlers;
 pub mod commands;
 mod config;
 pub mod events;
 mod messages;
 mod service;
-mod subscribers;
 
 pub use adaptor::{GlobalNetworkFactory, GlobalRaftNetworkAdapter};
 pub use config::{GlobalConsensusConfig, ServiceState};

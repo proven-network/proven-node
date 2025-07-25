@@ -136,6 +136,9 @@ where
             new_event_bus.clone(),
         ));
 
+        // Register command handlers for membership service
+        membership_service.clone().register_command_handlers();
+
         let global_consensus_config = GlobalConsensusConfig {
             election_timeout_min: config.consensus.global.election_timeout_min,
             election_timeout_max: config.consensus.global.election_timeout_max,
@@ -273,9 +276,6 @@ where
             .set_group_consensus(group_consensus_service.clone())
             .await;
         client_service
-            .set_routing_service(routing_service.clone())
-            .await;
-        client_service
             .set_stream_service(stream_service.clone())
             .await;
         client_service
@@ -295,6 +295,12 @@ where
         // They communicate through events instead
         global_consensus_service
             .set_membership_service(membership_service.clone())
+            .await;
+
+        // Register command handlers for global consensus
+        global_consensus_service
+            .clone()
+            .register_command_handlers()
             .await;
 
         // Create PubSub service with network manager and new event bus

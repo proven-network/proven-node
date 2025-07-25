@@ -149,6 +149,12 @@ where
             .handle_requests::<GetGroupInfo, _>(get_info_handler)
             .expect("Failed to register GetGroupInfo handler");
 
+        // Register GetStreamState handler
+        let get_stream_state_handler = GetStreamStateHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<GetStreamState, _>(get_stream_state_handler)
+            .expect("Failed to register GetStreamState handler");
+
         tracing::info!("GroupConsensusService: Registered command handlers");
 
         // Register event handlers

@@ -120,8 +120,28 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         config: &crate::services::stream::StreamConfig,
         group_id: ConsensusGroupId,
     ) -> ConsensusResult<()> {
-        // Just publish event - subscribers will handle all the work
+        // Use command pattern to create stream synchronously
         if let Some(ref event_bus) = self.event_bus {
+            use crate::services::stream::commands::CreateStream;
+
+            // Create the stream through command handler
+            let create_cmd = CreateStream {
+                name: stream_name.clone(),
+                config: config.clone(),
+                group_id,
+            };
+
+            // This will create the stream synchronously before we continue
+            if let Err(e) = event_bus.request(create_cmd).await {
+                tracing::error!(
+                    "Failed to create stream {} in group {:?}: {}",
+                    stream_name,
+                    group_id,
+                    e
+                );
+            }
+
+            // Still emit event for other services (routing, etc)
             let event = GlobalConsensusEvent::StreamCreated {
                 stream_name: stream_name.clone(),
                 config: config.clone(),
@@ -134,8 +154,21 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
     }
 
     async fn on_stream_deleted(&self, stream_name: &StreamName) -> ConsensusResult<()> {
-        // Just publish event - subscribers will handle all the work
+        // Use command pattern to delete stream synchronously
         if let Some(ref event_bus) = self.event_bus {
+            use crate::services::stream::commands::DeleteStream;
+
+            // Delete the stream through command handler
+            let delete_cmd = DeleteStream {
+                name: stream_name.clone(),
+            };
+
+            // This will delete the stream synchronously before we continue
+            if let Err(e) = event_bus.request(delete_cmd).await {
+                tracing::error!("Failed to delete stream {}: {}", stream_name, e);
+            }
+
+            // Still emit event for other services (routing, etc)
             let event = GlobalConsensusEvent::StreamDeleted {
                 stream_name: stream_name.clone(),
             };

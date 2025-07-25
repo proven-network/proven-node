@@ -3,10 +3,11 @@
 //! This service manages stream storage and provides stream operations following
 //! the established service patterns in the consensus engine.
 
+use dashmap::DashMap;
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::{RwLock, oneshot};
+use tokio::sync::{RwLock, oneshot, watch};
 use tokio_stream::{Stream, StreamExt};
 use tracing::{debug, error, info, warn};
 
@@ -26,7 +27,7 @@ use crate::services::stream::storage::{
 use crate::services::stream::{PersistenceType, StreamConfig, StreamName};
 
 /// Type alias for stream storage map
-type StreamStorageMap<S> = HashMap<StreamName, Arc<StreamStorageImpl<StreamStorage<S>>>>;
+type StreamStorageMap<S> = DashMap<StreamName, Arc<StreamStorageImpl<StreamStorage<S>>>>;
 
 /// Stream metadata
 #[derive(Debug, Clone)]
@@ -74,13 +75,17 @@ pub struct StreamService<S: StorageAdaptor> {
     config: StreamServiceConfig,
 
     /// Stream storage instances by stream name
-    streams: Arc<RwLock<StreamStorageMap<S>>>,
+    pub(crate) streams: Arc<StreamStorageMap<S>>,
 
     /// Stream configurations
-    stream_configs: Arc<RwLock<HashMap<StreamName, StreamConfig>>>,
+    stream_configs: Arc<DashMap<StreamName, StreamConfig>>,
 
     /// Stream metadata
-    stream_metadata: Arc<RwLock<HashMap<StreamName, StreamMetadata>>>,
+    stream_metadata: Arc<DashMap<StreamName, StreamMetadata>>,
+
+    /// Stream append notifiers - watchers are notified when new messages are appended
+    /// The value is the latest sequence number in the stream
+    stream_notifiers: Arc<DashMap<StreamName, watch::Sender<LogIndex>>>,
 
     /// Storage manager for persistent streams
     storage_manager: Arc<StorageManager<S>>,
@@ -107,9 +112,10 @@ impl<S: StorageAdaptor> StreamService<S> {
     ) -> Self {
         Self {
             config,
-            streams: Arc::new(RwLock::new(HashMap::new())),
-            stream_configs: Arc::new(RwLock::new(HashMap::new())),
-            stream_metadata: Arc::new(RwLock::new(HashMap::new())),
+            streams: Arc::new(DashMap::new()),
+            stream_configs: Arc::new(DashMap::new()),
+            stream_metadata: Arc::new(DashMap::new()),
+            stream_notifiers: Arc::new(DashMap::new()),
             storage_manager,
             event_bus,
             is_running: Arc::new(RwLock::new(false)),
@@ -125,16 +131,14 @@ impl<S: StorageAdaptor> StreamService<S> {
         config: StreamConfig,
         group_id: ConsensusGroupId,
     ) -> ConsensusResult<()> {
-        let mut configs = self.stream_configs.write().await;
-
-        if configs.contains_key(&name) {
+        if self.stream_configs.contains_key(&name) {
             return Err(Error::with_context(
                 ErrorKind::InvalidState,
                 format!("Stream {name} already exists"),
             ));
         }
 
-        configs.insert(name.clone(), config.clone());
+        self.stream_configs.insert(name.clone(), config.clone());
 
         // Initialize stream metadata
         let metadata = StreamMetadata {
@@ -149,10 +153,11 @@ impl<S: StorageAdaptor> StreamService<S> {
             message_count: 0,
             total_bytes: 0,
         };
-        self.stream_metadata
-            .write()
-            .await
-            .insert(name.clone(), metadata);
+        self.stream_metadata.insert(name.clone(), metadata);
+
+        // Create a notifier for this stream (start at sequence 1)
+        let (tx, _rx) = watch::channel(LogIndex::new(1).unwrap());
+        self.stream_notifiers.insert(name.clone(), tx);
 
         // Create storage if persistence is required
         if config.persistence_type == PersistenceType::Persistent {
@@ -163,7 +168,7 @@ impl<S: StorageAdaptor> StreamService<S> {
                 namespace,
             ));
 
-            self.streams.write().await.insert(name.clone(), storage);
+            self.streams.insert(name.clone(), storage);
         }
 
         info!(
@@ -175,8 +180,9 @@ impl<S: StorageAdaptor> StreamService<S> {
 
     /// Delete a stream
     pub async fn delete_stream(&self, name: &StreamName) -> ConsensusResult<()> {
-        self.stream_configs.write().await.remove(name);
-        self.streams.write().await.remove(name);
+        self.stream_configs.remove(name);
+        self.streams.remove(name);
+        self.stream_notifiers.remove(name);
 
         info!("Deleted stream {}", name);
         Ok(())
@@ -187,19 +193,16 @@ impl<S: StorageAdaptor> StreamService<S> {
         &self,
         stream_name: &StreamName,
     ) -> Arc<StreamStorageImpl<StreamStorage<S>>> {
-        let mut streams = self.streams.write().await;
-
-        if let Some(storage) = streams.get(stream_name) {
+        if let Some(storage) = self.streams.get(stream_name) {
             return storage.clone();
         }
 
         // Read configs to determine persistence type
-        let configs = self.stream_configs.read().await;
-        let persistence_type = configs
+        let persistence_type = self
+            .stream_configs
             .get(stream_name)
-            .map(|c| c.persistence_type)
+            .map(|entry| entry.persistence_type)
             .unwrap_or(self.config.default_persistence);
-        drop(configs);
 
         let storage = match persistence_type {
             PersistenceType::Persistent => {
@@ -216,7 +219,7 @@ impl<S: StorageAdaptor> StreamService<S> {
             }
         };
 
-        streams.insert(stream_name.clone(), storage.clone());
+        self.streams.insert(stream_name.clone(), storage.clone());
         storage
     }
 
@@ -229,15 +232,15 @@ impl<S: StorageAdaptor> StreamService<S> {
         stream_name: &StreamName,
     ) -> Option<Arc<StreamStorageImpl<StreamStorage<S>>>> {
         // First check if we have it in memory
-        if let Some(storage) = self.streams.read().await.get(stream_name).cloned() {
-            return Some(storage);
+        if let Some(storage) = self.streams.get(stream_name) {
+            return Some(storage.clone());
         }
 
         // Get stream config to determine persistence type
-        let configs = self.stream_configs.read().await;
-        let config = configs.get(stream_name);
-        let persistence_type = config.map(|c| c.persistence_type);
-        drop(configs);
+        let persistence_type = self
+            .stream_configs
+            .get(stream_name)
+            .map(|entry| entry.persistence_type);
 
         // For persistent streams (or if we don't know the type), try to create storage on demand
         match persistence_type {
@@ -258,10 +261,13 @@ impl<S: StorageAdaptor> StreamService<S> {
                         ));
 
                         // Store it for future use
-                        self.streams
-                            .write()
-                            .await
-                            .insert(stream_name.clone(), storage.clone());
+                        self.streams.insert(stream_name.clone(), storage.clone());
+
+                        // Also create a notifier if it doesn't exist
+                        if !self.stream_notifiers.contains_key(stream_name) {
+                            let (tx, _rx) = watch::channel(LogIndex::new(1).unwrap());
+                            self.stream_notifiers.insert(stream_name.clone(), tx);
+                        }
 
                         Some(storage)
                     }
@@ -280,7 +286,9 @@ impl<S: StorageAdaptor> StreamService<S> {
 
     /// Get stream configuration
     pub async fn get_stream_config(&self, stream_name: &StreamName) -> Option<StreamConfig> {
-        self.stream_configs.read().await.get(stream_name).cloned()
+        self.stream_configs
+            .get(stream_name)
+            .map(|entry| entry.clone())
     }
 
     /// Read messages from a stream
@@ -414,27 +422,48 @@ impl<S: StorageAdaptor> StreamService<S> {
 
     /// List all streams
     pub async fn list_streams(&self) -> Vec<StreamName> {
-        self.stream_configs.read().await.keys().cloned().collect()
+        self.stream_configs
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     /// Get stream metadata
     pub async fn get_stream_metadata(&self, stream_name: &StreamName) -> Option<StreamMetadata> {
-        self.stream_metadata.read().await.get(stream_name).cloned()
+        self.stream_metadata
+            .get(stream_name)
+            .map(|entry| entry.clone())
     }
 
     /// Get all stream metadata
     pub async fn get_all_stream_metadata(&self) -> Vec<StreamMetadata> {
         self.stream_metadata
-            .read()
-            .await
-            .values()
-            .cloned()
+            .iter()
+            .map(|entry| entry.value().clone())
             .collect()
     }
 
     /// Get the underlying storage manager
     pub fn storage_manager(&self) -> Arc<StorageManager<S>> {
         self.storage_manager.clone()
+    }
+
+    /// Notify watchers that new messages have been appended to a stream
+    pub async fn notify_stream_append(&self, stream_name: &StreamName, last_sequence: LogIndex) {
+        if let Some(notifier) = self.stream_notifiers.get(stream_name) {
+            // Don't care if there are no receivers
+            let _ = notifier.send(last_sequence);
+        }
+    }
+
+    /// Subscribe to stream append notifications
+    pub async fn subscribe_to_stream(
+        &self,
+        stream_name: &StreamName,
+    ) -> Option<watch::Receiver<LogIndex>> {
+        self.stream_notifiers
+            .get(stream_name)
+            .map(|notifier| notifier.subscribe())
     }
 
     /// Delete a message from storage immediately (for consensus operations)
@@ -452,7 +481,7 @@ impl<S: StorageAdaptor> StreamService<S> {
             Ok(deleted) => {
                 if deleted {
                     // Update metadata
-                    if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream_name)
+                    if let Some(mut metadata) = self.stream_metadata.get_mut(stream_name)
                         && metadata.message_count > 0
                     {
                         metadata.message_count -= 1;
@@ -484,7 +513,7 @@ impl<S: StorageAdaptor> StreamService<S> {
         timestamp: u64,
         message_size: u64,
     ) {
-        if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream_name) {
+        if let Some(mut metadata) = self.stream_metadata.get_mut(stream_name) {
             metadata.last_message_at = Some(timestamp);
             metadata.message_count += 1;
             metadata.total_bytes += message_size;
@@ -498,7 +527,7 @@ impl<S: StorageAdaptor> StreamService<S> {
         message_count: usize,
         last_sequence: LogIndex,
     ) {
-        if let Some(metadata) = self.stream_metadata.write().await.get_mut(stream_name) {
+        if let Some(mut metadata) = self.stream_metadata.get_mut(stream_name) {
             metadata.message_count += message_count as u64;
             // Update timestamp based on sequence number (approximate)
             metadata.last_message_at = Some(last_sequence.get());
@@ -514,6 +543,7 @@ impl<S: StorageAdaptor> Clone for StreamService<S> {
             streams: self.streams.clone(),
             stream_configs: self.stream_configs.clone(),
             stream_metadata: self.stream_metadata.clone(),
+            stream_notifiers: self.stream_notifiers.clone(),
             storage_manager: self.storage_manager.clone(),
             event_bus: self.event_bus.clone(),
             is_running: self.is_running.clone(),
@@ -576,6 +606,14 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
             .handle_requests::<GetStreamInfo, _>(info_handler)
             .expect("Failed to register GetStreamInfo handler");
 
+        // Register StreamMessages streaming handler
+        use crate::services::stream::streaming_commands::StreamMessages;
+        use crate::services::stream::streaming_handlers::StreamMessagesHandler;
+        let stream_handler = StreamMessagesHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_streams::<StreamMessages, _>(stream_handler)
+            .expect("Failed to register StreamMessages handler");
+
         info!("StreamService: Registered command handlers");
 
         // Register event handlers for non-critical events
@@ -620,9 +658,10 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
         }
 
         // Clear all stream storage instances to release storage references
-        self.streams.write().await.clear();
-        self.stream_configs.write().await.clear();
-        self.stream_metadata.write().await.clear();
+        self.streams.clear();
+        self.stream_configs.clear();
+        self.stream_metadata.clear();
+        self.stream_notifiers.clear();
 
         // Mark as not running
         *self.is_running.write().await = false;

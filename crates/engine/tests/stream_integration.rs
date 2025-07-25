@@ -351,7 +351,7 @@ async fn test_stream_reading() {
         .expect("Failed to create stream");
     println!("Stream creation response: {response:?}");
 
-    // With synchronous callbacks, stream is immediately available - no sleep needed!
+    // Stream is now created synchronously via command pattern - no sleep needed!
 
     // Publish 50 messages for faster testing
     let num_messages = 50;
@@ -383,6 +383,8 @@ async fn test_stream_reading() {
         .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create stream reader");
+
+    println!("Stream reader created, starting to read messages...");
 
     let mut count = 0usize;
     while let Some(result) = stream.next().await {
@@ -472,8 +474,8 @@ async fn test_stream_reading() {
     assert_eq!(count, 20, "Should have streamed exactly 20 messages");
     println!("Successfully streamed {count} messages in range with verified content");
 
-    // Test 3: Stream with custom batch size
-    println!("\nTest 3: Streaming with custom batch size");
+    // Test 3: Stream with custom batch size (batch size is now handled internally)
+    println!("\nTest 3: Streaming messages");
     let mut stream = client
         .stream_messages(
             stream_name.clone(),
@@ -481,8 +483,7 @@ async fn test_stream_reading() {
             Some(LogIndex::new(50).unwrap()),
         )
         .await
-        .expect("Failed to create stream reader")
-        .with_batch_size(LogIndex::new(10).unwrap());
+        .expect("Failed to create stream reader");
 
     let mut count = 0;
     while let Some(result) = stream.next().await {
@@ -510,7 +511,7 @@ async fn test_stream_reading() {
         count += 1;
     }
     assert_eq!(count, 49, "Should have streamed 49 messages");
-    println!("Successfully streamed {count} messages with batch size 10 and verified content");
+    println!("Successfully streamed {count} messages and verified content");
 
     // Test 4: Early termination (drop stream before finishing)
     println!("\nTest 4: Testing early termination");

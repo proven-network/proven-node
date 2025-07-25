@@ -12,7 +12,7 @@ use crate::{
     services::{client::handlers::GroupHandler, routing::RouteDecision},
 };
 
-use super::types::RoutingServiceRef;
+use crate::foundation::events::EventBus;
 
 /// Handles stream operations by routing them to the appropriate group
 pub struct StreamHandler<T, G, S>
@@ -21,8 +21,8 @@ where
     G: TopologyAdaptor,
     S: StorageAdaptor,
 {
-    /// Routing service
-    routing_service: RoutingServiceRef,
+    /// Event bus
+    event_bus: Arc<EventBus>,
     /// Group handler
     group_handler: Arc<GroupHandler<T, G, S>>,
 }
@@ -34,12 +34,9 @@ where
     S: StorageAdaptor + 'static,
 {
     /// Create a new stream handler
-    pub fn new(
-        routing_service: RoutingServiceRef,
-        group_handler: Arc<GroupHandler<T, G, S>>,
-    ) -> Self {
+    pub fn new(event_bus: Arc<EventBus>, group_handler: Arc<GroupHandler<T, G, S>>) -> Self {
         Self {
-            routing_service,
+            event_bus,
             group_handler,
         }
     }
@@ -50,29 +47,35 @@ where
         stream_name: &str,
         request: GroupRequest,
     ) -> ConsensusResult<GroupResponse> {
-        // Get routing service to determine target group
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        // Get stream routing info to determine target group
+        use crate::services::routing::commands::GetStreamRoutingInfo;
 
-        // Route the stream operation
-        match routing.route_stream_operation(stream_name, vec![]).await {
-            Ok(RouteDecision::RouteToGroup(group_id)) => {
-                tracing::debug!("Stream {} routed to group {:?}", stream_name, group_id);
+        let route_info = self
+            .event_bus
+            .request(GetStreamRoutingInfo {
+                stream_name: stream_name.to_string(),
+            })
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    ErrorKind::Service,
+                    format!("Failed to get routing info: {e}"),
+                )
+            })?;
+
+        match route_info {
+            Some(route) => {
+                tracing::debug!(
+                    "Stream {} routed to group {:?}",
+                    stream_name,
+                    route.group_id
+                );
                 // Delegate to group handler (handles local vs remote)
-                self.group_handler.handle(group_id, request).await
+                self.group_handler.handle(route.group_id, request).await
             }
-            Ok(RouteDecision::Reject(reason)) => {
-                Err(Error::with_context(ErrorKind::Validation, reason))
-            }
-            Ok(decision) => Err(Error::with_context(
-                ErrorKind::Internal,
-                format!("Unexpected routing decision: {decision:?}"),
-            )),
-            Err(e) => Err(Error::with_context(
-                ErrorKind::Service,
-                format!("Routing failed: {e}"),
+            None => Err(Error::with_context(
+                ErrorKind::NotFound,
+                format!("Stream '{stream_name}' not found"),
             )),
         }
     }
@@ -86,7 +89,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            routing_service: self.routing_service.clone(),
+            event_bus: self.event_bus.clone(),
             group_handler: self.group_handler.clone(),
         }
     }

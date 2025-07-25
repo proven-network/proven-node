@@ -60,8 +60,7 @@ async fn test_stream_follow_mode_basic() {
     let mut stream = client
         .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
-        .expect("Failed to create stream reader")
-        .follow();
+        .expect("Failed to create stream reader");
 
     // Read the initial messages
     for expected_message in initial_messages.iter().take(5) {
@@ -133,8 +132,7 @@ async fn test_stream_follow_mode_with_backoff() {
     let mut stream = client
         .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
-        .expect("Failed to create stream reader")
-        .follow();
+        .expect("Failed to create stream reader");
 
     // Test that follow mode waits with exponential backoff
     let start = tokio::time::Instant::now();
@@ -206,8 +204,7 @@ async fn test_stream_follow_mode_cancellation() {
     let stream = client
         .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
-        .expect("Failed to create stream reader")
-        .follow();
+        .expect("Failed to create stream reader");
 
     // Drop the stream to test cleanup
     drop(stream);

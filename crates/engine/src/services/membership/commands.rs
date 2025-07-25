@@ -109,3 +109,19 @@ pub struct MembershipInfo {
     pub coordinator: Option<NodeId>,
     pub this_node: NodeId,
 }
+
+/// Get online members from the membership service
+#[derive(Debug, Clone)]
+pub struct GetOnlineMembers;
+
+impl Request for GetOnlineMembers {
+    type Response = Vec<(NodeId, Node)>;
+
+    fn request_type() -> &'static str {
+        "GetOnlineMembers"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+}

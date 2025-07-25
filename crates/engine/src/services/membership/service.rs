@@ -126,6 +126,11 @@ where
         }
     }
 
+    /// Get the node ID
+    pub fn node_id(&self) -> &NodeId {
+        &self.node_id
+    }
+
     /// Get current membership view
     pub async fn get_membership_view(&self) -> MembershipView {
         self.membership_view.read().await.clone()
@@ -221,6 +226,22 @@ where
             coordinator: self.node_id.clone(),
         })
         .await;
+
+        // Initialize global consensus
+        use crate::services::global_consensus::commands::InitializeGlobalConsensus;
+        self.event_bus
+            .request(InitializeGlobalConsensus {
+                members: vec![self.node_id.clone()],
+            })
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    ErrorKind::Service,
+                    format!("Failed to initialize global consensus: {e}"),
+                )
+            })?;
+
+        info!("Successfully initialized global consensus for single-node cluster");
 
         Ok(())
     }
@@ -344,10 +365,26 @@ where
 
         // Publish event
         self.publish_event(MembershipEvent::ClusterFormed {
-            members: member_ids,
+            members: member_ids.clone(),
             coordinator: self.node_id.clone(),
         })
         .await;
+
+        // Initialize global consensus
+        use crate::services::global_consensus::commands::InitializeGlobalConsensus;
+        self.event_bus
+            .request(InitializeGlobalConsensus {
+                members: member_ids,
+            })
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    ErrorKind::Service,
+                    format!("Failed to initialize global consensus: {e}"),
+                )
+            })?;
+
+        info!("Successfully initialized global consensus for multi-node cluster");
 
         Ok(())
     }
@@ -530,6 +567,37 @@ where
             .map_err(|e| Error::with_context(ErrorKind::Network, e.to_string()))?;
 
         Ok(())
+    }
+
+    /// Register command handlers with the event bus
+    pub fn register_command_handlers(self: Arc<Self>) {
+        use crate::services::membership::command_handlers::commands::{
+            GetMembershipHandler, GetOnlineMembersHandler, InitializeClusterHandler,
+        };
+
+        // Register InitializeCluster handler
+        let init_handler = InitializeClusterHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<crate::services::membership::commands::InitializeCluster, _>(
+                init_handler,
+            )
+            .expect("Failed to register InitializeCluster handler");
+
+        // Register GetMembership handler
+        let membership_handler = GetMembershipHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<crate::services::membership::commands::GetMembership, _>(
+                membership_handler,
+            )
+            .expect("Failed to register GetMembership handler");
+
+        // Register GetOnlineMembers handler
+        let online_members_handler = GetOnlineMembersHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<crate::services::membership::commands::GetOnlineMembers, _>(
+                online_members_handler,
+            )
+            .expect("Failed to register GetOnlineMembers handler");
     }
 
     /// Handle incoming messages

@@ -6,11 +6,13 @@ use proven_transport::Transport;
 
 use crate::{
     error::{ConsensusResult, Error, ErrorKind},
-    foundation::types::ConsensusGroupId,
-    services::client::types::{GroupInfo, StreamInfo},
+    foundation::{events::EventBus, types::ConsensusGroupId},
+    services::{
+        client::types::{GroupInfo, StreamInfo},
+        group_consensus::commands::GetStreamState,
+    },
 };
 
-use super::types::{GlobalConsensusRef, GroupConsensusRef, RoutingServiceRef};
 use crate::services::client::network::RequestForwarder;
 use std::sync::Arc;
 
@@ -21,14 +23,12 @@ where
     G: TopologyAdaptor,
     S: StorageAdaptor,
 {
-    /// Group consensus service
-    group_consensus: GroupConsensusRef<T, G, S>,
-    /// Global consensus service
-    global_consensus: GlobalConsensusRef<T, G, S>,
-    /// Routing service
-    routing_service: RoutingServiceRef,
+    /// Event bus for queries
+    event_bus: Arc<EventBus>,
     /// Request forwarder
     forwarder: Arc<RequestForwarder<T, G>>,
+    /// Phantom data for S
+    _phantom: std::marker::PhantomData<S>,
 }
 
 impl<T, G, S> QueryHandler<T, G, S>
@@ -38,49 +38,55 @@ where
     S: StorageAdaptor + 'static,
 {
     /// Create a new query handler
-    pub fn new(
-        group_consensus: GroupConsensusRef<T, G, S>,
-        global_consensus: GlobalConsensusRef<T, G, S>,
-        routing_service: RoutingServiceRef,
-        forwarder: Arc<RequestForwarder<T, G>>,
-    ) -> Self {
+    pub fn new(event_bus: Arc<EventBus>, forwarder: Arc<RequestForwarder<T, G>>) -> Self {
         Self {
-            group_consensus,
-            global_consensus,
-            routing_service,
+            event_bus,
             forwarder,
+            _phantom: std::marker::PhantomData,
         }
     }
 
     /// Get stream information
     pub async fn get_stream_info(&self, stream_name: &str) -> ConsensusResult<Option<StreamInfo>> {
-        // Get routing service for stream info
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        // Get stream routing info
+        use crate::services::routing::commands::{GetStreamRoutingInfo, IsGroupLocal};
 
-        // Check if stream exists in routing table
-        match routing.get_stream_routing_info(stream_name).await {
-            Ok(Some(route)) => {
+        match self
+            .event_bus
+            .request(GetStreamRoutingInfo {
+                stream_name: stream_name.to_string(),
+            })
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    ErrorKind::Service,
+                    format!("Failed to get routing info: {e}"),
+                )
+            })? {
+            Some(route) => {
                 // Check if the group is local or remote
-                let is_local = routing.is_group_local(route.group_id).await?;
-
-                if is_local {
-                    // Query the local group consensus for stream state
-                    let group_guard = self.group_consensus.read().await;
-                    let group_service = group_guard.as_ref().ok_or_else(|| {
+                let is_local = self
+                    .event_bus
+                    .request(IsGroupLocal {
+                        group_id: route.group_id,
+                    })
+                    .await
+                    .map_err(|e| {
                         Error::with_context(
                             ErrorKind::Service,
-                            "Group consensus service not available",
+                            format!("Failed to check if group is local: {e}"),
                         )
                     })?;
 
+                if is_local {
+                    // Query the local group consensus for stream state using event bus
+                    let get_stream_state = GetStreamState {
+                        group_id: route.group_id,
+                        stream_name: crate::services::stream::StreamName::new(stream_name),
+                    };
+
                     // Get the stream state from the group
-                    match group_service
-                        .get_stream_state(route.group_id, stream_name)
-                        .await
-                    {
+                    match self.event_bus.request(get_stream_state).await {
                         Ok(Some(stream_state)) => {
                             // Stream exists with state info
                             let stream_info = StreamInfo {
@@ -120,7 +126,10 @@ where
                         };
                             Ok(Some(stream_info))
                         }
-                        Err(e) => Err(e),
+                        Err(e) => {
+                            let consensus_err: Error = e.into();
+                            Err(consensus_err)
+                        }
                     }
                 } else {
                     // For remote groups, forward the query to a node in that group
@@ -129,14 +138,10 @@ where
                         .await
                 }
             }
-            Ok(None) => {
+            None => {
                 // Stream not found
                 Ok(None)
             }
-            Err(e) => Err(Error::with_context(
-                ErrorKind::Service,
-                format!("Failed to query routing info: {e}"),
-            )),
         }
     }
 
@@ -145,13 +150,7 @@ where
         &self,
         _group_id: ConsensusGroupId,
     ) -> ConsensusResult<Option<GroupInfo>> {
-        // Get group info from global consensus
-        let global_guard = self.global_consensus.read().await;
-        let _global_service = global_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Global consensus service not available")
-        })?;
-
-        // TODO: Get group info from global consensus
+        // TODO: Get group info from global consensus using event bus
         // For now, return not implemented
         Err(Error::with_context(
             ErrorKind::Internal,
@@ -168,10 +167,9 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            group_consensus: self.group_consensus.clone(),
-            global_consensus: self.global_consensus.clone(),
-            routing_service: self.routing_service.clone(),
+            event_bus: self.event_bus.clone(),
             forwarder: self.forwarder.clone(),
+            _phantom: std::marker::PhantomData,
         }
     }
 }

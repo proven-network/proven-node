@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use proven_storage::LogIndex;
 use proven_topology::NodeId;
+use tokio::sync::RwLock;
 use tokio::sync::oneshot;
 
 use crate::{
@@ -13,6 +14,7 @@ use crate::{
     },
     error::ConsensusResult,
     foundation::types::ConsensusGroupId,
+    services::routing::StreamRoute,
     services::stream::{MessageData, StreamConfig},
 };
 
@@ -50,6 +52,25 @@ pub enum ClientRequest {
         group_id: ConsensusGroupId,
         response_tx: oneshot::Sender<ConsensusResult<Option<GroupInfo>>>,
     },
+}
+
+/// Type alias for a routing service reference
+pub type RoutingServiceRef = Arc<RwLock<Option<Arc<crate::services::routing::RoutingService>>>>;
+
+/// Stream routing info for query operations
+#[derive(Debug, Clone)]
+pub struct StreamRouteInfo {
+    pub group_id: ConsensusGroupId,
+    pub config: Option<StreamConfig>,
+}
+
+impl From<StreamRoute> for StreamRouteInfo {
+    fn from(route: StreamRoute) -> Self {
+        Self {
+            group_id: route.group_id,
+            config: route.config,
+        }
+    }
 }
 
 /// Stream information

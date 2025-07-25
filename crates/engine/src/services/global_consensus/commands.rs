@@ -1,5 +1,6 @@
 //! Commands for the global consensus service (request-response patterns)
 
+use crate::consensus::global::{GlobalRequest, GlobalResponse};
 use crate::foundation::events::Request;
 use crate::foundation::types::ConsensusGroupId;
 use crate::services::stream::{StreamConfig, StreamName};
@@ -156,4 +157,22 @@ pub struct StreamSnapshot {
     pub stream_name: StreamName,
     pub config: StreamConfig,
     pub group_id: ConsensusGroupId,
+}
+
+/// Submit a request to global consensus
+#[derive(Debug, Clone)]
+pub struct SubmitGlobalRequest {
+    pub request: crate::consensus::global::GlobalRequest,
+}
+
+impl Request for SubmitGlobalRequest {
+    type Response = crate::consensus::global::GlobalResponse;
+
+    fn request_type() -> &'static str {
+        "SubmitGlobalRequest"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(30)
+    }
 }

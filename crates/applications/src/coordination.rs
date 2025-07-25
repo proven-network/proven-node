@@ -188,8 +188,7 @@ where
         let mut stream = client
             .stream_messages(stream_name.clone(), start_seq, None)
             .await
-            .map_err(|e| Error::Stream(e.to_string()))?
-            .follow(); // Enable follow mode to continuously watch for leadership changes
+            .map_err(|e| Error::Stream(e.to_string()))?;
 
         tracing::info!("Started watching leadership stream with follow mode");
 

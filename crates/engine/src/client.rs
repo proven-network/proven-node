@@ -291,22 +291,20 @@ where
     ///
     /// Returns a stream that yields messages as they are read. If end_sequence is None,
     /// streams until the last available message.
-    ///
-    /// Use `.follow()` on the returned StreamReader to enable follow mode, which will
-    /// continuously wait for new messages instead of ending when all messages are consumed.
     pub async fn stream_messages(
         &self,
         stream_name: String,
         start_sequence: LogIndex,
         end_sequence: Option<LogIndex>,
-    ) -> ConsensusResult<StreamReader<T, G, S>> {
-        StreamReader::new(
-            self.client_service.clone(),
-            stream_name,
-            start_sequence,
-            end_sequence,
-        )
-        .await
+    ) -> ConsensusResult<impl Stream<Item = ConsensusResult<StoredMessage>>> {
+        // Use the new event bus streaming
+        let stream = self
+            .client_service
+            .stream_messages(&stream_name, start_sequence, end_sequence)
+            .await?;
+
+        // Wrap each message in Ok since RecvStream yields items directly
+        Ok(stream.map(Ok))
     }
 
     // PubSub Operations

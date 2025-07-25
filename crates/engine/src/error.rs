@@ -264,6 +264,59 @@ impl From<proven_network::NetworkError> for Error {
     }
 }
 
+impl From<crate::foundation::events::Error> for Error {
+    fn from(err: crate::foundation::events::Error) -> Self {
+        use crate::foundation::events::Error as EventError;
+
+        match err {
+            EventError::NoHandler { type_name } => Self::with_context(
+                ErrorKind::NotFound,
+                format!("No handler registered for {type_name}"),
+            ),
+            EventError::Timeout { duration } => Self::with_context(
+                ErrorKind::Timeout,
+                format!("Request timed out after {duration:?}"),
+            ),
+            EventError::Internal(msg) => {
+                // Check if this is a not-leader error passed through internal
+                if msg.contains("not the leader") || msg.contains("NotLeader") {
+                    Self::not_leader("Not the leader for this operation", None)
+                } else {
+                    Self::with_context(ErrorKind::Internal, format!("Internal error: {msg}"))
+                }
+            }
+            EventError::ChannelFull => {
+                Self::with_context(ErrorKind::InvalidState, "Event channel is full")
+            }
+            EventError::HandlerPanic => Self::with_context(
+                ErrorKind::Internal,
+                "Handler panicked while processing event",
+            ),
+            EventError::Shutdown => {
+                Self::with_context(ErrorKind::InvalidState, "Event bus is shutting down")
+            }
+            EventError::InvalidConfig { reason } => Self::with_context(
+                ErrorKind::Configuration,
+                format!("Invalid configuration: {reason}"),
+            ),
+            EventError::DeadlineExceeded => {
+                Self::with_context(ErrorKind::Timeout, "Deadline exceeded")
+            }
+            EventError::StreamEnded => {
+                Self::with_context(ErrorKind::InvalidState, "Stream ended unexpectedly")
+            }
+            EventError::Channel(_) => Self::with_context(ErrorKind::Internal, "Channel send error"),
+            EventError::Recv(_) => Self::with_context(ErrorKind::Internal, "Channel receive error"),
+            EventError::TryRecv(_) => {
+                Self::with_context(ErrorKind::Internal, "Channel try_recv error")
+            }
+            EventError::Oneshot(_) => {
+                Self::with_context(ErrorKind::Internal, "Oneshot channel error")
+            }
+        }
+    }
+}
+
 /// Helper macro for creating errors with context
 #[macro_export]
 macro_rules! consensus_error {

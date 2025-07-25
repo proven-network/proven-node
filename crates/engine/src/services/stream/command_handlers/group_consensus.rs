@@ -65,6 +65,11 @@ where
                         "Successfully persisted {} messages to stream {} storage (last_seq: {})",
                         message_count, stream_name, last_seq
                     );
+
+                    // Notify any stream watchers about the new messages
+                    self.stream_service
+                        .notify_stream_append(stream_name, last_seq)
+                        .await;
                 }
                 Err(e) => {
                     error!(

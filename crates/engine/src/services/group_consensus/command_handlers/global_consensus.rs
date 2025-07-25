@@ -8,7 +8,7 @@ use crate::foundation::events::{EventMetadata, RequestHandler};
 use crate::services::group_consensus::{
     GroupConsensusService,
     commands::{
-        CreateGroup, DissolveGroup, GetGroupInfo, GetNodeGroups, GroupInfo,
+        CreateGroup, DissolveGroup, GetGroupInfo, GetNodeGroups, GetStreamState, GroupInfo,
         InitializeStreamInGroup, SubmitToGroup,
     },
 };
@@ -345,6 +345,62 @@ where
             }
             Err(e) => {
                 error!("Failed to get group info for {:?}: {}", request.group_id, e);
+                Err(crate::foundation::events::Error::Internal(e.to_string()))
+            }
+        }
+    }
+}
+
+/// Handler for GetStreamState command
+#[derive(Clone)]
+pub struct GetStreamStateHandler<T, G, S>
+where
+    T: Transport,
+    G: TopologyAdaptor,
+    S: StorageAdaptor,
+{
+    group_consensus_service: Arc<GroupConsensusService<T, G, S>>,
+}
+
+impl<T, G, S> GetStreamStateHandler<T, G, S>
+where
+    T: Transport,
+    G: TopologyAdaptor,
+    S: StorageAdaptor,
+{
+    pub fn new(group_consensus_service: Arc<GroupConsensusService<T, G, S>>) -> Self {
+        Self {
+            group_consensus_service,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<T, G, S> RequestHandler<GetStreamState> for GetStreamStateHandler<T, G, S>
+where
+    T: Transport + 'static,
+    G: TopologyAdaptor + 'static,
+    S: StorageAdaptor + 'static,
+{
+    async fn handle(
+        &self,
+        request: GetStreamState,
+        _metadata: EventMetadata,
+    ) -> Result<
+        Option<crate::foundation::models::stream::StreamState>,
+        crate::foundation::events::Error,
+    > {
+        match self
+            .group_consensus_service
+            .get_stream_state(request.group_id, request.stream_name.as_str())
+            .await
+        {
+            Ok(state) => Ok(state),
+            Err(e) => {
+                error!(
+                    "Failed to get stream state for {} in group {:?}: {}",
+                    request.stream_name, request.group_id, e
+                );
                 Err(crate::foundation::events::Error::Internal(e.to_string()))
             }
         }

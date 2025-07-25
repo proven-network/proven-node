@@ -8,7 +8,7 @@ use proven_topology::NodeId;
 use crate::consensus::group::types::{GroupRequest, GroupResponse};
 use crate::foundation::events::Request;
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::StreamName;
+use crate::services::stream::{StreamName, StreamState};
 
 /// Create a new consensus group
 #[derive(Debug, Clone)]
@@ -125,4 +125,23 @@ pub struct GroupInfo {
     pub members: Vec<NodeId>,
     pub leader: Option<NodeId>,
     pub streams: Vec<StreamName>,
+}
+
+/// Get the state of a stream in a group
+#[derive(Debug, Clone)]
+pub struct GetStreamState {
+    pub group_id: ConsensusGroupId,
+    pub stream_name: StreamName,
+}
+
+impl Request for GetStreamState {
+    type Response = Option<crate::foundation::models::stream::StreamState>;
+
+    fn request_type() -> &'static str {
+        "GetStreamState"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
 }

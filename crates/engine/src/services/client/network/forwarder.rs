@@ -9,11 +9,11 @@ use proven_transport::Transport;
 use crate::{
     consensus::group::{GroupRequest, GroupResponse},
     error::{ConsensusResult, Error, ErrorKind},
-    foundation::types::ConsensusGroupId,
+    foundation::{events::EventBus, types::ConsensusGroupId},
     services::client::{ClientServiceMessage, ClientServiceResponse, types::StreamInfo},
 };
 
-use super::super::handlers::types::{NetworkManagerRef, RoutingServiceRef};
+use super::super::handlers::types::NetworkManagerRef;
 
 /// Forwards requests to remote groups
 pub struct RequestForwarder<T, G>
@@ -25,8 +25,8 @@ where
     node_id: NodeId,
     /// Network manager
     network_manager: NetworkManagerRef<T, G>,
-    /// Routing service
-    routing_service: RoutingServiceRef,
+    /// Event bus
+    event_bus: Arc<EventBus>,
 }
 
 impl<T, G> RequestForwarder<T, G>
@@ -38,12 +38,12 @@ where
     pub fn new(
         node_id: NodeId,
         network_manager: NetworkManagerRef<T, G>,
-        routing_service: RoutingServiceRef,
+        event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
             node_id,
             network_manager,
-            routing_service,
+            event_bus,
         }
     }
 
@@ -53,14 +53,10 @@ where
         group_id: ConsensusGroupId,
         request: GroupRequest,
     ) -> ConsensusResult<GroupResponse> {
-        // Get routing service to find the best node
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        // Get routing info using event bus
+        use crate::services::routing::commands::GetRoutingInfo;
 
-        // Get group info to find a member
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -218,14 +214,10 @@ where
         start_sequence: LogIndex,
         count: LogIndex,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
-        // Get routing service to find the best node
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        // Get routing info using event bus
+        use crate::services::routing::commands::GetRoutingInfo;
 
-        // Get group info to find a member
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -292,12 +284,9 @@ where
         stream_name: &str,
     ) -> ConsensusResult<Option<StreamInfo>> {
         // Get routing info to find group members
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        use crate::services::routing::commands::GetRoutingInfo;
 
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -368,12 +357,10 @@ where
         Vec<crate::services::stream::StoredMessage>,
         bool,
     )> {
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        // Get routing info using event bus
+        use crate::services::routing::commands::GetRoutingInfo;
 
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -452,13 +439,10 @@ where
             Error::with_context(ErrorKind::Service, "Network manager not available")
         })?;
 
-        // Get all known nodes from topology
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        // Get all known nodes from topology using event bus
+        use crate::services::routing::commands::GetRoutingInfo;
 
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -516,12 +500,10 @@ where
             Error::with_context(ErrorKind::Service, "Network manager not available")
         })?;
 
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        // Get routing info using event bus
+        use crate::services::routing::commands::GetRoutingInfo;
 
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),

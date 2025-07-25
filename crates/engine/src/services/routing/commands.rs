@@ -2,7 +2,8 @@
 
 use crate::foundation::events::{Error, Request};
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::StreamName;
+use crate::services::routing::{RoutingInfo, StreamRoute};
+use crate::services::stream::{StreamConfig, StreamName};
 use proven_topology::NodeId;
 use std::time::Duration;
 
@@ -75,6 +76,58 @@ impl Request for UpdateGroupMembership {
 
     fn request_type() -> &'static str {
         "UpdateGroupMembership"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+}
+
+/// Get routing information
+#[derive(Debug, Clone)]
+pub struct GetRoutingInfo;
+
+impl Request for GetRoutingInfo {
+    type Response = RoutingInfo;
+
+    fn request_type() -> &'static str {
+        "GetRoutingInfo"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+}
+
+/// Get stream routing information
+#[derive(Debug, Clone)]
+pub struct GetStreamRoutingInfo {
+    pub stream_name: String,
+}
+
+impl Request for GetStreamRoutingInfo {
+    type Response = Option<StreamRoute>;
+
+    fn request_type() -> &'static str {
+        "GetStreamRoutingInfo"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+}
+
+/// Check if a group is local
+#[derive(Debug, Clone)]
+pub struct IsGroupLocal {
+    pub group_id: ConsensusGroupId,
+}
+
+impl Request for IsGroupLocal {
+    type Response = bool;
+
+    fn request_type() -> &'static str {
+        "IsGroupLocal"
     }
 
     fn default_timeout() -> Duration {

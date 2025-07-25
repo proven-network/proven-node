@@ -100,59 +100,24 @@ where
 
             GlobalConsensusEvent::StreamCreated {
                 stream_name,
-                config,
+                config: _,
                 group_id,
             } => {
+                // Stream creation is now handled synchronously by the global consensus callback
+                // using the command pattern. This event is just informational.
                 info!(
-                    "StreamSubscriber: Stream {} created in group {:?}",
+                    "StreamSubscriber: Stream {} created in group {:?} (handled by command)",
                     stream_name, group_id
                 );
-
-                // Always try to create the stream - the stream service will only
-                // actually persist it if we're a member of the group.
-                // This simplifies the logic and removes cross-service dependencies.
-                info!(
-                    "StreamSubscriber: Creating stream {} in group {:?}",
-                    stream_name, group_id
-                );
-
-                match self
-                    .stream_service
-                    .create_stream(stream_name.clone(), config.clone(), group_id)
-                    .await
-                {
-                    Ok(_) => {
-                        info!(
-                            "Successfully created stream {} in group {:?}",
-                            stream_name, group_id
-                        );
-                    }
-                    Err(e) if e.to_string().contains("already exists") => {
-                        // Stream already exists - this is fine during replay
-                        debug!(
-                            "Stream {} already exists in group {:?}",
-                            stream_name, group_id
-                        );
-                    }
-                    Err(e) => {
-                        error!(
-                            "Failed to create stream {} in group {:?}: {}",
-                            stream_name, group_id, e
-                        );
-                    }
-                }
             }
 
             GlobalConsensusEvent::StreamDeleted { stream_name } => {
-                info!("StreamSubscriber: Stream {} deleted", stream_name);
-
-                // Delete the stream from our local storage if we have it
-                if let Err(e) = self.stream_service.delete_stream(&stream_name).await {
-                    // It's ok if the stream doesn't exist locally
-                    if !e.to_string().contains("not found") {
-                        error!("Failed to delete stream {}: {}", stream_name, e);
-                    }
-                }
+                // Stream deletion is now handled synchronously by the global consensus callback
+                // using the command pattern. This event is just informational.
+                info!(
+                    "StreamSubscriber: Stream {} deleted (handled by command)",
+                    stream_name
+                );
             }
 
             GlobalConsensusEvent::GroupCreated { .. } => {

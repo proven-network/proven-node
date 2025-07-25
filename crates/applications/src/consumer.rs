@@ -104,8 +104,7 @@ where
     let mut stream = client
         .stream_messages(event_stream.clone(), start_seq, None)
         .await
-        .map_err(|e| Error::Stream(e.to_string()))?
-        .follow(); // Enable follow mode to wait for new messages
+        .map_err(|e| Error::Stream(e.to_string()))?;
 
     tracing::info!(
         "Started event consumer from sequence {} with follow mode",

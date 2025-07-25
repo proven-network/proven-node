@@ -151,7 +151,32 @@ impl RoutingService {
             .subscribe::<MembershipEvent, _>(membership_subscriber);
 
         // Register command handlers for synchronous routing updates
-        // TODO: These handlers need to be implemented with the new RequestHandler trait
+        use crate::services::routing::command_handlers::{
+            GetRoutingInfoHandler, GetStreamRoutingInfoHandler, IsGroupLocalHandler,
+        };
+        use crate::services::routing::commands::{
+            GetRoutingInfo, GetStreamRoutingInfo, IsGroupLocal,
+        };
+
+        // Register GetRoutingInfo handler
+        let get_routing_info_handler =
+            GetRoutingInfoHandler::new(self.routing_table.clone(), self.config.default_strategy);
+        self.event_bus
+            .handle_requests::<GetRoutingInfo, _>(get_routing_info_handler)
+            .expect("Failed to register GetRoutingInfo handler");
+
+        // Register GetStreamRoutingInfo handler
+        let get_stream_routing_info_handler =
+            GetStreamRoutingInfoHandler::new(self.routing_table.clone());
+        self.event_bus
+            .handle_requests::<GetStreamRoutingInfo, _>(get_stream_routing_info_handler)
+            .expect("Failed to register GetStreamRoutingInfo handler");
+
+        // Register IsGroupLocal handler
+        let is_group_local_handler = IsGroupLocalHandler::new(self.routing_table.clone());
+        self.event_bus
+            .handle_requests::<IsGroupLocal, _>(is_group_local_handler)
+            .expect("Failed to register IsGroupLocal handler");
 
         info!("RoutingService: Registered command handlers for routing updates");
 

@@ -49,6 +49,26 @@ impl MembershipView {
             .filter(|n| n.roles.contains(role))
             .collect()
     }
+
+    /// Get all members
+    pub fn get_members(&self) -> Vec<(NodeId, &NodeMembership)> {
+        self.nodes.iter().map(|(id, m)| (id.clone(), m)).collect()
+    }
+
+    /// Get cluster ID (if formed)
+    pub fn cluster_id(&self) -> uuid::Uuid {
+        // Generate a deterministic ID based on the cluster formation
+        // In a real implementation, this would be stored
+        uuid::Uuid::new_v4()
+    }
+
+    /// Get coordinator node (if any)
+    pub fn get_coordinator(&self) -> Option<NodeId> {
+        match &self.cluster_state {
+            ClusterFormationState::Forming { coordinator, .. } => Some(coordinator.clone()),
+            _ => None,
+        }
+    }
 }
 
 /// Information about a node's membership

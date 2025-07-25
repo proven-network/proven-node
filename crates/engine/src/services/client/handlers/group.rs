@@ -9,11 +9,9 @@ use proven_transport::Transport;
 use crate::{
     consensus::group::{GroupRequest, GroupResponse},
     error::{ConsensusResult, Error, ErrorKind},
-    foundation::types::ConsensusGroupId,
-    services::client::network::RequestForwarder,
+    foundation::{events::EventBus, types::ConsensusGroupId},
+    services::{client::network::RequestForwarder, group_consensus::commands::SubmitToGroup},
 };
-
-use super::types::{GroupConsensusRef, RoutingServiceRef};
 
 /// Handles group consensus requests
 pub struct GroupHandler<T, G, S>
@@ -22,12 +20,12 @@ where
     G: TopologyAdaptor,
     S: StorageAdaptor,
 {
-    /// Group consensus service
-    group_consensus: GroupConsensusRef<T, G, S>,
-    /// Routing service
-    routing_service: RoutingServiceRef,
+    /// Event bus for sending requests
+    event_bus: Arc<EventBus>,
     /// Request forwarder
     forwarder: Arc<RequestForwarder<T, G>>,
+    /// Phantom data for S
+    _phantom: std::marker::PhantomData<S>,
 }
 
 impl<T, G, S> GroupHandler<T, G, S>
@@ -37,15 +35,11 @@ where
     S: StorageAdaptor + 'static,
 {
     /// Create a new group handler
-    pub fn new(
-        group_consensus: GroupConsensusRef<T, G, S>,
-        routing_service: RoutingServiceRef,
-        forwarder: Arc<RequestForwarder<T, G>>,
-    ) -> Self {
+    pub fn new(event_bus: Arc<EventBus>, forwarder: Arc<RequestForwarder<T, G>>) -> Self {
         Self {
-            group_consensus,
-            routing_service,
+            event_bus,
             forwarder,
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -55,13 +49,19 @@ where
         group_id: ConsensusGroupId,
         request: GroupRequest,
     ) -> ConsensusResult<GroupResponse> {
-        // Check if group is local
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Routing service not available")
-        })?;
+        // Check if group is local using event bus
+        use crate::services::routing::commands::IsGroupLocal;
 
-        let is_local = routing.is_group_local(group_id).await?;
+        let is_local = self
+            .event_bus
+            .request(IsGroupLocal { group_id })
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    ErrorKind::Service,
+                    format!("Failed to check if group is local: {e}"),
+                )
+            })?;
         tracing::debug!(
             "Group handler checking group {:?}: is_local = {}",
             group_id,
@@ -70,30 +70,38 @@ where
 
         if is_local {
             // Local group - try to submit locally first
-            let group_guard = self.group_consensus.read().await;
-            let service = group_guard.as_ref().ok_or_else(|| {
-                Error::with_context(ErrorKind::Service, "Group consensus service not available")
-            })?;
-
             tracing::debug!("Submitting request to local group {:?}", group_id);
-            match service.submit_to_group(group_id, request.clone()).await {
+
+            // Use event bus to submit to group
+            let submit_request = SubmitToGroup {
+                group_id,
+                request: request.clone(),
+            };
+
+            match self.event_bus.request(submit_request).await {
                 Ok(response) => Ok(response),
-                Err(e) if e.is_not_leader() => {
-                    // We're not the leader for this group
-                    // Check if the error contains the leader info
-                    if let Some(leader) = e.get_leader() {
-                        // Forward directly to the known leader
-                        self.forwarder
-                            .forward_to_leader(group_id, request, leader.clone())
-                            .await
+                Err(event_err) => {
+                    // Convert event bus error to consensus error
+                    let consensus_err: Error = event_err.into();
+
+                    if consensus_err.is_not_leader() {
+                        // We're not the leader for this group
+                        // Check if the error contains the leader info
+                        if let Some(leader) = consensus_err.get_leader() {
+                            // Forward directly to the known leader
+                            self.forwarder
+                                .forward_to_leader(group_id, request, leader.clone())
+                                .await
+                        } else {
+                            // No leader known, try forwarding to find one
+                            self.forwarder
+                                .forward_to_remote_group(group_id, request)
+                                .await
+                        }
                     } else {
-                        // No leader known, try forwarding to find one
-                        self.forwarder
-                            .forward_to_remote_group(group_id, request)
-                            .await
+                        Err(consensus_err)
                     }
                 }
-                Err(e) => Err(e),
             }
         } else {
             // Remote group - forward to any member
@@ -113,9 +121,9 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            group_consensus: self.group_consensus.clone(),
-            routing_service: self.routing_service.clone(),
+            event_bus: self.event_bus.clone(),
             forwarder: self.forwarder.clone(),
+            _phantom: std::marker::PhantomData,
         }
     }
 }

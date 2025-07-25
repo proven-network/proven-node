@@ -10,12 +10,16 @@ use crate::{
     consensus::global::{GlobalRequest, GlobalResponse},
     error::{ConsensusResult, Error, ErrorKind},
     foundation::events::EventBus,
-    services::client::{
-        events::ClientServiceEvent, messages::ClientServiceMessage, messages::ClientServiceResponse,
+    services::{
+        client::{
+            events::ClientServiceEvent, messages::ClientServiceMessage,
+            messages::ClientServiceResponse,
+        },
+        global_consensus::commands::SubmitGlobalRequest,
     },
 };
 
-use super::types::{GlobalConsensusRef, NetworkManagerRef, RoutingServiceRef};
+use super::types::NetworkManagerRef;
 
 /// Handles global consensus requests
 pub struct GlobalHandler<T, G, S>
@@ -26,14 +30,12 @@ where
 {
     /// Node ID
     node_id: NodeId,
-    /// Global consensus service
-    global_consensus: GlobalConsensusRef<T, G, S>,
     /// Network manager for forwarding
     network_manager: NetworkManagerRef<T, G>,
-    /// Routing service for leader discovery
-    routing_service: RoutingServiceRef,
     /// Event bus for publishing events
     event_bus: Arc<EventBus>,
+    /// Phantom data for S
+    _phantom: std::marker::PhantomData<S>,
 }
 
 impl<T, G, S> GlobalHandler<T, G, S>
@@ -45,29 +47,26 @@ where
     /// Create a new global handler
     pub fn new(
         node_id: NodeId,
-        global_consensus: GlobalConsensusRef<T, G, S>,
         network_manager: NetworkManagerRef<T, G>,
-        routing_service: RoutingServiceRef,
         event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
             node_id,
-            global_consensus,
             network_manager,
-            routing_service,
             event_bus,
+            _phantom: std::marker::PhantomData,
         }
     }
 
     /// Handle a global consensus request
     pub async fn handle(&self, request: GlobalRequest) -> ConsensusResult<GlobalResponse> {
-        let global_guard = self.global_consensus.read().await;
-        let service = global_guard.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Service, "Global consensus service not available")
-        })?;
+        // Use event bus to submit to global consensus
+        let submit_request = SubmitGlobalRequest {
+            request: request.clone(),
+        };
 
         // Try to submit locally first
-        match service.submit_request(request.clone()).await {
+        match self.event_bus.request(submit_request).await {
             Ok(response) => {
                 // Check if the response is an error variant
                 match &response {
@@ -78,35 +77,33 @@ where
                     _ => Ok(response),
                 }
             }
-            Err(e) if e.is_not_leader() => {
-                // We're not the leader, need to forward
-                let mut leader = e.get_leader().cloned();
+            Err(event_err) => {
+                // Convert event bus error to consensus error
+                let consensus_err: Error = event_err.into();
 
-                // If error doesn't have leader, try to get from routing service
-                if leader.is_none() {
-                    let routing_guard = self.routing_service.read().await;
-                    if let Some(routing) = routing_guard.as_ref() {
-                        leader = routing.get_global_leader().await;
-                    }
-                }
+                if consensus_err.is_not_leader() {
+                    // We're not the leader, need to forward
+                    let leader = consensus_err.get_leader().cloned();
 
-                if let Some(leader_id) = leader {
-                    if leader_id != self.node_id {
-                        // Forward to the leader
-                        self.forward_to_leader(request, leader_id).await
+                    if let Some(leader_id) = leader {
+                        if leader_id != self.node_id {
+                            // Forward to the leader
+                            self.forward_to_leader(request, leader_id).await
+                        } else {
+                            // We think we're the leader but consensus disagrees
+                            Err(consensus_err)
+                        }
                     } else {
-                        // We think we're the leader but consensus disagrees
-                        Err(e)
+                        // No leader known
+                        Err(Error::with_context(
+                            ErrorKind::InvalidState,
+                            "Not the leader and no known leader to forward to",
+                        ))
                     }
                 } else {
-                    // No leader known
-                    Err(Error::with_context(
-                        ErrorKind::InvalidState,
-                        "Not the leader and no known leader to forward to",
-                    ))
+                    Err(consensus_err)
                 }
             }
-            Err(e) => Err(e),
         }
     }
 
@@ -170,10 +167,9 @@ where
     fn clone(&self) -> Self {
         Self {
             node_id: self.node_id.clone(),
-            global_consensus: self.global_consensus.clone(),
             network_manager: self.network_manager.clone(),
-            routing_service: self.routing_service.clone(),
             event_bus: self.event_bus.clone(),
+            _phantom: std::marker::PhantomData,
         }
     }
 }

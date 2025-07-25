@@ -80,7 +80,6 @@ where
     /// Service references (for initialization)
     global_consensus: GlobalConsensusRef<T, G, S>,
     group_consensus: GroupConsensusRef<T, G, S>,
-    routing_service: ServiceRef<RoutingService>,
     stream_service: StreamServiceRef<S>,
     network_manager: NetworkManagerRef<T, G>,
 
@@ -107,7 +106,6 @@ where
         // Service references
         let global_consensus = Arc::new(RwLock::new(None));
         let group_consensus = Arc::new(RwLock::new(None));
-        let routing_service = Arc::new(RwLock::new(None));
         let stream_service = Arc::new(RwLock::new(None));
         let network_manager = Arc::new(RwLock::new(None));
 
@@ -115,7 +113,7 @@ where
         let forwarder = Arc::new(RequestForwarder::new(
             node_id.clone(),
             network_manager.clone(),
-            routing_service.clone(),
+            event_bus.clone(),
         ));
 
         Self {
@@ -127,7 +125,6 @@ where
             forwarder,
             global_consensus,
             group_consensus,
-            routing_service,
             stream_service,
             network_manager,
             event_bus,
@@ -144,11 +141,6 @@ where
     /// Set the group consensus service reference
     pub async fn set_group_consensus(&self, service: Arc<GroupConsensusService<T, G, S>>) {
         *self.group_consensus.write().await = Some(service);
-    }
-
-    /// Set the routing service reference
-    pub async fn set_routing_service(&self, service: Arc<RoutingService>) {
-        *self.routing_service.write().await = Some(service);
     }
 
     /// Set the stream service reference
@@ -168,15 +160,9 @@ where
 
     /// Get a suitable group for stream creation
     pub async fn get_suitable_group(&self) -> ConsensusResult<ConsensusGroupId> {
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                "Routing service not available",
-            )
-        })?;
+        use crate::services::routing::commands::GetRoutingInfo;
 
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -247,16 +233,13 @@ where
         start_sequence: LogIndex,
         count: LogIndex,
     ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                "Routing service not available",
-            )
-        })?;
+        use crate::services::routing::commands::{GetRoutingInfo, GetStreamRoutingInfo};
 
-        let route_info = routing
-            .get_stream_routing_info(stream_name)
+        let route_info = self
+            .event_bus
+            .request(GetStreamRoutingInfo {
+                stream_name: stream_name.to_string(),
+            })
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -271,7 +254,7 @@ where
                 )
             })?;
 
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -280,18 +263,24 @@ where
 
         if let Some(group_info) = routing_info.group_routes.get(&route_info.group_id) {
             if group_info.members.contains(&self.node_id) {
-                // Stream is local
-                let stream_guard = self.stream_service.read().await;
-                let stream_service = stream_guard.as_ref().ok_or_else(|| {
-                    Error::with_context(
-                        crate::error::ErrorKind::Service,
-                        "Stream service not available",
-                    )
-                })?;
+                // Stream is local - use event bus to read messages
+                use crate::services::stream::StreamName;
+                use crate::services::stream::commands::ReadMessages;
 
-                stream_service
-                    .read_messages(stream_name, start_sequence, count)
+                Ok(self
+                    .event_bus
+                    .request(ReadMessages {
+                        stream_name: StreamName::new(stream_name),
+                        start_offset: start_sequence.get(),
+                        count: count.get(),
+                    })
                     .await
+                    .map_err(|e| {
+                        Error::with_context(
+                            crate::error::ErrorKind::Service,
+                            format!("Failed to read messages: {e}"),
+                        )
+                    })?)
             } else {
                 // Stream is remote
                 self.forwarder
@@ -311,34 +300,21 @@ where
         // Create handlers
         let global_handler = GlobalHandler::new(
             self.node_id.clone(),
-            self.global_consensus.clone(),
             self.network_manager.clone(),
-            self.routing_service.clone(),
             self.event_bus.clone(),
         );
 
-        let group_handler = GroupHandler::new(
-            self.group_consensus.clone(),
-            self.routing_service.clone(),
-            self.forwarder.clone(),
-        );
+        let group_handler = GroupHandler::new(self.event_bus.clone(), self.forwarder.clone());
 
-        let stream_handler = StreamHandler::new(
-            self.routing_service.clone(),
-            Arc::new(group_handler.clone()),
-        );
+        let stream_handler =
+            StreamHandler::new(self.event_bus.clone(), Arc::new(group_handler.clone()));
 
         let stream_read_handler = StreamReadHandler::new(self.stream_service.clone());
 
         // Create streaming handler - StorageAdaptor now requires LogStorageStreaming
         let stream_streaming = Some(StreamStreamingHandler::new(self.stream_service.clone()));
 
-        let query_handler = QueryHandler::new(
-            self.group_consensus.clone(),
-            self.global_consensus.clone(),
-            self.routing_service.clone(),
-            self.forwarder.clone(),
-        );
+        let query_handler = QueryHandler::new(self.event_bus.clone(), self.forwarder.clone());
 
         let handlers = Arc::new(ClientHandlers {
             global: global_handler,
@@ -783,16 +759,13 @@ where
 
     /// Check if a stream is local to this node
     pub async fn is_stream_local(&self, stream_name: &str) -> ConsensusResult<bool> {
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                "Routing service not available",
-            )
-        })?;
+        use crate::services::routing::commands::{GetRoutingInfo, GetStreamRoutingInfo};
 
-        let route_info = routing
-            .get_stream_routing_info(stream_name)
+        let route_info = self
+            .event_bus
+            .request(GetStreamRoutingInfo {
+                stream_name: stream_name.to_string(),
+            })
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -807,7 +780,7 @@ where
                 )
             })?;
 
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -833,16 +806,13 @@ where
         Vec<crate::services::stream::StoredMessage>,
         bool,
     )> {
-        let routing_guard = self.routing_service.read().await;
-        let routing = routing_guard.as_ref().ok_or_else(|| {
-            Error::with_context(
-                crate::error::ErrorKind::Service,
-                "Routing service not available",
-            )
-        })?;
+        use crate::services::routing::commands::{GetRoutingInfo, GetStreamRoutingInfo};
 
-        let route_info = routing
-            .get_stream_routing_info(stream_name)
+        let route_info = self
+            .event_bus
+            .request(GetStreamRoutingInfo {
+                stream_name: stream_name.to_string(),
+            })
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -857,7 +827,7 @@ where
                 )
             })?;
 
-        let routing_info = routing.get_routing_info().await.map_err(|e| {
+        let routing_info = self.event_bus.request(GetRoutingInfo).await.map_err(|e| {
             Error::with_context(
                 crate::error::ErrorKind::Service,
                 format!("Failed to get routing info: {e}"),
@@ -1141,6 +1111,36 @@ where
             )
         })
     }
+
+    /// Stream messages directly from a stream without session management
+    ///
+    /// This uses the new event bus streaming feature for efficient message delivery
+    pub async fn stream_messages(
+        &self,
+        stream_name: &str,
+        start_sequence: LogIndex,
+        end_sequence: Option<LogIndex>,
+    ) -> ConsensusResult<flume::r#async::RecvStream<'static, crate::services::stream::StoredMessage>>
+    {
+        use crate::services::stream::StreamMessages;
+
+        let request = StreamMessages {
+            stream_name: stream_name.to_string(),
+            start_sequence,
+            end_sequence,
+        };
+
+        // Use event bus streaming
+        let receiver = self.event_bus.stream(request).await.map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Failed to start streaming: {e}"),
+            )
+        })?;
+
+        // Convert the receiver to a Stream
+        Ok(receiver.into_stream())
+    }
 }
 
 #[async_trait::async_trait]
@@ -1168,12 +1168,6 @@ where
             return Err(Error::with_context(
                 crate::error::ErrorKind::Configuration,
                 "Group consensus service not set",
-            ));
-        }
-        if self.routing_service.read().await.is_none() {
-            return Err(Error::with_context(
-                crate::error::ErrorKind::Configuration,
-                "Routing service not set",
             ));
         }
 
