@@ -23,9 +23,8 @@ use crate::services::global_consensus::GlobalConsensusService;
 use crate::services::group_consensus::GroupConsensusService;
 use crate::services::stream::StreamService;
 use crate::services::{
-    client::ClientService, event::EventService, lifecycle::LifecycleService,
-    migration::MigrationService, monitoring::MonitoringService, pubsub::PubSubService,
-    routing::RoutingService,
+    client::ClientService, lifecycle::LifecycleService, migration::MigrationService,
+    monitoring::MonitoringService, pubsub::PubSubService, routing::RoutingService,
 };
 
 use super::config::EngineConfig;
@@ -48,7 +47,6 @@ where
     coordinator: Arc<ServiceCoordinator>,
 
     /// Services
-    event_service: Arc<EventService>,
     monitoring_service: Arc<MonitoringService>,
     routing_service: Arc<RoutingService>,
     migration_service: Arc<MigrationService>,
@@ -99,7 +97,6 @@ where
         node_id: NodeId,
         config: EngineConfig,
         coordinator: Arc<ServiceCoordinator>,
-        event_service: Arc<EventService>,
         monitoring_service: Arc<MonitoringService>,
         routing_service: Arc<RoutingService>,
         migration_service: Arc<MigrationService>,
@@ -114,7 +111,6 @@ where
             node_id,
             config,
             coordinator,
-            event_service,
             monitoring_service,
             routing_service,
             migration_service,
@@ -376,11 +372,6 @@ where
     /// Get PubSub service
     pub fn pubsub_service(&self) -> Arc<PubSubService<T, G>> {
         self.pubsub_service.clone()
-    }
-
-    /// Get event service
-    pub fn event_service(&self) -> Arc<EventService> {
-        self.event_service.clone()
     }
 
     /// Get a client for interacting with the consensus engine

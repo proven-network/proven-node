@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
+use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::services::client::events::ClientServiceEvent;
-use crate::services::event::{EventHandler, EventPriority};
 use crate::services::routing::RoutingTable;
 use proven_topology::NodeId;
 
@@ -28,12 +28,7 @@ impl ClientServiceSubscriber {
 
 #[async_trait]
 impl EventHandler<ClientServiceEvent> for ClientServiceSubscriber {
-    fn priority(&self) -> EventPriority {
-        // Handle ClientServiceEvents synchronously
-        EventPriority::Critical
-    }
-
-    async fn handle(&self, event: ClientServiceEvent) {
+    async fn handle(&self, event: ClientServiceEvent, _metadata: EventMetadata) {
         match event {
             ClientServiceEvent::LearnedStreamExists {
                 stream_name,
@@ -86,13 +81,6 @@ impl EventHandler<ClientServiceEvent> for ClientServiceSubscriber {
                         }
                     }
                 }
-            }
-
-            // Ignore PubSub-related events (handled by PubSub service)
-            ClientServiceEvent::PubSubPublish { .. }
-            | ClientServiceEvent::PubSubSubscribe { .. }
-            | ClientServiceEvent::PubSubUnsubscribe { .. } => {
-                // These events are handled by the PubSub service subscriber
             }
         }
     }

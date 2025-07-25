@@ -6,6 +6,7 @@
 //! - Membership change coordination
 //! - Event publishing for membership updates
 
+pub mod commands;
 mod config;
 mod discovery;
 pub mod events;
@@ -16,6 +17,10 @@ mod service;
 mod types;
 mod utils;
 
+pub use commands::{
+    AddMember, ClusterFormationResult, ClusterFormationStrategy, GetMembership, InitializeCluster,
+    MembershipInfo, RemoveMember,
+};
 pub use config::MembershipConfig;
 pub use events::MembershipEvent;
 pub use messages::{MembershipMessage, MembershipResponse};

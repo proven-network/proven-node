@@ -53,7 +53,7 @@ where
     pub async fn start_monitoring(
         self: Arc<Self>,
         membership_view: Arc<RwLock<MembershipView>>,
-        event_bus: Arc<crate::services::event::bus::EventBus>,
+        event_bus: Arc<crate::foundation::events::EventBus>,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) {
         let mut check_interval = interval(self.config.health_check_interval);
@@ -78,7 +78,7 @@ where
     async fn check_all_members(
         &self,
         membership_view: &Arc<RwLock<MembershipView>>,
-        event_bus: &Arc<crate::services::event::bus::EventBus>,
+        event_bus: &Arc<crate::foundation::events::EventBus>,
     ) -> ConsensusResult<()> {
         let nodes_to_check: Vec<NodeId> = {
             let view = membership_view.read().await;
@@ -163,7 +163,7 @@ where
         &self,
         membership_view: &Arc<RwLock<MembershipView>>,
         results: HashMap<NodeId, HealthCheckResult>,
-        event_bus: &Arc<crate::services::event::bus::EventBus>,
+        event_bus: &Arc<crate::foundation::events::EventBus>,
     ) {
         let mut view = membership_view.write().await;
         let now_ms = SystemTime::now()
@@ -229,16 +229,13 @@ where
                                         member.status = NodeStatus::Offline { since_ms: now_ms };
 
                                         // Publish event for membership change
-                                        let node_id_clone = node_id.clone();
-                                        let bus_clone = event_bus.clone();
-                                        tokio::spawn(async move {
-                                            use crate::services::membership::events::MembershipEvent;
+                                        use crate::services::membership::events::MembershipEvent;
 
-                                            bus_clone.publish(MembershipEvent::MembershipChangeRequired {
-                                                    add_nodes: vec![],
-                                                    remove_nodes: vec![node_id_clone],
-                                                    reason: "Node offline due to failed health checks".to_string(),
-                                                }).await;
+                                        event_bus.emit(MembershipEvent::MembershipChangeRequired {
+                                            add_nodes: vec![],
+                                            remove_nodes: vec![node_id.clone()],
+                                            reason: "Node offline due to failed health checks"
+                                                .to_string(),
                                         });
                                     }
                                 }

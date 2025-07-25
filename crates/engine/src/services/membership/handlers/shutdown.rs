@@ -8,15 +8,13 @@ use tracing::info;
 
 use crate::{
     error::ConsensusResult,
-    services::{
-        event::{EventBus, EventPriority},
-        membership::{
-            MembershipView,
-            events::MembershipEvent,
-            messages::{GracefulShutdownRequest, GracefulShutdownResponse},
-            types::NodeStatus,
-            utils::now_timestamp,
-        },
+    foundation::events::EventBus,
+    services::membership::{
+        MembershipView,
+        events::MembershipEvent,
+        messages::{GracefulShutdownRequest, GracefulShutdownResponse},
+        types::NodeStatus,
+        utils::now_timestamp,
     },
 };
 
@@ -66,21 +64,18 @@ impl GracefulShutdownHandler {
         drop(view);
 
         // Publish event for immediate membership change
-        self.event_bus
-            .publish(MembershipEvent::NodeGracefulShutdown {
-                node_id: sender.clone(),
-                reason: request.reason.clone(),
-            })
-            .await;
+        self.event_bus.emit(MembershipEvent::NodeGracefulShutdown {
+            node_id: sender.clone(),
+            reason: request.reason.clone(),
+        });
 
         // Also publish membership change required event
         self.event_bus
-            .publish(MembershipEvent::MembershipChangeRequired {
+            .emit(MembershipEvent::MembershipChangeRequired {
                 add_nodes: vec![],
                 remove_nodes: vec![sender.clone()],
                 reason: format!("Node {sender} gracefully shutting down"),
-            })
-            .await;
+            });
 
         Ok(GracefulShutdownResponse { acknowledged: true })
     }

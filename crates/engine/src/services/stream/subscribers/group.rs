@@ -5,8 +5,8 @@ use std::num::NonZero;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
+use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::{EventHandler, EventPriority};
 use crate::services::group_consensus::events::GroupConsensusEvent;
 use crate::services::stream::{StoredMessage, StreamName, StreamService};
 use proven_storage::{LogStorage, StorageAdaptor};
@@ -40,12 +40,7 @@ impl<S> EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber<S>
 where
     S: StorageAdaptor + 'static,
 {
-    fn priority(&self) -> EventPriority {
-        // Handle GroupConsensusEvents synchronously for message persistence
-        EventPriority::Critical
-    }
-
-    async fn handle(&self, event: GroupConsensusEvent) {
+    async fn handle(&self, event: GroupConsensusEvent, _metadata: EventMetadata) {
         match event {
             GroupConsensusEvent::MessagesAppended(data) => {
                 let group_id = data.group_id;
@@ -108,50 +103,6 @@ where
                     "StreamSubscriber: Group {:?} leader changed to {:?}",
                     group_id, new_leader
                 );
-            }
-
-            GroupConsensusEvent::MessagesToPersist(data) => {
-                // Handle message persistence with zero-copy Arc'd data
-                let stream_name = StreamName::new(&data.stream_name);
-                let message_count = data.entries.len();
-
-                // Get or create the storage for this stream
-                let _storage = self
-                    .stream_service
-                    .get_or_create_storage(&stream_name)
-                    .await;
-
-                // Extract the pre-serialized entries
-                let entries = data.into_bytes();
-
-                // Batch append to storage
-                if !entries.is_empty() {
-                    let namespace =
-                        proven_storage::StorageNamespace::new(format!("stream_{stream_name}"));
-
-                    match self
-                        .stream_service
-                        .storage_manager()
-                        .stream_storage()
-                        .append(&namespace, entries)
-                        .await
-                    {
-                        Ok(last_seq) => {
-                            // Stream metadata is updated by group consensus callbacks
-
-                            info!(
-                                "Successfully persisted {} messages to stream {} storage (last_seq: {})",
-                                message_count, stream_name, last_seq
-                            );
-                        }
-                        Err(e) => {
-                            error!(
-                                "Failed to persist {} messages to stream {} storage: {}",
-                                message_count, stream_name, e
-                            );
-                        }
-                    }
-                }
             }
         }
     }

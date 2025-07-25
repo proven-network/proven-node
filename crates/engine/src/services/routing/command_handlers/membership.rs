@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::info;
 
-use crate::services::event::{EventHandler, EventPriority};
+use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::services::membership::events::MembershipEvent;
 use crate::services::routing::RoutingTable;
 
@@ -23,12 +23,7 @@ impl MembershipSubscriber {
 
 #[async_trait]
 impl EventHandler<MembershipEvent> for MembershipSubscriber {
-    fn priority(&self) -> EventPriority {
-        // Handle MembershipEvents synchronously as they affect routing
-        EventPriority::Critical
-    }
-
-    async fn handle(&self, event: MembershipEvent) {
+    async fn handle(&self, event: MembershipEvent, _metadata: EventMetadata) {
         match event {
             MembershipEvent::ClusterFormed {
                 coordinator,

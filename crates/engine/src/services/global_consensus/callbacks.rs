@@ -7,14 +7,13 @@ use proven_topology::NodeId;
 use crate::{
     consensus::global::GlobalConsensusCallbacks,
     error::ConsensusResult,
+    foundation::events::EventBus,
     foundation::{
         GlobalState, GlobalStateRead, GlobalStateReader, GroupInfo, types::ConsensusGroupId,
     },
     services::{
-        event::bus::EventBus,
-        global_consensus::{
-            GlobalConsensusEvent,
-            events::{GlobalStateSnapshot, GroupSnapshot, StreamSnapshot},
+        global_consensus::events::{
+            GlobalConsensusEvent, GlobalStateSnapshot, GroupSnapshot, StreamSnapshot,
         },
         stream::StreamName,
     },
@@ -79,7 +78,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
             let event = GlobalConsensusEvent::StateSynchronized {
                 snapshot: Box::new(snapshot),
             };
-            event_bus.publish(event).await;
+            event_bus.emit(event);
         }
 
         Ok(())
@@ -96,7 +95,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
                 group_id,
                 members: group_info.members.clone(),
             };
-            event_bus.publish(event).await;
+            event_bus.emit(event);
         }
 
         Ok(())
@@ -109,7 +108,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         // Publish event
         if let Some(ref event_bus) = self.event_bus {
             let event = GlobalConsensusEvent::GroupDissolved { group_id };
-            event_bus.publish(event).await;
+            event_bus.emit(event);
         }
 
         Ok(())
@@ -128,7 +127,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
                 config: config.clone(),
                 group_id,
             };
-            event_bus.publish(event).await;
+            event_bus.emit(event);
         }
 
         Ok(())
@@ -140,7 +139,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
             let event = GlobalConsensusEvent::StreamDeleted {
                 stream_name: stream_name.clone(),
             };
-            event_bus.publish(event).await;
+            event_bus.emit(event);
         }
 
         Ok(())
@@ -163,7 +162,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
                 added_members: added_members.to_vec(),
                 removed_members: removed_members.to_vec(),
             };
-            event_bus.publish(event).await;
+            event_bus.emit(event);
         }
 
         Ok(())

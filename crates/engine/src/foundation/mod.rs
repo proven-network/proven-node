@@ -3,6 +3,7 @@
 //! This module contains the fundamental building blocks used throughout
 //! the consensus system. It has no dependencies on other modules.
 
+pub mod events;
 pub mod messages;
 pub mod models;
 pub mod state;

@@ -6,8 +6,11 @@ use std::{num::NonZero, sync::Arc};
 use crate::{
     consensus::group::callbacks::GroupConsensusCallbacks,
     error::ConsensusResult,
+    foundation::events::EventBus,
     foundation::{GroupState, types::ConsensusGroupId},
-    services::{event::bus::EventBus, group_consensus::GroupConsensusEvent},
+    services::group_consensus::events::{
+        GroupConsensusEvent, MembershipChangedData, MessagesAppendedData,
+    },
 };
 use proven_storage::StorageAdaptor;
 use proven_topology::NodeId;
@@ -48,7 +51,7 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         // Publish event
         if let Some(ref event_bus) = self.event_bus {
             let event = GroupConsensusEvent::StateSynchronized { group_id };
-            event_bus.publish(event).await;
+            event_bus.emit(event);
         }
 
         Ok(())
@@ -103,30 +106,36 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
             entries.len()
         );
 
-        // Publish event with pre-serialized entries for persistence
+        // Send command to persist messages
         if let Some(ref event_bus) = self.event_bus {
-            let event = GroupConsensusEvent::MessagesToPersist(Box::new(
-                crate::services::group_consensus::events::MessagesToPersist {
-                    stream_name: stream_name.to_string(),
-                    entries: entries.clone(),
-                },
-            ));
-            event_bus.publish(event).await;
+            use crate::services::stream::StreamName;
+            use crate::services::stream::commands::PersistMessages;
+
+            let command = PersistMessages {
+                stream_name: StreamName::new(stream_name),
+                entries: entries.clone(),
+            };
+
+            if let Err(e) = event_bus.request(command).await {
+                tracing::error!(
+                    "Failed to persist messages for stream {}: {}",
+                    stream_name,
+                    e
+                );
+            }
         }
 
-        // Also publish the metadata event for other subscribers
+        // Also emit the metadata event for other subscribers
         if let Some(ref event_bus) = self.event_bus {
-            let event = GroupConsensusEvent::MessagesAppended(Box::new(
-                crate::services::group_consensus::events::MessagesAppendedData {
-                    group_id,
-                    stream_name: stream_name.to_string(),
-                    message_count: entries.len(),
-                },
-            ));
-            event_bus.publish(event).await;
+            let event = GroupConsensusEvent::MessagesAppended(Box::new(MessagesAppendedData {
+                group_id,
+                stream_name: stream_name.to_string(),
+                message_count: entries.len(),
+            }));
+            event_bus.emit(event);
         }
 
-        // Storage is now handled by StreamService through the MessagesToPersist event
+        // Storage is now handled by StreamService through the PersistMessages command
 
         Ok(())
     }
@@ -146,14 +155,12 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
 
         // Publish event
         if let Some(ref event_bus) = self.event_bus {
-            let event = GroupConsensusEvent::MembershipChanged(Box::new(
-                crate::services::group_consensus::events::MembershipChangedData {
-                    group_id,
-                    added_members: added_members.to_vec(),
-                    removed_members: removed_members.to_vec(),
-                },
-            ));
-            event_bus.publish(event).await;
+            let event = GroupConsensusEvent::MembershipChanged(Box::new(MembershipChangedData {
+                group_id,
+                added_members: added_members.to_vec(),
+                removed_members: removed_members.to_vec(),
+            }));
+            event_bus.emit(event);
         }
 
         Ok(())

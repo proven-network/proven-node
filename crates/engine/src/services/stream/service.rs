@@ -16,8 +16,8 @@ use proven_storage::{
 };
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
+use crate::foundation::events::{EventBus, EventHandler};
 use crate::foundation::{ConsensusGroupId, traits::ServiceLifecycle};
-use crate::services::event::{EventBus, EventHandler};
 use crate::services::stream::config::RetentionPolicy;
 use crate::services::stream::events::StreamEvent;
 use crate::services::stream::storage::{
@@ -540,25 +540,52 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
             ));
         }
 
-        // Register event subscribers
-        // Subscribe to GlobalConsensusEvents
-        let global_subscriber =
-            crate::services::stream::subscribers::GlobalConsensusSubscriber::new(
-                Arc::new(self.clone()),
-                proven_topology::NodeId::default(), // TODO: Get actual node ID
-            );
+        // Register command handlers
+        use crate::services::stream::command_handlers::group_consensus::*;
+        use crate::services::stream::commands::*;
 
-        self.event_bus.subscribe(global_subscriber).await;
+        let service_arc = Arc::new(self.clone());
 
-        // Subscribe to GroupConsensusEvents
-        let group_subscriber = crate::services::stream::subscribers::GroupConsensusSubscriber::new(
-            Arc::new(self.clone()),
-            proven_topology::NodeId::default(), // TODO: Get actual node ID
-        );
+        // Register PersistMessages handler for group consensus
+        let persist_handler = PersistMessagesHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<PersistMessages, _>(persist_handler)
+            .expect("Failed to register PersistMessages handler");
 
-        self.event_bus.subscribe(group_subscriber).await;
+        // Register CreateStream handler
+        let create_handler = CreateStreamHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<CreateStream, _>(create_handler)
+            .expect("Failed to register CreateStream handler");
 
-        info!("StreamService: Registered subscribers for consensus events");
+        // Register DeleteStream handler
+        let delete_handler = DeleteStreamHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<DeleteStream, _>(delete_handler)
+            .expect("Failed to register DeleteStream handler");
+
+        // Register ReadMessages handler
+        let read_handler = ReadMessagesHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<ReadMessages, _>(read_handler)
+            .expect("Failed to register ReadMessages handler");
+
+        // Register GetStreamInfo handler
+        let info_handler = GetStreamInfoHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<GetStreamInfo, _>(info_handler)
+            .expect("Failed to register GetStreamInfo handler");
+
+        info!("StreamService: Registered command handlers");
+
+        // Register event handlers for non-critical events
+        use crate::services::group_consensus::events::GroupConsensusEvent;
+        use crate::services::stream::event_handlers::group_consensus::GroupConsensusEventHandler;
+        let group_event_handler = GroupConsensusEventHandler::new(service_arc.clone());
+        self.event_bus
+            .subscribe::<GroupConsensusEvent, _>(group_event_handler);
+
+        info!("StreamService: Registered event handlers");
 
         // Mark as running
         *self.is_running.write().await = true;
@@ -727,7 +754,7 @@ mod tests {
     async fn test_stream_service_lifecycle() {
         let config = StreamServiceConfig::default();
         let storage_manager = Arc::new(StorageManager::new(DummyStorage));
-        let event_bus = Arc::new(EventBus::new());
+        let event_bus = Arc::new(crate::foundation::events::EventBusBuilder::new().build());
         let service = StreamService::new(config, storage_manager, event_bus);
 
         // Should not be running initially
@@ -749,7 +776,7 @@ mod tests {
     async fn test_stream_operations() {
         let config = StreamServiceConfig::default();
         let storage_manager = Arc::new(StorageManager::new(DummyStorage));
-        let event_bus = Arc::new(EventBus::new());
+        let event_bus = Arc::new(crate::foundation::events::EventBusBuilder::new().build());
         let service = StreamService::new(config, storage_manager, event_bus);
 
         let stream_name = StreamName::new("test-stream");

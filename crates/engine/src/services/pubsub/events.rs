@@ -4,8 +4,8 @@ use bytes::Bytes;
 use uuid::Uuid;
 
 use super::types::PubSubNetworkMessage;
+use crate::foundation::events::Event;
 use crate::foundation::types::Subject;
-use crate::services::event::ServiceEvent;
 
 /// Client-facing message type (without internal metadata)
 #[derive(Debug, Clone)]
@@ -57,16 +57,8 @@ pub enum PubSubServiceEvent {
     UnsubscribeError { request_id: Uuid, error: String },
 }
 
-impl ServiceEvent for PubSubServiceEvent {
-    fn event_name(&self) -> &'static str {
-        match self {
-            Self::MessageReceived { .. } => "PubSubServiceEvent::MessageReceived",
-            Self::PublishComplete { .. } => "PubSubServiceEvent::PublishComplete",
-            Self::PublishError { .. } => "PubSubServiceEvent::PublishError",
-            Self::SubscribeComplete { .. } => "PubSubServiceEvent::SubscribeComplete",
-            Self::SubscribeError { .. } => "PubSubServiceEvent::SubscribeError",
-            Self::UnsubscribeComplete { .. } => "PubSubServiceEvent::UnsubscribeComplete",
-            Self::UnsubscribeError { .. } => "PubSubServiceEvent::UnsubscribeError",
-        }
+impl Event for PubSubServiceEvent {
+    fn event_type() -> &'static str {
+        "PubSubServiceEvent"
     }
 }

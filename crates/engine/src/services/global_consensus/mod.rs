@@ -2,6 +2,7 @@
 
 mod adaptor;
 mod callbacks;
+pub mod commands;
 mod config;
 pub mod events;
 mod messages;

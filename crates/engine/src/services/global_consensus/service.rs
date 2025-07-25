@@ -26,11 +26,11 @@ use crate::{
         GlobalConsensusCallbacks, GlobalConsensusLayer, raft::GlobalRaftMessageHandler,
     },
     error::{ConsensusResult, Error, ErrorKind},
+    foundation::events::EventBus,
     foundation::{GroupInfo, types::ConsensusGroupId},
     services::stream::StreamName,
     services::{
-        event::bus::EventBus, global_consensus::GlobalConsensusEvent,
-        group_consensus::GroupConsensusService,
+        global_consensus::events::GlobalConsensusEvent, group_consensus::GroupConsensusService,
     },
 };
 
@@ -237,7 +237,7 @@ where
             self.topology_manager.clone(),
         );
 
-        self.event_bus.subscribe(membership_subscriber).await;
+        let _membership_receiver = self.event_bus.subscribe(membership_subscriber);
 
         // Start membership monitoring task
         self.spawn_membership_monitor(&task_tracker, &cancellation_token);
@@ -574,7 +574,7 @@ where
                                     term: current_term,
                                 };
 
-                                event_bus_clone.publish(event).await;
+                                event_bus_clone.emit(event);
                             }
                         }
                     }

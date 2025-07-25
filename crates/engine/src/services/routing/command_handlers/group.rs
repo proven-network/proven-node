@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
+use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::{EventHandler, EventPriority};
 use crate::services::group_consensus::events::GroupConsensusEvent;
 use crate::services::routing::{GroupLocation, RoutingTable};
 use proven_topology::NodeId;
@@ -29,12 +29,7 @@ impl GroupConsensusSubscriber {
 
 #[async_trait]
 impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
-    fn priority(&self) -> EventPriority {
-        // Handle GroupConsensusEvents synchronously
-        EventPriority::Critical
-    }
-
-    async fn handle(&self, event: GroupConsensusEvent) {
+    async fn handle(&self, event: GroupConsensusEvent, _metadata: EventMetadata) {
         match event {
             GroupConsensusEvent::StateSynchronized { group_id } => {
                 // This is a critical synchronous event
@@ -158,10 +153,6 @@ impl EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber {
                         );
                     }
                 }
-            }
-
-            GroupConsensusEvent::MessagesToPersist(_) => {
-                // This event is handled by StreamService, not RoutingService
             }
         }
     }

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, info};
 
-use crate::services::event::{EventBus, EventHandler, EventPriority};
+use crate::foundation::events::{EventBus, EventHandler, EventMetadata};
 use crate::services::membership::events::MembershipEvent;
 use crate::services::pubsub::PubSubService;
 use proven_topology::{NodeId, TopologyAdaptor};
@@ -40,11 +40,7 @@ where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
 {
-    fn priority(&self) -> EventPriority {
-        EventPriority::Normal
-    }
-
-    async fn handle(&self, event: MembershipEvent) {
+    async fn handle(&self, event: MembershipEvent, _metadata: EventMetadata) {
         match event {
             MembershipEvent::ClusterFormed { members, .. } => {
                 info!(

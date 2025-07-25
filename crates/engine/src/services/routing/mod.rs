@@ -38,10 +38,11 @@
 //! ```
 
 mod balancer;
+pub mod command_handlers;
+pub mod commands;
 mod events;
 mod router;
 mod service;
-mod subscribers;
 mod table;
 mod types;
 

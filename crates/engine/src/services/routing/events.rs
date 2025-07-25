@@ -1,7 +1,7 @@
-//! Events emitted by the routing service
+//! Events emitted by the routing service (new event system)
 
+use crate::foundation::events::Event;
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::ServiceEvent;
 use proven_topology::NodeId;
 
 /// Group location update details
@@ -33,12 +33,8 @@ pub enum RoutingEvent {
     RoutingTableCleared,
 }
 
-impl ServiceEvent for RoutingEvent {
-    fn event_name(&self) -> &'static str {
-        match self {
-            Self::GroupLocationUpdated(_) => "RoutingEvent::GroupLocationUpdated",
-            Self::GroupLocationRemoved { .. } => "RoutingEvent::GroupLocationRemoved",
-            Self::RoutingTableCleared => "RoutingEvent::RoutingTableCleared",
-        }
+impl Event for RoutingEvent {
+    fn event_type() -> &'static str {
+        "RoutingEvent"
     }
 }

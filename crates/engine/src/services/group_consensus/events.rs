@@ -1,12 +1,12 @@
-//! Events emitted by the group consensus service
+//! Events emitted by the group consensus service (new event system)
 
 use std::num::NonZero;
 
 use proven_topology::NodeId;
 
 use crate::consensus::group::types::MessageData;
+use crate::foundation::events::Event;
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::traits::ServiceEvent;
 use std::sync::Arc;
 
 /// Messages appended event details
@@ -15,21 +15,6 @@ pub struct MessagesAppendedData {
     pub group_id: ConsensusGroupId,
     pub stream_name: String,
     pub message_count: usize,
-}
-
-/// Messages to persist event - includes pre-serialized entries for zero-copy transfer
-#[derive(Debug, Clone)]
-pub struct MessagesToPersist {
-    pub stream_name: String,
-    /// Pre-serialized entries ready for storage
-    pub entries: Arc<Vec<bytes::Bytes>>,
-}
-
-impl MessagesToPersist {
-    /// Consume the event and return the pre-serialized entries for storage append
-    pub fn into_bytes(self) -> Arc<Vec<bytes::Bytes>> {
-        self.entries
-    }
 }
 
 /// Membership changed event details
@@ -62,9 +47,6 @@ pub enum GroupConsensusEvent {
     /// Messages appended to a stream
     MessagesAppended(Box<MessagesAppendedData>),
 
-    /// Messages to persist - includes actual message data
-    MessagesToPersist(Box<MessagesToPersist>),
-
     /// Group membership changed
     MembershipChanged(Box<MembershipChangedData>),
 
@@ -76,16 +58,8 @@ pub enum GroupConsensusEvent {
     },
 }
 
-impl ServiceEvent for GroupConsensusEvent {
-    fn event_name(&self) -> &'static str {
-        match self {
-            Self::StateSynchronized { .. } => "GroupConsensusEvent::StateSynchronized",
-            Self::StreamCreated { .. } => "GroupConsensusEvent::StreamCreated",
-            Self::StreamRemoved { .. } => "GroupConsensusEvent::StreamRemoved",
-            Self::MessagesAppended(_) => "GroupConsensusEvent::MessagesAppended",
-            Self::MessagesToPersist(_) => "GroupConsensusEvent::MessagesToPersist",
-            Self::MembershipChanged(_) => "GroupConsensusEvent::MembershipChanged",
-            Self::LeaderChanged { .. } => "GroupConsensusEvent::LeaderChanged",
-        }
+impl Event for GroupConsensusEvent {
+    fn event_type() -> &'static str {
+        "GroupConsensusEvent"
     }
 }

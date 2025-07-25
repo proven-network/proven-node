@@ -8,14 +8,12 @@ use tracing::{info, warn};
 
 use crate::{
     error::ConsensusResult,
-    services::{
-        event::{EventBus, EventPriority},
-        membership::{
-            MembershipView,
-            events::MembershipEvent,
-            messages::{ClusterState, JoinClusterRequest, JoinClusterResponse},
-            types::NodeRole,
-        },
+    foundation::events::EventBus,
+    services::membership::{
+        MembershipView,
+        events::MembershipEvent,
+        messages::{ClusterState, JoinClusterRequest, JoinClusterResponse},
+        types::NodeRole,
     },
 };
 
@@ -101,8 +99,8 @@ impl JoinClusterHandler {
             reason: format!("Node {sender} requested to join cluster"),
         };
 
-        // Publish with Critical priority so it's handled synchronously
-        self.event_bus.publish(event).await;
+        // Emit event
+        self.event_bus.emit(event);
 
         info!("Node {} join request approved", sender);
 

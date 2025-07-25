@@ -1,7 +1,7 @@
-//! Events emitted by the stream service
+//! Events emitted by the stream service (new event system)
 
+use crate::foundation::events::Event;
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::traits::ServiceEvent;
 use crate::services::stream::{StreamConfig, StreamName};
 
 /// Events emitted by the stream service
@@ -51,16 +51,8 @@ pub enum StreamEvent {
     },
 }
 
-impl ServiceEvent for StreamEvent {
-    fn event_name(&self) -> &'static str {
-        match self {
-            Self::StreamCreated { .. } => "StreamEvent::StreamCreated",
-            Self::StreamDeleted { .. } => "StreamEvent::StreamDeleted",
-            Self::StreamConfigChanged { .. } => "StreamEvent::StreamConfigChanged",
-            Self::StreamAppended { .. } => "StreamEvent::StreamAppended",
-            Self::StreamTruncated { .. } => "StreamEvent::StreamTruncated",
-            Self::ConsumerSubscribed { .. } => "StreamEvent::ConsumerSubscribed",
-            Self::ConsumerUnsubscribed { .. } => "StreamEvent::ConsumerUnsubscribed",
-        }
+impl Event for StreamEvent {
+    fn event_type() -> &'static str {
+        "StreamEvent"
     }
 }

@@ -1,9 +1,9 @@
-//! Events emitted by the global consensus service
+//! Events emitted by the global consensus service (new event system)
 
 use proven_topology::NodeId;
 
+use crate::foundation::events::Event;
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::traits::ServiceEvent;
 use crate::services::stream::{StreamConfig, StreamName};
 
 /// Snapshot of global consensus state for synchronization
@@ -70,16 +70,8 @@ pub enum GlobalConsensusEvent {
     },
 }
 
-impl ServiceEvent for GlobalConsensusEvent {
-    fn event_name(&self) -> &'static str {
-        match self {
-            Self::StateSynchronized { .. } => "GlobalConsensusEvent::StateSynchronized",
-            Self::GroupCreated { .. } => "GlobalConsensusEvent::GroupCreated",
-            Self::GroupDissolved { .. } => "GlobalConsensusEvent::GroupDissolved",
-            Self::StreamCreated { .. } => "GlobalConsensusEvent::StreamCreated",
-            Self::StreamDeleted { .. } => "GlobalConsensusEvent::StreamDeleted",
-            Self::MembershipChanged { .. } => "GlobalConsensusEvent::MembershipChanged",
-            Self::LeaderChanged { .. } => "GlobalConsensusEvent::LeaderChanged",
-        }
+impl Event for GlobalConsensusEvent {
+    fn event_type() -> &'static str {
+        "GlobalConsensusEvent"
     }
 }

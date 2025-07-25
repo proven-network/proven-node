@@ -1,8 +1,8 @@
 use crate::consensus::global::raft::GlobalRaftMessageHandler;
 use crate::consensus::global::{GlobalConsensusLayer, GlobalRequest};
+use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::foundation::{GlobalStateRead, GlobalStateReader, GroupInfo, types::ConsensusGroupId};
-use crate::services::event::{EventHandler, EventPriority};
-use crate::services::membership::MembershipEvent;
+use crate::services::membership::events::MembershipEvent;
 use proven_storage::{StorageAdaptor, StorageManager};
 use proven_topology::{NodeId, TopologyAdaptor, TopologyManager};
 use std::sync::Arc;
@@ -56,12 +56,7 @@ where
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
 {
-    fn priority(&self) -> EventPriority {
-        // Handle membership events synchronously to ensure initialization happens before other services
-        EventPriority::Critical
-    }
-
-    async fn handle(&self, event: MembershipEvent) {
+    async fn handle(&self, event: MembershipEvent, _metadata: EventMetadata) {
         match event {
             MembershipEvent::ClusterFormed {
                 members,

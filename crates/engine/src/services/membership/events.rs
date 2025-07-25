@@ -1,10 +1,10 @@
-//! Events emitted by the membership service
+//! Events emitted by the membership service (new event system)
 
 use std::time::Duration;
 
 use proven_topology::{Node, NodeId};
 
-use crate::services::event::traits::ServiceEvent;
+use crate::foundation::events::Event;
 
 /// Events emitted by the membership service
 #[derive(Debug, Clone)]
@@ -50,17 +50,8 @@ pub enum MembershipEvent {
     },
 }
 
-impl ServiceEvent for MembershipEvent {
-    fn event_name(&self) -> &'static str {
-        match self {
-            Self::ClusterFormed { .. } => "MembershipEvent::ClusterFormed",
-            Self::NodeOnline { .. } => "MembershipEvent::NodeOnline",
-            Self::NodeUnreachable { .. } => "MembershipEvent::NodeUnreachable",
-            Self::NodeOffline { .. } => "MembershipEvent::NodeOffline",
-            Self::NodeDiscovered { .. } => "MembershipEvent::NodeDiscovered",
-            Self::ClusterJoined { .. } => "MembershipEvent::ClusterJoined",
-            Self::NodeGracefulShutdown { .. } => "MembershipEvent::NodeGracefulShutdown",
-            Self::MembershipChangeRequired { .. } => "MembershipEvent::MembershipChangeRequired",
-        }
+impl Event for MembershipEvent {
+    fn event_type() -> &'static str {
+        "MembershipEvent"
     }
 }

@@ -8,13 +8,13 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::foundation::ConsensusGroupId;
-use crate::services::event::{EventBus, EventHandler};
+use crate::foundation::{ConsensusGroupId, events::EventBus};
 use crate::services::routing::events::RoutingEvent;
-use crate::services::routing::subscribers::{
-    ClientServiceSubscriber, GlobalConsensusSubscriber, GroupConsensusSubscriber,
-    MembershipSubscriber,
-};
+// Command handlers will be imported when we complete the conversion
+// use crate::services::routing::command_handlers::{
+//     UpdateStreamRouteHandler, UpdateGlobalLeaderHandler,
+//     BulkUpdateRoutesHandler, UpdateGroupMembershipHandler,
+// };
 use proven_topology::NodeId;
 
 use super::balancer::LoadBalancer;
@@ -125,31 +125,35 @@ impl RoutingService {
         tasks.push(self.spawn_metrics_aggregator());
 
         // Register event handlers for consensus events
-        // Create subscribers with reference to routing table
-        let global_subscriber =
-            GlobalConsensusSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
-
-        let group_subscriber =
-            GroupConsensusSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
-
-        let membership_subscriber = MembershipSubscriber::new(self.routing_table.clone());
-
-        let client_subscriber =
-            ClientServiceSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
+        use crate::services::global_consensus::events::GlobalConsensusEvent;
+        use crate::services::group_consensus::events::GroupConsensusEvent;
+        use crate::services::membership::events::MembershipEvent;
+        use crate::services::routing::command_handlers::{
+            global::GlobalConsensusSubscriber, group::GroupConsensusSubscriber,
+            membership::MembershipSubscriber,
+        };
 
         // Subscribe to global consensus events
-        self.event_bus.subscribe(global_subscriber).await;
+        let global_subscriber =
+            GlobalConsensusSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
+        self.event_bus
+            .subscribe::<GlobalConsensusEvent, _>(global_subscriber);
 
         // Subscribe to group consensus events
-        self.event_bus.subscribe(group_subscriber).await;
+        let group_subscriber =
+            GroupConsensusSubscriber::new(self.routing_table.clone(), self.local_node_id.clone());
+        self.event_bus
+            .subscribe::<GroupConsensusEvent, _>(group_subscriber);
 
         // Subscribe to membership events
-        self.event_bus.subscribe(membership_subscriber).await;
+        let membership_subscriber = MembershipSubscriber::new(self.routing_table.clone());
+        self.event_bus
+            .subscribe::<MembershipEvent, _>(membership_subscriber);
 
-        // Subscribe to client service events
-        self.event_bus.subscribe(client_subscriber).await;
+        // Register command handlers for synchronous routing updates
+        // TODO: These handlers need to be implemented with the new RequestHandler trait
 
-        info!("RoutingService: Registered subscribers for consensus events");
+        info!("RoutingService: Registered command handlers for routing updates");
 
         Ok(())
     }

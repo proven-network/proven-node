@@ -13,13 +13,10 @@ use tracing::{debug, info};
 
 use crate::{
     error::{ConsensusResult, Error},
-    foundation::{traits::ServiceLifecycle, types::ConsensusGroupId},
+    foundation::{events::EventBus, traits::ServiceLifecycle, types::ConsensusGroupId},
     services::{
-        event::{EventBus, EventService},
-        global_consensus::GlobalConsensusService,
-        group_consensus::GroupConsensusService,
-        routing::RoutingService,
-        stream::StreamService,
+        global_consensus::GlobalConsensusService, group_consensus::GroupConsensusService,
+        routing::RoutingService, stream::StreamService,
     },
 };
 
@@ -90,9 +87,6 @@ where
     /// Event bus for publishing events
     event_bus: Arc<EventBus>,
 
-    /// PubSub event subscriber
-    pubsub_subscriber: Arc<super::subscribers::PubSubServiceSubscriber>,
-
     /// Whether the service is running
     is_running: Arc<RwLock<bool>>,
 
@@ -124,9 +118,6 @@ where
             routing_service.clone(),
         ));
 
-        // Create PubSub subscriber
-        let pubsub_subscriber = Arc::new(super::subscribers::PubSubServiceSubscriber::new());
-
         Self {
             name: "ClientService".to_string(),
             node_id,
@@ -140,7 +131,6 @@ where
             stream_service,
             network_manager,
             event_bus,
-            pubsub_subscriber,
             is_running: Arc::new(RwLock::new(false)),
             shutdown: Arc::new(RwLock::new(None)),
         }
@@ -1028,37 +1018,20 @@ where
             )
         })?;
 
-        // Create request
-        let request_id = Uuid::new_v4();
-        let event = ClientServiceEvent::PubSubPublish {
-            request_id,
+        // Create command request
+        let request = crate::services::pubsub::PublishMessage {
             subject,
             payload,
             headers,
         };
 
-        // Publish event
-        self.event_bus.publish(event).await;
-
-        // Wait for response using the subscriber
-        let subscriber = self.get_pubsub_subscriber().await?;
-        let response_rx = subscriber.register_publish(request_id).await;
-
-        match tokio::time::timeout(std::time::Duration::from_secs(5), response_rx).await {
-            Ok(Ok(Ok(()))) => Ok(()),
-            Ok(Ok(Err(e))) => Err(Error::with_context(
+        // Send command and wait for response
+        self.event_bus.request(request).await.map_err(|e| {
+            Error::with_context(
                 crate::error::ErrorKind::Service,
-                format!("Publish failed: {e}"),
-            )),
-            Ok(Err(_)) => Err(Error::with_context(
-                crate::error::ErrorKind::Service,
-                "PubSub service response channel closed",
-            )),
-            Err(_) => Err(Error::with_context(
-                crate::error::ErrorKind::Timeout,
-                "Publish request timed out",
-            )),
-        }
+                format!("Publish request failed: {e}"),
+            )
+        })
     }
 
     /// Subscribe to a PubSub subject pattern
@@ -1083,83 +1056,90 @@ where
             )
         })?;
 
-        // Create broadcast channel for messages
-        let (message_tx, message_rx) = tokio::sync::broadcast::channel::<PubSubMessage>(1000);
+        // Create broadcast channel for messages with larger capacity for benchmarks
+        // TODO: Make this configurable
+        let (message_tx, message_rx) = tokio::sync::broadcast::channel::<PubSubMessage>(100_000);
 
-        // Create request
-        let request_id = Uuid::new_v4();
-        let event = ClientServiceEvent::PubSubSubscribe {
-            request_id,
+        // Create command request
+        let request = crate::services::pubsub::Subscribe {
             subject_pattern,
             queue_group,
             message_tx,
         };
 
-        // Publish event
-        self.event_bus.publish(event).await;
-
-        // Wait for response using the subscriber
-        let subscriber = self.get_pubsub_subscriber().await?;
-        let response_rx = subscriber.register_subscribe(request_id).await;
-
-        match tokio::time::timeout(std::time::Duration::from_secs(5), response_rx).await {
-            Ok(Ok(Ok(subscription_id))) => Ok((subscription_id, message_rx)),
-            Ok(Ok(Err(e))) => Err(Error::with_context(
+        // Send command and wait for response
+        match self.event_bus.request(request).await {
+            Ok(subscription_id) => Ok((subscription_id, message_rx)),
+            Err(e) => Err(Error::with_context(
                 crate::error::ErrorKind::Service,
-                format!("Subscribe failed: {e}"),
-            )),
-            Ok(Err(_)) => Err(Error::with_context(
-                crate::error::ErrorKind::Service,
-                "PubSub service response channel closed",
-            )),
-            Err(_) => Err(Error::with_context(
-                crate::error::ErrorKind::Timeout,
-                "Subscribe request timed out",
+                format!("Subscribe request failed: {e}"),
             )),
         }
+    }
+
+    /// Subscribe to a PubSub subject pattern using efficient streaming
+    ///
+    /// This method uses the new streaming API which eliminates the intermediate
+    /// broadcast channel for better performance and lower memory usage.
+    pub async fn subscribe_to_subject_stream(
+        &self,
+        subject_pattern: &str,
+        queue_group: Option<String>,
+    ) -> ConsensusResult<flume::Receiver<crate::services::pubsub::PubSubMessage>> {
+        use crate::foundation::types::SubjectPattern;
+        use crate::services::pubsub::{PubSubMessage, SubscribeStream};
+
+        // Validate subject pattern
+        let subject_pattern = SubjectPattern::new(subject_pattern.to_string()).map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::InvalidState,
+                format!("Invalid subject pattern: {e}"),
+            )
+        })?;
+
+        // Create streaming subscription request
+        let request = SubscribeStream {
+            subject_pattern,
+            queue_group,
+        };
+
+        // Send streaming request and get receiver
+        self.event_bus.stream(request).await.map_err(|e| {
+            Error::with_context(
+                crate::error::ErrorKind::Service,
+                format!("Streaming subscribe request failed: {e}"),
+            )
+        })
+    }
+
+    /// Subscribe to a PubSub subject pattern and get an async stream
+    ///
+    /// This is a convenience method that converts the flume receiver into
+    /// an async stream for easier integration with async code.
+    pub async fn subscribe_to_subject_iter(
+        &self,
+        subject_pattern: &str,
+    ) -> ConsensusResult<impl futures::Stream<Item = crate::services::pubsub::PubSubMessage>> {
+        let receiver = self
+            .subscribe_to_subject_stream(subject_pattern, None)
+            .await?;
+        Ok(receiver.into_stream())
     }
 
     /// Unsubscribe from a PubSub subscription
     pub async fn unsubscribe_from_subject(&self, subscription_id: &str) -> ConsensusResult<()> {
-        use crate::services::client::events::ClientServiceEvent;
-        use uuid::Uuid;
-
-        // Create request
-        let request_id = Uuid::new_v4();
-        let event = ClientServiceEvent::PubSubUnsubscribe {
-            request_id,
+        // Create command request
+        let request = crate::services::pubsub::Unsubscribe {
             subscription_id: subscription_id.to_string(),
         };
 
-        // Publish event
-        self.event_bus.publish(event).await;
-
-        // Wait for response using the subscriber
-        let subscriber = self.get_pubsub_subscriber().await?;
-        let response_rx = subscriber.register_unsubscribe(request_id).await;
-
-        match tokio::time::timeout(std::time::Duration::from_secs(5), response_rx).await {
-            Ok(Ok(Ok(()))) => Ok(()),
-            Ok(Ok(Err(e))) => Err(Error::with_context(
+        // Send command and wait for response
+        self.event_bus.request(request).await.map_err(|e| {
+            Error::with_context(
                 crate::error::ErrorKind::Service,
-                format!("Unsubscribe failed: {e}"),
-            )),
-            Ok(Err(_)) => Err(Error::with_context(
-                crate::error::ErrorKind::Service,
-                "PubSub service response channel closed",
-            )),
-            Err(_) => Err(Error::with_context(
-                crate::error::ErrorKind::Timeout,
-                "Unsubscribe request timed out",
-            )),
-        }
-    }
-
-    /// Get the PubSub subscriber instance
-    async fn get_pubsub_subscriber(
-        &self,
-    ) -> ConsensusResult<Arc<super::subscribers::PubSubServiceSubscriber>> {
-        Ok(self.pubsub_subscriber.clone())
+                format!("Unsubscribe request failed: {e}"),
+            )
+        })
     }
 }
 
@@ -1207,11 +1187,6 @@ where
             tracing::warn!("Failed to register network handlers: {}", e);
             // Continue anyway - the service can still work for local requests
         }
-
-        // Subscribe to PubSub events
-        self.event_bus
-            .subscribe((*self.pubsub_subscriber).clone())
-            .await;
 
         // Mark as running
         *self.is_running.write().await = true;

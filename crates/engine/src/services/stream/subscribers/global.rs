@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
+use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::{EventHandler, EventPriority};
 use crate::services::global_consensus::events::GlobalConsensusEvent;
 use crate::services::stream::{StreamName, StreamService};
 use proven_storage::StorageAdaptor;
@@ -39,12 +39,7 @@ impl<S> EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber<S>
 where
     S: StorageAdaptor + 'static,
 {
-    fn priority(&self) -> EventPriority {
-        // Handle GlobalConsensusEvents synchronously for stream management
-        EventPriority::Critical
-    }
-
-    async fn handle(&self, event: GlobalConsensusEvent) {
+    async fn handle(&self, event: GlobalConsensusEvent, _metadata: EventMetadata) {
         match event {
             GlobalConsensusEvent::StateSynchronized { snapshot } => {
                 // Process all streams from the snapshot

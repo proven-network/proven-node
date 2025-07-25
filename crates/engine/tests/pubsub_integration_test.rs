@@ -388,3 +388,174 @@ async fn test_pubsub_subject_validation() {
         "Multi-wildcard pattern should work for subscribe"
     );
 }
+
+#[tokio::test]
+async fn test_pubsub_high_volume() {
+    // Initialize tracing for debugging
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info")
+        .with_test_writer()
+        .try_init();
+
+    let mut cluster = TestCluster::new(TransportType::Tcp);
+    let (engines, _node_infos) = cluster.add_nodes(1).await;
+    let engine = &engines[0];
+    let client = engine.client();
+
+    // Wait for engine to be ready
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Create multiple subscribers
+    let mut receivers = Vec::new();
+    for i in 0..5 {
+        let (sub_id, receiver) = client
+            .pubsub_subscribe(&format!("volume.test.{i}"), None)
+            .await
+            .expect("Failed to subscribe");
+        receivers.push((sub_id, receiver));
+    }
+
+    // Also create a wildcard subscriber
+    let (_wildcard_sub, mut wildcard_receiver) = client
+        .pubsub_subscribe("volume.test.*", None)
+        .await
+        .expect("Failed to subscribe to wildcard");
+
+    // Small delay to ensure subscriptions are ready
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Publish many messages rapidly
+    let message_count = 100_000;
+    let start = std::time::Instant::now();
+
+    for i in 0..message_count {
+        let subject = format!("volume.test.{}", i % 5);
+        let payload = Bytes::from(format!("High volume message {i}"));
+
+        client
+            .pubsub_publish(&subject, payload, vec![])
+            .await
+            .expect("Failed to publish");
+    }
+
+    let publish_duration = start.elapsed();
+    println!(
+        "Published {} messages in {:?} ({:.0} msg/sec)",
+        message_count,
+        publish_duration,
+        message_count as f64 / publish_duration.as_secs_f64()
+    );
+
+    // Verify all messages were received
+    let mut wildcard_count = 0;
+    let timeout = Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + timeout;
+
+    while wildcard_count < message_count && std::time::Instant::now() < deadline {
+        match tokio::time::timeout(Duration::from_millis(100), wildcard_receiver.recv()).await {
+            Ok(Ok(_msg)) => {
+                wildcard_count += 1;
+            }
+            _ => {
+                // No more messages or timeout
+                break;
+            }
+        }
+    }
+
+    println!("Wildcard subscriber received {wildcard_count} out of {message_count} messages");
+
+    // Allow some message loss in high volume scenario
+    assert!(
+        wildcard_count >= (message_count * 95 / 100), // At least 95% delivery
+        "Expected at least 95% message delivery, got {}%",
+        wildcard_count * 100 / message_count
+    );
+}
+
+#[tokio::test]
+async fn test_pubsub_burst_publishing() {
+    // Initialize tracing for debugging
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter("proven_engine=info")
+        .with_test_writer()
+        .try_init();
+
+    let mut cluster = TestCluster::new(TransportType::Tcp);
+    let (engines, _node_infos) = cluster.add_nodes(1).await;
+    let engine = &engines[0];
+    let client = engine.client();
+
+    // Wait for engine to be ready
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    // Create a subscriber
+    let (_sub_id, mut receiver) = client
+        .pubsub_subscribe("burst.test", None)
+        .await
+        .expect("Failed to subscribe");
+
+    // Small delay to ensure subscription is ready
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Publish messages in bursts
+    let burst_size = 100;
+    let num_bursts = 10;
+    let mut total_published = 0;
+
+    for burst in 0..num_bursts {
+        // Publish a burst of messages without waiting
+        let futures: Vec<_> = (0..burst_size)
+            .map(|i| {
+                let _msg_num = burst * burst_size + i;
+                let payload = Bytes::from(format!("Burst {burst} message {i}"));
+                client.pubsub_publish("burst.test", payload, vec![])
+            })
+            .collect();
+
+        // Wait for all publishes in the burst to complete
+        let results = futures::future::join_all(futures).await;
+
+        // Check all succeeded
+        for result in results {
+            assert!(result.is_ok(), "Publish failed in burst {burst}");
+            total_published += 1;
+        }
+
+        // Small delay between bursts
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    println!("Published {total_published} messages in {num_bursts} bursts");
+
+    // Verify messages were received
+    let mut received_count = 0;
+    let timeout = Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + timeout;
+
+    while received_count < total_published && std::time::Instant::now() < deadline {
+        match tokio::time::timeout(Duration::from_millis(100), receiver.recv()).await {
+            Ok(Ok(_msg)) => {
+                received_count += 1;
+            }
+            _ => {
+                // No more messages or timeout
+                break;
+            }
+        }
+    }
+
+    println!(
+        "Received {} out of {} messages ({:.1}%)",
+        received_count,
+        total_published,
+        received_count as f64 * 100.0 / total_published as f64
+    );
+
+    // Expect high delivery rate for burst publishing
+    assert!(
+        received_count >= (total_published * 95 / 100),
+        "Expected at least 95% message delivery, got {}%",
+        received_count * 100 / total_published
+    );
+}

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 
+use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::{EventHandler, EventPriority};
 use crate::services::global_consensus::events::GlobalConsensusEvent;
 use crate::services::routing::{GroupLocation, GroupRoute, RoutingTable};
 use proven_topology::NodeId;
@@ -29,12 +29,7 @@ impl GlobalConsensusSubscriber {
 
 #[async_trait]
 impl EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber {
-    fn priority(&self) -> EventPriority {
-        // Handle GlobalConsensusEvents synchronously
-        EventPriority::Critical
-    }
-
-    async fn handle(&self, event: GlobalConsensusEvent) {
+    async fn handle(&self, event: GlobalConsensusEvent, _metadata: EventMetadata) {
         match event {
             GlobalConsensusEvent::StateSynchronized { snapshot } => {
                 // This is a critical synchronous event

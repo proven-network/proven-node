@@ -9,12 +9,9 @@ use proven_transport::Transport;
 use crate::{
     consensus::global::{GlobalRequest, GlobalResponse},
     error::{ConsensusResult, Error, ErrorKind},
-    services::{
-        client::{
-            events::ClientServiceEvent, messages::ClientServiceMessage,
-            messages::ClientServiceResponse,
-        },
-        event::EventBus,
+    foundation::events::EventBus,
+    services::client::{
+        events::ClientServiceEvent, messages::ClientServiceMessage, messages::ClientServiceResponse,
     },
 };
 
@@ -152,7 +149,7 @@ where
                         stream_name: name.clone(),
                         group_id: *group_id,
                     };
-                    self.event_bus.publish(event).await;
+                    self.event_bus.emit(event);
                 }
                 Ok(response)
             }

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
+use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::{EventHandler, EventPriority};
 use crate::services::global_consensus::events::GlobalConsensusEvent;
 use crate::services::group_consensus::GroupConsensusService;
 use proven_storage::StorageAdaptor;
@@ -49,12 +49,7 @@ where
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
 {
-    fn priority(&self) -> EventPriority {
-        // Handle GlobalConsensusEvents synchronously for group management
-        EventPriority::Critical
-    }
-
-    async fn handle(&self, event: GlobalConsensusEvent) {
+    async fn handle(&self, event: GlobalConsensusEvent, _metadata: EventMetadata) {
         match event {
             GlobalConsensusEvent::StateSynchronized { snapshot } => {
                 // Process all groups where this node is a member

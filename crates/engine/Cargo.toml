@@ -69,6 +69,10 @@ lazy_static = "1.4"
 # Compression
 flate2 = "1.0"
 
+# Event system
+flume = "0.11"
+num_cpus = "1.16"
+
 # ciborium is already in workspace dependencies
 
 [features]
@@ -108,3 +112,4 @@ tokio-stream.workspace = true
 tracing-subscriber.workspace = true
 tracing-test.workspace = true
 serde_yaml = "0.9"
+criterion = { version = "0.5", features = ["async_tokio"] }

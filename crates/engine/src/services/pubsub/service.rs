@@ -12,16 +12,17 @@ use uuid::Uuid;
 
 use proven_topology::NodeId;
 
+use crate::foundation::events::{EventBus, EventHandler};
 use crate::foundation::types::ConsensusGroupId;
-use crate::services::event::{EventBus, EventHandler, EventPriority};
 use crate::services::lifecycle::ComponentState;
 use proven_network::NetworkManager;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 
+use super::events::PubSubMessage;
 use super::interest::InterestTracker;
 use super::messages::{PubSubServiceMessage, PubSubServiceResponse};
-use super::router::MessageRouter;
+use super::streaming_router::StreamingMessageRouter;
 use super::types::*;
 use crate::foundation::types::{Subject, SubjectPattern, subject_matches_pattern};
 
@@ -62,7 +63,7 @@ where
     /// Interest tracker for distributed routing
     interest_tracker: InterestTracker,
     /// Local message router
-    message_router: MessageRouter,
+    message_router: StreamingMessageRouter,
     /// Network manager
     network: Arc<NetworkManager<T, G>>,
     /// Event bus for publishing events
@@ -96,6 +97,16 @@ where
     T: Transport,
     G: TopologyAdaptor,
 {
+    /// Get the node ID
+    pub fn node_id(&self) -> &NodeId {
+        &self.node_id
+    }
+
+    /// Get the interest tracker
+    pub fn interest_tracker(&self) -> &InterestTracker {
+        &self.interest_tracker
+    }
+
     /// Create a new PubSub service
     pub async fn new(
         config: PubSubConfig,
@@ -109,7 +120,7 @@ where
             config,
             node_id: node_id.clone(),
             interest_tracker: InterestTracker::new(),
-            message_router: MessageRouter::new(),
+            message_router: StreamingMessageRouter::new(),
             network: network.clone(),
             event_bus,
             global_consensus_handle: None,
@@ -262,16 +273,19 @@ where
         &self,
         subject_pattern: String,
         queue_group: Option<String>,
-    ) -> PubSubResult<Subscription> {
+    ) -> PubSubResult<(Subscription, flume::Receiver<PubSubMessage>)> {
         // Validate pattern
         let pattern = SubjectPattern::new(&subject_pattern)?;
 
         // Check subscription limit
         let current_subs = self
             .message_router
-            .get_node_subscriptions(&self.node_id)
-            .await;
-        if current_subs.len() >= self.config.max_subscriptions_per_node {
+            .get_subscriptions()
+            .await
+            .into_iter()
+            .filter(|s| s.node_id == self.node_id)
+            .count();
+        if current_subs >= self.config.max_subscriptions_per_node {
             return Err(PubSubError::MaxSubscriptionsExceeded(
                 self.config.max_subscriptions_per_node,
             ));
@@ -288,9 +302,12 @@ where
             created_at: std::time::SystemTime::now(),
         };
 
-        // Add to router
+        // Create streaming channel
+        let (tx, rx) = flume::unbounded();
+
+        // Add to router with streaming channel
         self.message_router
-            .add_subscription(subscription.clone())
+            .add_streaming_subscription(id.clone(), subscription.clone(), tx)
             .await;
 
         // Update local interests
@@ -306,7 +323,7 @@ where
         // Broadcast interest update
         self.update_local_interests().await?;
 
-        Ok(subscription)
+        Ok((subscription, rx))
     }
 
     /// Unsubscribe from a subscription
@@ -459,29 +476,49 @@ where
     }
 
     /// Get the message router (for subscribers)
-    pub fn message_router(&self) -> &MessageRouter {
+    pub fn message_router(&self) -> &StreamingMessageRouter {
         &self.message_router
     }
 
     /// Setup event handler for PubSub events (call after wrapping in Arc)
-    pub async fn setup_event_handler(self: Arc<Self>) {
-        use super::subscribers::{
-            ClientServiceSubscriber, GlobalConsensusEventSubscriber, MembershipEventSubscriber,
+    pub fn setup_event_handler(self: Arc<Self>) {
+        use super::command_handlers::{
+            PublishMessageHandler, SubscribeHandler, UnsubscribeHandler,
         };
+        use super::event_handlers::{GlobalConsensusEventSubscriber, MembershipEventSubscriber};
+        use super::streaming_handlers::SubscribeStreamHandler;
 
-        // Subscribe to client service events
-        let client_subscriber = ClientServiceSubscriber::new(self.clone(), self.event_bus.clone());
-        self.event_bus.subscribe(client_subscriber).await;
+        // Register command handlers for client service requests
+        let publish_handler = PublishMessageHandler::new(self.clone());
+        self.event_bus
+            .handle_requests(publish_handler)
+            .expect("Failed to register publish handler");
+
+        let subscribe_handler = SubscribeHandler::new(self.clone());
+        self.event_bus
+            .handle_requests(subscribe_handler)
+            .expect("Failed to register subscribe handler");
+
+        let unsubscribe_handler = UnsubscribeHandler::new(self.clone());
+        self.event_bus
+            .handle_requests(unsubscribe_handler)
+            .expect("Failed to register unsubscribe handler");
+
+        // Register streaming handler for efficient subscriptions
+        let streaming_handler = SubscribeStreamHandler::new(self.clone());
+        self.event_bus
+            .handle_streams(streaming_handler)
+            .expect("Failed to register streaming subscription handler");
 
         // Subscribe to membership events
         let membership_subscriber =
             MembershipEventSubscriber::new(self.clone(), self.event_bus.clone());
-        self.event_bus.subscribe(membership_subscriber).await;
+        let _membership_receiver = self.event_bus.subscribe(membership_subscriber);
 
         // Subscribe to global consensus events
         let global_consensus_subscriber =
             GlobalConsensusEventSubscriber::new(self.clone(), self.event_bus.clone());
-        self.event_bus.subscribe(global_consensus_subscriber).await;
+        let _global_consensus_receiver = self.event_bus.subscribe(global_consensus_subscriber);
     }
 
     /// Refresh stream mappings from global consensus

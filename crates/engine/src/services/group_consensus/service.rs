@@ -21,9 +21,9 @@ use crate::foundation::{
 use crate::{
     consensus::group::GroupConsensusLayer,
     error::{ConsensusResult, Error, ErrorKind},
+    foundation::events::EventBus,
     foundation::types::ConsensusGroupId,
-    services::event::bus::EventBus,
-    services::group_consensus::GroupConsensusEvent,
+    services::group_consensus::events::GroupConsensusEvent,
     services::stream::StreamService,
 };
 use async_trait::async_trait;
@@ -107,18 +107,60 @@ where
         // Register handlers
         self.register_message_handlers().await?;
 
-        // Event handling is done via handlers registered on the event bus
+        // Register command handlers
+        use crate::services::group_consensus::command_handlers::global_consensus::*;
+        use crate::services::group_consensus::commands::*;
 
-        // Register event subscribers
-        let subscriber =
-            crate::services::group_consensus::subscribers::GlobalConsensusSubscriber::new(
-                Arc::new(self.clone()),
-                self.node_id.clone(),
-            );
+        let service_arc = Arc::new(self.clone());
 
-        self.event_bus.subscribe(subscriber).await;
+        // Register CreateGroup handler
+        let create_handler = CreateGroupHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<CreateGroup, _>(create_handler)
+            .expect("Failed to register CreateGroup handler");
 
-        tracing::info!("GroupConsensusService: Registered subscriber for GlobalConsensusEvents");
+        // Register DissolveGroup handler
+        let dissolve_handler = DissolveGroupHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<DissolveGroup, _>(dissolve_handler)
+            .expect("Failed to register DissolveGroup handler");
+
+        // Register InitializeStreamInGroup handler
+        let init_stream_handler = InitializeStreamInGroupHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<InitializeStreamInGroup, _>(init_stream_handler)
+            .expect("Failed to register InitializeStreamInGroup handler");
+
+        // Register SubmitToGroup handler
+        let submit_handler = SubmitToGroupHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<SubmitToGroup, _>(submit_handler)
+            .expect("Failed to register SubmitToGroup handler");
+
+        // Register GetNodeGroups handler
+        let get_groups_handler = GetNodeGroupsHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<GetNodeGroups, _>(get_groups_handler)
+            .expect("Failed to register GetNodeGroups handler");
+
+        // Register GetGroupInfo handler
+        let get_info_handler = GetGroupInfoHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<GetGroupInfo, _>(get_info_handler)
+            .expect("Failed to register GetGroupInfo handler");
+
+        tracing::info!("GroupConsensusService: Registered command handlers");
+
+        // Register event handlers
+        use crate::services::global_consensus::events::GlobalConsensusEvent;
+        use crate::services::group_consensus::subscribers::global::GlobalConsensusSubscriber;
+
+        // Subscribe to global consensus events
+        let global_subscriber = GlobalConsensusSubscriber::new(service_arc, self.node_id.clone());
+        self.event_bus
+            .subscribe::<GlobalConsensusEvent, _>(global_subscriber);
+
+        tracing::info!("GroupConsensusService: Registered event handlers");
 
         // Restore any existing groups from storage
         self.restore_persisted_groups().await?;
@@ -634,7 +676,7 @@ where
                                     new_leader: Some(new_leader.clone()),
                                 };
 
-                                event_bus_clone.publish(event).await;
+                                event_bus_clone.emit(event);
                             }
                         }
                     }

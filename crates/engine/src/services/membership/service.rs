@@ -18,8 +18,9 @@ use proven_transport::Transport;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::ServiceLifecycle;
-use crate::services::event::bus::EventBus;
+use crate::foundation::events::EventBus;
 
+use super::commands::{ClusterFormationResult, ClusterFormationStrategy, MembershipInfo};
 use super::config::MembershipConfig;
 use super::discovery::{DiscoveryManager, DiscoveryResult};
 use super::events::MembershipEvent;
@@ -514,7 +515,7 @@ where
 
     /// Publish membership event
     async fn publish_event(&self, event: MembershipEvent) {
-        self.event_bus.publish(event).await;
+        self.event_bus.emit(event);
     }
 
     /// Register message handlers

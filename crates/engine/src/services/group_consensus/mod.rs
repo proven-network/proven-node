@@ -2,6 +2,8 @@
 
 mod adaptor;
 mod callbacks;
+pub mod command_handlers;
+pub mod commands;
 mod config;
 pub mod events;
 mod messages;

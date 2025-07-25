@@ -11,13 +11,8 @@ use proven_transport::Transport;
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::{ServiceLifecycle, lifecycle::ServiceStatus};
 use crate::services::{
-    client::ClientService,
-    event::{EventService, EventServiceConfig},
-    lifecycle::LifecycleService,
-    migration::MigrationService,
-    monitoring::MonitoringService,
-    pubsub::PubSubService,
-    routing::RoutingService,
+    client::ClientService, lifecycle::LifecycleService, migration::MigrationService,
+    monitoring::MonitoringService, pubsub::PubSubService, routing::RoutingService,
 };
 use tracing::{error, info};
 
@@ -111,10 +106,12 @@ where
         // Create service coordinator
         let coordinator = Arc::new(ServiceCoordinator::new());
 
-        // Create other services
-        let event_config = EventServiceConfig::default();
-        let event_service = Arc::new(EventService::new(event_config));
-        event_service.start().await?;
+        // Create new event bus
+        let new_event_bus = Arc::new(
+            crate::foundation::events::EventBusBuilder::new()
+                .worker_threads(4)
+                .build(),
+        );
 
         // Create consensus services
         use crate::services::global_consensus::{GlobalConsensusConfig, GlobalConsensusService};
@@ -136,7 +133,7 @@ where
             node_info,
             network_manager.clone(),
             topology_manager.clone(),
-            event_service.bus(),
+            new_event_bus.clone(),
         ));
 
         let global_consensus_config = GlobalConsensusConfig {
@@ -153,7 +150,7 @@ where
                 self.node_id.clone(),
                 network_manager.clone(),
                 storage_manager.clone(),
-                event_service.bus(),
+                new_event_bus.clone(),
             )
             .with_topology(topology_manager.clone()),
         );
@@ -172,7 +169,7 @@ where
                 self.node_id.clone(),
                 network_manager.clone(),
                 storage_manager.clone(),
-                event_service.bus(),
+                new_event_bus.clone(),
             )
             .with_topology(topology_manager.clone()),
         );
@@ -190,17 +187,17 @@ where
         let routing_service = Arc::new(RoutingService::new(
             config.services.routing.clone(),
             self.node_id.clone(),
-            event_service.bus(),
+            new_event_bus.clone(),
         ));
 
         let migration_service = Arc::new(MigrationService::new(config.services.migration.clone()));
 
         let lifecycle_service = Arc::new(LifecycleService::new(config.services.lifecycle.clone()));
 
-        // Create ClientService with event bus
+        // Create ClientService with new event bus
         let client_service = Arc::new(ClientService::new(
             self.node_id.clone(),
-            event_service.bus(),
+            new_event_bus.clone(),
         ));
 
         // Create StreamService with storage manager
@@ -209,7 +206,7 @@ where
         let stream_service = Arc::new(StreamService::new(
             stream_config,
             storage_manager.clone(),
-            event_service.bus(),
+            new_event_bus.clone(),
         ));
 
         // Create service wrappers that implement ServiceLifecycle
@@ -217,7 +214,6 @@ where
             "membership",
             membership_service.clone(),
         ));
-        let event_wrapper = Arc::new(ServiceWrapper::new("event", event_service.clone()));
         let monitoring_wrapper = Arc::new(ServiceWrapper::new(
             "monitoring",
             monitoring_service.clone(),
@@ -245,12 +241,8 @@ where
             .register("membership".to_string(), membership_wrapper)
             .await;
         coordinator
-            .register("event".to_string(), event_wrapper)
-            .await;
-        coordinator
             .register("monitoring".to_string(), monitoring_wrapper)
             .await;
-        // ClusterService removed - functionality in GlobalConsensusService
         coordinator
             .register("routing".to_string(), routing_wrapper)
             .await;
@@ -305,13 +297,13 @@ where
             .set_membership_service(membership_service.clone())
             .await;
 
-        // Create PubSub service with network manager and event bus
+        // Create PubSub service with network manager and new event bus
         let pubsub_service = Arc::new(
             PubSubService::new(
                 config.services.pubsub.clone(),
                 self.node_id.clone(),
                 network_manager.clone(),
-                event_service.bus(),
+                new_event_bus.clone(),
             )
             .await,
         );
@@ -326,7 +318,7 @@ where
         }
 
         // Setup event handler
-        pubsub_service.clone().setup_event_handler().await;
+        pubsub_service.clone().setup_event_handler();
 
         let pubsub_wrapper = Arc::new(ServiceWrapper::new("pubsub", pubsub_service.clone()));
 
@@ -357,7 +349,6 @@ where
             self.node_id,
             config,
             coordinator,
-            event_service,
             monitoring_service,
             routing_service,
             migration_service,
@@ -402,34 +393,6 @@ impl<S> ServiceWrapper<S> {
 
 // Implement ServiceLifecycle for each service wrapper
 use async_trait::async_trait;
-
-// ClusterService removed - functionality moved to GlobalConsensusService
-
-#[async_trait]
-impl ServiceLifecycle for ServiceWrapper<EventService> {
-    async fn initialize(&self) -> ConsensusResult<()> {
-        Ok(())
-    }
-
-    async fn start(&self) -> ConsensusResult<()> {
-        // Already started in builder
-        Ok(())
-    }
-
-    async fn stop(&self) -> ConsensusResult<()> {
-        self.service.stop().await
-    }
-
-    async fn is_healthy(&self) -> bool {
-        true
-    }
-
-    async fn status(&self) -> ServiceStatus {
-        ServiceStatus::Running
-    }
-}
-
-// Implement for DiscoveryService
 
 // Implement for MonitoringService
 #[async_trait]
