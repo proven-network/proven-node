@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
-use crate::foundation::ConsensusGroupId;
+use crate::foundation::{ConsensusGroupId, HealthStatus};
 use proven_topology::NodeId;
 
 use super::health::HealthChecker;

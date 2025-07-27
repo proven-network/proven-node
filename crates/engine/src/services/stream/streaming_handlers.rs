@@ -1,36 +1,48 @@
 //! Streaming handlers for the Stream service
 
 use async_trait::async_trait;
+use proven_attestation::Attestor;
 use std::sync::Arc;
-use tokio::sync::watch;
 use tracing::{debug, error, info};
 
 use crate::foundation::events::{Error as EventError, EventMetadata, StreamHandler};
+use crate::foundation::{StoredMessage, StreamName};
+use crate::services::stream::StreamService;
 use crate::services::stream::storage::StreamStorageReader;
 use crate::services::stream::streaming_commands::StreamMessages;
-use crate::services::stream::{StoredMessage, StreamName, StreamService};
-use proven_storage::{LogIndex, StorageAdaptor};
+use proven_storage::StorageAdaptor;
+use proven_topology::TopologyAdaptor;
+use proven_transport::Transport;
 
 /// Handler for streaming messages from a stream
-pub struct StreamMessagesHandler<S>
+pub struct StreamMessagesHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    stream_service: Arc<StreamService<S>>,
+    stream_service: Arc<StreamService<T, G, A, S>>,
 }
 
-impl<S> StreamMessagesHandler<S>
+impl<T, G, A, S> StreamMessagesHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    pub fn new(stream_service: Arc<StreamService<S>>) -> Self {
+    pub fn new(stream_service: Arc<StreamService<T, G, A, S>>) -> Self {
         Self { stream_service }
     }
 }
 
 #[async_trait]
-impl<S> StreamHandler<StreamMessages> for StreamMessagesHandler<S>
+impl<T, G, A, S> StreamHandler<StreamMessages> for StreamMessagesHandler<T, G, A, S>
 where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn handle(

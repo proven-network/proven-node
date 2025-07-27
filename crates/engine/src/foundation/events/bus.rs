@@ -5,10 +5,10 @@ use flume::{bounded, unbounded};
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::{RwLock, oneshot};
 use tokio::task::JoinHandle;
-use tracing::{debug, error, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 use super::{
     Error, Result,

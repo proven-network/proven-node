@@ -8,10 +8,10 @@ use tracing::{info, warn};
 
 use crate::{
     error::ConsensusResult,
+    foundation::ClusterFormationState,
     services::membership::{
         MembershipView,
         messages::{ProposeClusterRequest, ProposeClusterResponse},
-        types::ClusterFormationState,
     },
 };
 

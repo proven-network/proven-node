@@ -1,4 +1,3 @@
-pub mod client;
 pub mod global_consensus;
 pub mod group_consensus;
 pub mod lifecycle;

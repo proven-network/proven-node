@@ -1,31 +1,47 @@
 [package]
 name = "proven-network"
-version.workspace = true
-edition = "2024"
+version = "0.1.0"
+edition = "2021"
 
 [dependencies]
-async-trait.workspace = true
-bytes.workspace = true
-ciborium.workspace = true
-dashmap.workspace = true
-ed25519-dalek.workspace = true
-futures.workspace = true
-hex.workspace = true
-proven-bootable.workspace = true
-proven-topology.workspace = true
+# Core async runtime
+tokio = { version = "1.38", features = ["full"] }
+async-trait = "0.1"
+
+# High-performance channels
+flume = "0.11"
+dashmap = "5.5"
+
+# Serialization
+bytes = "1.6"
+serde = { version = "1.0", features = ["derive"] }
+ciborium = "0.2"
+
+# Error handling and logging
+thiserror = "1.0"
+tracing = "0.1"
+
+# Utilities
+uuid = { version = "1.8", features = ["v4", "serde"] }
+pin-project-lite = "0.2"
+futures = "0.3"
+
+# Internal dependencies
+proven-topology = { path = "../topology" }
 proven-transport.workspace = true
-proven-verification.workspace = true
-serde.workspace = true
-thiserror.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
-tracing.workspace = true
-uuid.workspace = true
+proven-attestation = { path = "../attestation" }
+
+# Crypto
+ed25519-dalek = { workspace = true }
+coset = "0.3"
+rand = "0.8"
 
 [dev-dependencies]
-proven-attestation-mock.workspace = true
-proven-topology-mock.workspace = true
+tokio-test = "0.4"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+proven-attestation-mock = { path = "../attestation-mock" }
+proven-topology-mock = { path = "../topology-mock" }
 proven-transport-tcp.workspace = true
-proven-util.workspace = true
-tokio-test.workspace = true
-tracing-subscriber.workspace = true
+proven-bootable = { path = "../bootable" }
+proven-util = { path = "../util" }
+ed25519-dalek = { workspace = true }

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::error::ConsensusResult;
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamName, StreamState};
+use crate::foundation::StreamState;
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 use proven_topology::NodeId;
 
 /// Service lifecycle management

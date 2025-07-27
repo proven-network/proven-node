@@ -46,7 +46,8 @@ pub use {
     config::EngineConfig,
     engine::Engine,
     engine::EngineState,
-    services::stream::{
-        MessageData, PersistenceType, RetentionPolicy, StoredMessage, StreamConfig, StreamName,
+    foundation::{
+        Message, PersistenceType, RetentionPolicy, StoredMessage, StreamConfig, StreamName,
     },
+    services::stream::MessageData,
 };

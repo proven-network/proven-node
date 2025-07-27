@@ -70,7 +70,10 @@ async fn test_stream_with_default_group() {
             metadata.insert("test".to_string(), "true".to_string());
 
             let publish_result = client
-                .publish(stream_name.clone(), payload, Some(metadata))
+                .publish_to_stream(
+                    stream_name.clone(),
+                    vec![proven_engine::Message::new(payload)],
+                )
                 .await;
 
             match publish_result {

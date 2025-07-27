@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
+use proven_attestation::Attestor;
 use proven_network::NetworkManager;
-use proven_storage::{LogStorage, LogStorageWithDelete, StorageAdaptor, StorageManager};
+use proven_storage::{StorageAdaptor, StorageManager};
 use proven_topology::TopologyAdaptor;
 use proven_topology::{NodeId, TopologyManager};
 use proven_transport::Transport;
@@ -11,20 +12,20 @@ use proven_transport::Transport;
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::traits::{ServiceLifecycle, lifecycle::ServiceStatus};
 use crate::services::{
-    client::ClientService, lifecycle::LifecycleService, migration::MigrationService,
-    monitoring::MonitoringService, pubsub::PubSubService,
+    lifecycle::LifecycleService, migration::MigrationService, monitoring::MonitoringService,
+    pubsub::PubSubService,
 };
-use tracing::{error, info};
 
 use super::config::EngineConfig;
 use super::coordinator::ServiceCoordinator;
 use super::engine::Engine;
 
 /// Engine builder
-pub struct EngineBuilder<T, G, S>
+pub struct EngineBuilder<T, G, A, S>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
     /// Node ID
@@ -34,7 +35,7 @@ where
     config: Option<EngineConfig>,
 
     /// Network manager
-    network_manager: Option<Arc<NetworkManager<T, G>>>,
+    network_manager: Option<Arc<NetworkManager<T, G, A>>>,
 
     /// Topology manager
     topology_manager: Option<Arc<TopologyManager<G>>>,
@@ -43,10 +44,11 @@ where
     storage_manager: Option<Arc<StorageManager<S>>>,
 }
 
-impl<T, G, S> EngineBuilder<T, G, S>
+impl<T, G, A, S> EngineBuilder<T, G, A, S>
 where
     T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
+    G: TopologyAdaptor + 'static + Send + Sync,
+    A: Attestor + 'static + Send + Sync,
     S: StorageAdaptor + 'static,
 {
     /// Create a new engine builder
@@ -67,7 +69,7 @@ where
     }
 
     /// Set network manager
-    pub fn with_network(mut self, network: Arc<NetworkManager<T, G>>) -> Self {
+    pub fn with_network(mut self, network: Arc<NetworkManager<T, G, A>>) -> Self {
         self.network_manager = Some(network);
         self
     }
@@ -85,7 +87,7 @@ where
     }
 
     /// Build the engine
-    pub async fn build(self) -> ConsensusResult<Engine<T, G, S>> {
+    pub async fn build(self) -> ConsensusResult<Engine<T, G, A, S>> {
         // Validate required fields
         let config = self
             .config
@@ -132,7 +134,7 @@ where
             )
         })?;
 
-        let membership_service = Arc::new(MembershipService::new(
+        let membership_service = Arc::new(MembershipService::<T, G, A, S>::new(
             membership_config,
             self.node_id.clone(),
             node_info,
@@ -198,19 +200,15 @@ where
 
         let lifecycle_service = Arc::new(LifecycleService::new(config.services.lifecycle.clone()));
 
-        // Create ClientService with new event bus
-        let client_service = Arc::new(ClientService::new(
-            self.node_id.clone(),
-            new_event_bus.clone(),
-            routing_table.clone(),
-        ));
-
         // Create StreamService with storage manager
         use crate::services::stream::{StreamService, StreamServiceConfig};
         let stream_config = StreamServiceConfig::default();
         let stream_service = Arc::new(StreamService::new(
             stream_config,
+            self.node_id.clone(),
             storage_manager.clone(),
+            network_manager.clone(),
+            routing_table.clone(),
             new_event_bus.clone(),
         ));
 
@@ -227,7 +225,6 @@ where
             Arc::new(ServiceWrapper::new("migration", migration_service.clone()));
         let lifecycle_wrapper =
             Arc::new(ServiceWrapper::new("lifecycle", lifecycle_service.clone()));
-        let client_wrapper = Arc::new(ServiceWrapper::new("client", client_service.clone()));
         let stream_wrapper = Arc::new(ServiceWrapper::new("stream", stream_service.clone()));
 
         // Create consensus service wrappers
@@ -260,45 +257,12 @@ where
             .register("group_consensus".to_string(), group_consensus_wrapper)
             .await;
         coordinator
-            .register("client".to_string(), client_wrapper)
-            .await;
-        coordinator
             .register("stream".to_string(), stream_wrapper)
-            .await;
-
-        // Wire up ClientService dependencies
-        client_service
-            .set_global_consensus(global_consensus_service.clone())
-            .await;
-        client_service
-            .set_group_consensus(group_consensus_service.clone())
-            .await;
-        client_service
-            .set_stream_service(stream_service.clone())
-            .await;
-        client_service
-            .set_network_manager(network_manager.clone())
             .await;
 
         // Wire up GroupConsensusService dependencies
         group_consensus_service
             .set_stream_service(stream_service.clone())
-            .await;
-
-        // Wire up GlobalConsensusService dependencies
-        global_consensus_service
-            .set_group_consensus_service(group_consensus_service.clone())
-            .await;
-        // Routing and stream services are no longer set directly on global consensus
-        // They communicate through events instead
-        global_consensus_service
-            .set_membership_service(membership_service.clone())
-            .await;
-
-        // Register command handlers for global consensus
-        global_consensus_service
-            .clone()
-            .register_command_handlers()
             .await;
 
         // Create PubSub service with network manager and new event bus
@@ -311,18 +275,6 @@ where
             )
             .await,
         );
-
-        // Register network handlers
-        if let Err(e) = pubsub_service
-            .clone()
-            .register_network_handlers(network_manager.clone())
-            .await
-        {
-            error!("Failed to register PubSub network handlers: {}", e);
-        }
-
-        // Setup event handler
-        pubsub_service.clone().setup_event_handler();
 
         let pubsub_wrapper = Arc::new(ServiceWrapper::new("pubsub", pubsub_service.clone()));
 
@@ -356,11 +308,11 @@ where
             migration_service,
             lifecycle_service,
             pubsub_service,
-            client_service,
             stream_service,
             network_manager,
             storage_manager,
             routing_table,
+            new_event_bus,
         );
 
         // Set consensus services
@@ -471,19 +423,23 @@ impl ServiceLifecycle for ServiceWrapper<LifecycleService> {
 
 // Implement for PubSubService
 #[async_trait]
-impl<T, G> ServiceLifecycle for ServiceWrapper<PubSubService<T, G>>
+impl<T, G, A> ServiceLifecycle for ServiceWrapper<PubSubService<T, G, A>>
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
 {
     async fn initialize(&self) -> ConsensusResult<()> {
         Ok(())
     }
 
     async fn start(&self) -> ConsensusResult<()> {
-        // PubSubService needs to be mutable to start, so we'll handle this differently
-        // For now, just return Ok as the service will be started separately
-        Ok(())
+        self.service.clone().start().await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Failed to start PubSub service: {e}"),
+            )
+        })
     }
 
     async fn stop(&self) -> ConsensusResult<()> {
@@ -502,11 +458,12 @@ where
 
 // Implement for GlobalConsensusService
 #[async_trait]
-impl<T, G, S> ServiceLifecycle
-    for ServiceWrapper<crate::services::global_consensus::GlobalConsensusService<T, G, S>>
+impl<T, G, A, S> ServiceLifecycle
+    for ServiceWrapper<crate::services::global_consensus::GlobalConsensusService<T, G, A, S>>
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + Send + Sync + 'static,
 {
     async fn initialize(&self) -> ConsensusResult<()> {
@@ -514,7 +471,7 @@ where
     }
 
     async fn start(&self) -> ConsensusResult<()> {
-        self.service.start().await
+        self.service.clone().start().await
     }
 
     async fn stop(&self) -> ConsensusResult<()> {
@@ -532,11 +489,12 @@ where
 
 // Implement for GroupConsensusService
 #[async_trait]
-impl<T, G, S> ServiceLifecycle
-    for ServiceWrapper<crate::services::group_consensus::GroupConsensusService<T, G, S>>
+impl<T, G, A, S> ServiceLifecycle
+    for ServiceWrapper<crate::services::group_consensus::GroupConsensusService<T, G, A, S>>
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + Send + Sync + 'static,
 {
     async fn initialize(&self) -> ConsensusResult<()> {
@@ -560,39 +518,14 @@ where
     }
 }
 
-// Implement for ClientService
+// Implement for StreamService
 #[async_trait]
-impl<T, G, S> ServiceLifecycle for ServiceWrapper<crate::services::client::ClientService<T, G, S>>
+impl<T, G, A, S> ServiceLifecycle
+    for ServiceWrapper<crate::services::stream::StreamService<T, G, A, S>>
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
-    S: StorageAdaptor + Send + Sync + 'static,
-{
-    async fn initialize(&self) -> ConsensusResult<()> {
-        Ok(())
-    }
-
-    async fn start(&self) -> ConsensusResult<()> {
-        self.service.start().await
-    }
-
-    async fn stop(&self) -> ConsensusResult<()> {
-        self.service.stop().await
-    }
-
-    async fn is_healthy(&self) -> bool {
-        true // Routing service is always healthy if started
-    }
-
-    async fn status(&self) -> ServiceStatus {
-        ServiceStatus::Running
-    }
-}
-
-// Implement for StreamService
-#[async_trait]
-impl<S> ServiceLifecycle for ServiceWrapper<crate::services::stream::StreamService<S>>
-where
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + Send + Sync + 'static,
 {
     async fn initialize(&self) -> ConsensusResult<()> {
@@ -618,11 +551,12 @@ where
 
 // Implement for MembershipService
 #[async_trait]
-impl<T, G, S> ServiceLifecycle
-    for ServiceWrapper<crate::services::membership::MembershipService<T, G, S>>
+impl<T, G, A, S> ServiceLifecycle
+    for ServiceWrapper<crate::services::membership::MembershipService<T, G, A, S>>
 where
     T: Transport + Send + Sync + 'static,
     G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + Send + Sync + 'static,
 {
     async fn initialize(&self) -> ConsensusResult<()> {

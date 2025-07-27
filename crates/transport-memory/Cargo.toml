@@ -1,18 +1,20 @@
 [package]
 name = "proven-transport-memory"
-version.workspace = true
+version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-async-trait.workspace = true
-bytes.workspace = true
-futures.workspace = true
-proven-topology.workspace = true
 proven-transport.workspace = true
-thiserror.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-uuid.workspace = true
+proven-topology.workspace = true
+async-trait = "0.1"
+bytes = "1.5"
+tokio = { version = "1.35", features = ["full"] }
+tracing = "0.1"
+thiserror = "1.0"
+dashmap = "5.5"
+flume = "0.11"
+uuid = { version = "1.6", features = ["v4"] }
+once_cell = "1.19"
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["full", "test-util"] }
+tracing-subscriber = "0.3"

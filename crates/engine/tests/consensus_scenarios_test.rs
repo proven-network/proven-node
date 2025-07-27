@@ -44,7 +44,7 @@ async fn test_node_restart_rejoin() {
     // Get initial state
     let mut _initial_leader = None;
     for (i, engine) in engines.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await {
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             _initial_leader = state.leader.clone();
             tracing::info!(
                 "Node {} initial state: leader={:?}, term={}",
@@ -70,7 +70,7 @@ async fn test_node_restart_rejoin() {
 
     // Verify remaining nodes still have consensus
     for (i, engine) in engines_vec.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await {
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             tracing::info!(
                 "Remaining node {} state: leader={:?}, term={}",
                 i,
@@ -95,7 +95,7 @@ async fn test_node_restart_rejoin() {
     // Verify all nodes are back in consensus
     let mut final_leaders = std::collections::HashSet::new();
     for (i, engine) in engines_vec.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await {
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             if let Some(ref leader) = state.leader {
                 final_leaders.insert(leader.clone());
             }
@@ -214,7 +214,10 @@ async fn test_concurrent_operations() {
             for msg_idx in 0..3 {
                 let message = format!("Node {i} message {msg_idx}");
                 let result = client
-                    .publish(stream.clone(), message.into_bytes(), None)
+                    .publish_to_stream(
+                        stream.clone(),
+                        vec![proven_engine::Message::new(message.into_bytes())],
+                    )
                     .await;
                 results.push(result);
             }
@@ -290,7 +293,7 @@ async fn test_large_cluster_formation() {
     let mut member_count = 0;
 
     for (i, engine) in engines.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await {
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             if state.is_member {
                 member_count += 1;
                 if let Some(ref leader) = state.leader {
@@ -393,7 +396,7 @@ async fn test_network_delays() {
     let mut final_state = Vec::new();
 
     for (i, engine) in engines.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await {
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             final_state.push((i, state.leader.clone(), state.is_member));
             tracing::info!(
                 "Node {} final state: leader={:?}, is_member={}",

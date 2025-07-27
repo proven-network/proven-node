@@ -1,13 +1,13 @@
 //! Types for membership service
 
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use proven_topology::{Node, NodeId};
 
-use crate::foundation::types::ConsensusGroupId;
+use crate::foundation::types::{ClusterFormationState, NodeRole, NodeStatus};
 
 /// Current view of cluster membership
 #[derive(Debug, Clone)]
@@ -83,27 +83,6 @@ pub struct NodeMembership {
     pub last_seen_ms: u64,
 }
 
-/// Node status in the cluster
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum NodeStatus {
-    /// Node is starting up
-    Starting,
-    /// Node is online and healthy
-    Online,
-    /// Node is temporarily unreachable
-    Unreachable { since_ms: u64 },
-    /// Node is confirmed offline
-    Offline { since_ms: u64 },
-    /// Node is in maintenance mode
-    Maintenance,
-}
-
-impl NodeStatus {
-    pub fn is_available(&self) -> bool {
-        matches!(self, NodeStatus::Online)
-    }
-}
-
 /// Health information for a node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthInfo {
@@ -134,37 +113,4 @@ pub struct LoadInfo {
     pub cpu_percent: f32,
     pub memory_percent: f32,
     pub connection_count: u32,
-}
-
-/// Roles a node can have in the cluster
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum NodeRole {
-    /// Leader of global consensus
-    GlobalConsensusLeader,
-    /// Member of global consensus
-    GlobalConsensusMember,
-    /// Leader of a specific group
-    GroupLeader(ConsensusGroupId),
-    /// Member of a specific group
-    GroupMember(ConsensusGroupId),
-}
-
-/// State of cluster formation
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ClusterFormationState {
-    /// Cluster not yet formed
-    NotFormed,
-    /// Currently discovering nodes
-    Discovering { round: u32, started_at_ms: u64 },
-    /// Currently forming cluster
-    Forming {
-        coordinator: NodeId,
-        formation_id: uuid::Uuid,
-        proposed_members: Vec<NodeId>,
-    },
-    /// Cluster is active
-    Active {
-        members: Vec<NodeId>,
-        formed_at_ms: u64,
-    },
 }

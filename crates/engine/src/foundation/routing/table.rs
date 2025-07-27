@@ -4,9 +4,6 @@ use crate::foundation::ConsensusGroupId;
 use dashmap::DashMap;
 use proven_topology::NodeId;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{Notify, RwLock};
-use tokio::time::timeout;
 
 use super::types::{GroupLocation, GroupRoute, RoutingDecision, RoutingError, StreamRoute};
 
@@ -20,12 +17,6 @@ pub struct RoutingTable {
 
     /// Group routes: group_id -> route info
     group_routes: Arc<DashMap<ConsensusGroupId, GroupRoute>>,
-
-    /// Global consensus leader
-    global_leader: Arc<RwLock<Option<NodeId>>>,
-
-    /// Notifier for default group availability
-    default_group_notifier: Arc<Notify>,
 }
 
 impl RoutingTable {
@@ -35,8 +26,6 @@ impl RoutingTable {
             local_node_id,
             stream_routes: Arc::new(DashMap::new()),
             group_routes: Arc::new(DashMap::new()),
-            global_leader: Arc::new(RwLock::new(None)),
-            default_group_notifier: Arc::new(Notify::new()),
         }
     }
 
@@ -102,7 +91,6 @@ impl RoutingTable {
         &self,
         group_id: ConsensusGroupId,
         members: Vec<NodeId>,
-        leader: Option<NodeId>,
     ) -> Result<(), RoutingError> {
         // Get existing stream count or default to 0
         let stream_count = self
@@ -114,17 +102,10 @@ impl RoutingTable {
         let route = GroupRoute {
             group_id,
             members,
-            leader: leader.clone(),
             stream_count,
         };
 
         self.group_routes.insert(group_id, route);
-
-        // Notify if this is the default group with a leader
-        if group_id == ConsensusGroupId::new(1) && leader.is_some() {
-            self.default_group_notifier.notify_waiters();
-        }
-
         Ok(())
     }
 
@@ -151,20 +132,6 @@ impl RoutingTable {
             routes.insert(*entry.key(), entry.value().clone());
         }
         Ok(routes)
-    }
-
-    // Global leader management
-
-    /// Update the global consensus leader
-    pub async fn update_global_leader(&self, leader: Option<NodeId>) {
-        let mut current_leader = self.global_leader.write().await;
-        *current_leader = leader;
-    }
-
-    /// Get the current global consensus leader
-    pub async fn get_global_leader(&self) -> Option<NodeId> {
-        let leader = self.global_leader.read().await;
-        leader.clone()
     }
 
     // Query methods
@@ -237,27 +204,6 @@ impl RoutingTable {
         counts
     }
 
-    /// Wait for the default group (group ID 1) to be available with a leader
-    pub async fn wait_for_default_group(
-        &self,
-        wait_duration: Duration,
-    ) -> Result<(), RoutingError> {
-        // Check if already available
-        if let Some(route) = self.group_routes.get(&ConsensusGroupId::new(1))
-            && route.leader.is_some()
-        {
-            return Ok(());
-        }
-
-        // Wait for notification
-        match timeout(wait_duration, self.default_group_notifier.notified()).await {
-            Ok(_) => Ok(()),
-            Err(_) => Err(RoutingError::Internal(
-                "Timeout waiting for default group".to_string(),
-            )),
-        }
-    }
-
     /// Get routing decision for a stream
     pub async fn get_routing_decision(
         &self,
@@ -319,21 +265,13 @@ mod tests {
 
         // Add local group
         table
-            .update_group_route(
-                ConsensusGroupId::new(1),
-                vec![local_node.clone()],
-                Some(local_node.clone()),
-            )
+            .update_group_route(ConsensusGroupId::new(1), vec![local_node.clone()])
             .await
             .unwrap();
 
         // Add remote group
         table
-            .update_group_route(
-                ConsensusGroupId::new(2),
-                vec![remote_node.clone()],
-                Some(remote_node.clone()),
-            )
+            .update_group_route(ConsensusGroupId::new(2), vec![remote_node.clone()])
             .await
             .unwrap();
 

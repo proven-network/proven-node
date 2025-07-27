@@ -38,11 +38,6 @@ mod service;
 mod types;
 mod views;
 
-pub use messages::{MonitoringServiceMessage, MonitoringServiceResponse};
-pub use metrics::{MetricsCollector, MetricsRegistry};
 pub use service::{MonitoringConfig, MonitoringService};
-pub use types::{
-    ComponentHealth, GroupHealth, HealthReport, HealthStatus, MonitoringError, MonitoringResult,
-    NodeHealth, StreamHealth, SystemHealth,
-};
+pub use types::MonitoringError;
 pub use views::SystemView;

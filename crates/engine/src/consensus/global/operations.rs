@@ -5,11 +5,10 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
-use crate::error::{ConsensusResult, Error, ErrorKind};
+use crate::error::ConsensusResult;
 use crate::foundation::{
-    GlobalState, GlobalStateRead, GlobalStateWrite, GlobalStateWriter, traits::OperationHandler,
+    GlobalStateRead, GlobalStateWrite, GlobalStateWriter, traits::OperationHandler,
     types::OperationId, validations,
 };
 
@@ -157,7 +156,7 @@ impl OperationHandler for GlobalOperationHandler {
                 }
             }
 
-            GlobalRequest::AddNode { node_id, metadata } => {
+            GlobalRequest::AddNodeToGroup { node_id, metadata } => {
                 let info = crate::foundation::models::NodeInfo {
                     node_id: node_id.clone(),
                     joined_at: operation.timestamp,
@@ -169,7 +168,7 @@ impl OperationHandler for GlobalOperationHandler {
                 Ok(GlobalResponse::NodeAdded { node_id })
             }
 
-            GlobalRequest::RemoveNode { node_id } => {
+            GlobalRequest::RemoveNodeFromGroup { node_id } => {
                 // Check if node is in any groups
                 let groups = self.state.get_node_groups(&node_id).await;
                 if !groups.is_empty() {

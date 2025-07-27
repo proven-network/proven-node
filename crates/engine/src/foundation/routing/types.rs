@@ -40,8 +40,6 @@ pub struct GroupRoute {
     pub group_id: ConsensusGroupId,
     /// Group members
     pub members: Vec<NodeId>,
-    /// Group leader (if known)
-    pub leader: Option<NodeId>,
     /// Number of streams assigned to this group
     pub stream_count: usize,
 }

@@ -9,14 +9,11 @@ use crate::{
     error::ConsensusResult,
     foundation::events::EventBus,
     foundation::{
-        GlobalState, GlobalStateRead, GlobalStateReader, GroupInfo, routing::RoutingTable,
+        GlobalStateRead, GlobalStateReader, GroupInfo, StreamName, routing::RoutingTable,
         types::ConsensusGroupId,
     },
-    services::{
-        global_consensus::events::{
-            GlobalConsensusEvent, GlobalStateSnapshot, GroupSnapshot, StreamSnapshot,
-        },
-        stream::StreamName,
+    services::global_consensus::events::{
+        GlobalConsensusEvent, GlobalStateSnapshot, GroupSnapshot, StreamSnapshot,
     },
 };
 
@@ -61,11 +58,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         for group in &all_groups {
             if let Err(e) = self
                 .routing_table
-                .update_group_route(
-                    group.id,
-                    group.members.clone(),
-                    None, // Leader not known yet
-                )
+                .update_group_route(group.id, group.members.clone())
                 .await
             {
                 tracing::error!("Failed to update routing for group {:?}: {}", group.id, e);
@@ -125,30 +118,42 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         // Update routing table directly
         if let Err(e) = self
             .routing_table
-            .update_group_route(
-                group_id,
-                group_info.members.clone(),
-                None, // Leader not known at creation time
-            )
+            .update_group_route(group_id, group_info.members.clone())
             .await
         {
             tracing::error!("Failed to update routing for group {:?}: {}", group_id, e);
         }
 
         if let Some(ref event_bus) = self.event_bus {
-            // Still publish event for other subscribers
+            // Send command to create the group in group consensus service
+            use crate::services::group_consensus::commands::CreateGroup;
+            let create_group_cmd = CreateGroup {
+                group_id,
+                members: group_info.members.clone(),
+            };
+
+            tracing::info!(
+                "GlobalConsensusCallbacks: Sending CreateGroup command for group {:?}",
+                group_id
+            );
+
+            // Use fire-and-forget since this is a callback
+            let event_bus_clone = event_bus.clone();
+            tokio::spawn(async move {
+                if let Err(e) = event_bus_clone.request(create_group_cmd).await {
+                    tracing::error!("Failed to create group via command: {}", e);
+                }
+            });
+
+            // Also emit event for other subscribers (like stream service)
             let event = GlobalConsensusEvent::GroupCreated {
                 group_id,
                 members: group_info.members.clone(),
             };
-            tracing::info!(
-                "GlobalConsensusCallbacks: Emitting GroupCreated event for group {:?}",
-                group_id
-            );
             event_bus.emit(event);
         } else {
             tracing::warn!(
-                "GlobalConsensusCallbacks: No event bus available to update routing or emit event"
+                "GlobalConsensusCallbacks: No event bus available to update routing or send commands"
             );
         }
 
@@ -171,7 +176,7 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
     async fn on_stream_created(
         &self,
         stream_name: &StreamName,
-        config: &crate::services::stream::StreamConfig,
+        config: &crate::foundation::StreamConfig,
         group_id: ConsensusGroupId,
     ) -> ConsensusResult<()> {
         // Update routing table directly
@@ -283,11 +288,6 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
             new_leader,
             term
         );
-
-        // Update routing table directly
-        self.routing_table
-            .update_global_leader(new_leader.clone())
-            .await;
 
         if let Some(ref event_bus) = self.event_bus {
             // Still publish event for other subscribers

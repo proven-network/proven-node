@@ -1,27 +1,22 @@
 //! Event types for PubSub service integration
 
-use bytes::Bytes;
 use uuid::Uuid;
 
 use super::types::PubSubNetworkMessage;
 use crate::foundation::events::Event;
-use crate::foundation::types::Subject;
 
-/// Client-facing message type (without internal metadata)
-#[derive(Debug, Clone)]
-pub struct PubSubMessage {
-    pub subject: Subject,
-    pub payload: Bytes,
-    pub headers: Vec<(String, String)>,
-}
+use crate::foundation::Message;
 
-impl From<PubSubNetworkMessage> for PubSubMessage {
+impl From<PubSubNetworkMessage> for Message {
     fn from(msg: PubSubNetworkMessage) -> Self {
-        Self {
-            subject: msg.subject,
-            payload: msg.payload,
-            headers: msg.headers,
+        let mut message = Message::new(msg.payload);
+
+        // Add all headers (subject is already in headers)
+        for (key, value) in msg.headers {
+            message = message.with_header(key, value);
         }
+
+        message
     }
 }
 
@@ -31,7 +26,7 @@ pub enum PubSubServiceEvent {
     /// Message received on a subscribed topic
     MessageReceived {
         /// The message that was received
-        message: PubSubMessage,
+        message: Message,
         /// Subject pattern that matched (useful for wildcard subscriptions)
         matched_pattern: String,
     },

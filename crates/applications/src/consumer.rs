@@ -47,16 +47,11 @@ impl ApplicationViewConsumer {
 }
 
 /// Start the event consumer background task.
-pub async fn start_event_consumer<T, G, S>(
-    client: Arc<Client<T, G, S>>,
+pub async fn start_event_consumer(
+    client: Arc<Client>,
     event_stream: String,
     view: ApplicationView,
-) -> Result<JoinHandle<()>, Error>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    S: proven_storage::StorageAdaptor + 'static,
-{
+) -> Result<JoinHandle<()>, Error> {
     // Check if stream exists and get starting position
     let start_seq = match client.get_stream_info(&event_stream).await {
         Ok(Some(_info)) => {
@@ -89,19 +84,16 @@ where
 
 /// Run the consumer loop.
 #[allow(clippy::cognitive_complexity)]
-async fn run_consumer_loop<T, G, S>(
-    client: Arc<Client<T, G, S>>,
+async fn run_consumer_loop(
+    client: Arc<Client>,
     event_stream: String,
     consumer: &mut ApplicationViewConsumer,
     start_seq: LogIndex,
-) -> Result<(), Error>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    S: proven_storage::StorageAdaptor + 'static,
-{
+) -> Result<(), Error> {
+    use tokio::pin;
+
     // Use streaming API with follow mode for continuous consumption
-    let mut stream = client
+    let stream = client
         .stream_messages(event_stream.clone(), start_seq, None)
         .await
         .map_err(|e| Error::Stream(e.to_string()))?;
@@ -111,29 +103,21 @@ where
         start_seq
     );
 
-    while let Some(result) = tokio_stream::StreamExt::next(&mut stream).await {
-        match result {
-            Ok(message) => {
-                // Deserialize event
-                let event: Event = ciborium::de::from_reader(&message.data.payload[..])
-                    .map_err(|e| Error::Deserialization(e.to_string()))?;
+    pin!(stream);
+    while let Some(message) = tokio_stream::StreamExt::next(&mut stream).await {
+        // Deserialize event from the stored message payload
+        let event: Event = ciborium::de::from_reader(&message.data.payload[..])
+            .map_err(|e| Error::Deserialization(e.to_string()))?;
 
-                // Process event
-                consumer.handle_event(event, message.sequence.get()).await;
+        // Process event
+        consumer.handle_event(event, message.sequence.get()).await;
 
-                // Log progress periodically
-                if message.sequence.get().is_multiple_of(100) {
-                    tracing::debug!(
-                        "Event consumer processed up to sequence {}",
-                        message.sequence.get()
-                    );
-                }
-            }
-            Err(e) => {
-                tracing::error!("Error reading event stream: {}", e);
-                // Continue processing after errors
-                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-            }
+        // Log progress periodically
+        if message.sequence.get().is_multiple_of(100) {
+            tracing::debug!(
+                "Event consumer processed up to sequence {}",
+                message.sequence.get()
+            );
         }
     }
 

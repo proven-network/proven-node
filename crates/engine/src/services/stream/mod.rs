@@ -7,6 +7,8 @@ pub mod commands;
 pub mod config;
 pub mod event_handlers;
 pub mod events;
+mod handler;
+pub mod messages;
 pub mod service;
 pub mod storage;
 pub mod streaming_commands;
@@ -16,13 +18,8 @@ pub mod types;
 
 // Re-export the main types
 pub use commands::StreamInfo;
-pub use config::{PersistenceType, RetentionPolicy, StreamConfig};
-pub use events::StreamEvent;
-pub use service::{StreamMetadata, StreamService, StreamServiceConfig};
-pub use storage::{StreamStorageImpl, StreamStorageReader, StreamStorageWriter};
-pub use streaming_commands::StreamMessages;
-pub use streaming_handlers::StreamMessagesHandler;
-pub use types::{
-    MessageData, MessageData as StreamMessage, StoredMessage, StreamName, StreamState,
-    deserialize_stored_message, serialize_stored_message,
-};
+pub use service::{StreamService, StreamServiceConfig};
+pub use types::{MessageData, MessageData as StreamMessage};
+
+// Re-export from foundation
+pub use crate::foundation::{StoredMessage, deserialize_stored_message};

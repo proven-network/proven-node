@@ -1,8 +1,8 @@
 //! Engine configuration
 
-use proven_storage::LogIndex;
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
-use std::{num::NonZero, time::Duration};
 
 use crate::services::{
     lifecycle::LifecycleConfig, migration::MigrationConfig, monitoring::MonitoringConfig,

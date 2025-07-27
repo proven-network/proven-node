@@ -18,7 +18,11 @@ pub mod validations;
 pub use messages::{Message, deserialize_entry, headers, serialize_entry};
 
 // From models
-pub use models::{GroupInfo, GroupMetadata, NodeInfo, StreamInfo, StreamState, StreamStats};
+pub use models::{
+    GroupInfo, GroupMetadata, GroupStateInfo, GroupStreamInfo, NodeInfo, PersistenceType,
+    RetentionPolicy, StoredMessage, StreamConfig, StreamInfo, StreamState, StreamStats,
+    deserialize_stored_message, serialize_stored_message,
+};
 
 // From routing
 pub use routing::{GroupLocation, GroupRoute, RoutingDecision, RoutingTable, StreamRoute};
@@ -39,6 +43,7 @@ pub use traits::{
 
 // From types
 pub use types::{
-    ConsensusGroupId, ConsensusRole, ConsensusTimestamp, GroupStatus, NodeState, OperationId,
-    OperationPriority, Term,
+    ClusterFormationState, ComponentHealth, ConsensusGroupId, ConsensusRole, ConsensusTimestamp,
+    GroupStatus, HealthStatus, NodeRole, NodeState, NodeStatus, OperationId, OperationPriority,
+    StreamHealth, StreamName, Term,
 };

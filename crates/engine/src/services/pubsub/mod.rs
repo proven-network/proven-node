@@ -11,23 +11,13 @@ pub mod command_handlers;
 pub mod commands;
 pub mod event_handlers;
 pub mod events;
+mod handler;
 pub mod interest;
 pub mod messages;
 pub mod service;
-pub mod streaming_commands;
-pub mod streaming_handlers;
 pub mod streaming_router;
 pub mod types;
 
-pub use commands::{PublishMessage, Subscribe, Unsubscribe};
-pub use events::{PubSubMessage, PubSubServiceEvent};
-pub use interest::InterestTracker;
-pub use messages::{MessageNotification, PubSubServiceMessage, PubSubServiceResponse};
+pub use commands::{PublishMessage, Subscribe, SubscriptionControl};
 pub use service::PubSubService;
-pub use streaming_commands::{StreamingSubscriptionHandle, SubscribeStream, SubscriptionControl};
-pub use streaming_router::{MessageChannel, StreamingMessageRouter};
-pub use types::{
-    GlobalConsensusHandle, GroupConsensusHandle, InterestUpdateMessage, PubSubError,
-    PubSubMessageType, PubSubNetworkMessage, PubSubRequest, PubSubResponse, PubSubResult,
-    StreamMapping, Subscription,
-};
+pub use types::PubSubError;

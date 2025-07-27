@@ -75,10 +75,12 @@ async fn test_late_node_join_stream_creation() {
     println!("Publishing {num_messages} messages to stream");
     for i in 0..num_messages {
         let message = format!("Message {i}");
-        let headers = std::collections::HashMap::new();
 
         let seq = client
-            .publish(stream_name.clone(), message.into_bytes(), Some(headers))
+            .publish_to_stream(
+                stream_name.clone(),
+                vec![proven_engine::Message::new(message.into_bytes())],
+            )
             .await
             .expect("Failed to publish message");
         println!("Published message {i} with sequence {seq:?}");
@@ -105,10 +107,11 @@ async fn test_late_node_join_stream_creation() {
     println!("\nImmediately attempting to publish to the first stream from the new node...");
     match engines[1]
         .client()
-        .publish(
+        .publish_to_stream(
             stream_name.clone(),
-            b"Message from new node (immediate)".to_vec(),
-            None,
+            vec![proven_engine::Message::new(
+                b"Message from new node (immediate)".to_vec(),
+            )],
         )
         .await
     {
@@ -161,7 +164,7 @@ async fn test_late_node_join_stream_creation() {
     println!("Checking routing table state...");
     for (i, engine) in engines.iter().enumerate() {
         // Try to get groups to see if there are any routing issues
-        match engine.node_groups().await {
+        match engine.client().node_groups().await {
             Ok(groups) => {
                 println!("Node {} is in {} groups", i, groups.len());
             }
@@ -175,7 +178,12 @@ async fn test_late_node_join_stream_creation() {
     println!("\nAttempting to publish to the first stream from node 1 (the new node)...");
     match engines[1]
         .client()
-        .publish(stream_name.clone(), b"Message from new node".to_vec(), None)
+        .publish_to_stream(
+            stream_name.clone(),
+            vec![proven_engine::Message::new(
+                b"Message from new node".to_vec(),
+            )],
+        )
         .await
     {
         Ok(response) => {

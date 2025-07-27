@@ -1,108 +1,101 @@
-//! Network message types and traits
-
-use std::any::Any;
-use std::fmt::Debug;
+//! Message types and traits for the network layer
 
 use bytes::Bytes;
-use proven_topology::NodeId;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 /// Base trait for all network messages
-pub trait NetworkMessage: Send + Sync + Any + Debug + 'static {
-    /// Get as Any for downcasting
-    fn as_any(&self) -> &dyn Any;
+pub trait NetworkMessage: Send + Sync + 'static {
+    /// Get the message type identifier
+    fn message_type() -> &'static str
+    where
+        Self: Sized;
 
-    /// Get the message type identifier for routing
-    fn message_type(&self) -> &'static str;
+    /// Serialize the message
+    fn serialize(&self) -> Result<Bytes, crate::error::NetworkError>
+    where
+        Self: Sized + Serialize,
+    {
+        let mut buf = Vec::new();
+        ciborium::into_writer(self, &mut buf)
+            .map_err(|e| crate::error::NetworkError::Serialization(e.to_string()))?;
+        Ok(Bytes::from(buf))
+    }
 
-    /// Serialize the message to bytes
-    fn serialize(&self) -> Result<Bytes, crate::error::NetworkError>;
+    /// Deserialize a message
+    fn deserialize(bytes: &[u8]) -> Result<Self, crate::error::NetworkError>
+    where
+        Self: Sized + for<'de> Deserialize<'de>,
+    {
+        ciborium::from_reader(bytes)
+            .map_err(|e| crate::error::NetworkError::Serialization(e.to_string()))
+    }
 }
 
-/// Trait for messages that expect a response
-pub trait HandledMessage: NetworkMessage {
-    /// The response type for this message
-    type Response: NetworkMessage;
-}
+/// Trait for service messages (request-response pattern)
+pub trait ServiceMessage: NetworkMessage + Serialize + for<'de> Deserialize<'de> {
+    /// Response type for this message
+    type Response: NetworkMessage + Serialize + for<'de> Deserialize<'de>;
 
-/// Trait for service message enums that can be dispatched
-pub trait ServiceMessage: Serialize + DeserializeOwned + Send + Sync + Debug + 'static {
-    /// The type returned by the handler
-    type Response: Serialize + DeserializeOwned + Send + Sync + Debug + 'static;
-
-    /// Get a unique identifier for this service
+    /// Service identifier
     fn service_id() -> &'static str;
-}
 
-// Default implementation for types that implement Serialize
-impl<T> NetworkMessage for T
-where
-    T: Serialize + DeserializeOwned + Send + Sync + Any + Debug + 'static,
-{
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn message_type(&self) -> &'static str {
-        std::any::type_name::<T>()
-    }
-
-    fn serialize(&self) -> Result<Bytes, crate::error::NetworkError> {
-        let mut bytes = Vec::new();
-        ciborium::into_writer(self, &mut bytes).map_err(|e| {
-            crate::error::NetworkError::Serialization(format!("Failed to serialize message: {e}"))
-        })?;
-        Ok(Bytes::from(bytes))
+    /// Default timeout for requests
+    fn default_timeout() -> Duration {
+        Duration::from_secs(30)
     }
 }
 
-/// Network envelope containing message metadata
+/// Trait for streaming service messages
+pub trait StreamingServiceMessage: ServiceMessage {
+    /// The type of items in the stream
+    type Item: NetworkMessage + Serialize + for<'de> Deserialize<'de>;
+
+    /// Stream type identifier
+    fn stream_type() -> &'static str;
+}
+
+/// Multiplexed frame for connection-level routing
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NetworkEnvelope {
-    /// Optional correlation ID for request/response tracking
-    pub correlation_id: Option<Uuid>,
-    /// Message type identifier
-    pub message_type: String,
-    /// The message payload (serialized)
-    pub payload: Bytes,
-    /// The sender of the message
-    pub sender: NodeId,
+pub struct MultiplexedFrame {
+    /// Stream ID (None for connection-level messages)
+    pub stream_id: Option<uuid::Uuid>,
+    /// Frame data
+    pub data: FrameData,
 }
 
-impl NetworkEnvelope {
-    /// Create a new network envelope
-    pub fn new(sender: NodeId, payload: Bytes, message_type: String) -> Self {
-        Self {
-            correlation_id: None,
-            message_type,
-            payload,
-            sender,
-        }
+/// Types of frame data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FrameData {
+    /// Stream frame
+    Stream(crate::stream::StreamFrame),
+    /// Connection control
+    Control(ControlFrame),
+}
+
+/// Connection-level control frames
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ControlFrame {
+    /// Ping for keep-alive
+    Ping { data: Bytes },
+    /// Pong response
+    Pong { data: Bytes },
+    /// Connection close
+    Close { code: u32, reason: String },
+}
+
+impl MultiplexedFrame {
+    /// Serialize a frame to bytes
+    pub fn serialize(&self) -> Result<Bytes, crate::error::NetworkError> {
+        let mut buf = Vec::new();
+        ciborium::into_writer(self, &mut buf)
+            .map_err(|e| crate::error::NetworkError::Serialization(e.to_string()))?;
+        Ok(Bytes::from(buf))
     }
 
-    /// Create a new request envelope with correlation ID
-    pub fn request(sender: NodeId, payload: Bytes, message_type: String) -> Self {
-        Self {
-            correlation_id: Some(Uuid::new_v4()),
-            message_type,
-            payload,
-            sender,
-        }
-    }
-
-    /// Create a response envelope with matching correlation ID
-    pub fn response(
-        sender: NodeId,
-        payload: Bytes,
-        message_type: String,
-        correlation_id: Uuid,
-    ) -> Self {
-        Self {
-            correlation_id: Some(correlation_id),
-            message_type,
-            payload,
-            sender,
-        }
+    /// Deserialize a frame from bytes
+    pub fn deserialize(bytes: &[u8]) -> Result<Self, crate::error::NetworkError> {
+        ciborium::from_reader(bytes)
+            .map_err(|e| crate::error::NetworkError::Serialization(e.to_string()))
     }
 }

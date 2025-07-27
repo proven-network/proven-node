@@ -1,7 +1,7 @@
 //! Integration tests for PubSub functionality
 
 use bytes::Bytes;
-use proven_engine::EngineState;
+use proven_engine::{EngineState, Message};
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_stream::StreamExt;
@@ -9,14 +9,9 @@ use tokio_stream::StreamExt;
 mod common;
 use common::test_cluster::{TestCluster, TransportType};
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_basic_pubsub_publish_subscribe() {
-    // Initialize tracing for debugging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=debug,proven_network=debug")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _node_infos) = cluster.add_nodes(1).await;
     let engine = &engines[0];
@@ -26,43 +21,32 @@ async fn test_basic_pubsub_publish_subscribe() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Subscribe to a subject
-    let (sub_id, mut receiver) = client
-        .pubsub_subscribe("test.subject", None)
+    let mut receiver = client
+        .subscribe("test.subject", None)
         .await
         .expect("Failed to subscribe");
 
     // Publish a message
-    let payload = Bytes::from("Hello PubSub!");
-    let headers = vec![("header1".to_string(), "value1".to_string())];
+    let message = Message::new("Hello PubSub!").with_header("header1", "value1");
     client
-        .pubsub_publish("test.subject", payload.clone(), headers.clone())
+        .publish("test.subject", vec![message])
         .await
         .expect("Failed to publish");
 
     // Receive the message
-    let msg = timeout(Duration::from_secs(2), receiver.recv())
+    let msg = timeout(Duration::from_secs(2), receiver.next())
         .await
         .expect("Timeout waiting for message")
         .expect("Failed to receive message");
 
-    assert_eq!(msg.payload, payload);
-    assert_eq!(msg.headers, headers);
-    assert_eq!(msg.subject.as_str(), "test.subject");
-
-    // Unsubscribe
-    client
-        .pubsub_unsubscribe(&sub_id)
-        .await
-        .expect("Failed to unsubscribe");
+    assert_eq!(msg.payload, Bytes::from("Hello PubSub!"));
+    assert_eq!(msg.get_header("header1"), Some("value1"));
+    assert_eq!(msg.subject(), Some("test.subject"));
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_pubsub_wildcard_subscriptions() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=debug")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(1).await;
     let client = engines[0].client();
@@ -70,80 +54,76 @@ async fn test_pubsub_wildcard_subscriptions() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Subscribe to wildcard patterns
-    let (_sub1, mut receiver1) = client
-        .pubsub_subscribe("metrics.*", None)
+    let mut receiver1 = client
+        .subscribe("metrics.*", None)
         .await
         .expect("Failed to subscribe to metrics.*");
 
-    let (_sub2, mut receiver2) = client
-        .pubsub_subscribe("logs.>", None)
+    let mut receiver2 = client
+        .subscribe("logs.>", None)
         .await
         .expect("Failed to subscribe to logs.>");
 
     // Publish messages that match patterns
     client
-        .pubsub_publish("metrics.cpu", Bytes::from("cpu:80"), vec![])
+        .publish("metrics.cpu", vec![Message::from("cpu:80")])
         .await
         .expect("Failed to publish metrics.cpu");
 
     client
-        .pubsub_publish("metrics.memory", Bytes::from("memory:4GB"), vec![])
+        .publish("metrics.memory", vec![Message::from("memory:4GB")])
         .await
         .expect("Failed to publish metrics.memory");
 
     client
-        .pubsub_publish("logs.app.error", Bytes::from("error log"), vec![])
+        .publish("logs.app.error", vec![Message::from("error log")])
         .await
         .expect("Failed to publish logs.app.error");
 
     // Non-matching message
     client
-        .pubsub_publish("other.topic", Bytes::from("other"), vec![])
+        .publish("other.topic", vec![Message::from("other")])
         .await
         .expect("Failed to publish other.topic");
 
     // Check metrics.* receives exactly 2 messages
-    let msg1 = timeout(Duration::from_secs(1), receiver1.recv())
+    let msg1 = timeout(Duration::from_secs(1), receiver1.next())
         .await
         .expect("Timeout waiting for first metrics message")
         .expect("Failed to receive message");
-    assert!(msg1.subject.as_str() == "metrics.cpu" || msg1.subject.as_str() == "metrics.memory");
+    assert!(msg1.subject() == Some("metrics.cpu") || msg1.subject() == Some("metrics.memory"));
 
-    let msg2 = timeout(Duration::from_secs(1), receiver1.recv())
+    let msg2 = timeout(Duration::from_secs(1), receiver1.next())
         .await
         .expect("Timeout waiting for second metrics message")
         .expect("Failed to receive message");
-    assert!(msg2.subject.as_str() == "metrics.cpu" || msg2.subject.as_str() == "metrics.memory");
+    assert!(msg2.subject() == Some("metrics.cpu") || msg2.subject() == Some("metrics.memory"));
 
     // Check logs.> receives the deep nested message
-    let msg3 = timeout(Duration::from_secs(1), receiver2.recv())
+    let msg3 = timeout(Duration::from_secs(1), receiver2.next())
         .await
         .expect("Timeout waiting for logs message")
         .expect("Failed to receive message");
-    assert_eq!(msg3.subject.as_str(), "logs.app.error");
+    assert_eq!(msg3.subject(), Some("logs.app.error"));
 
     // Verify no more messages are received
     assert!(
-        timeout(Duration::from_millis(200), receiver1.recv())
+        timeout(Duration::from_millis(200), receiver1.next())
             .await
             .is_err(),
         "Should not receive any more messages on metrics.*"
     );
     assert!(
-        timeout(Duration::from_millis(200), receiver2.recv())
+        timeout(Duration::from_millis(200), receiver2.next())
             .await
             .is_err(),
         "Should not receive any more messages on logs.>"
     );
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_pubsub_queue_groups() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=debug")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(1).await;
     let client = engines[0].client();
@@ -151,38 +131,38 @@ async fn test_pubsub_queue_groups() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Create three subscribers in the same queue group
-    let (_sub1, mut receiver1) = client
-        .pubsub_subscribe("work.*", Some("workers".to_string()))
+    let mut receiver1 = client
+        .subscribe("work.*", Some("workers".to_string()))
         .await
         .expect("Failed to subscribe 1");
 
-    let (_sub2, mut receiver2) = client
-        .pubsub_subscribe("work.*", Some("workers".to_string()))
+    let mut receiver2 = client
+        .subscribe("work.*", Some("workers".to_string()))
         .await
         .expect("Failed to subscribe 2");
 
-    let (_sub3, mut receiver3) = client
-        .pubsub_subscribe("work.*", Some("workers".to_string()))
+    let mut receiver3 = client
+        .subscribe("work.*", Some("workers".to_string()))
         .await
         .expect("Failed to subscribe 3");
 
     // Also create a regular subscriber (not in queue group)
-    let (_sub4, mut receiver4) = client
-        .pubsub_subscribe("work.*", None)
+    let mut receiver4 = client
+        .subscribe("work.*", None)
         .await
         .expect("Failed to subscribe 4");
 
     // Publish messages
     for i in 0..3 {
         client
-            .pubsub_publish("work.task", Bytes::from(format!("task{i}")), vec![])
+            .publish("work.task", vec![Message::from(format!("task{i}"))])
             .await
             .expect("Failed to publish");
     }
 
     // Regular subscriber should get all 3 messages
     let mut regular_count = 0;
-    while let Ok(Ok(_)) = timeout(Duration::from_millis(100), receiver4.recv()).await {
+    while let Ok(Some(_)) = timeout(Duration::from_millis(100), receiver4.next()).await {
         regular_count += 1;
     }
     assert_eq!(
@@ -193,13 +173,13 @@ async fn test_pubsub_queue_groups() {
     // Queue group subscribers should each get 1 message (load balanced)
     let mut queue_counts = [0, 0, 0];
 
-    if let Ok(Ok(_)) = timeout(Duration::from_millis(100), receiver1.recv()).await {
+    if let Ok(Some(_)) = timeout(Duration::from_millis(100), receiver1.next()).await {
         queue_counts[0] += 1;
     }
-    if let Ok(Ok(_)) = timeout(Duration::from_millis(100), receiver2.recv()).await {
+    if let Ok(Some(_)) = timeout(Duration::from_millis(100), receiver2.next()).await {
         queue_counts[1] += 1;
     }
-    if let Ok(Ok(_)) = timeout(Duration::from_millis(100), receiver3.recv()).await {
+    if let Ok(Some(_)) = timeout(Duration::from_millis(100), receiver3.next()).await {
         queue_counts[2] += 1;
     }
 
@@ -216,13 +196,9 @@ async fn test_pubsub_queue_groups() {
     );
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_pubsub_stream_api() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=debug")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(1).await;
     let client = engines[0].client();
@@ -230,18 +206,17 @@ async fn test_pubsub_stream_api() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Subscribe using the stream API
-    let (_sub_id, stream) = client
-        .pubsub_subscribe_stream("stream.>", None)
+    let stream = client
+        .subscribe("stream.>", None)
         .await
         .expect("Failed to subscribe stream");
 
     // Publish messages
     for i in 0..5 {
         client
-            .pubsub_publish(
+            .publish(
                 &format!("stream.test.{i}"),
-                Bytes::from(format!("message{i}")),
-                vec![],
+                vec![Message::from(format!("message{i}"))],
             )
             .await
             .expect("Failed to publish");
@@ -257,20 +232,14 @@ async fn test_pubsub_stream_api() {
 
     assert_eq!(messages.len(), 5);
     for (i, msg) in messages.iter().enumerate() {
-        assert_eq!(msg.subject.as_str(), format!("stream.test.{i}"));
+        assert_eq!(msg.subject(), Some(&format!("stream.test.{i}")[..]));
         assert_eq!(msg.payload, Bytes::from(format!("message{i}")));
     }
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_pubsub_multi_node() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            "proven_engine=debug,proven_network=error,proven_engine::services::pubsub=trace",
-        )
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(3).await;
 
@@ -279,8 +248,8 @@ async fn test_pubsub_multi_node() {
 
     // Subscribe on node 0
     let client0 = engines[0].client();
-    let (_sub_id, mut receiver) = client0
-        .pubsub_subscribe("distributed.*", None)
+    let mut receiver = client0
+        .subscribe("distributed.*", None)
         .await
         .expect("Failed to subscribe on node 0");
 
@@ -290,33 +259,27 @@ async fn test_pubsub_multi_node() {
     // Publish from node 1
     let client1 = engines[1].client();
     client1
-        .pubsub_publish(
+        .publish(
             "distributed.test",
-            Bytes::from("cross-node message"),
-            vec![("from".to_string(), "node1".to_string())],
+            vec![Message::new("cross-node message").with_header("from", "node1")],
         )
         .await
         .expect("Failed to publish from node 1");
 
     // Receive on node 0
-    let msg = timeout(Duration::from_secs(5), receiver.recv())
+    let msg = timeout(Duration::from_secs(5), receiver.next())
         .await
         .expect("Timeout waiting for cross-node message")
         .expect("Failed to receive cross-node message");
 
-    assert_eq!(msg.subject.as_str(), "distributed.test");
+    assert_eq!(msg.subject(), Some("distributed.test"));
     assert_eq!(msg.payload, Bytes::from("cross-node message"));
-    assert_eq!(msg.headers.len(), 1);
-    assert_eq!(msg.headers[0], ("from".to_string(), "node1".to_string()));
+    assert_eq!(msg.get_header("from"), Some("node1"));
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_pubsub_no_subscribers() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=debug")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(1).await;
     let client = engines[0].client();
@@ -325,7 +288,7 @@ async fn test_pubsub_no_subscribers() {
 
     // Publish to a subject with no subscribers - should not error
     client
-        .pubsub_publish("no.subscribers", Bytes::from("lost message"), vec![])
+        .publish("no.subscribers", vec![Message::from("lost message")])
         .await
         .expect("Publish should succeed even with no subscribers");
 
@@ -334,13 +297,9 @@ async fn test_pubsub_no_subscribers() {
     assert_eq!(health.state, EngineState::Running);
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_pubsub_subject_validation() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=debug")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(1).await;
     let client = engines[0].client();
@@ -350,20 +309,20 @@ async fn test_pubsub_subject_validation() {
     // Test invalid subjects
     assert!(
         client
-            .pubsub_publish("", Bytes::from("test"), vec![])
+            .publish("", vec![Message::from("test")])
             .await
             .is_err(),
         "Empty subject should fail"
     );
 
     assert!(
-        client.pubsub_subscribe("", None).await.is_err(),
+        client.subscribe("", None).await.is_err(),
         "Empty pattern should fail"
     );
 
     assert!(
         client
-            .pubsub_publish("subject with spaces", Bytes::from("test"), vec![])
+            .publish("subject with spaces", vec![Message::from("test")])
             .await
             .is_err(),
         "Subject with spaces should fail"
@@ -371,7 +330,7 @@ async fn test_pubsub_subject_validation() {
 
     assert!(
         client
-            .pubsub_publish("subject.*.wildcard", Bytes::from("test"), vec![])
+            .publish("subject.*.wildcard", vec![Message::from("test")])
             .await
             .is_err(),
         "Subject with wildcard should fail for publish"
@@ -379,24 +338,19 @@ async fn test_pubsub_subject_validation() {
 
     // Test valid patterns for subscribe
     assert!(
-        client.pubsub_subscribe("valid.*", None).await.is_ok(),
+        client.subscribe("valid.*", None).await.is_ok(),
         "Wildcard pattern should work for subscribe"
     );
 
     assert!(
-        client.pubsub_subscribe("valid.>", None).await.is_ok(),
+        client.subscribe("valid.>", None).await.is_ok(),
         "Multi-wildcard pattern should work for subscribe"
     );
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_pubsub_high_volume() {
-    // Initialize tracing for debugging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=info")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _node_infos) = cluster.add_nodes(1).await;
     let engine = &engines[0];
@@ -408,16 +362,16 @@ async fn test_pubsub_high_volume() {
     // Create multiple subscribers
     let mut receivers = Vec::new();
     for i in 0..5 {
-        let (sub_id, receiver) = client
-            .pubsub_subscribe(&format!("volume.test.{i}"), None)
+        let receiver = client
+            .subscribe(&format!("volume.test.{i}"), None)
             .await
             .expect("Failed to subscribe");
-        receivers.push((sub_id, receiver));
+        receivers.push(receiver);
     }
 
     // Also create a wildcard subscriber
-    let (_wildcard_sub, mut wildcard_receiver) = client
-        .pubsub_subscribe("volume.test.*", None)
+    let mut wildcard_receiver = client
+        .subscribe("volume.test.*", None)
         .await
         .expect("Failed to subscribe to wildcard");
 
@@ -433,7 +387,7 @@ async fn test_pubsub_high_volume() {
         let payload = Bytes::from(format!("High volume message {i}"));
 
         client
-            .pubsub_publish(&subject, payload, vec![])
+            .publish(&subject, vec![Message::new(payload)])
             .await
             .expect("Failed to publish");
     }
@@ -452,8 +406,8 @@ async fn test_pubsub_high_volume() {
     let deadline = std::time::Instant::now() + timeout;
 
     while wildcard_count < message_count && std::time::Instant::now() < deadline {
-        match tokio::time::timeout(Duration::from_millis(100), wildcard_receiver.recv()).await {
-            Ok(Ok(_msg)) => {
+        match tokio::time::timeout(Duration::from_millis(100), wildcard_receiver.next()).await {
+            Ok(Some(_msg)) => {
                 wildcard_count += 1;
             }
             _ => {
@@ -473,14 +427,9 @@ async fn test_pubsub_high_volume() {
     );
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_pubsub_burst_publishing() {
-    // Initialize tracing for debugging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=info")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _node_infos) = cluster.add_nodes(1).await;
     let engine = &engines[0];
@@ -490,8 +439,8 @@ async fn test_pubsub_burst_publishing() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Create a subscriber
-    let (_sub_id, mut receiver) = client
-        .pubsub_subscribe("burst.test", None)
+    let mut receiver = client
+        .subscribe("burst.test", None)
         .await
         .expect("Failed to subscribe");
 
@@ -508,8 +457,8 @@ async fn test_pubsub_burst_publishing() {
         let futures: Vec<_> = (0..burst_size)
             .map(|i| {
                 let _msg_num = burst * burst_size + i;
-                let payload = Bytes::from(format!("Burst {burst} message {i}"));
-                client.pubsub_publish("burst.test", payload, vec![])
+                let payload = format!("Burst {burst} message {i}");
+                client.publish("burst.test", vec![Message::from(payload)])
             })
             .collect();
 
@@ -534,8 +483,8 @@ async fn test_pubsub_burst_publishing() {
     let deadline = std::time::Instant::now() + timeout;
 
     while received_count < total_published && std::time::Instant::now() < deadline {
-        match tokio::time::timeout(Duration::from_millis(100), receiver.recv()).await {
-            Ok(Ok(_msg)) => {
+        match tokio::time::timeout(Duration::from_millis(100), receiver.next()).await {
+            Ok(Some(_msg)) => {
                 received_count += 1;
             }
             _ => {

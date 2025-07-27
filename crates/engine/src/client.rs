@@ -1,248 +1,48 @@
-//! Client API for interacting with the consensus engine
+//! Simplified client implementation using EventBus for all service communication
 //!
-//! This module provides a clean public API for submitting operations
-//! and querying the consensus system.
+//! This client provides a clean API for interacting with the consensus engine
+//! without dealing with routing, forwarding, or service discovery. All requests
+//! are sent via the EventBus to the appropriate services.
 
-use std::num::NonZero;
-use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
+use futures::Stream;
 use proven_storage::LogIndex;
-use proven_storage::StorageAdaptor;
 use proven_topology::NodeId;
-use proven_topology::TopologyAdaptor;
-use proven_transport::Transport;
-use tokio_stream::{Stream, StreamExt};
-use uuid::Uuid;
+use tracing::{debug, error, info};
 
-use crate::error::Error;
 use crate::{
     consensus::{
         global::{GlobalRequest, GlobalResponse},
-        group::{GroupRequest, GroupResponse, StreamOperation},
+        group::{GroupRequest, GroupResponse},
     },
-    error::ConsensusResult,
-    foundation::types::ConsensusGroupId,
-    services::client::{ClientService, GroupInfo, StreamInfo},
-    services::pubsub::PubSubMessage,
-    services::stream::{MessageData, StoredMessage, StreamConfig},
+    error::{ConsensusResult, Error, ErrorKind},
+    foundation::{
+        GroupStateInfo, Message, StoredMessage, StreamConfig,
+        events::EventBus,
+        types::{ConsensusGroupId, Subject, SubjectPattern},
+    },
+    services::{
+        global_consensus::commands as global_commands,
+        group_consensus::commands as group_commands,
+        pubsub::{PublishMessage, Subscribe},
+        stream::{commands as stream_commands, streaming_commands},
+    },
 };
 
-/// Client for interacting with the consensus engine
-///
-/// This provides the main API for:
-/// - Stream operations (create, delete, publish)
-/// - Group operations (create, delete, query)
-/// - Cluster operations (query status)
-pub struct Client<T, G, S>
-where
-    T: Transport,
-    G: TopologyAdaptor,
-    S: StorageAdaptor,
-{
-    /// Reference to the client service
-    client_service: Arc<ClientService<T, G, S>>,
-    /// Node ID for reference
+/// Simplified client for interacting with the consensus engine
+pub struct Client {
+    /// Node ID
     node_id: NodeId,
+    /// Event bus for sending commands
+    event_bus: Arc<EventBus>,
 }
 
-impl<T, G, S> Client<T, G, S>
-where
-    T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
-    S: StorageAdaptor + 'static,
-{
+impl Client {
     /// Create a new client
-    pub(crate) fn new(client_service: Arc<ClientService<T, G, S>>, node_id: NodeId) -> Self {
-        Self {
-            client_service,
-            node_id,
-        }
-    }
-
-    // Stream Operations
-
-    /// Create a new stream with automatic group assignment
-    ///
-    /// This method automatically selects an appropriate group for the stream
-    /// based on the current node's group membership and load balancing.
-    ///
-    /// This operation is idempotent - if a stream already exists with the same
-    /// name, the operation will succeed silently.
-    pub async fn create_stream(
-        &self,
-        name: String,
-        config: StreamConfig,
-    ) -> ConsensusResult<GlobalResponse> {
-        // Get a suitable group for this node
-        let group_id = self.client_service.get_suitable_group().await?;
-
-        let stream_name: crate::services::stream::StreamName = name.into();
-        let request = GlobalRequest::CreateStream {
-            name: stream_name.clone(),
-            config,
-            group_id,
-        };
-
-        match self.client_service.submit_global_request(request).await? {
-            GlobalResponse::StreamCreated { name, group_id } => {
-                Ok(GlobalResponse::StreamCreated { name, group_id })
-            }
-            GlobalResponse::StreamAlreadyExists { name, group_id } => {
-                // Treat as success for idempotency
-                Ok(GlobalResponse::StreamCreated { name, group_id })
-            }
-            GlobalResponse::Error { message } => Err(Error::with_context(
-                crate::error::ErrorKind::OperationFailed,
-                message,
-            )),
-            other => Err(Error::with_context(
-                crate::error::ErrorKind::InvalidState,
-                format!("Unexpected response: {other:?}"),
-            )),
-        }
-    }
-
-    /// Delete a stream
-    pub async fn delete_stream(&self, name: String) -> ConsensusResult<GlobalResponse> {
-        let request = GlobalRequest::DeleteStream { name: name.into() };
-        self.client_service.submit_global_request(request).await
-    }
-
-    /// Publish a message to a stream
-    pub async fn publish(
-        &self,
-        stream: String,
-        payload: Vec<u8>,
-        metadata: Option<std::collections::HashMap<String, String>>,
-    ) -> ConsensusResult<GroupResponse> {
-        tracing::debug!(
-            "Client::publish called on node {} for stream '{}', payload size: {}",
-            self.node_id,
-            stream,
-            payload.len()
-        );
-
-        // First, get stream info to find the group
-        let stream_info = self
-            .client_service
-            .get_stream_info(&stream)
-            .await?
-            .ok_or_else(|| {
-                tracing::debug!("Stream '{}' not found on node {}", stream, self.node_id);
-                crate::error::Error::not_found(format!("Stream '{stream}' not found"))
-            })?;
-
-        tracing::debug!(
-            "Node {}: Stream '{}' is in group {:?}",
-            self.node_id,
-            stream,
-            stream_info.group_id
-        );
-
-        // Create message data
-        let message = MessageData::with_headers(
-            payload,
-            metadata
-                .map(|m| m.into_iter().collect())
-                .unwrap_or_default(),
-        );
-
-        // Get current timestamp for the message
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
-
-        // Submit to the group that owns the stream
-        let request = GroupRequest::Stream(StreamOperation::Append {
-            stream: stream.into(),
-            messages: vec![message],
-            timestamp,
-        });
-
-        tracing::debug!(
-            "Node {}: Submitting publish request to group {:?}",
-            self.node_id,
-            stream_info.group_id
-        );
-
-        let result = self
-            .client_service
-            .submit_group_request(stream_info.group_id, request)
-            .await;
-
-        match &result {
-            Ok(response) => tracing::debug!(
-                "Node {}: Publish succeeded with response: {:?}",
-                self.node_id,
-                response
-            ),
-            Err(e) => tracing::debug!("Node {}: Publish failed with error: {}", self.node_id, e),
-        }
-
-        result
-    }
-
-    /// Get stream information
-    pub async fn get_stream_info(&self, name: &str) -> ConsensusResult<Option<StreamInfo>> {
-        self.client_service.get_stream_info(name).await
-    }
-
-    // Group Operations
-
-    /// Create a new consensus group
-    pub async fn create_group(
-        &self,
-        group_id: ConsensusGroupId,
-        members: Vec<NodeId>,
-    ) -> ConsensusResult<GlobalResponse> {
-        let request = GlobalRequest::CreateGroup {
-            info: crate::foundation::GroupInfo {
-                id: group_id,
-                members,
-                created_at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs(),
-                metadata: Default::default(),
-            },
-        };
-        self.client_service.submit_global_request(request).await
-    }
-
-    /// Delete a consensus group
-    pub async fn delete_group(
-        &self,
-        group_id: ConsensusGroupId,
-    ) -> ConsensusResult<GlobalResponse> {
-        let request = GlobalRequest::DissolveGroup { id: group_id };
-        self.client_service.submit_global_request(request).await
-    }
-
-    /// Get group information
-    pub async fn get_group_info(
-        &self,
-        group_id: ConsensusGroupId,
-    ) -> ConsensusResult<Option<GroupInfo>> {
-        self.client_service.get_group_info(group_id).await
-    }
-
-    // Node Operations
-
-    /// Add a node to the cluster
-    pub async fn add_node(&self, node_id: NodeId) -> ConsensusResult<GlobalResponse> {
-        let request = GlobalRequest::AddNode {
-            node_id,
-            metadata: Default::default(),
-        };
-        self.client_service.submit_global_request(request).await
-    }
-
-    /// Remove a node from the cluster
-    pub async fn remove_node(&self, node_id: NodeId) -> ConsensusResult<GlobalResponse> {
-        let request = GlobalRequest::RemoveNode { node_id };
-        self.client_service.submit_global_request(request).await
+    pub fn new(node_id: NodeId, event_bus: Arc<EventBus>) -> Self {
+        Self { node_id, event_bus }
     }
 
     /// Get the node ID of this client
@@ -250,466 +50,495 @@ where
         &self.node_id
     }
 
-    /// Read messages from a stream
-    pub async fn read_stream(
+    // ===== Global Consensus Operations =====
+
+    /// Submit a request to the global consensus layer
+    pub async fn submit_global_request(
         &self,
-        stream_name: String,
-        start_sequence: LogIndex,
-        count: LogIndex,
-    ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
-        self.client_service
-            .read_stream(&stream_name, start_sequence, count)
-            .await
+        request: GlobalRequest,
+    ) -> ConsensusResult<GlobalResponse> {
+        debug!("Submitting global consensus request");
+
+        let cmd = global_commands::SubmitGlobalRequest { request };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Global request failed: {e}"))
+        })
     }
 
-    /// Delete a message from a stream
-    pub async fn delete_message(
+    /// Get global consensus state information
+    pub async fn get_global_state(&self) -> ConsensusResult<global_commands::GlobalStateSnapshot> {
+        debug!("Getting global consensus state");
+
+        let cmd = global_commands::GetGlobalState {};
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Get global state failed: {e}"))
+        })
+    }
+
+    // ===== Group Consensus Operations =====
+
+    /// Submit a request to a specific consensus group
+    pub async fn submit_group_request(
+        &self,
+        group_id: ConsensusGroupId,
+        request: GroupRequest,
+    ) -> ConsensusResult<GroupResponse> {
+        debug!("Submitting request to group {:?}", group_id);
+
+        let cmd = group_commands::SubmitToGroup { group_id, request };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Group request failed: {e}"))
+        })
+    }
+
+    /// Create a new consensus group
+    pub async fn create_group(
+        &self,
+        group_id: ConsensusGroupId,
+        members: Vec<NodeId>,
+    ) -> ConsensusResult<()> {
+        info!(
+            "Creating group {:?} with {} members",
+            group_id,
+            members.len()
+        );
+
+        let cmd = group_commands::CreateGroup { group_id, members };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Create group failed: {e}"))
+        })
+    }
+
+    /// Join an existing consensus group
+    pub async fn join_group(&self, group_id: ConsensusGroupId) -> ConsensusResult<()> {
+        info!("Joining group {:?}", group_id);
+
+        // For now, joining a group is handled automatically by the GroupConsensusService
+        // when it receives membership updates from global consensus.
+        // This method is kept for API compatibility but may not be needed.
+        Err(Error::with_context(
+            ErrorKind::InvalidState,
+            "Group membership is managed automatically by global consensus",
+        ))
+    }
+
+    /// Leave a consensus group
+    pub async fn leave_group(&self, group_id: ConsensusGroupId) -> ConsensusResult<()> {
+        info!("Leaving group {:?}", group_id);
+
+        // Similar to join_group, leaving is handled automatically
+        Err(Error::with_context(
+            ErrorKind::InvalidState,
+            "Group membership is managed automatically by global consensus",
+        ))
+    }
+
+    /// Get information about a specific group
+    pub async fn get_group_state(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<GroupStateInfo> {
+        debug!("Getting state for group {:?}", group_id);
+
+        // GroupStateInfo is a more detailed type that's not directly available via commands
+        // For now, we'll need to implement a proper command handler for this
+        Err(Error::with_context(
+            ErrorKind::InvalidState,
+            "Full group state retrieval not yet implemented. Use get_group_info instead.",
+        ))
+    }
+
+    /// Get basic information about a group
+    pub async fn get_group_info(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<Option<group_commands::GroupInfo>> {
+        debug!("Getting info for group {:?}", group_id);
+
+        let cmd = group_commands::GetGroupInfo { group_id };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Get group info failed: {e}"))
+        })
+    }
+
+    // ===== Stream Operations =====
+
+    /// Create a new stream (automatically selects the best group)
+    pub async fn create_stream(
+        &self,
+        name: String,
+        config: StreamConfig,
+    ) -> ConsensusResult<ConsensusGroupId> {
+        info!("Creating stream '{}'", name);
+
+        let cmd = global_commands::CreateStream {
+            stream_name: name.into(),
+            config,
+            target_group: None, // Let global consensus choose the best group
+        };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Create stream failed: {e}"))
+        })
+    }
+
+    /// Delete a stream
+    pub async fn delete_stream(&self, name: String) -> ConsensusResult<()> {
+        info!("Deleting stream '{}'", name);
+
+        let cmd = stream_commands::DeleteStream { name: name.into() };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Delete stream failed: {e}"))
+        })
+    }
+
+    /// Write messages to a stream (goes through consensus)
+    pub async fn publish_to_stream<M>(
         &self,
         stream_name: String,
-        sequence: LogIndex,
-    ) -> ConsensusResult<GroupResponse> {
-        // Get stream info to find which group owns it
+        messages: Vec<M>,
+    ) -> ConsensusResult<LogIndex>
+    where
+        M: Into<crate::foundation::Message>,
+    {
+        debug!(
+            "Writing {} messages to stream '{}'",
+            messages.len(),
+            stream_name
+        );
+
+        // First, we need to find which group owns this stream
         let stream_info = self.get_stream_info(&stream_name).await?.ok_or_else(|| {
             Error::with_context(
-                crate::error::ErrorKind::NotFound,
+                ErrorKind::NotFound,
                 format!("Stream '{stream_name}' not found"),
             )
         })?;
 
-        // Submit delete operation to the group that owns the stream
-        let request = GroupRequest::Stream(StreamOperation::Delete {
-            stream: stream_name.into(),
-            sequence,
-        });
+        // Convert messages to Message type
+        let messages: Vec<crate::foundation::Message> =
+            messages.into_iter().map(Into::into).collect();
 
-        self.client_service
+        // Create the append request with current timestamp
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        let request =
+            GroupRequest::Stream(crate::consensus::group::types::StreamOperation::Append {
+                stream: stream_name.clone().into(),
+                messages,
+                timestamp,
+            });
+
+        // Submit the append request to the owning group
+        let response = self
             .submit_group_request(stream_info.group_id, request)
-            .await
+            .await?;
+
+        match response {
+            GroupResponse::Appended { sequence, .. } => Ok(sequence),
+            _ => Err(Error::with_context(
+                ErrorKind::InvalidState,
+                "Expected stream response from group consensus",
+            )),
+        }
     }
 
-    /// Stream messages from a stream starting at the given sequence
-    ///
-    /// Returns a stream that yields messages as they are read. If end_sequence is None,
-    /// streams until the last available message.
+    /// Read messages from a stream (direct read, no consensus)
+    pub async fn read_from_stream(
+        &self,
+        stream_name: String,
+        start_offset: LogIndex,
+        count: u64,
+    ) -> ConsensusResult<Vec<StoredMessage>> {
+        debug!(
+            "Reading {} messages from stream '{}' starting at {}",
+            count, stream_name, start_offset
+        );
+
+        let cmd = stream_commands::ReadMessages {
+            stream_name: stream_name.into(),
+            start_offset,
+            count,
+        };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Read stream failed: {e}"))
+        })
+    }
+
+    /// Stream messages from a stream
     pub async fn stream_messages(
         &self,
         stream_name: String,
         start_sequence: LogIndex,
         end_sequence: Option<LogIndex>,
-    ) -> ConsensusResult<impl Stream<Item = ConsensusResult<StoredMessage>>> {
-        // Use the new event bus streaming
-        let stream = self
-            .client_service
-            .stream_messages(&stream_name, start_sequence, end_sequence)
-            .await?;
+    ) -> ConsensusResult<impl Stream<Item = StoredMessage>> {
+        debug!(
+            "Creating stream for '{}' from {:?} to {:?}",
+            stream_name, start_sequence, end_sequence
+        );
 
-        // Wrap each message in Ok since RecvStream yields items directly
-        Ok(stream.map(Ok))
-    }
-
-    // PubSub Operations
-
-    /// Publish a message to a PubSub subject
-    ///
-    /// This uses Core NATS semantics - fire-and-forget with at-most-once delivery.
-    /// Messages are ephemeral and not persisted unless a stream subscription is configured.
-    pub async fn pubsub_publish(
-        &self,
-        subject: &str,
-        payload: bytes::Bytes,
-        headers: Vec<(String, String)>,
-    ) -> ConsensusResult<()> {
-        self.client_service
-            .publish_message(subject, payload, headers)
-            .await
-    }
-
-    /// Subscribe to messages on a subject pattern
-    ///
-    /// Returns a subscription ID and a broadcast receiver for messages.
-    /// Supports wildcards: * for single token, > for multiple tokens.
-    ///
-    /// Example patterns:
-    /// - "metrics.cpu" - exact match
-    /// - "metrics.*" - matches metrics.cpu, metrics.memory, etc.
-    /// - "logs.>" - matches logs.app, logs.app.error, etc.
-    pub async fn pubsub_subscribe(
-        &self,
-        subject_pattern: &str,
-        queue_group: Option<String>,
-    ) -> ConsensusResult<(String, tokio::sync::broadcast::Receiver<PubSubMessage>)> {
-        self.client_service
-            .subscribe_to_subject(subject_pattern, queue_group)
-            .await
-    }
-
-    /// Unsubscribe from a PubSub subscription
-    pub async fn pubsub_unsubscribe(&self, subscription_id: &str) -> ConsensusResult<()> {
-        self.client_service
-            .unsubscribe_from_subject(subscription_id)
-            .await
-    }
-
-    /// Create a stream that yields PubSub messages for a subscription
-    ///
-    /// This is a convenience method that wraps the broadcast receiver in an async stream.
-    pub async fn pubsub_subscribe_stream(
-        &self,
-        subject_pattern: &str,
-        queue_group: Option<String>,
-    ) -> ConsensusResult<(String, Pin<Box<dyn Stream<Item = PubSubMessage> + Send>>)> {
-        let (sub_id, mut receiver) = self.pubsub_subscribe(subject_pattern, queue_group).await?;
-
-        let stream = async_stream::stream! {
-            loop {
-                match receiver.recv().await {
-                    Ok(msg) => yield msg,
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
-                        tracing::warn!("PubSub subscription lagged by {} messages", count);
-                        // Continue receiving despite lag
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        // Channel closed, end stream
-                        break;
-                    }
-                }
-            }
+        let cmd = streaming_commands::StreamMessages {
+            stream_name,
+            start_sequence,
+            end_sequence,
         };
 
-        Ok((sub_id, Box::pin(stream)))
+        let receiver = self.event_bus.stream(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Stream messages failed: {e}"))
+        })?;
+
+        // Convert flume::Receiver to a futures::Stream
+        Ok(futures::stream::unfold(receiver, |rx| async move {
+            match rx.recv_async().await {
+                Ok(item) => Some((item, rx)),
+                Err(_) => None,
+            }
+        }))
     }
-}
 
-impl<T, G, S> Clone for Client<T, G, S>
-where
-    T: Transport,
-    G: TopologyAdaptor,
-    S: StorageAdaptor,
-{
-    fn clone(&self) -> Self {
-        Self {
-            client_service: self.client_service.clone(),
-            node_id: self.node_id.clone(),
-        }
-    }
-}
+    /// Get information about a stream
+    pub async fn get_stream_info(
+        &self,
+        stream_name: &str,
+    ) -> ConsensusResult<Option<stream_commands::StreamInfo>> {
+        debug!("Getting info for stream '{}'", stream_name);
 
-/// A stream reader for efficiently reading messages from a stream
-///
-/// This struct provides a Stream interface for reading messages in batches
-/// from either local or remote streams.
-pub struct StreamReader<T, G, S>
-where
-    T: Transport,
-    G: TopologyAdaptor,
-    S: StorageAdaptor,
-{
-    /// Client service reference
-    client_service: Arc<ClientService<T, G, S>>,
-    /// Stream name
-    stream_name: String,
-    /// Current sequence number
-    current_sequence: LogIndex,
-    /// End sequence (None means stream to end)
-    end_sequence: Option<LogIndex>,
-    /// Batch size for reading
-    batch_size: LogIndex,
-    /// Stream session ID (for remote streams)
-    session_id: Option<Uuid>,
-    /// Whether the stream is local
-    is_local: bool,
-    /// Buffered messages
-    buffer: Vec<StoredMessage>,
-    /// Whether we've reached the end
-    is_finished: bool,
-    /// Whether to follow the stream (wait for new messages)
-    follow_mode: bool,
-    /// Current backoff delay for polling when no messages available
-    poll_backoff: std::time::Duration,
-    /// Last time we polled (for backoff calculation)
-    last_poll_time: Option<std::time::Instant>,
-}
-
-impl<T, G, S> StreamReader<T, G, S>
-where
-    T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
-    S: StorageAdaptor + 'static,
-{
-    /// Create a new stream reader
-    async fn new(
-        client_service: Arc<ClientService<T, G, S>>,
-        stream_name: String,
-        start_sequence: LogIndex,
-        end_sequence: Option<LogIndex>,
-    ) -> ConsensusResult<Self> {
-        // Check if stream is local or remote
-        let _stream_info = client_service
-            .get_stream_info(&stream_name)
-            .await?
-            .ok_or_else(|| {
-                Error::with_context(
-                    crate::error::ErrorKind::NotFound,
-                    format!("Stream '{stream_name}' not found"),
-                )
-            })?;
-
-        // Determine if stream is local by checking routing
-        let is_local = client_service
-            .is_stream_local(&stream_name)
-            .await
-            .unwrap_or(false);
-
-        Ok(Self {
-            client_service,
-            stream_name,
-            current_sequence: start_sequence,
-            end_sequence,
-            batch_size: LogIndex::new(100).unwrap(), // Default batch size
-            session_id: None,
-            is_local,
-            buffer: Vec::new(),
-            is_finished: false,
-            follow_mode: false,
-            poll_backoff: std::time::Duration::from_millis(100),
-            last_poll_time: None,
+        let cmd = stream_commands::GetStreamInfo {
+            stream_name: stream_name.into(),
+        };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Get stream info failed: {e}"))
         })
     }
 
-    /// Set the batch size for reading
-    pub fn with_batch_size(mut self, batch_size: LogIndex) -> Self {
-        self.batch_size = batch_size;
-        self
-    }
-
-    /// Enable follow mode to continuously wait for new messages
-    pub fn follow(mut self) -> Self {
-        self.follow_mode = true;
-        self
-    }
-
-    /// Read the next batch of messages
-    async fn read_next_batch(&mut self) -> ConsensusResult<()> {
-        tracing::debug!(
-            "read_next_batch: stream={}, current_seq={}, finished={}, follow={}",
-            self.stream_name,
-            self.current_sequence,
-            self.is_finished,
-            self.follow_mode
+    /// Delete a specific message from a stream
+    pub async fn delete_message(
+        &self,
+        stream_name: String,
+        sequence: LogIndex,
+    ) -> ConsensusResult<GroupResponse> {
+        debug!(
+            "Deleting message at sequence {:?} from stream '{}'",
+            sequence, stream_name
         );
 
-        if self.is_finished {
-            return Ok(());
-        }
+        // First, find which group owns this stream
+        let stream_info = self.get_stream_info(&stream_name).await?.ok_or_else(|| {
+            Error::with_context(
+                ErrorKind::NotFound,
+                format!("Stream '{stream_name}' not found"),
+            )
+        })?;
 
-        if self.is_local {
-            // Read directly from local storage
-            let count = self.batch_size;
-            let messages = self
-                .client_service
-                .read_stream(&self.stream_name, self.current_sequence, count)
-                .await?;
+        // Create the delete request
+        let request =
+            GroupRequest::Stream(crate::consensus::group::types::StreamOperation::Delete {
+                stream: stream_name.into(),
+                sequence,
+            });
 
-            tracing::debug!(
-                "read_next_batch: read {} messages from local storage",
-                messages.len()
-            );
-
-            if messages.is_empty() {
-                if !self.follow_mode {
-                    self.is_finished = true;
-                }
-            } else {
-                // Check if we've reached the end sequence
-                for msg in messages {
-                    if let Some(end) = self.end_sequence
-                        && msg.sequence >= end
-                    {
-                        self.is_finished = true;
-                        break;
-                    }
-                    self.buffer.push(msg);
-                }
-                // Update current_sequence to the next expected sequence
-                if let Some(last_msg) = self.buffer.last() {
-                    self.current_sequence = last_msg.sequence.saturating_add(1);
-                }
-            }
-        } else {
-            // Use streaming protocol for remote streams
-            if self.session_id.is_none() {
-                // Start a new streaming session
-                let (session_id, messages, has_more) = self
-                    .client_service
-                    .start_streaming_session(
-                        &self.stream_name,
-                        self.current_sequence,
-                        self.end_sequence,
-                        self.batch_size,
-                    )
-                    .await?;
-
-                self.session_id = Some(session_id);
-                self.buffer.extend(messages);
-
-                // Update current_sequence to the next expected sequence
-                if let Some(last_msg) = self.buffer.last() {
-                    self.current_sequence = last_msg.sequence.saturating_add(1);
-                }
-
-                if !has_more && !self.follow_mode {
-                    self.is_finished = true;
-                    // Clean up session
-                    if let Some(id) = self.session_id.take() {
-                        let _ = self.client_service.cancel_streaming_session(id).await;
-                    }
-                }
-            } else if let Some(session_id) = self.session_id {
-                // Continue existing session
-                let (messages, has_more) = self
-                    .client_service
-                    .continue_streaming_session(session_id, self.batch_size)
-                    .await?;
-
-                self.buffer.extend(messages);
-
-                // Update current_sequence to the next expected sequence
-                if let Some(last_msg) = self.buffer.last() {
-                    self.current_sequence = last_msg.sequence.saturating_add(1);
-                }
-
-                if !has_more && !self.follow_mode {
-                    self.is_finished = true;
-                    // Session will be cleaned up automatically
-                    self.session_id = None;
-                }
-            }
-        }
-
-        Ok(())
+        // Submit the delete request to the owning group
+        self.submit_group_request(stream_info.group_id, request)
+            .await
     }
-}
 
-impl<T, G, S> Stream for StreamReader<T, G, S>
-where
-    T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
-    S: StorageAdaptor + 'static,
-{
-    type Item = ConsensusResult<StoredMessage>;
+    // ===== PubSub Operations =====
 
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        // If we have buffered messages, return one
-        if !self.buffer.is_empty() {
-            return std::task::Poll::Ready(Some(Ok(self.buffer.remove(0))));
-        }
+    /// Publish messages to a subject
+    pub async fn publish<M>(&self, subject: &str, messages: Vec<M>) -> ConsensusResult<()>
+    where
+        M: Into<crate::foundation::Message>,
+    {
+        debug!(
+            "Publishing {} messages to subject '{}'",
+            messages.len(),
+            subject
+        );
 
-        // If we're finished and not in follow mode, return None
-        if self.is_finished && !self.follow_mode {
-            return std::task::Poll::Ready(None);
-        }
+        // Validate subject
+        let subject = Subject::new(subject).map_err(|e| {
+            Error::with_context(ErrorKind::Validation, format!("Invalid subject: {e}"))
+        })?;
 
-        // Check if we need to apply backoff in follow mode
-        if self.follow_mode
-            && self.buffer.is_empty()
-            && let Some(last_poll) = self.last_poll_time
-        {
-            let elapsed = last_poll.elapsed();
-            if elapsed < self.poll_backoff {
-                // Schedule a wake-up after the backoff period
-                let remaining = self.poll_backoff - elapsed;
-                let waker = cx.waker().clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(remaining).await;
-                    waker.wake();
-                });
-                return std::task::Poll::Pending;
-            }
-        }
+        // Convert messages and add subject header
+        let messages: Vec<crate::foundation::Message> = messages
+            .into_iter()
+            .map(|m| m.into().with_subject(subject.as_str()))
+            .collect();
 
-        // We need to use the old approach of creating a new reader to avoid borrow issues
-        let client_service = self.client_service.clone();
-        let stream_name = self.stream_name.clone();
-        let current_sequence = self.current_sequence;
-        let end_sequence = self.end_sequence;
-        let batch_size = self.batch_size;
-        let session_id = self.session_id;
-        let is_local = self.is_local;
-        let follow_mode = self.follow_mode;
-        let poll_backoff = self.poll_backoff;
+        let cmd = PublishMessage { subject, messages };
+        self.event_bus
+            .request(cmd)
+            .await
+            .map_err(|e| Error::with_context(ErrorKind::Service, format!("Publish failed: {e}")))
+    }
 
-        // Create a future for reading the next batch
-        let fut = async move {
-            let mut reader = StreamReader {
-                client_service,
-                stream_name,
-                current_sequence,
-                end_sequence,
-                batch_size,
-                session_id,
-                is_local,
-                buffer: Vec::new(),
-                is_finished: false,
-                follow_mode,
-                poll_backoff,
-                last_poll_time: None,
-            };
-            reader.read_next_batch().await?;
-            Ok::<_, crate::error::Error>(reader)
+    /// Get information about available topics
+    pub async fn list_topics(&self) -> ConsensusResult<Vec<String>> {
+        debug!("Listing available topics");
+
+        // For now, topic listing is not implemented in the pubsub service
+        // This would require tracking all active subscriptions
+        Err(Error::with_context(
+            ErrorKind::InvalidState,
+            "Topic listing not yet implemented",
+        ))
+    }
+
+    /// Subscribe to a subject pattern with streaming
+    pub async fn subscribe(
+        &self,
+        subject_pattern: &str,
+        queue_group: Option<String>,
+    ) -> ConsensusResult<impl Stream<Item = Message> + Send + 'static> {
+        debug!(
+            "Creating streaming subscription to pattern '{}'",
+            subject_pattern
+        );
+
+        let pattern = SubjectPattern::new(subject_pattern).map_err(|e| {
+            Error::with_context(
+                ErrorKind::Validation,
+                format!("Invalid subject pattern: {e}"),
+            )
+        })?;
+
+        let cmd = Subscribe {
+            subject_pattern: pattern,
+            queue_group,
         };
 
-        // Poll the future
-        let mut pinned_fut = Box::pin(fut);
-        match pinned_fut.as_mut().poll(cx) {
-            std::task::Poll::Ready(Ok(mut reader)) => {
-                // Update our state
-                self.current_sequence = reader.current_sequence;
-                self.session_id = reader.session_id;
-                std::mem::swap(&mut self.buffer, &mut reader.buffer);
-                self.is_finished = reader.is_finished;
-                self.last_poll_time = Some(std::time::Instant::now());
+        // Get the stream of messages
+        let receiver = self.event_bus.stream(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Subscribe failed: {e}"))
+        })?;
 
-                // Return a message if we have one
-                if !self.buffer.is_empty() {
-                    // Reset backoff on successful read
-                    self.poll_backoff = std::time::Duration::from_millis(100);
-                    std::task::Poll::Ready(Some(Ok(self.buffer.remove(0))))
-                } else if self.is_finished && !self.follow_mode {
-                    std::task::Poll::Ready(None)
-                } else if self.follow_mode {
-                    // Apply exponential backoff (max 5 seconds)
-                    self.poll_backoff =
-                        (self.poll_backoff * 2).min(std::time::Duration::from_secs(5));
-                    // Wake ourselves up to retry after backoff
-                    cx.waker().wake_by_ref();
-                    std::task::Poll::Pending
-                } else {
-                    // Not in follow mode and no messages - we're done
-                    std::task::Poll::Ready(None)
-                }
+        // Convert the flume receiver to a futures Stream
+        let stream = receiver.into_stream();
+
+        Ok(stream)
+    }
+
+    // ===== Query Operations =====
+
+    /// Execute a query across streams
+    pub async fn query(
+        &self,
+        query: String,
+        _timeout: Duration,
+    ) -> ConsensusResult<Vec<StoredMessage>> {
+        debug!("Executing query: {}", query);
+
+        // For now, queries are not implemented - this is a placeholder
+        // In the future, this would parse the query and execute it across relevant streams
+        Err(Error::with_context(
+            ErrorKind::InvalidState,
+            "Query functionality not yet implemented",
+        ))
+    }
+
+    // ===== Health and Status =====
+
+    // ===== Engine State Operations =====
+
+    /// Get all consensus groups this node is a member of
+    pub async fn node_groups(&self) -> ConsensusResult<Vec<ConsensusGroupId>> {
+        debug!("Getting node groups");
+
+        let cmd = group_commands::GetNodeGroups;
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Get node groups failed: {e}"))
+        })
+    }
+
+    /// Get state information for a specific consensus group
+    pub async fn group_state(
+        &self,
+        group_id: ConsensusGroupId,
+    ) -> ConsensusResult<Option<GroupStateInfo>> {
+        debug!("Getting state for group {:?}", group_id);
+
+        let cmd = group_commands::GetGroupState { group_id };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Get group state failed: {e}"))
+        })
+    }
+
+    /// Get global consensus members
+    pub async fn global_consensus_members(&self) -> ConsensusResult<Vec<NodeId>> {
+        let cmd = global_commands::GetGlobalConsensusMembers;
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Get global consensus members failed: {e}"),
+            )
+        })
+    }
+
+    // ===== Node Information Operations =====
+
+    /// Get information about the current node
+    pub async fn node_info(&self) -> ConsensusResult<proven_topology::Node> {
+        debug!("Getting current node info");
+
+        let cmd = crate::services::membership::commands::GetNodeInfo;
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Get node info failed: {e}"))
+        })
+    }
+
+    /// Get information about a specific peer
+    pub async fn peer_info(
+        &self,
+        node_id: NodeId,
+    ) -> ConsensusResult<Option<proven_topology::Node>> {
+        debug!("Getting info for peer {}", node_id);
+
+        let cmd = crate::services::membership::commands::GetPeerInfo { node_id };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(ErrorKind::Service, format!("Get peer info failed: {e}"))
+        })
+    }
+
+    /// Check if the client can connect to services
+    pub async fn health_check(&self) -> ConsensusResult<bool> {
+        // Try to get global state as a health check
+        match self.get_global_state().await {
+            Ok(_) => Ok(true),
+            Err(e) => {
+                error!("Health check failed: {}", e);
+                Ok(false)
             }
-            std::task::Poll::Ready(Err(e)) => std::task::Poll::Ready(Some(Err(e))),
-            std::task::Poll::Pending => std::task::Poll::Pending,
         }
     }
 }
 
-impl<T, G, S> Drop for StreamReader<T, G, S>
-where
-    T: Transport,
-    G: TopologyAdaptor,
-    S: StorageAdaptor,
-{
-    fn drop(&mut self) {
-        // Cancel any active streaming session
-        if let Some(session_id) = self.session_id.take() {
-            let client_service = self.client_service.clone();
-            tokio::spawn(async move {
-                let _ = client_service.cancel_streaming_session(session_id).await;
-            });
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::foundation::events::EventBusBuilder;
+
+    #[tokio::test]
+    async fn test_client_creation() {
+        let node_id = NodeId::from_seed(1);
+        let event_bus = Arc::new(EventBusBuilder::new().build());
+
+        let client = Client::new(node_id.clone(), event_bus);
+        assert_eq!(client.node_id, node_id);
+    }
+
+    #[tokio::test]
+    async fn test_health_check_fails_without_services() {
+        let node_id = NodeId::from_seed(1);
+        let event_bus = Arc::new(EventBusBuilder::new().build());
+
+        let client = Client::new(node_id, event_bus);
+
+        // Without services registered, health check should fail
+        let result = client.health_check().await;
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
     }
 }

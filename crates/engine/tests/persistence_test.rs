@@ -64,7 +64,10 @@ async fn test_cluster_persistence_across_restarts() {
     for i in 1..=10 {
         let message = format!("Message {i}");
         client
-            .publish(stream_name.to_string(), message.into_bytes(), None)
+            .publish_to_stream(
+                stream_name.to_string(),
+                vec![proven_engine::Message::new(message.into_bytes())],
+            )
             .await
             .expect("Failed to append message");
     }
@@ -76,11 +79,17 @@ async fn test_cluster_persistence_across_restarts() {
     // Verify consensus state
     let group_id = ConsensusGroupId::new(1);
     for (i, engine) in engines.iter().enumerate() {
-        let state = engine
-            .group_state(group_id)
-            .await
-            .expect("Failed to get group state");
-        info!("Node {} group state: {:?}", i, state);
+        match engine.client().group_state(group_id).await {
+            Ok(Some(state)) => {
+                info!("Node {} group state: {:?}", i, state);
+            }
+            Ok(None) => {
+                info!("Node {} is not in group", i);
+            }
+            Err(e) => {
+                panic!("Failed to get group state for node {i}: {e}");
+            }
+        }
     }
 
     // Stop all engines gracefully using TestCluster's method
@@ -151,15 +160,18 @@ async fn test_cluster_persistence_across_restarts() {
     let group_id = ConsensusGroupId::new(1);
     let mut member_count = 0;
     for (i, engine) in engines.iter().enumerate() {
-        match engine.group_state(group_id).await {
-            Ok(state) => {
+        match engine.client().group_state(group_id).await {
+            Ok(Some(state)) => {
                 info!("Node {} group state after restart: {:?}", i, state);
                 if state.is_member {
                     member_count += 1;
                 }
             }
+            Ok(None) => {
+                info!("Node {} not in group", i);
+            }
             Err(e) => {
-                info!("Node {} not in group: {}", i, e);
+                info!("Node {} failed to get group state: {}", i, e);
             }
         }
     }
@@ -182,11 +194,7 @@ async fn test_cluster_persistence_across_restarts() {
         .expect("Failed to create new stream after restart");
 
     client
-        .publish(
-            new_stream.to_string(),
-            b"New message after restart".to_vec(),
-            None,
-        )
+        .publish_to_stream(new_stream.to_string(), vec!["New message after restart"])
         .await
         .expect("Failed to publish to new stream");
 
@@ -233,7 +241,10 @@ async fn test_single_node_persistence() {
     for i in 1..=20 {
         let message = format!("Single node message {i}");
         client
-            .publish(stream_name.to_string(), message.into_bytes(), None)
+            .publish_to_stream(
+                stream_name.to_string(),
+                vec![proven_engine::Message::new(message.into_bytes())],
+            )
             .await
             .expect("Failed to publish message");
     }
@@ -298,10 +309,10 @@ async fn test_single_node_persistence() {
     match client.get_stream_info(stream_name).await {
         Ok(Some(info)) => {
             info!(
-                "Stream '{}' exists with {} messages",
-                stream_name, info.message_count
+                "Stream '{}' exists with end_offset {}",
+                stream_name, info.end_offset
             );
-            assert_eq!(info.message_count, 20, "Should have 20 messages");
+            assert_eq!(info.end_offset, 20, "Should have 20 messages");
         }
         Ok(None) => {
             panic!("Stream '{stream_name}' not found after restart!");
@@ -313,11 +324,7 @@ async fn test_single_node_persistence() {
 
     // Now try to read the messages
     match client
-        .read_stream(
-            stream_name.to_string(),
-            LogIndex::new(1).unwrap(),
-            LogIndex::new(20).unwrap(),
-        )
+        .read_from_stream(stream_name.to_string(), LogIndex::new(1).unwrap(), 20)
         .await
     {
         Ok(messages) => {

@@ -9,6 +9,7 @@ use tokio::sync::RwLock;
 use super::types::*;
 use super::views::SystemView;
 use crate::error::ConsensusResult;
+use crate::foundation::{ComponentHealth, HealthStatus};
 
 /// Health checker for monitoring system components
 pub struct HealthChecker {

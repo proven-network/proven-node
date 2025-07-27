@@ -21,6 +21,8 @@ tokio.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+ed25519-dalek.workspace = true
+proven-attestation-mock.workspace = true
 proven-network.workspace = true
 proven-storage.workspace = true
 proven-storage-memory.workspace = true

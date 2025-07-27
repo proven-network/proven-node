@@ -2,9 +2,10 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use async_trait::async_trait;
+use proven_attestation::Attestor;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -20,7 +21,6 @@ use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::ServiceLifecycle;
 use crate::foundation::events::EventBus;
 
-use super::commands::{ClusterFormationResult, ClusterFormationStrategy, MembershipInfo};
 use super::config::MembershipConfig;
 use super::discovery::{DiscoveryManager, DiscoveryResult};
 use super::events::MembershipEvent;
@@ -30,10 +30,9 @@ use super::messages::{
     self, AcceptProposalRequest, AcceptProposalResponse, GracefulShutdownRequest,
     MembershipMessage, MembershipResponse, ProposeClusterRequest, ProposeClusterResponse,
 };
-use super::types::{
-    ClusterFormationState, HealthInfo, MembershipView, NodeMembership, NodeRole, NodeStatus,
-};
+use super::types::{HealthInfo, MembershipView, NodeMembership};
 use super::utils::now_timestamp;
+use crate::foundation::{ClusterFormationState, NodeRole, NodeStatus};
 
 /// Service state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,16 +45,17 @@ enum ServiceState {
 }
 
 /// Membership service for unified cluster membership management
-pub struct MembershipService<T, G, S>
+pub struct MembershipService<T, G, A, S>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
     config: MembershipConfig,
     node_id: NodeId,
     node_info: Node,
-    network_manager: Arc<NetworkManager<T, G>>,
+    network_manager: Arc<NetworkManager<T, G, A>>,
     topology_manager: Arc<TopologyManager<G>>,
     event_bus: Arc<EventBus>,
 
@@ -63,10 +63,10 @@ where
     membership_view: Arc<RwLock<MembershipView>>,
 
     /// Discovery manager
-    discovery_manager: Arc<DiscoveryManager<T, G>>,
+    discovery_manager: Arc<DiscoveryManager<T, G, A>>,
 
     /// Health monitor
-    health_monitor: Arc<HealthMonitor<T, G>>,
+    health_monitor: Arc<HealthMonitor<T, G, A>>,
 
     /// Service state
     state: Arc<RwLock<ServiceState>>,
@@ -81,18 +81,19 @@ where
     _phantom: std::marker::PhantomData<S>,
 }
 
-impl<T, G, S> MembershipService<T, G, S>
+impl<T, G, A, S> MembershipService<T, G, A, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
+    A: Attestor + 'static,
 {
     /// Create new membership service
     pub fn new(
         config: MembershipConfig,
         node_id: NodeId,
         node_info: Node,
-        network_manager: Arc<NetworkManager<T, G>>,
+        network_manager: Arc<NetworkManager<T, G, A>>,
         topology_manager: Arc<TopologyManager<G>>,
         event_bus: Arc<EventBus>,
     ) -> Self {
@@ -129,6 +130,16 @@ where
     /// Get the node ID
     pub fn node_id(&self) -> &NodeId {
         &self.node_id
+    }
+
+    /// Get node information
+    pub fn node_info(&self) -> &Node {
+        &self.node_info
+    }
+
+    /// Get topology manager
+    pub fn topology_manager(&self) -> &Arc<TopologyManager<G>> {
+        &self.topology_manager
     }
 
     /// Get current membership view
@@ -229,10 +240,19 @@ where
 
         // Initialize global consensus
         use crate::services::global_consensus::commands::InitializeGlobalConsensus;
+        use std::collections::BTreeMap;
+
+        // Get node info for the member
+        let mut members = BTreeMap::new();
+        if let Some(node_info) = self.topology_manager.get_node(&self.node_id).await {
+            members.insert(self.node_id.clone(), node_info);
+        } else {
+            // Use our own node info if not in topology yet
+            members.insert(self.node_id.clone(), self.node_info.clone());
+        }
+
         self.event_bus
-            .request(InitializeGlobalConsensus {
-                members: vec![self.node_id.clone()],
-            })
+            .request(InitializeGlobalConsensus { members })
             .await
             .map_err(|e| {
                 Error::with_context(
@@ -277,7 +297,7 @@ where
         for (peer_id, _) in &online_peers {
             match self
                 .network_manager
-                .service_request(
+                .request_with_timeout(
                     peer_id.clone(),
                     request.clone(),
                     self.config.discovery.node_request_timeout,
@@ -372,9 +392,27 @@ where
 
         // Initialize global consensus
         use crate::services::global_consensus::commands::InitializeGlobalConsensus;
+        use std::collections::BTreeMap;
+
+        // Get node info for all members
+        let mut members_map = BTreeMap::new();
+        for node_id in member_ids {
+            if let Some(node_info) = self.topology_manager.get_node(&node_id).await {
+                members_map.insert(node_id, node_info);
+            } else if node_id == self.node_id {
+                // Use our own node info if not in topology yet
+                members_map.insert(node_id, self.node_info.clone());
+            } else {
+                return Err(Error::with_context(
+                    ErrorKind::NotFound,
+                    format!("Could not find node info for member {node_id}"),
+                ));
+            }
+        }
+
         self.event_bus
             .request(InitializeGlobalConsensus {
-                members: member_ids,
+                members: members_map,
             })
             .await
             .map_err(|e| {
@@ -466,7 +504,7 @@ where
 
         match self
             .network_manager
-            .service_request(leader.clone(), join_request, Duration::from_secs(5))
+            .request_with_timeout(leader.clone(), join_request, Duration::from_secs(5))
             .await
         {
             Ok(MembershipResponse::JoinCluster(response)) => {
@@ -528,7 +566,7 @@ where
 
         match self
             .network_manager
-            .service_request(
+            .request_with_timeout(
                 coordinator.clone(),
                 request,
                 self.config.discovery.node_request_timeout,
@@ -557,14 +595,15 @@ where
 
     /// Register message handlers
     async fn register_handlers(&self) -> ConsensusResult<()> {
-        let service = self.clone();
+        use super::handler::MembershipHandler;
+
+        info!("Registering membership service network handler");
+        let handler = MembershipHandler::new(Arc::new(self.clone()));
         self.network_manager
-            .register_service::<MembershipMessage, _>(move |sender, message| {
-                let service = service.clone();
-                Box::pin(async move { service.handle_message(sender, message).await })
-            })
+            .register_service(handler)
             .await
             .map_err(|e| Error::with_context(ErrorKind::Network, e.to_string()))?;
+        info!("Successfully registered membership service network handler");
 
         Ok(())
     }
@@ -572,7 +611,8 @@ where
     /// Register command handlers with the event bus
     pub fn register_command_handlers(self: Arc<Self>) {
         use crate::services::membership::command_handlers::commands::{
-            GetMembershipHandler, GetOnlineMembersHandler, InitializeClusterHandler,
+            GetMembershipHandler, GetNodeInfoHandler, GetOnlineMembersHandler, GetPeerInfoHandler,
+            InitializeClusterHandler,
         };
 
         // Register InitializeCluster handler
@@ -598,10 +638,26 @@ where
                 online_members_handler,
             )
             .expect("Failed to register GetOnlineMembers handler");
+
+        // Register GetNodeInfo handler
+        let node_info_handler = GetNodeInfoHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<crate::services::membership::commands::GetNodeInfo, _>(
+                node_info_handler,
+            )
+            .expect("Failed to register GetNodeInfo handler");
+
+        // Register GetPeerInfo handler
+        let peer_info_handler = GetPeerInfoHandler::new(self.clone());
+        self.event_bus
+            .handle_requests::<crate::services::membership::commands::GetPeerInfo, _>(
+                peer_info_handler,
+            )
+            .expect("Failed to register GetPeerInfo handler");
     }
 
     /// Handle incoming messages
-    async fn handle_message(
+    pub async fn handle_message(
         &self,
         sender: NodeId,
         message: MembershipMessage,
@@ -700,11 +756,12 @@ where
 }
 
 #[async_trait]
-impl<T, G, S> ServiceLifecycle for MembershipService<T, G, S>
+impl<T, G, A, S> ServiceLifecycle for MembershipService<T, G, A, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
+    A: Attestor + 'static,
 {
     async fn initialize(&self) -> ConsensusResult<()> {
         Ok(())
@@ -792,7 +849,7 @@ where
                 let msg = shutdown_msg.clone();
                 tokio::spawn(async move {
                     if let Err(e) = network
-                        .service_request(node_id.clone(), msg, Duration::from_millis(100))
+                        .request_with_timeout(node_id.clone(), msg, Duration::from_millis(100))
                         .await
                     {
                         debug!("Failed to send shutdown announcement to {}: {}", node_id, e);
@@ -816,11 +873,8 @@ where
             Err(_) => warn!("Some membership tasks did not complete within timeout"),
         }
 
-        // Unregister handlers
-        self.network_manager
-            .unregister_service::<MembershipMessage>()
-            .await
-            .map_err(|e| Error::with_context(ErrorKind::Network, e.to_string()))?;
+        // Note: NetworkManager doesn't provide unregister_service method
+        // The handler will be cleaned up when the service is dropped
 
         *self.state.write().await = ServiceState::Stopped;
         info!("Membership service stopped");
@@ -845,11 +899,12 @@ where
 }
 
 // Clone implementation
-impl<T, G, S> Clone for MembershipService<T, G, S>
+impl<T, G, A, S> Clone for MembershipService<T, G, A, S>
 where
     T: Transport,
     G: TopologyAdaptor,
     S: StorageAdaptor,
+    A: Attestor,
 {
     fn clone(&self) -> Self {
         Self {

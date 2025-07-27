@@ -1,144 +1,249 @@
 //! In-memory transport implementation for testing
 //!
-//! This crate provides an in-memory transport that routes messages between
-//! nodes within the same process. It's primarily intended for testing and
-//! development scenarios where you want to run multiple nodes without
-//! actual network communication.
-
-#![warn(missing_docs)]
-#![warn(clippy::all)]
-#![warn(clippy::pedantic)]
-#![warn(clippy::nursery)]
-
-use std::collections::HashMap;
-use std::pin::Pin;
-use std::sync::{Arc, OnceLock};
+//! This transport routes messages between nodes within the same process,
+//! perfect for testing and development scenarios.
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use futures::stream::Stream;
-use proven_topology::NodeId;
-use proven_transport::{Error, Transport, TransportEnvelope};
-use tokio::sync::{Mutex, RwLock, mpsc};
-use tracing::debug;
+use dashmap::DashMap;
+use proven_topology::{Node, NodeId};
+use proven_transport::{Connection, Listener, Transport, TransportError};
+use std::fmt::Debug;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use tracing::{debug, info};
 use uuid::Uuid;
 
-/// Type alias for the transport registry
-type TransportRegistry = Arc<RwLock<HashMap<String, mpsc::UnboundedSender<TransportEnvelope>>>>;
+/// Global registry of memory transports for cross-connection routing
+static GLOBAL_REGISTRY: once_cell::sync::Lazy<Arc<DashMap<NodeId, MemoryListener>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(DashMap::new()));
 
-/// Global registry for all memory transports
-static GLOBAL_REGISTRY: OnceLock<TransportRegistry> = OnceLock::new();
+/// Configuration for memory transport
+#[derive(Debug, Clone)]
+pub struct MemoryOptions {
+    /// Node ID to listen on (if acting as a listener)
+    pub listen_node_id: Option<NodeId>,
+}
 
 /// Memory transport implementation
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct MemoryTransport {
-    /// Incoming messages stream
-    incoming_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<TransportEnvelope>>>>,
-    /// Sender for incoming messages
-    incoming_tx: mpsc::UnboundedSender<TransportEnvelope>,
-    /// Node ID for this transport
-    node_id: NodeId,
+    options: MemoryOptions,
 }
 
 impl MemoryTransport {
-    /// Create a new memory transport
-    #[must_use]
-    pub fn new(node_id: NodeId) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
-
-        // Initialize global registry if needed
-        GLOBAL_REGISTRY.get_or_init(|| Arc::new(RwLock::new(HashMap::new())));
-
-        Self {
-            incoming_rx: Arc::new(Mutex::new(Some(rx))),
-            incoming_tx: tx,
-            node_id,
-        }
+    /// Create a new memory transport with options
+    pub fn new(options: MemoryOptions) -> Self {
+        Self { options }
     }
 
-    /// Register this transport to receive messages at the given address
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the address is already in use
-    pub async fn register(&self, address: &str) -> Result<(), Error> {
-        let registry = Self::registry();
-        let mut registry_guard = registry.write().await;
-        if registry_guard.contains_key(address) {
-            return Err(Error::Other(format!("Address {address} already in use")));
-        }
-        registry_guard.insert(address.to_string(), self.incoming_tx.clone());
-        drop(registry_guard);
-        Ok(())
+    /// Create a new memory transport with default options
+    pub fn new_default() -> Self {
+        Self::new(MemoryOptions {
+            listen_node_id: None,
+        })
     }
 
-    /// Get the global registry
-    fn registry() -> &'static TransportRegistry {
-        GLOBAL_REGISTRY.get().expect("Registry not initialized")
+    /// Clear all global state (useful for tests)
+    pub fn clear_global_state() {
+        GLOBAL_REGISTRY.clear();
+    }
+}
+
+impl Default for MemoryTransport {
+    fn default() -> Self {
+        Self::new_default()
     }
 }
 
 #[async_trait]
 impl Transport for MemoryTransport {
-    async fn send_envelope(
-        &self,
-        recipient: &NodeId,
-        payload: &Bytes,
-        message_type: &str,
-        correlation_id: Option<Uuid>,
-    ) -> Result<(), Error> {
-        debug!("Sending to {:?}: {} bytes", recipient, payload.len());
+    async fn connect(&self, node: &Node) -> Result<Box<dyn Connection>, TransportError> {
+        // Use the node ID for routing
+        let node_id = node.node_id();
 
-        // Look up the recipient's address (for simplicity, we use the node ID as address)
-        let address = format!("memory://{recipient}");
-        let registry = Self::registry();
-        let registry_guard = registry.read().await;
-        let sender = registry_guard
-            .get(&address)
-            .ok_or_else(|| Error::Other(format!("No transport registered at {address}")))?
-            .clone();
-        drop(registry_guard);
+        debug!("Connecting to memory node {}", node_id);
 
-        // Create the envelope
-        let envelope = TransportEnvelope {
-            correlation_id,
-            message_type: message_type.to_string(),
-            payload: payload.clone(),
-            sender: self.node_id.clone(),
+        // Find the listener at this node
+        let listener = GLOBAL_REGISTRY.get(node_id).ok_or_else(|| {
+            TransportError::ConnectionFailed(format!("No listener for node {node_id}"))
+        })?;
+
+        // Create a bidirectional connection pair
+        let (client_to_server_tx, client_to_server_rx) = flume::bounded(100);
+        let (server_to_client_tx, server_to_client_rx) = flume::bounded(100);
+
+        // Create connection IDs
+        let conn_id = Uuid::new_v4();
+
+        // Create the client-side connection
+        let client_conn = MemoryConnection {
+            id: conn_id,
+            sender: client_to_server_tx,
+            receiver: Arc::new(RwLock::new(server_to_client_rx)),
+            closed: Arc::new(RwLock::new(false)),
         };
 
-        // Send the envelope
-        sender
-            .send(envelope)
-            .map_err(|_| Error::Other("Recipient channel closed".to_string()))?;
+        // Create the server-side connection
+        let server_conn = MemoryConnection {
+            id: conn_id,
+            sender: server_to_client_tx,
+            receiver: Arc::new(RwLock::new(client_to_server_rx)),
+            closed: Arc::new(RwLock::new(false)),
+        };
+
+        // Send the server connection to the listener
+        listener
+            .incoming_tx
+            .send_async(Box::new(server_conn))
+            .await
+            .map_err(|_| TransportError::ConnectionFailed("Listener closed".to_string()))?;
+
+        info!("Memory connection established to {}", node_id);
+
+        Ok(Box::new(client_conn))
+    }
+
+    async fn listen(&self) -> Result<Box<dyn Listener>, TransportError> {
+        let node_id = self.options.listen_node_id.clone().ok_or_else(|| {
+            TransportError::InvalidAddress("No listen node ID configured".to_string())
+        })?;
+
+        debug!("Creating memory listener for node {}", node_id);
+
+        // Check if node is already listening
+        if GLOBAL_REGISTRY.contains_key(&node_id) {
+            return Err(TransportError::Other(format!(
+                "Node {node_id} already has a listener"
+            )));
+        }
+
+        // Create the listener
+        let (incoming_tx, incoming_rx) = flume::unbounded();
+        let listener = MemoryListener {
+            node_id: node_id.clone(),
+            incoming_rx: Arc::new(RwLock::new(incoming_rx)),
+            incoming_tx,
+            closed: Arc::new(RwLock::new(false)),
+        };
+
+        // Register in global registry
+        GLOBAL_REGISTRY.insert(node_id.clone(), listener.clone());
+
+        info!("Memory listener created for node {}", node_id);
+
+        Ok(Box::new(listener))
+    }
+}
+
+/// Memory connection implementation
+#[derive(Clone)]
+struct MemoryConnection {
+    id: Uuid,
+    sender: flume::Sender<Bytes>,
+    receiver: Arc<RwLock<flume::Receiver<Bytes>>>,
+    closed: Arc<RwLock<bool>>,
+}
+
+impl Debug for MemoryConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryConnection")
+            .field("id", &self.id)
+            .field("closed", &self.closed)
+            .finish()
+    }
+}
+
+#[async_trait]
+impl Connection for MemoryConnection {
+    async fn send(&self, data: Bytes) -> Result<(), TransportError> {
+        if *self.closed.read().await {
+            return Err(TransportError::ConnectionClosed);
+        }
+
+        debug!("Memory connection {} sending {} bytes", self.id, data.len());
+
+        self.sender
+            .send_async(data)
+            .await
+            .map_err(|_| TransportError::ConnectionClosed)?;
 
         Ok(())
     }
 
-    fn incoming(&self) -> Pin<Box<dyn Stream<Item = TransportEnvelope> + Send>> {
-        // Clone the receiver
-        let rx = self.incoming_rx.clone();
+    async fn recv(&self) -> Result<Bytes, TransportError> {
+        if *self.closed.read().await {
+            return Err(TransportError::ConnectionClosed);
+        }
 
-        Box::pin(futures::stream::unfold(rx, |rx| async move {
-            let mut rx_guard = rx.lock().await;
-            if let Some(ref mut receiver) = *rx_guard {
-                receiver.recv().await.map(|item| (item, rx.clone()))
-            } else {
-                None
+        let receiver = self.receiver.read().await;
+        match receiver.recv_async().await {
+            Ok(data) => {
+                debug!(
+                    "Memory connection {} received {} bytes",
+                    self.id,
+                    data.len()
+                );
+                Ok(data)
             }
-        }))
+            Err(_) => {
+                *self.closed.write().await = true;
+                Err(TransportError::ConnectionClosed)
+            }
+        }
     }
 
-    async fn shutdown(&self) -> Result<(), Error> {
-        // Remove from registry
-        let registry = Self::registry();
-        registry
-            .write()
-            .await
-            .retain(|_, sender| !sender.is_closed());
+    async fn close(self: Box<Self>) -> Result<(), TransportError> {
+        debug!("Closing memory connection {}", self.id);
+        *self.closed.write().await = true;
+        Ok(())
+    }
+}
 
-        // Close our receiver
-        *self.incoming_rx.lock().await = None;
+/// Memory listener implementation
+#[derive(Clone)]
+struct MemoryListener {
+    node_id: NodeId,
+    incoming_rx: Arc<RwLock<flume::Receiver<Box<dyn Connection>>>>,
+    incoming_tx: flume::Sender<Box<dyn Connection>>,
+    closed: Arc<RwLock<bool>>,
+}
+
+impl Debug for MemoryListener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MemoryListener")
+            .field("node_id", &self.node_id)
+            .field("closed", &self.closed)
+            .finish()
+    }
+}
+
+#[async_trait]
+impl Listener for MemoryListener {
+    async fn accept(&self) -> Result<Box<dyn Connection>, TransportError> {
+        if *self.closed.read().await {
+            return Err(TransportError::ConnectionClosed);
+        }
+
+        let receiver = self.incoming_rx.read().await;
+        match receiver.recv_async().await {
+            Ok(conn) => {
+                info!(
+                    "Memory listener accepted connection for node {}",
+                    self.node_id
+                );
+                Ok(conn)
+            }
+            Err(_) => Err(TransportError::ConnectionClosed),
+        }
+    }
+
+    async fn close(self: Box<Self>) -> Result<(), TransportError> {
+        debug!("Closing memory listener for node {}", self.node_id);
+        *self.closed.write().await = true;
+
+        // Remove from global registry
+        GLOBAL_REGISTRY.remove(&self.node_id);
 
         Ok(())
     }
@@ -147,165 +252,88 @@ impl Transport for MemoryTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::StreamExt;
 
-    // Clear the global registry before each test
-    async fn clear_registry() {
-        if let Some(registry) = GLOBAL_REGISTRY.get() {
-            registry.write().await.clear();
-        }
+    use std::collections::HashSet;
+
+    use proven_topology::{Node, NodeId};
+
+    fn create_test_node(node_id: NodeId) -> Node {
+        Node::new(
+            "test-az".to_string(),
+            "http://127.0.0.1:8080".to_string(),
+            node_id,
+            "test-region".to_string(),
+            HashSet::new(),
+        )
     }
 
     #[tokio::test]
-    async fn test_send_and_receive() {
-        clear_registry().await;
+    async fn test_memory_transport_creation() {
+        let _ = tracing_subscriber::fmt::try_init();
 
-        let node1 = NodeId::from_seed(11);
-        let node2 = NodeId::from_seed(12);
-
-        let transport1 = MemoryTransport::new(node1.clone());
-        let transport2 = MemoryTransport::new(node2.clone());
-
-        // Register transports
-        transport1
-            .register(&format!("memory://{node1}"))
-            .await
-            .expect("Failed to register");
-        transport2
-            .register(&format!("memory://{node2}"))
-            .await
-            .expect("Failed to register");
-
-        // Get incoming stream for transport2
-        let mut incoming = transport2.incoming();
-
-        // Send message from transport1 to transport2
-        let correlation_id = Uuid::new_v4();
-        transport1
-            .send_envelope(
-                &node2,
-                &Bytes::from("Hello, transport2!"),
-                "test_message",
-                Some(correlation_id),
-            )
-            .await
-            .expect("Failed to send");
-
-        // Receive on transport2
-        let envelope = incoming.next().await.expect("No message received");
-        assert_eq!(envelope.payload, Bytes::from("Hello, transport2!"));
-        assert_eq!(envelope.message_type, "test_message");
-        assert_eq!(envelope.correlation_id, Some(correlation_id));
-        assert_eq!(envelope.sender, node1);
+        // Transport is stateless, creating it doesn't add to registry
+        let initial_len = GLOBAL_REGISTRY.len();
+        let _transport = MemoryTransport::new_default();
+        assert_eq!(GLOBAL_REGISTRY.len(), initial_len);
     }
 
     #[tokio::test]
-    async fn test_multiple_recipients() {
-        clear_registry().await;
+    async fn test_listen_and_connect() {
+        let _ = tracing_subscriber::fmt::try_init();
 
-        let node1 = NodeId::from_seed(21);
-        let node2 = NodeId::from_seed(22);
-        let node3 = NodeId::from_seed(23);
+        let node_id = NodeId::from_seed(1);
+        let listener_transport = MemoryTransport::new(MemoryOptions {
+            listen_node_id: Some(node_id.clone()),
+        });
 
-        let transport1 = MemoryTransport::new(node1.clone());
-        let transport2 = MemoryTransport::new(node2.clone());
-        let transport3 = MemoryTransport::new(node3.clone());
+        // Create listener
+        let listener = listener_transport.listen().await.unwrap();
 
-        // Register all transports
-        transport1
-            .register(&format!("memory://{node1}"))
-            .await
-            .expect("Failed to register");
-        transport2
-            .register(&format!("memory://{node2}"))
-            .await
-            .expect("Failed to register");
-        transport3
-            .register(&format!("memory://{node3}"))
-            .await
-            .expect("Failed to register");
+        // Create a node for connection
+        let node = create_test_node(node_id);
 
-        // Get incoming streams
-        let mut incoming2 = transport2.incoming();
-        let mut incoming3 = transport3.incoming();
+        // Connect to listener
+        let connect_transport = MemoryTransport::new_default();
+        let client_conn = connect_transport.connect(&node).await.unwrap();
 
-        // Send to both node2 and node3
-        transport1
-            .send_envelope(&node2, &Bytes::from("Hello, node2!"), "greeting", None)
-            .await
-            .expect("Failed to send to node2");
+        // Accept connection
+        let server_conn = listener.accept().await.unwrap();
 
-        transport1
-            .send_envelope(&node3, &Bytes::from("Hello, node3!"), "greeting", None)
-            .await
-            .expect("Failed to send to node3");
+        // Test bidirectional communication
+        let test_data = Bytes::from("Hello, Memory!");
+        client_conn.send(test_data.clone()).await.unwrap();
 
-        // Verify both received their messages
-        let envelope2 = incoming2.next().await.expect("No message for node2");
-        assert_eq!(envelope2.payload, Bytes::from("Hello, node2!"));
-        assert_eq!(envelope2.sender, node1);
+        let received = server_conn.recv().await.unwrap();
+        assert_eq!(test_data, received);
 
-        let envelope3 = incoming3.next().await.expect("No message for node3");
-        assert_eq!(envelope3.payload, Bytes::from("Hello, node3!"));
-        assert_eq!(envelope3.sender, node1);
+        // Send response
+        let response = Bytes::from("Hello back!");
+        server_conn.send(response.clone()).await.unwrap();
+
+        let received_response = client_conn.recv().await.unwrap();
+        assert_eq!(response, received_response);
+
+        // Cleanup
+        let _ = listener.close().await;
     }
 
     #[tokio::test]
-    async fn test_shutdown() {
-        clear_registry().await;
+    async fn test_node_already_listening() {
+        let _ = tracing_subscriber::fmt::try_init();
 
-        let node1 = NodeId::from_seed(31);
-        let transport = MemoryTransport::new(node1.clone());
+        let node_id = NodeId::from_seed(2);
+        let transport1 = MemoryTransport::new(MemoryOptions {
+            listen_node_id: Some(node_id.clone()),
+        });
+        let transport2 = MemoryTransport::new(MemoryOptions {
+            listen_node_id: Some(node_id.clone()),
+        });
 
-        // Register transport
-        transport
-            .register(&format!("memory://{node1}"))
-            .await
-            .expect("Failed to register");
+        // First listener should succeed
+        let _listener1 = transport1.listen().await.unwrap();
 
-        // Verify it's registered
-        let registry = MemoryTransport::registry();
-        assert!(
-            registry
-                .read()
-                .await
-                .contains_key(&format!("memory://{node1}"))
-        );
-
-        // Shutdown
-        transport.shutdown().await.expect("Failed to shutdown");
-
-        // Registry should be cleaned up
-        let registry_guard = registry.read().await;
-        assert!(
-            registry_guard.is_empty()
-                || registry_guard
-                    .values()
-                    .all(tokio::sync::mpsc::UnboundedSender::is_closed)
-        );
-        drop(registry_guard);
-    }
-
-    #[tokio::test]
-    async fn test_send_to_unregistered_node() {
-        clear_registry().await;
-
-        let node1 = NodeId::from_seed(41);
-        let node2 = NodeId::from_seed(42);
-
-        let transport1 = MemoryTransport::new(node1.clone());
-
-        // Try to send without registering node2
-        let result = transport1
-            .send_envelope(&node2, &Bytes::from("Hello"), "test", None)
-            .await;
-
+        // Second listener on same node should fail
+        let result = transport2.listen().await;
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("No transport registered")
-        );
     }
 }

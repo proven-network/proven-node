@@ -30,6 +30,7 @@ proven-network = { path = "../network" }
 proven-storage-memory = { path = "../storage-memory" }
 proven-topology-mock = { path = "../topology-mock" }
 proven-transport-memory = { path = "../transport-memory" }
+proven-attestation-mock = { path = "../attestation-mock" }
 ed25519-dalek = { workspace = true }
 rand = { workspace = true }
 tracing-subscriber = { workspace = true }

@@ -1,6 +1,6 @@
 //! Messages for group consensus service
 
-use proven_network::ServiceMessage;
+use proven_network::{NetworkMessage, ServiceMessage};
 use serde::{Deserialize, Serialize};
 
 use openraft::raft::{
@@ -62,6 +62,18 @@ pub enum GroupConsensusServiceResponse {
         group_id: ConsensusGroupId,
         response: GroupResponse,
     },
+}
+
+impl NetworkMessage for GroupConsensusMessage {
+    fn message_type() -> &'static str {
+        "group_consensus_message"
+    }
+}
+
+impl NetworkMessage for GroupConsensusServiceResponse {
+    fn message_type() -> &'static str {
+        "group_consensus_response"
+    }
 }
 
 impl ServiceMessage for GroupConsensusMessage {

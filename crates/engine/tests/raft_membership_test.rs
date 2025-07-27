@@ -39,7 +39,7 @@ async fn test_raft_leader_election() {
     let mut leader_engine_idx = None;
 
     for (i, engine) in engines.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await
             && let Some(leader) = &state.leader
         {
             current_leader = Some(leader.clone());
@@ -57,9 +57,11 @@ async fn test_raft_leader_election() {
 
     // Store the current term
     let initial_term = engines[leader_idx]
+        .client()
         .group_state(group_id)
         .await
         .expect("Failed to get leader state")
+        .expect("Leader not in group")
         .term;
 
     tracing::info!("=== Stopping current leader to trigger new election ===");
@@ -79,7 +81,7 @@ async fn test_raft_leader_election() {
     let mut new_term = 0;
 
     for (i, engine) in engines_vec.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await
             && let Some(new_leader) = &state.leader
         {
             new_leaders.insert(new_leader.clone());
@@ -173,7 +175,7 @@ async fn test_raft_membership_change() {
 
     // Verify membership state
     for (i, engine) in engines.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await {
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             tracing::info!(
                 "Node {} membership view: leader={:?}, members={:?}",
                 i,
@@ -232,7 +234,7 @@ async fn test_split_brain_prevention() {
     // Find current leader
     let mut _leader_idx = None;
     for (i, engine) in engines.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await
             && state.leader.as_ref() == Some(&node_infos[i].node_id)
         {
             _leader_idx = Some(i);
@@ -274,7 +276,7 @@ async fn test_split_brain_prevention() {
     let mut can_operate = false;
 
     for (i, engine) in engines_vec.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await
             && let Some(leader) = &state.leader
         {
             majority_leaders.insert(leader.clone());
@@ -365,7 +367,7 @@ async fn test_deterministic_initialization() {
     let mut terms = std::collections::HashSet::new();
 
     for (i, engine) in engines.iter().enumerate() {
-        if let Ok(state) = engine.group_state(group_id).await {
+        if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             if let Some(ref leader) = state.leader {
                 leaders.insert(leader.clone());
             }

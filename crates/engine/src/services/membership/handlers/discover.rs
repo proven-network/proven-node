@@ -4,14 +4,13 @@ use std::sync::Arc;
 
 use proven_topology::NodeId;
 use tokio::sync::RwLock;
-use tracing::debug;
 
 use crate::{
     error::ConsensusResult,
+    foundation::{NodeRole, NodeStatus},
     services::membership::{
         MembershipView,
         messages::{ClusterState, DiscoverClusterRequest, DiscoverClusterResponse},
-        types::{ClusterFormationState, NodeRole, NodeStatus},
         utils::now_timestamp,
     },
 };
@@ -39,23 +38,48 @@ impl DiscoverClusterHandler {
         sender: NodeId,
         request: DiscoverClusterRequest,
     ) -> ConsensusResult<DiscoverClusterResponse> {
-        debug!(
+        use tracing::info;
+
+        info!(
             "Received discover cluster request from {} (round: {})",
             sender, request.round_id
         );
 
         let view = self.membership_view.read().await;
 
+        // Log our current cluster state
+        info!(
+            "Current cluster state: {:?}, nodes: {}, with roles: {:?}",
+            view.cluster_state,
+            view.nodes.len(),
+            view.nodes
+                .values()
+                .map(|n| (&n.node_id, &n.roles))
+                .collect::<Vec<_>>()
+        );
+
         // Convert cluster state and find the leader
         let mut cluster_state: ClusterState = view.cluster_state.clone().into();
 
         // If we have an active cluster, find who has the GlobalConsensusLeader role
-        if let ClusterState::Active { ref mut leader, .. } = cluster_state {
+        if let ClusterState::Active {
+            ref mut leader,
+            ref members,
+            term,
+            ..
+        } = cluster_state
+        {
             *leader = view
                 .nodes_with_role(&NodeRole::GlobalConsensusLeader)
                 .first()
                 .map(|member| member.node_id.clone());
 
+            info!(
+                "Reporting active cluster: leader={:?}, members={}, term={}",
+                leader,
+                members.len(),
+                term
+            );
             // TODO: Get actual term and committed index from consensus
             // For now, these remain as 0
         }
@@ -66,6 +90,11 @@ impl DiscoverClusterHandler {
             node_status: NodeStatus::Online, // TODO: Get from service state
             timestamp: now_timestamp(),
         };
+
+        info!(
+            "Sending discover response to {}: cluster_state={:?}",
+            sender, response.cluster_state
+        );
 
         Ok(response)
     }

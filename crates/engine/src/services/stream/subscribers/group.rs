@@ -1,33 +1,39 @@
 //! Group consensus event subscriber for stream service
 
 use async_trait::async_trait;
-use std::num::NonZero;
+use proven_attestation::Attestor;
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::debug;
 
 use crate::foundation::events::{EventHandler, EventMetadata};
-use crate::foundation::types::ConsensusGroupId;
 use crate::services::group_consensus::events::GroupConsensusEvent;
-use crate::services::stream::{StoredMessage, StreamName, StreamService};
-use proven_storage::{LogStorage, StorageAdaptor};
-use proven_topology::NodeId;
+use crate::services::stream::StreamService;
+use proven_storage::StorageAdaptor;
+use proven_topology::{NodeId, TopologyAdaptor};
+use proven_transport::Transport;
 
 /// Subscriber for group consensus events that handles message persistence
 #[derive(Clone)]
-pub struct GroupConsensusSubscriber<S>
+pub struct GroupConsensusSubscriber<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    stream_service: Arc<StreamService<S>>,
+    stream_service: Arc<StreamService<T, G, A, S>>,
     local_node_id: NodeId,
 }
 
-impl<S> GroupConsensusSubscriber<S>
+impl<T, G, A, S> GroupConsensusSubscriber<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
     /// Create a new group consensus subscriber
-    pub fn new(stream_service: Arc<StreamService<S>>, local_node_id: NodeId) -> Self {
+    pub fn new(stream_service: Arc<StreamService<T, G, A, S>>, local_node_id: NodeId) -> Self {
         Self {
             stream_service,
             local_node_id,
@@ -36,8 +42,11 @@ where
 }
 
 #[async_trait]
-impl<S> EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber<S>
+impl<T, G, A, S> EventHandler<GroupConsensusEvent> for GroupConsensusSubscriber<T, G, A, S>
 where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn handle(&self, event: GroupConsensusEvent, _metadata: EventMetadata) {

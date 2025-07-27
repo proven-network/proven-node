@@ -7,9 +7,9 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 
+use crate::foundation::StreamConfig;
 use crate::foundation::models::{GroupInfo, NodeInfo, StreamInfo};
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamConfig, StreamName};
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 use proven_topology::NodeId;
 
 /// Global consensus state

@@ -3,10 +3,11 @@
 //! This module integrates the global state with OpenRaft for consensus.
 //! It uses separated storage and state machine components.
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use openraft::{
-    Config, Entry, Raft, RaftMetrics, RaftNetworkFactory,
+    Config, Entry, Raft, RaftNetworkFactory,
+    async_runtime::watch::WatchReceiver,
     raft::{
         AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest,
         InstallSnapshotResponse, VoteRequest, VoteResponse,
@@ -84,14 +85,10 @@ pub struct GlobalConsensusLayer<L: LogStorage> {
     node_id: NodeId,
     /// Raft instance
     raft: Raft<GlobalTypeConfig>,
-    /// Global state
-    state: GlobalStateWriter,
-    /// Operation handler
-    handler: Arc<GlobalOperationHandler>,
-    /// Log storage
-    log_storage: Arc<GlobalRaftLogStorage<L>>,
     /// State machine
     state_machine: Arc<GlobalStateMachine>,
+
+    _marker: PhantomData<L>,
 }
 
 #[async_trait::async_trait]
@@ -183,7 +180,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         node_info: proven_topology::Node,
     ) -> ConsensusResult<()> {
         // Get current membership
-        let metrics = self.raft.metrics().borrow().clone();
+        let metrics = self.raft.metrics().borrow_watched().clone();
         let current_membership = &metrics.membership_config;
         let current_members: Vec<NodeId> = current_membership.membership().voter_ids().collect();
 
@@ -214,7 +211,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
     /// Remove a node from the consensus cluster
     pub async fn remove_node(&self, node_id: NodeId) -> ConsensusResult<()> {
         // Get current membership
-        let metrics = self.raft.metrics().borrow().clone();
+        let metrics = self.raft.metrics().borrow_watched().clone();
         let current_membership = &metrics.membership_config;
         let current_members: Vec<NodeId> = current_membership.membership().voter_ids().collect();
 
@@ -324,10 +321,8 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         Ok(Self {
             node_id,
             raft,
-            state,
-            handler,
-            log_storage,
             state_machine,
+            _marker: PhantomData,
         })
     }
 
@@ -358,9 +353,22 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         self.raft.current_leader().await
     }
 
-    /// Get metrics
-    pub fn metrics(&self) -> tokio::sync::watch::Receiver<RaftMetrics<GlobalTypeConfig>> {
-        self.raft.metrics()
+    /// Get current members
+    pub fn get_members(&self) -> Vec<NodeId> {
+        let metrics = self.raft.metrics().borrow_watched().clone();
+        metrics.membership_config.membership().voter_ids().collect()
+    }
+
+    /// Get current leader
+    pub fn get_leader(&self) -> Option<NodeId> {
+        let metrics = self.raft.metrics().borrow_watched().clone();
+        metrics.current_leader
+    }
+
+    /// Get current term
+    pub fn get_current_term(&self) -> u64 {
+        let metrics = self.raft.metrics().borrow_watched().clone();
+        metrics.current_term
     }
 
     /// Start monitoring for leader changes
@@ -432,12 +440,12 @@ impl<L: LogStorage> ConsensusLayer for GlobalConsensusLayer<L> {
     }
 
     async fn current_term(&self) -> Term {
-        let metrics = self.raft.metrics().borrow().clone();
+        let metrics = self.raft.metrics().borrow_watched().clone();
         Term::new(metrics.current_term)
     }
 
     async fn current_role(&self) -> ConsensusRole {
-        let metrics = self.raft.metrics().borrow().clone();
+        let metrics = self.raft.metrics().borrow_watched().clone();
         if metrics.current_leader == Some(self.node_id.clone()) {
             ConsensusRole::Leader
         } else {

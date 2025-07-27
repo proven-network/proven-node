@@ -6,11 +6,9 @@ pub mod command_handlers;
 pub mod commands;
 mod config;
 pub mod events;
+mod handler;
 mod messages;
 mod service;
 
-pub use adaptor::{GlobalNetworkFactory, GlobalRaftNetworkAdapter};
-pub use config::{GlobalConsensusConfig, ServiceState};
-pub use events::GlobalConsensusEvent;
-pub use messages::*;
+pub use config::GlobalConsensusConfig;
 pub use service::GlobalConsensusService;

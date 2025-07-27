@@ -2,16 +2,15 @@
 //!
 //! Pure state container for group consensus operations.
 
-use std::num::NonZero;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use dashmap::DashMap;
 use proven_storage::LogIndex;
 
+use crate::foundation::StreamName;
 use crate::foundation::messages::Message;
 use crate::foundation::models::{GroupMetadata, StreamState, StreamStats};
-use crate::services::stream::StreamName;
 
 /// Group consensus state
 #[derive(Clone)]

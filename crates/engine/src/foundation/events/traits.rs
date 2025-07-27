@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use std::time::Duration;
 
-use super::types::{EventId, EventMetadata, Priority};
+use super::types::{EventMetadata, Priority};
 
 /// A fire-and-forget event that can have multiple subscribers
 pub trait Event: Clone + Send + Sync + 'static {

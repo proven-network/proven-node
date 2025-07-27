@@ -1,76 +1,104 @@
-//! Error types for the network crate
+//! Error types for the streaming network layer
 
-use proven_transport::error::TransportError;
-use proven_verification::VerificationError;
+use proven_topology::NodeId;
+use std::time::Duration;
 use thiserror::Error;
 
-/// Result type alias for network operations
-pub type NetworkResult<T> = Result<T, NetworkError>;
-
-/// Network error types
+/// Network operation errors
 #[derive(Debug, Error)]
 pub enum NetworkError {
     /// Transport layer error
     #[error("Transport error: {0}")]
-    Transport(#[from] TransportError),
+    Transport(String),
 
-    /// Verification error
-    #[error("Verification error: {0}")]
-    Verification(#[from] VerificationError),
+    /// Connection failed
+    #[error("Failed to connect to {node}: {reason}")]
+    ConnectionFailed { node: Box<NodeId>, reason: String },
 
-    /// Message serialization/deserialization error
+    /// Stream error
+    #[error("Stream error: {0}")]
+    Stream(#[from] StreamError),
+
+    /// Service not found
+    #[error("Service '{service}' not found")]
+    ServiceNotFound { service: String },
+
+    /// Handler already registered
+    #[error("Handler already registered for service '{service}'")]
+    HandlerAlreadyRegistered { service: String },
+
+    /// No handler registered
+    #[error("No handler registered for service '{service}'")]
+    NoHandler { service: String },
+
+    /// Serialization error
     #[error("Serialization error: {0}")]
     Serialization(String),
 
-    /// Invalid message format
-    #[error("Invalid message: {0}")]
-    InvalidMessage(String),
+    /// Timeout
+    #[error("Operation timed out after {0:?}")]
+    Timeout(Duration),
 
-    /// Handler not found for message type
-    #[error("No handler registered for message type: {0}")]
-    NoHandler(String),
-
-    /// Request timeout
-    #[error("Request timeout: {0}")]
-    Timeout(String),
-
-    /// Channel closed error
+    /// Channel closed
     #[error("Channel closed: {0}")]
     ChannelClosed(String),
 
-    /// Configuration error
-    #[error("Configuration error: {0}")]
-    Configuration(String),
-
-    /// Peer not found
-    #[error("Peer not found: {0}")]
-    PeerNotFound(String),
-
-    /// Network not started
-    #[error("Network manager not started")]
-    NotStarted,
+    /// Invalid message
+    #[error("Invalid message: {0}")]
+    InvalidMessage(String),
 
     /// Internal error
     #[error("Internal error: {0}")]
     Internal(String),
 
-    /// Other errors
-    #[error("{0}")]
-    Other(String),
+    /// Peer not found
+    #[error("Peer not found: {0}")]
+    PeerNotFound(Box<NodeId>),
 
-    /// Boxed error for handler errors
-    #[error(transparent)]
-    Handler(#[from] Box<dyn std::error::Error + Send + Sync>),
+    /// Invalid address
+    #[error("Invalid address: {0}")]
+    InvalidAddress(String),
+
+    /// Service error
+    #[error("Service error: {0}")]
+    ServiceError(String),
+
+    /// Connection not verified
+    #[error("Connection not verified")]
+    ConnectionNotVerified,
+
+    /// Protocol error
+    #[error("Protocol error: {0}")]
+    Protocol(String),
 }
 
-impl From<ciborium::de::Error<std::io::Error>> for NetworkError {
-    fn from(err: ciborium::de::Error<std::io::Error>) -> Self {
-        NetworkError::Serialization(format!("CBOR deserialization error: {err}"))
-    }
+/// Stream-specific errors
+#[derive(Debug, Error)]
+pub enum StreamError {
+    /// Stream closed
+    #[error("Stream {id} closed")]
+    Closed { id: uuid::Uuid },
+
+    /// Flow control error
+    #[error("Flow control error: {0}")]
+    FlowControl(String),
+
+    /// Would block (for try_send operations)
+    #[error("Operation would block")]
+    WouldBlock,
+
+    /// Stream limit exceeded
+    #[error("Stream limit exceeded: {0}")]
+    LimitExceeded(String),
+
+    /// Protocol error
+    #[error("Stream protocol error: {0}")]
+    Protocol(String),
+
+    /// Timeout error
+    #[error("Stream operation timed out")]
+    Timeout,
 }
 
-impl From<ciborium::ser::Error<std::io::Error>> for NetworkError {
-    fn from(err: ciborium::ser::Error<std::io::Error>) -> Self {
-        NetworkError::Serialization(format!("CBOR serialization error: {err}"))
-    }
-}
+/// Result type alias
+pub type NetworkResult<T> = Result<T, NetworkError>;

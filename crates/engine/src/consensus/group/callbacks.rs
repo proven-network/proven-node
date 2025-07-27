@@ -1,16 +1,10 @@
 //! Callbacks for group consensus state changes
 
 use async_trait::async_trait;
-use std::num::NonZero;
 use std::sync::Arc;
 
-use crate::{
-    error::ConsensusResult,
-    foundation::{GroupState, types::ConsensusGroupId},
-};
+use crate::{error::ConsensusResult, foundation::types::ConsensusGroupId};
 use proven_topology::NodeId;
-
-use super::types::MessageData;
 
 /// Callbacks for group consensus operations and state synchronization
 #[async_trait]

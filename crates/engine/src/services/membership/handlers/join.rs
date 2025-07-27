@@ -8,12 +8,11 @@ use tracing::{info, warn};
 
 use crate::{
     error::ConsensusResult,
-    foundation::events::EventBus,
+    foundation::{NodeRole, events::EventBus},
     services::membership::{
         MembershipView,
         events::MembershipEvent,
         messages::{ClusterState, JoinClusterRequest, JoinClusterResponse},
-        types::NodeRole,
     },
 };
 

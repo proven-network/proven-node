@@ -10,15 +10,17 @@
 //! - Operations are correctly routed to the engine's stream service
 //! - Error handling works properly when groups don't exist
 
+use ed25519_dalek::SigningKey;
+use proven_attestation_mock::MockAttestor;
 use proven_engine::{EngineBuilder, EngineConfig};
-use proven_network::NetworkManager;
+use proven_network::{NetworkManager, connection_pool::ConnectionPoolConfig};
 use proven_storage::manager::StorageManager;
 use proven_storage_memory::MemoryStorage;
 use proven_store::Store;
 use proven_store_engine::EngineStore;
 use proven_topology::{Node as TopologyNode, NodeId, TopologyManager};
 use proven_topology_mock::MockTopologyAdaptor;
-use proven_transport_memory::MemoryTransport;
+use proven_transport_memory::{MemoryOptions, MemoryTransport};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -35,11 +37,9 @@ async fn test_store_with_engine() {
     let node_id = NodeId::from_seed(1);
 
     // Create memory transport
-    let transport = Arc::new(MemoryTransport::new(node_id.clone()));
-    transport
-        .register(&format!("memory://{node_id}"))
-        .await
-        .expect("Failed to register transport");
+    let transport = Arc::new(MemoryTransport::new(MemoryOptions {
+        listen_node_id: Some(node_id.clone()),
+    }));
 
     // Create mock topology with this node registered
     let node = TopologyNode::new(
@@ -54,13 +54,23 @@ async fn test_store_with_engine() {
         MockTopologyAdaptor::new(vec![], vec![], "https://auth.test.com".to_string(), vec![]);
     let _ = topology.add_node(node);
 
-    let topology_manager = Arc::new(TopologyManager::new(Arc::new(topology), node_id.clone()));
+    let topology_arc = Arc::new(topology);
+    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id.clone()));
 
-    // Create network manager
+    // Create network manager with required parameters
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let pool_config = ConnectionPoolConfig::default();
+    let attestor = Arc::new(MockAttestor::new());
+    let governance = topology_arc.clone();
+
     let network_manager = Arc::new(NetworkManager::new(
         node_id.clone(),
         transport,
         topology_manager.clone(),
+        signing_key,
+        pool_config,
+        governance,
+        attestor,
     ));
 
     // Create storage
@@ -95,14 +105,8 @@ async fn test_store_with_engine() {
 
     // Create store using the engine client
     let client = Arc::new(engine.client());
-    let store: EngineStore<
-        bytes::Bytes,
-        std::convert::Infallible,
-        std::convert::Infallible,
-        MemoryTransport,
-        MockTopologyAdaptor,
-        MemoryStorage,
-    > = EngineStore::new(client);
+    let store: EngineStore<bytes::Bytes, std::convert::Infallible, std::convert::Infallible> =
+        EngineStore::new(client);
 
     // Test put operation
     let key = "test_key";
@@ -154,11 +158,9 @@ async fn test_scoped_stores_with_engine() {
     let node_id = NodeId::from_seed(2);
 
     // Create memory transport
-    let transport = Arc::new(MemoryTransport::new(node_id.clone()));
-    transport
-        .register(&format!("memory://{node_id}"))
-        .await
-        .expect("Failed to register transport");
+    let transport = Arc::new(MemoryTransport::new(MemoryOptions {
+        listen_node_id: Some(node_id.clone()),
+    }));
 
     // Create mock topology with this node registered
     let node = TopologyNode::new(
@@ -173,13 +175,23 @@ async fn test_scoped_stores_with_engine() {
         MockTopologyAdaptor::new(vec![], vec![], "https://auth.test.com".to_string(), vec![]);
     let _ = topology.add_node(node);
 
-    let topology_manager = Arc::new(TopologyManager::new(Arc::new(topology), node_id.clone()));
+    let topology_arc = Arc::new(topology);
+    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id.clone()));
 
-    // Create network manager
+    // Create network manager with required parameters
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let pool_config = ConnectionPoolConfig::default();
+    let attestor = Arc::new(MockAttestor::new());
+    let governance = topology_arc.clone();
+
     let network_manager = Arc::new(NetworkManager::new(
         node_id.clone(),
         transport,
         topology_manager.clone(),
+        signing_key,
+        pool_config,
+        governance,
+        attestor,
     ));
 
     // Create storage and engine
@@ -209,9 +221,6 @@ async fn test_scoped_stores_with_engine() {
         bytes::Bytes,
         std::convert::Infallible,
         std::convert::Infallible,
-        MemoryTransport,
-        MockTopologyAdaptor,
-        MemoryStorage,
     > = proven_store_engine::EngineStore1::new(client.clone());
     let scoped = proven_store::Store1::scope(&store1, "users");
 
@@ -236,11 +245,9 @@ async fn test_store_persistence_across_recreations() {
     let node_id = NodeId::from_seed(3);
 
     // Create memory transport
-    let transport = Arc::new(MemoryTransport::new(node_id.clone()));
-    transport
-        .register(&format!("memory://{node_id}"))
-        .await
-        .expect("Failed to register transport");
+    let transport = Arc::new(MemoryTransport::new(MemoryOptions {
+        listen_node_id: Some(node_id.clone()),
+    }));
 
     // Create mock topology with this node registered
     let node = TopologyNode::new(
@@ -255,13 +262,23 @@ async fn test_store_persistence_across_recreations() {
         MockTopologyAdaptor::new(vec![], vec![], "https://auth.test.com".to_string(), vec![]);
     let _ = topology.add_node(node);
 
-    let topology_manager = Arc::new(TopologyManager::new(Arc::new(topology), node_id.clone()));
+    let topology_arc = Arc::new(topology);
+    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id.clone()));
 
-    // Create network manager
+    // Create network manager with required parameters
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let pool_config = ConnectionPoolConfig::default();
+    let attestor = Arc::new(MockAttestor::new());
+    let governance = topology_arc.clone();
+
     let network_manager = Arc::new(NetworkManager::new(
         node_id.clone(),
         transport,
         topology_manager.clone(),
+        signing_key,
+        pool_config,
+        governance,
+        attestor,
     ));
 
     // Create storage
@@ -294,7 +311,7 @@ async fn test_store_persistence_across_recreations() {
     println!("Phase 1: Creating store and writing data");
     {
         let client = Arc::new(engine.client());
-        let store: EngineStore<bytes::Bytes, _, _, _, _, _> = EngineStore::new(client);
+        let store: EngineStore<bytes::Bytes, _, _> = EngineStore::new(client);
 
         // Write some test data
         let test_data = vec![("key1", "value1"), ("key2", "value2"), ("key3", "value3")];
@@ -338,7 +355,7 @@ async fn test_store_persistence_across_recreations() {
     println!("Phase 2: Recreating store and verifying persistence");
     {
         let client = Arc::new(engine.client());
-        let store: EngineStore<bytes::Bytes, _, _, _, _, _> = EngineStore::new(client);
+        let store: EngineStore<bytes::Bytes, _, _> = EngineStore::new(client);
 
         // The store should create the same stream name and reuse existing data
         let test_data = vec![("key1", "value1"), ("key2", "value2"), ("key3", "value3")];
@@ -384,14 +401,7 @@ async fn test_store_persistence_across_recreations() {
 
         // Create multiple stores in quick succession
         let stores: Vec<
-            EngineStore<
-                bytes::Bytes,
-                std::convert::Infallible,
-                std::convert::Infallible,
-                MemoryTransport,
-                MockTopologyAdaptor,
-                MemoryStorage,
-            >,
+            EngineStore<bytes::Bytes, std::convert::Infallible, std::convert::Infallible>,
         > = (0..5)
             .map(|i| {
                 println!("Creating store instance {i}");
@@ -439,11 +449,9 @@ async fn test_store_handles_existing_streams() {
     let node_id = NodeId::from_seed(4);
 
     // Create memory transport
-    let transport = Arc::new(MemoryTransport::new(node_id.clone()));
-    transport
-        .register(&format!("memory://{node_id}"))
-        .await
-        .expect("Failed to register transport");
+    let transport = Arc::new(MemoryTransport::new(MemoryOptions {
+        listen_node_id: Some(node_id.clone()),
+    }));
 
     // Create mock topology with this node registered
     let node = TopologyNode::new(
@@ -458,13 +466,23 @@ async fn test_store_handles_existing_streams() {
         MockTopologyAdaptor::new(vec![], vec![], "https://auth.test.com".to_string(), vec![]);
     let _ = topology.add_node(node);
 
-    let topology_manager = Arc::new(TopologyManager::new(Arc::new(topology), node_id.clone()));
+    let topology_arc = Arc::new(topology);
+    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id.clone()));
 
-    // Create network manager
+    // Create network manager with required parameters
+    let signing_key = SigningKey::from_bytes(&[1u8; 32]);
+    let pool_config = ConnectionPoolConfig::default();
+    let attestor = Arc::new(MockAttestor::new());
+    let governance = topology_arc.clone();
+
     let network_manager = Arc::new(NetworkManager::new(
         node_id.clone(),
         transport,
         topology_manager.clone(),
+        signing_key,
+        pool_config,
+        governance,
+        attestor,
     ));
 
     // Create storage
@@ -499,28 +517,16 @@ async fn test_store_handles_existing_streams() {
     let client = Arc::new(engine.client());
 
     // Create first store
-    let store1: EngineStore<
-        bytes::Bytes,
-        std::convert::Infallible,
-        std::convert::Infallible,
-        MemoryTransport,
-        MockTopologyAdaptor,
-        MemoryStorage,
-    > = EngineStore::new(client.clone());
+    let store1: EngineStore<bytes::Bytes, std::convert::Infallible, std::convert::Infallible> =
+        EngineStore::new(client.clone());
     match store1.put("key1", bytes::Bytes::from("value1")).await {
         Ok(_) => println!("Store 1: Successfully put key1"),
         Err(e) => println!("Store 1: Put failed: {e}"),
     }
 
     // Create second store - should reuse the same stream
-    let store2: EngineStore<
-        bytes::Bytes,
-        std::convert::Infallible,
-        std::convert::Infallible,
-        MemoryTransport,
-        MockTopologyAdaptor,
-        MemoryStorage,
-    > = EngineStore::new(client.clone());
+    let store2: EngineStore<bytes::Bytes, std::convert::Infallible, std::convert::Infallible> =
+        EngineStore::new(client.clone());
     match store2.get("key1").await {
         Ok(Some(value)) => {
             let value_str = String::from_utf8_lossy(&value);
@@ -532,14 +538,8 @@ async fn test_store_handles_existing_streams() {
     }
 
     // Create third store - should also reuse the same stream
-    let store3: EngineStore<
-        bytes::Bytes,
-        std::convert::Infallible,
-        std::convert::Infallible,
-        MemoryTransport,
-        MockTopologyAdaptor,
-        MemoryStorage,
-    > = EngineStore::new(client.clone());
+    let store3: EngineStore<bytes::Bytes, std::convert::Infallible, std::convert::Infallible> =
+        EngineStore::new(client.clone());
     match store3.put("key2", bytes::Bytes::from("value2")).await {
         Ok(_) => println!("Store 3: Successfully put key2"),
         Err(e) => println!("Store 3: Put failed: {e}"),

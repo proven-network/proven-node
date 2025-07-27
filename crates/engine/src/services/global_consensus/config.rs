@@ -3,8 +3,6 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-use proven_storage::LogIndex;
-
 /// Configuration for global consensus service
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GlobalConsensusConfig {

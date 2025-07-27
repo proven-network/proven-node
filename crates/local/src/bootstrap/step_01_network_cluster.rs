@@ -30,12 +30,13 @@ use proven_engine::{
 };
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::NetworkManager;
+use proven_network::connection_pool::ConnectionPoolConfig;
 use proven_storage::StorageManager;
 use proven_storage_rocksdb::RocksDbStorage;
 use proven_topology::{NodeId, TopologyManager};
 use proven_topology::{TopologyAdaptor, Version};
-use proven_transport::HttpIntegratedTransport;
-use proven_transport_ws::{WebsocketConfig, WebsocketTransport};
+use proven_transport::Transport;
+use proven_transport_ws::WebSocketTransport;
 use tower_http::cors::CorsLayer;
 use url::Url;
 
@@ -74,27 +75,35 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         .await
         .map_err(|e| Error::Topology(e.to_string()))?;
 
-    let websocket_config = WebsocketConfig::default();
+    let transport = Arc::new(WebSocketTransport::new());
 
-    let transport = Arc::new(WebsocketTransport::new(
-        websocket_config,
-        Arc::new(bootstrap.attestor.clone()),
-        governance,
-        bootstrap.config.node_key.clone(),
-        topology_manager.clone(),
-    ));
+    // Start listening on the transport to prepare it for connections
+    transport
+        .listen()
+        .await
+        .map_err(|e| Error::Transport(e.to_string()))?;
 
+    // Create the engine router that will be passed to Core
+    // This router will have the WebSocket endpoint mounted at /engine
     let engine_router = transport
-        .create_router_integration()
+        .mount_into_router(Router::new(), "/engine")
+        .await
         .map_err(|e| Error::Transport(e.to_string()))?;
 
     let network_manager = Arc::new(NetworkManager::new(
         node_id.clone(),
         transport,
         topology_manager.clone(),
+        bootstrap.config.node_key.clone(),
+        ConnectionPoolConfig::default(),
+        governance.clone(),
+        Arc::new(bootstrap.attestor.clone()),
     ));
 
-    network_manager.start().await.map_err(Error::Bootable)?;
+    network_manager
+        .start()
+        .await
+        .map_err(|e| Error::Bootable(Box::new(e)))?;
 
     let my_node = topology_manager
         .get_node_by_id(&node_id)
@@ -150,7 +159,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
     let storage_manager = Arc::new(StorageManager::new(storage_adaptor));
 
-    // Create HTTP server and Core first, before starting the engine
+    // Create HTTP server with a base router
     let http_sock_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, bootstrap.config.port));
     let http_server = InsecureHttpServer::new(
         http_sock_addr,

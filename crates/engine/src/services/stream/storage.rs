@@ -10,9 +10,9 @@ use proven_storage::{
     LogIndex, LogStorageWithDelete, StorageError, StorageNamespace, StorageResult,
 };
 
-use super::types::{MessageData, StoredMessage};
+use super::types::MessageData;
 use crate::foundation::messages::format as message_format;
-use crate::services::stream::StreamName;
+use crate::foundation::{StoredMessage, StreamName};
 
 /// Stream storage reader interface
 #[async_trait]

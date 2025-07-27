@@ -1,19 +1,16 @@
-//! Commands for the PubSub service (request-response patterns)
+//! Commands for the PubSub service
 
-use bytes::Bytes;
 use std::time::Duration;
-use tokio::sync::broadcast;
 
-use crate::foundation::events::{Error, Request};
+use crate::foundation::Message;
+use crate::foundation::events::{Request, StreamRequest};
 use crate::foundation::types::{Subject, SubjectPattern};
-use crate::services::pubsub::PubSubMessage;
 
-/// Publish a message to a PubSub subject
+/// Publish messages to a PubSub subject
 #[derive(Debug, Clone)]
 pub struct PublishMessage {
     pub subject: Subject,
-    pub payload: Bytes,
-    pub headers: Vec<(String, String)>,
+    pub messages: Vec<Message>,
 }
 
 impl Request for PublishMessage {
@@ -28,41 +25,44 @@ impl Request for PublishMessage {
     }
 }
 
-/// Subscribe to a PubSub subject pattern
+/// Subscribe to a PubSub subject pattern with streaming
+///
+/// This returns a stream of messages directly from the event bus
+/// without any intermediate channels.
 #[derive(Debug, Clone)]
 pub struct Subscribe {
     pub subject_pattern: SubjectPattern,
     pub queue_group: Option<String>,
-    /// Channel to receive messages on this subscription
-    pub message_tx: broadcast::Sender<PubSubMessage>,
 }
 
-impl Request for Subscribe {
-    type Response = String; // Returns subscription ID
+impl StreamRequest for Subscribe {
+    type Item = Message;
 
     fn request_type() -> &'static str {
-        "Subscribe"
+        "PubSub.Subscribe"
     }
 
     fn default_timeout() -> Duration {
-        Duration::from_secs(5)
+        // Subscriptions can be long-lived
+        Duration::from_secs(86400) // 24 hours
     }
 }
 
-/// Unsubscribe from a PubSub subscription
+/// Handle for managing a streaming subscription
 #[derive(Debug, Clone)]
-pub struct Unsubscribe {
-    pub subscription_id: String,
+pub struct StreamingSubscriptionHandle {
+    pub id: String,
+    /// Can be used to control the subscription (pause, resume, unsubscribe)
+    pub control_tx: flume::Sender<SubscriptionControl>,
 }
 
-impl Request for Unsubscribe {
-    type Response = ();
-
-    fn request_type() -> &'static str {
-        "Unsubscribe"
-    }
-
-    fn default_timeout() -> Duration {
-        Duration::from_secs(5)
-    }
+/// Control messages for streaming subscriptions
+#[derive(Debug)]
+pub enum SubscriptionControl {
+    /// Pause message delivery
+    Pause,
+    /// Resume message delivery
+    Resume,
+    /// Unsubscribe and close the stream
+    Unsubscribe,
 }

@@ -39,36 +39,67 @@ async fn test_global_consensus_expansion() {
         node_id_3
     );
 
-    // Wait for cluster formation and groups
+    // The engine start() method now waits for global consensus membership
+    // So we just need to wait for the default group to be created
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
         .await
         .expect("Failed to form groups");
 
-    // Verify initial cluster state
-    let group_id = ConsensusGroupId::new(1);
-    let mut initial_members = std::collections::HashSet::new();
+    // Verify initial global consensus state
+    let mut global_consensus_members = std::collections::HashSet::new();
 
     for (i, engine) in engines.iter().enumerate() {
-        match engine.group_state(group_id).await {
-            Ok(state) => {
+        match engine.client().global_consensus_members().await {
+            Ok(members) => {
                 tracing::info!(
-                    "Node {} group state: leader={:?}, term={}, members={:?}",
+                    "Node {} sees {} global consensus members: {:?}",
                     i,
-                    state.leader,
-                    state.term,
-                    state.members
+                    members.len(),
+                    members
                 );
-                initial_members.extend(state.members.clone());
-                assert!(state.is_member, "Node {i} should be a member");
+                global_consensus_members.extend(members);
             }
             Err(e) => {
-                panic!("Node {i} failed to get group state: {e}");
+                panic!("Node {i} failed to get global consensus members: {e}");
             }
         }
     }
 
-    assert_eq!(initial_members.len(), 3, "Should have 3 members initially");
+    assert_eq!(
+        global_consensus_members.len(),
+        3,
+        "Should have 3 members in global consensus initially"
+    );
+
+    // Check default group exists (but don't require all nodes to be members)
+    let group_id = ConsensusGroupId::new(1);
+    let mut group_members = 0;
+
+    for (i, engine) in engines.iter().enumerate() {
+        match engine.client().group_state(group_id).await {
+            Ok(Some(state)) => {
+                tracing::info!(
+                    "Node {} is in default group: leader={:?}, members={:?}",
+                    i,
+                    state.leader,
+                    state.members
+                );
+                group_members += 1;
+            }
+            Ok(None) => {
+                tracing::info!("Node {} is not a member of the default group", i);
+            }
+            Err(_) => {
+                tracing::info!("Node {} is not a member of the default group", i);
+            }
+        }
+    }
+
+    assert!(
+        group_members >= 1,
+        "At least one node should be in the default group"
+    );
 
     tracing::info!("=== Phase 2: Adding 4th node to expand global consensus ===");
 
@@ -84,31 +115,62 @@ async fn test_global_consensus_expansion() {
     // Give time for the new node to join global consensus
     tokio::time::sleep(Duration::from_secs(10)).await;
 
-    // The new node should join the existing global consensus
-    // In the new architecture, nodes join global consensus through Raft membership changes
+    // Verify the new node joined global consensus
+    let mut updated_global_members = std::collections::HashSet::new();
 
-    // Verify all 4 nodes see consistent global state
     for (i, engine) in engines.iter().enumerate() {
-        match engine.group_state(group_id).await {
-            Ok(state) => {
+        match engine.client().global_consensus_members().await {
+            Ok(members) => {
                 tracing::info!(
-                    "Node {} after expansion: leader={:?}, term={}, members={:?}",
+                    "Node {} after expansion sees {} global consensus members: {:?}",
                     i,
-                    state.leader,
-                    state.term,
-                    state.members
+                    members.len(),
+                    members
                 );
-
-                // All nodes should see the same leader
-                if let Some(leader) = &state.leader {
-                    tracing::info!("Node {} sees leader: {}", i, leader);
-                }
+                updated_global_members.extend(members);
             }
             Err(e) => {
-                tracing::warn!("Node {} not yet in group (expected for new node): {}", i, e);
+                tracing::warn!("Node {} failed to get global consensus members: {}", i, e);
             }
         }
     }
+
+    assert_eq!(
+        updated_global_members.len(),
+        4,
+        "Should have 4 members in global consensus after adding new node"
+    );
+
+    assert!(
+        updated_global_members.contains(&node_id_4),
+        "New node should be in global consensus"
+    );
+
+    // Check default group state (not all nodes need to be members)
+    let mut nodes_in_group = 0;
+    for (i, engine) in engines.iter().enumerate() {
+        match engine.client().group_state(group_id).await {
+            Ok(Some(state)) => {
+                tracing::info!(
+                    "Node {} is in default group with leader {:?}",
+                    i,
+                    state.leader
+                );
+                nodes_in_group += 1;
+            }
+            Ok(None) => {
+                tracing::info!("Node {} is not in the default group (expected)", i);
+            }
+            Err(_) => {
+                tracing::info!("Node {} is not in the default group (expected)", i);
+            }
+        }
+    }
+
+    tracing::info!(
+        "{} out of 4 nodes are members of the default group",
+        nodes_in_group
+    );
 
     tracing::info!("=== Phase 3: Creating stream to verify consensus works ===");
 
@@ -129,7 +191,10 @@ async fn test_global_consensus_expansion() {
     for i in 1..=5 {
         let message = format!("Expansion test message {i}");
         client
-            .publish(stream_name.to_string(), message.into_bytes(), None)
+            .publish_to_stream(
+                stream_name.to_string(),
+                vec![proven_engine::Message::new(message.into_bytes())],
+            )
             .await
             .expect("Failed to publish message");
     }
@@ -167,13 +232,14 @@ async fn test_single_node_to_cluster() {
 
     tracing::info!("Created single node: {}", node_id_1);
 
-    // Give time for single node to initialize
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    // The engine start() method now waits for global consensus membership
+    // For a single node, we just need to wait a bit for the default group to be created
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Verify single node formed consensus
     let group_id = ConsensusGroupId::new(1);
-    match engines[0].group_state(group_id).await {
-        Ok(state) => {
+    match engines[0].client().group_state(group_id).await {
+        Ok(Some(state)) => {
             tracing::info!(
                 "Single node state: leader={:?}, term={}, is_member={}",
                 state.leader,
@@ -187,6 +253,7 @@ async fn test_single_node_to_cluster() {
                 "Single node should be leader"
             );
         }
+        Ok(None) => panic!("Single node is not in group"),
         Err(e) => panic!("Failed to get single node state: {e}"),
     }
 
@@ -206,8 +273,8 @@ async fn test_single_node_to_cluster() {
 
     // Verify both nodes see consistent state
     for (i, engine) in engines.iter().enumerate() {
-        match engine.group_state(group_id).await {
-            Ok(state) => {
+        match engine.client().group_state(group_id).await {
+            Ok(Some(state)) => {
                 tracing::info!(
                     "Node {} state: leader={:?}, term={}, is_member={}",
                     i,
@@ -215,6 +282,9 @@ async fn test_single_node_to_cluster() {
                     state.term,
                     state.is_member
                 );
+            }
+            Ok(None) => {
+                tracing::warn!("Node {} not in group yet", i);
             }
             Err(e) => {
                 tracing::warn!("Node {} not in group yet: {}", i, e);
@@ -242,8 +312,8 @@ async fn test_single_node_to_cluster() {
     // Verify all nodes are in consensus
     let mut leaders = std::collections::HashSet::new();
     for (i, engine) in engines.iter().enumerate() {
-        match engine.group_state(group_id).await {
-            Ok(state) => {
+        match engine.client().group_state(group_id).await {
+            Ok(Some(state)) => {
                 tracing::info!(
                     "Node {} final state: leader={:?}, term={}, members={:?}",
                     i,
@@ -256,6 +326,7 @@ async fn test_single_node_to_cluster() {
                 }
                 assert!(state.is_member, "Node {i} should be a member");
             }
+            Ok(None) => panic!("Node {i} failed to get state: not in group"),
             Err(e) => panic!("Node {i} failed to get state: {e}"),
         }
     }
@@ -324,7 +395,7 @@ async fn test_rolling_node_addition() {
         // Verify cluster state after each addition by checking global consensus membership
         let mut active_nodes = 0;
         for (i, engine) in engines.iter().enumerate() {
-            match engine.global_consensus_members().await {
+            match engine.client().global_consensus_members().await {
                 Ok(members) => {
                     if !members.is_empty() {
                         active_nodes += 1;
@@ -359,7 +430,7 @@ async fn test_rolling_node_addition() {
     let mut reported_member_counts = std::collections::HashSet::new();
 
     for (i, engine) in engines.iter().enumerate() {
-        match engine.global_consensus_members().await {
+        match engine.client().global_consensus_members().await {
             Ok(members) => {
                 tracing::info!(
                     "Node {} final: sees {} global consensus members: {:?}",

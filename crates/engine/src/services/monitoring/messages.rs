@@ -1,6 +1,6 @@
 //! Health and monitoring network messages
 
-use proven_network::ServiceMessage;
+use proven_network::{NetworkMessage, ServiceMessage};
 use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +23,18 @@ pub enum MonitoringServiceResponse {
         /// Current leader if known
         leader: Option<NodeId>,
     },
+}
+
+impl NetworkMessage for MonitoringServiceMessage {
+    fn message_type() -> &'static str {
+        "monitoring_message"
+    }
+}
+
+impl NetworkMessage for MonitoringServiceResponse {
+    fn message_type() -> &'static str {
+        "monitoring_response"
+    }
 }
 
 impl ServiceMessage for MonitoringServiceMessage {

@@ -1,6 +1,7 @@
 //! Network adaptor for global consensus Raft integration
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use openraft::{
     error::{InstallSnapshotError, RPCError, RaftError},
@@ -10,7 +11,7 @@ use openraft::{
         InstallSnapshotResponse, VoteRequest, VoteResponse,
     },
 };
-use tokio::sync::RwLock;
+use proven_attestation::Attestor;
 
 use proven_network::NetworkManager;
 use proven_topology::NodeId;
@@ -21,31 +22,34 @@ use super::messages::{GlobalConsensusMessage, GlobalConsensusResponse};
 use crate::consensus::global::GlobalTypeConfig;
 
 /// Factory for creating global Raft network instances
-pub struct GlobalNetworkFactory<T, G>
+pub struct GlobalNetworkFactory<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
-    network_manager: Arc<NetworkManager<T, G>>,
+    network_manager: Arc<NetworkManager<T, G, A>>,
 }
 
-impl<T, G> GlobalNetworkFactory<T, G>
+impl<T, G, A> GlobalNetworkFactory<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     /// Create a new global network factory
-    pub fn new(network_manager: Arc<NetworkManager<T, G>>) -> Self {
+    pub fn new(network_manager: Arc<NetworkManager<T, G, A>>) -> Self {
         Self { network_manager }
     }
 }
 
-impl<T, G> RaftNetworkFactory<GlobalTypeConfig> for GlobalNetworkFactory<T, G>
+impl<T, G, A> RaftNetworkFactory<GlobalTypeConfig> for GlobalNetworkFactory<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
-    type Network = GlobalRaftNetworkAdapter<T, G>;
+    type Network = GlobalRaftNetworkAdapter<T, G, A>;
 
     async fn new_client(&mut self, target: NodeId, _node: &proven_topology::Node) -> Self::Network {
         GlobalRaftNetworkAdapter {
@@ -56,35 +60,23 @@ where
 }
 
 /// Network adapter for global consensus
-pub struct GlobalRaftNetworkAdapter<T, G>
+pub struct GlobalRaftNetworkAdapter<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     /// Network manager for sending messages
-    network_manager: Arc<NetworkManager<T, G>>,
+    network_manager: Arc<NetworkManager<T, G, A>>,
     /// Target node ID
     target_node_id: NodeId,
 }
 
-impl<T, G> GlobalRaftNetworkAdapter<T, G>
+impl<T, G, A> RaftNetwork<GlobalTypeConfig> for GlobalRaftNetworkAdapter<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
-{
-    /// Create a new global Raft network adapter
-    pub fn new(network_manager: Arc<NetworkManager<T, G>>) -> Self {
-        Self {
-            network_manager,
-            target_node_id: NodeId::from_bytes(&[0u8; 32]).expect("valid bytes"), // This will be set per-connection
-        }
-    }
-}
-
-impl<T, G> RaftNetwork<GlobalTypeConfig> for GlobalRaftNetworkAdapter<T, G>
-where
-    T: Transport,
-    G: TopologyAdaptor,
+    A: Attestor,
 {
     async fn append_entries(
         &mut self,
@@ -96,15 +88,31 @@ where
     > {
         let timeout = option.hard_ttl();
 
+        // Ensure minimum timeout of 1 second for network operations
+        let timeout = timeout.max(Duration::from_secs(1));
+
+        tracing::trace!(
+            "Sending append_entries to {} with timeout {:?}",
+            self.target_node_id,
+            timeout
+        );
+
         // Create the request message
         let message = GlobalConsensusMessage::AppendEntries(rpc);
 
         // Send request and wait for response
         let response = self
             .network_manager
-            .service_request(self.target_node_id.clone(), message, timeout)
+            .request_with_timeout(self.target_node_id.clone(), message, timeout)
             .await
-            .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
+            .map_err(|e| {
+                tracing::debug!(
+                    "Global consensus append_entries to {} failed: {}",
+                    self.target_node_id,
+                    e
+                );
+                RPCError::Network(openraft::error::NetworkError::new(&e))
+            })?;
 
         // Extract the response
         match response {
@@ -125,13 +133,16 @@ where
     > {
         let timeout = option.hard_ttl();
 
+        // Ensure minimum timeout of 5 seconds for snapshot operations
+        let timeout = timeout.max(Duration::from_secs(5));
+
         // Create the request message
         let message = GlobalConsensusMessage::InstallSnapshot(rpc);
 
         // Send request and wait for response
         let response = self
             .network_manager
-            .service_request(self.target_node_id.clone(), message, timeout)
+            .request_with_timeout(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
 
@@ -154,6 +165,9 @@ where
     > {
         let timeout = option.hard_ttl();
 
+        // Ensure minimum timeout of 1 second for vote operations
+        let timeout = timeout.max(Duration::from_secs(1));
+
         // Create the request message
         let message = GlobalConsensusMessage::Vote(rpc);
 
@@ -165,7 +179,7 @@ where
         loop {
             match self
                 .network_manager
-                .service_request(self.target_node_id.clone(), message.clone(), timeout)
+                .request_with_timeout(self.target_node_id.clone(), message.clone(), timeout)
                 .await
             {
                 Ok(response) => {

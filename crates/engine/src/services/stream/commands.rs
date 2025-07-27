@@ -1,12 +1,13 @@
 //! Commands for the stream service (request-response patterns)
 
 use bytes::Bytes;
+use proven_storage::LogIndex;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::foundation::events::Request;
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StoredMessage, StreamConfig, StreamName};
+use crate::foundation::types::{ConsensusGroupId, StreamName};
+use crate::foundation::{StoredMessage, StreamConfig};
 
 /// Persist messages to a stream (from group consensus)
 #[derive(Debug, Clone)]
@@ -70,7 +71,7 @@ impl Request for DeleteStream {
 #[derive(Debug, Clone)]
 pub struct ReadMessages {
     pub stream_name: StreamName,
-    pub start_offset: u64,
+    pub start_offset: LogIndex,
     pub count: u64,
 }
 
@@ -104,7 +105,7 @@ impl Request for GetStreamInfo {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StreamInfo {
     pub name: StreamName,
     pub config: StreamConfig,

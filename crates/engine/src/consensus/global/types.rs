@@ -3,9 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::foundation::GroupInfo;
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamConfig, StreamName};
+use crate::foundation::types::{ConsensusGroupId, StreamName};
+use crate::foundation::{GroupInfo, StreamConfig};
 use proven_topology::NodeId;
 
 /// Global consensus request
@@ -43,14 +42,14 @@ pub enum GlobalRequest {
         id: ConsensusGroupId,
     },
     /// Add node to cluster
-    AddNode {
+    AddNodeToGroup {
         /// Node ID
         node_id: NodeId,
         /// Node metadata
         metadata: HashMap<String, String>,
     },
     /// Remove node from cluster
-    RemoveNode {
+    RemoveNodeFromGroup {
         /// Node ID
         node_id: NodeId,
     },

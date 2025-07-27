@@ -45,6 +45,46 @@ impl Message {
             .find(|(k, _)| k == key)
             .map(|(_, v)| v.as_str())
     }
+
+    /// Add a subject header (convenience method for pubsub)
+    pub fn with_subject(self, subject: impl Into<String>) -> Self {
+        self.with_header(headers::SUBJECT_STR, subject)
+    }
+
+    /// Get the subject from headers (convenience method for pubsub)
+    pub fn subject(&self) -> Option<&str> {
+        self.get_header(headers::SUBJECT_STR)
+    }
+}
+
+impl From<Vec<u8>> for Message {
+    fn from(bytes: Vec<u8>) -> Self {
+        Message::new(bytes)
+    }
+}
+
+impl From<&[u8]> for Message {
+    fn from(bytes: &[u8]) -> Self {
+        Message::new(bytes.to_vec())
+    }
+}
+
+impl From<Bytes> for Message {
+    fn from(bytes: Bytes) -> Self {
+        Message::new(bytes)
+    }
+}
+
+impl From<String> for Message {
+    fn from(s: String) -> Self {
+        Message::new(s)
+    }
+}
+
+impl From<&str> for Message {
+    fn from(s: &str) -> Self {
+        Message::new(s.to_string())
+    }
 }
 
 /// Header registry for efficient encoding of common headers

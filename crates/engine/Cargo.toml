@@ -63,15 +63,15 @@ sha2.workspace = true
 chrono.workspace = true
 
 # Monitoring
-prometheus = "0.13"
-lazy_static = "1.4"
+prometheus.workspace = true
+lazy_static.workspace = true
 
 # Compression
-flate2 = "1.0"
+flate2.workspace = true
 
 # Event system
-flume = "0.11"
-num_cpus = "1.16"
+flume.workspace = true
+num_cpus.workspace = true
 
 # ciborium is already in workspace dependencies
 

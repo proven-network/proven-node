@@ -1,7 +1,7 @@
 //! PubSub-specific message types
 
 use bytes::Bytes;
-use proven_network::ServiceMessage;
+use proven_network::{NetworkMessage, ServiceMessage};
 use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
@@ -62,6 +62,18 @@ pub enum PubSubServiceResponse {
         /// Error message
         message: String,
     },
+}
+
+impl NetworkMessage for PubSubServiceMessage {
+    fn message_type() -> &'static str {
+        "pubsub_message"
+    }
+}
+
+impl NetworkMessage for PubSubServiceResponse {
+    fn message_type() -> &'static str {
+        "pubsub_response"
+    }
 }
 
 impl ServiceMessage for PubSubServiceMessage {

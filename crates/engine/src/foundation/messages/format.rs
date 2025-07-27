@@ -15,7 +15,6 @@
 //! ```
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use std::io::{self, Write};
 
 use super::types::{Message, headers};
 
@@ -36,7 +35,7 @@ pub enum FormatError {
 
     /// IO error
     #[error("IO error: {0}")]
-    Io(#[from] io::Error),
+    Io(#[from] std::io::Error),
 }
 
 /// Serialize a message with timestamp and sequence into binary format

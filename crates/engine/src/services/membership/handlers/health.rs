@@ -8,10 +8,10 @@ use tracing::trace;
 
 use crate::{
     error::ConsensusResult,
+    foundation::{NodeRole, NodeStatus},
     services::membership::{
         MembershipView,
         messages::{GlobalConsensusInfo, HealthCheckRequest, HealthCheckResponse},
-        types::{NodeRole, NodeStatus},
         utils::now_timestamp,
     },
 };

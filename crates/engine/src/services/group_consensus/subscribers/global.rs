@@ -1,11 +1,11 @@
 //! Global consensus event subscriber for group consensus service
 
 use async_trait::async_trait;
+use proven_attestation::Attestor;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
 use crate::foundation::events::{EventHandler, EventMetadata};
-use crate::foundation::types::ConsensusGroupId;
 use crate::services::global_consensus::events::GlobalConsensusEvent;
 use crate::services::group_consensus::GroupConsensusService;
 use proven_storage::StorageAdaptor;
@@ -14,25 +14,27 @@ use proven_transport::Transport;
 
 /// Subscriber for global consensus events that manages group consensus instances
 #[derive(Clone)]
-pub struct GlobalConsensusSubscriber<T, G, S>
+pub struct GlobalConsensusSubscriber<T, G, A, S>
 where
     T: Transport,
     G: TopologyAdaptor,
     S: StorageAdaptor,
+    A: Attestor,
 {
-    group_consensus_service: Arc<GroupConsensusService<T, G, S>>,
+    group_consensus_service: Arc<GroupConsensusService<T, G, A, S>>,
     local_node_id: NodeId,
 }
 
-impl<T, G, S> GlobalConsensusSubscriber<T, G, S>
+impl<T, G, A, S> GlobalConsensusSubscriber<T, G, A, S>
 where
     T: Transport,
     G: TopologyAdaptor,
     S: StorageAdaptor,
+    A: Attestor,
 {
     /// Create a new global consensus subscriber
     pub fn new(
-        group_consensus_service: Arc<GroupConsensusService<T, G, S>>,
+        group_consensus_service: Arc<GroupConsensusService<T, G, A, S>>,
         local_node_id: NodeId,
     ) -> Self {
         Self {
@@ -43,11 +45,12 @@ where
 }
 
 #[async_trait]
-impl<T, G, S> EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber<T, G, S>
+impl<T, G, A, S> EventHandler<GlobalConsensusEvent> for GlobalConsensusSubscriber<T, G, A, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
+    A: Attestor + 'static,
 {
     async fn handle(&self, event: GlobalConsensusEvent, _metadata: EventMetadata) {
         match event {

@@ -8,12 +8,11 @@ use tracing::{info, warn};
 
 use crate::{
     error::ConsensusResult,
-    foundation::events::EventBus,
+    foundation::{NodeStatus, events::EventBus},
     services::membership::{
         MembershipView,
         events::MembershipEvent,
         messages::{GracefulShutdownRequest, GracefulShutdownResponse},
-        types::NodeStatus,
         utils::now_timestamp,
     },
 };

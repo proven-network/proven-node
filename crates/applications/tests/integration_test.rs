@@ -11,13 +11,15 @@ use std::time::Duration;
 use proven_applications::{
     ApplicationManagement, ApplicationManager, ApplicationManagerConfig, CreateApplicationOptions,
 };
+use proven_attestation_mock::MockAttestor;
 use proven_engine::{EngineBuilder, EngineConfig};
 use proven_network::NetworkManager;
+use proven_network::connection_pool::ConnectionPoolConfig;
 use proven_storage::manager::StorageManager;
 use proven_storage_memory::MemoryStorage;
 use proven_topology::{Node as TopologyNode, NodeId, TopologyManager};
 use proven_topology_mock::MockTopologyAdaptor;
-use proven_transport_memory::MemoryTransport;
+use proven_transport_memory::{MemoryOptions, MemoryTransport};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -29,11 +31,9 @@ async fn test_basic_application_operations() {
     let node_id = NodeId::from_seed(1);
 
     // Create memory transport
-    let transport = Arc::new(MemoryTransport::new(node_id.clone()));
-    transport
-        .register(&format!("memory://{node_id}"))
-        .await
-        .expect("Failed to register transport");
+    let transport = Arc::new(MemoryTransport::new(MemoryOptions {
+        listen_node_id: Some(node_id.clone()),
+    }));
 
     // Create mock topology with this node registered
     let node = TopologyNode::new(
@@ -48,13 +48,24 @@ async fn test_basic_application_operations() {
         MockTopologyAdaptor::new(vec![], vec![], "https://auth.test.com".to_string(), vec![]);
     let _ = topology.add_node(node);
 
-    let topology_manager = Arc::new(TopologyManager::new(Arc::new(topology), node_id.clone()));
+    let topology_arc = Arc::new(topology);
+    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id.clone()));
+
+    // Create signing key for network manager
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&[1u8; 32]);
+
+    // Create mock attestor
+    let attestor = Arc::new(MockAttestor::new());
 
     // Create network manager
     let network_manager = Arc::new(NetworkManager::new(
         node_id.clone(),
         transport,
         topology_manager.clone(),
+        signing_key,
+        ConnectionPoolConfig::default(),
+        topology_arc.clone(),
+        attestor,
     ));
 
     // Create storage
@@ -219,11 +230,9 @@ async fn test_concurrent_operations() {
     let node_id = NodeId::from_seed(2);
 
     // Create memory transport
-    let transport = Arc::new(MemoryTransport::new(node_id.clone()));
-    transport
-        .register(&format!("memory://{node_id}"))
-        .await
-        .expect("Failed to register transport");
+    let transport = Arc::new(MemoryTransport::new(MemoryOptions {
+        listen_node_id: Some(node_id.clone()),
+    }));
 
     // Create mock topology with this node registered
     let node = TopologyNode::new(
@@ -238,13 +247,24 @@ async fn test_concurrent_operations() {
         MockTopologyAdaptor::new(vec![], vec![], "https://auth.test.com".to_string(), vec![]);
     let _ = topology.add_node(node);
 
-    let topology_manager = Arc::new(TopologyManager::new(Arc::new(topology), node_id.clone()));
+    let topology_arc = Arc::new(topology);
+    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id.clone()));
+
+    // Create signing key for network manager
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&[1u8; 32]);
+
+    // Create mock attestor
+    let attestor = Arc::new(MockAttestor::new());
 
     // Create network manager
     let network_manager = Arc::new(NetworkManager::new(
         node_id.clone(),
         transport,
         topology_manager.clone(),
+        signing_key,
+        ConnectionPoolConfig::default(),
+        topology_arc.clone(),
+        attestor,
     ));
 
     // Create storage and engine

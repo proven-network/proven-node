@@ -2,10 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use proven_network::message::{HandledMessage, ServiceMessage};
+use proven_network::{NetworkMessage, ServiceMessage};
 use proven_topology::{Node, NodeId};
 
-use super::types::{ClusterFormationState, HealthInfo, LoadInfo, NodeStatus};
+use super::types::LoadInfo;
+use crate::foundation::{ClusterFormationState, NodeStatus};
 
 /// Messages for membership service
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,16 +25,18 @@ pub enum MembershipMessage {
     JoinCluster(JoinClusterRequest),
 }
 
+impl NetworkMessage for MembershipMessage {
+    fn message_type() -> &'static str {
+        "membership_message"
+    }
+}
+
 impl ServiceMessage for MembershipMessage {
     type Response = MembershipResponse;
 
     fn service_id() -> &'static str {
         "membership"
     }
-}
-
-impl HandledMessage for MembershipMessage {
-    type Response = MembershipResponse;
 }
 
 /// Responses for membership messages
@@ -47,11 +50,9 @@ pub enum MembershipResponse {
     JoinCluster(JoinClusterResponse),
 }
 
-impl ServiceMessage for MembershipResponse {
-    type Response = MembershipResponse;
-
-    fn service_id() -> &'static str {
-        "membership"
+impl NetworkMessage for MembershipResponse {
+    fn message_type() -> &'static str {
+        "membership_response"
     }
 }
 

@@ -2,15 +2,13 @@
 //!
 //! This module handles creating and restoring snapshots of the group state.
 
-use std::sync::Arc;
-
 use openraft::{
     LogId, RaftSnapshotBuilder, SnapshotMeta, StorageError, StoredMembership, storage::Snapshot,
 };
 use serde::{Deserialize, Serialize};
 
 use super::raft::GroupTypeConfig;
-use crate::foundation::{GroupState, GroupStateWriter};
+use crate::foundation::GroupStateWriter;
 
 /// Group consensus snapshot - implements AsyncRead/Write/Seek for OpenRaft
 #[derive(Debug, Clone, Serialize, Deserialize)]

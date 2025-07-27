@@ -4,8 +4,7 @@ use async_trait::async_trait;
 
 use crate::{
     error::ConsensusResult,
-    foundation::{GroupInfo, types::ConsensusGroupId},
-    services::stream::StreamName,
+    foundation::{GroupInfo, StreamName, types::ConsensusGroupId},
 };
 use proven_topology::NodeId;
 
@@ -33,7 +32,7 @@ pub trait GlobalConsensusCallbacks: Send + Sync {
     async fn on_stream_created(
         &self,
         stream_name: &StreamName,
-        config: &crate::services::stream::StreamConfig,
+        config: &crate::foundation::StreamConfig,
         group_id: ConsensusGroupId,
     ) -> ConsensusResult<()>;
 

@@ -2,12 +2,12 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use futures::future::join_all;
+use proven_attestation::Attestor;
 use tokio::sync::RwLock;
 use tokio::time::timeout;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use proven_network::NetworkManager;
@@ -15,11 +15,11 @@ use proven_topology::{Node, NodeId, TopologyAdaptor, TopologyManager};
 use proven_transport::Transport;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
+use crate::foundation::NodeStatus;
 use crate::services::membership::messages::{
     ClusterState, DiscoverClusterRequest, DiscoverClusterResponse, MembershipMessage,
-    MembershipResponse, ProposeClusterRequest, ProposeClusterResponse,
+    MembershipResponse,
 };
-use crate::services::membership::types::{ClusterFormationState, NodeStatus};
 
 /// Result of discovery process
 #[derive(Debug)]
@@ -46,32 +46,34 @@ pub enum DiscoveryResult {
 }
 
 /// Discovery manager for cluster formation
-pub struct DiscoveryManager<T, G>
+pub struct DiscoveryManager<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     node_id: NodeId,
-    network: Arc<NetworkManager<T, G>>,
+    network_manager: Arc<NetworkManager<T, G, A>>,
     topology: Arc<TopologyManager<G>>,
     config: super::config::DiscoveryConfig,
     current_round: Arc<RwLock<Option<Uuid>>>,
 }
 
-impl<T, G> DiscoveryManager<T, G>
+impl<T, G, A> DiscoveryManager<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     pub fn new(
         node_id: NodeId,
-        network: Arc<NetworkManager<T, G>>,
+        network_manager: Arc<NetworkManager<T, G, A>>,
         topology: Arc<TopologyManager<G>>,
         config: super::config::DiscoveryConfig,
     ) -> Self {
         Self {
             node_id,
-            network,
+            network_manager,
             topology,
             config,
             current_round: Arc::new(RwLock::new(None)),
@@ -110,11 +112,25 @@ where
 
             // Query all peers
             let responses = self.query_peers(&all_peers, round_id).await?;
+            info!(
+                "Discovery round {} got {} responses",
+                round + 1,
+                responses.len()
+            );
 
             // Analyze responses
-            if let Some(result) = self.analyze_responses(responses, &all_peers).await? {
-                best_result = Some(result);
-                break;
+            match self.analyze_responses(responses, &all_peers).await? {
+                Some(result) => {
+                    info!("Discovery round {} found result: {:?}", round + 1, result);
+                    best_result = Some(result);
+                    break;
+                }
+                None => {
+                    info!(
+                        "Discovery round {} found no actionable result, continuing",
+                        round + 1
+                    );
+                }
             }
 
             // Wait before next round
@@ -146,19 +162,28 @@ where
 
         let mut futures = Vec::new();
         for peer in peers {
-            let network = self.network.clone();
+            let network_manager = self.network_manager.clone();
             let peer_id = peer.node_id.clone();
             let request = request.clone();
             let timeout_duration = self.config.node_request_timeout;
 
             futures.push(async move {
+                info!("Querying peer {} for cluster state", peer_id);
                 match timeout(
                     timeout_duration,
-                    network.service_request(peer_id.clone(), request, timeout_duration),
+                    network_manager.request_with_timeout(
+                        peer_id.clone(),
+                        request,
+                        timeout_duration,
+                    ),
                 )
                 .await
                 {
                     Ok(Ok(MembershipResponse::DiscoverCluster(response))) => {
+                        info!(
+                            "Got response from {}: cluster_state={:?}",
+                            peer_id, response.cluster_state
+                        );
                         Some((peer_id, response))
                     }
                     Ok(Ok(_)) => {
@@ -166,11 +191,14 @@ where
                         None
                     }
                     Ok(Err(e)) => {
-                        debug!("Failed to query {}: {}", peer_id, e);
+                        warn!("Failed to query {}: {}", peer_id, e);
                         None
                     }
                     Err(_) => {
-                        debug!("Query to {} timed out", peer_id);
+                        warn!(
+                            "Query to {} timed out after {:?}",
+                            peer_id, timeout_duration
+                        );
                         None
                     }
                 }

@@ -1,13 +1,7 @@
 //! Callback dispatcher for global consensus events
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
-use crate::{
-    error::ConsensusResult,
-    foundation::{GroupInfo, types::ConsensusGroupId},
-    services::stream::StreamName,
-};
 use proven_topology::NodeId;
 
 use super::{

@@ -3,7 +3,7 @@
 //! This module handles applying committed entries to the business state.
 //! It only processes entries that have been committed by Raft consensus.
 
-use std::{num::NonZero, sync::Arc};
+use std::sync::Arc;
 
 use openraft::{
     Entry, EntryPayload, LogId, StorageError, StoredMembership,
@@ -12,16 +12,13 @@ use openraft::{
 use proven_storage::LogIndex;
 use tokio::sync::RwLock;
 
-use super::callbacks::GlobalConsensusCallbacks;
 use super::dispatcher::GlobalCallbackDispatcher;
 use super::operations::{GlobalOperation, GlobalOperationHandler};
 use super::raft::GlobalTypeConfig;
 use super::snapshot::{GlobalSnapshot, GlobalSnapshotBuilder};
-use super::types::{GlobalRequest, GlobalResponse};
-use crate::consensus::{LogIndexExt, from_openraft_u64};
-use crate::foundation::{
-    GlobalState, GlobalStateWrite, GlobalStateWriter, traits::OperationHandler,
-};
+use super::types::GlobalResponse;
+use crate::consensus::from_openraft_u64;
+use crate::foundation::{GlobalStateWrite, GlobalStateWriter, traits::OperationHandler};
 use proven_topology::NodeId;
 
 /// Raft state machine - handles applying committed entries

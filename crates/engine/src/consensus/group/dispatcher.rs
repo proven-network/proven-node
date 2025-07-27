@@ -1,12 +1,8 @@
 //! Callback dispatcher for group consensus events
 
-use std::{num::NonZero, sync::Arc};
-use tokio::sync::RwLock;
+use std::sync::Arc;
 
-use crate::{
-    error::ConsensusResult,
-    foundation::{GroupState, types::ConsensusGroupId},
-};
+use crate::foundation::types::ConsensusGroupId;
 use proven_topology::NodeId;
 
 use super::{

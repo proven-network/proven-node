@@ -96,7 +96,7 @@ struct StoreStateInner {
 }
 
 /// Engine-backed key-value store
-pub struct EngineStore<T, D, S, Tr, G, St>
+pub struct EngineStore<T, D, S>
 where
     T: Clone
         + Debug
@@ -107,19 +107,16 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    Tr: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    St: proven_storage::StorageAdaptor + 'static,
 {
     /// The engine client
-    client: Arc<Client<Tr, G, St>>,
+    client: Arc<Client>,
     /// Optional scope prefix
     prefix: Option<String>,
     /// Phantom data for type parameters
     _marker: std::marker::PhantomData<(T, D, S)>,
 }
 
-impl<T, D, S, Tr, G, St> Clone for EngineStore<T, D, S, Tr, G, St>
+impl<T, D, S> Clone for EngineStore<T, D, S>
 where
     T: Clone
         + Debug
@@ -130,9 +127,6 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    Tr: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    St: proven_storage::StorageAdaptor + 'static,
 {
     fn clone(&self) -> Self {
         Self {
@@ -143,7 +137,7 @@ where
     }
 }
 
-impl<T, D, S, Tr, G, St> Debug for EngineStore<T, D, S, Tr, G, St>
+impl<T, D, S> Debug for EngineStore<T, D, S>
 where
     T: Clone
         + Debug
@@ -154,9 +148,6 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    Tr: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    St: proven_storage::StorageAdaptor + 'static,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EngineStore")
@@ -165,7 +156,7 @@ where
     }
 }
 
-impl<T, D, S, Tr, G, St> EngineStore<T, D, S, Tr, G, St>
+impl<T, D, S> EngineStore<T, D, S>
 where
     T: Clone
         + Debug
@@ -176,13 +167,10 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    Tr: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    St: proven_storage::StorageAdaptor + 'static,
 {
     /// Create a new engine store with automatic group assignment
     #[must_use]
-    pub const fn new(client: Arc<Client<Tr, G, St>>) -> Self {
+    pub const fn new(client: Arc<Client>) -> Self {
         Self {
             client,
             prefix: None,
@@ -191,7 +179,7 @@ where
     }
 
     /// Create a scoped store
-    const fn with_scope(client: Arc<Client<Tr, G, St>>, prefix: String) -> Self {
+    const fn with_scope(client: Arc<Client>, prefix: String) -> Self {
         Self {
             client,
             prefix: Some(prefix),
@@ -376,7 +364,7 @@ where
         let payload = serde_json::to_vec(&op).map_err(|e| Error::Serialization(e.to_string()))?;
 
         self.client
-            .publish(self.get_key_index_stream(), payload, None)
+            .publish_to_stream(self.get_key_index_stream(), vec![payload])
             .await
             .map(|_| ())
             .map_err(|e| Error::Engine(e.to_string()))
@@ -406,12 +394,9 @@ where
             let start = LogIndex::new(current_sequence + 1).ok_or_else(|| {
                 Error::Engine("Start sequence must be greater than 0".to_string())
             })?;
-            let count_nz = LogIndex::new(batch_size)
-                .ok_or_else(|| Error::Engine("Count must be greater than 0".to_string()))?;
-
             let messages = self
                 .client
-                .read_stream(stream_name.clone(), start, count_nz)
+                .read_from_stream(stream_name.clone(), start, batch_size)
                 .await
                 .map_err(|e| Error::Engine(e.to_string()))?;
 
@@ -427,7 +412,7 @@ where
                 let mut state = cached_state.state.write().await;
 
                 for msg in messages {
-                    // Extract key from metadata
+                    // Extract key from headers
                     if let Some(key) = msg
                         .data
                         .headers
@@ -445,7 +430,7 @@ where
                         if is_deleted {
                             state.data.remove(&key);
                         } else {
-                            // Store as bytes directly - conversion happens on read
+                            // Store the payload directly as bytes
                             state.data.insert(key, msg.data.payload);
                         }
                     }
@@ -480,7 +465,7 @@ where
 }
 
 #[async_trait]
-impl<T, D, S, Tr, G, St> Store<T, D, S> for EngineStore<T, D, S, Tr, G, St>
+impl<T, D, S> Store<T, D, S> for EngineStore<T, D, S>
 where
     T: Clone
         + Debug
@@ -491,9 +476,6 @@ where
         + 'static,
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
-    Tr: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    St: proven_storage::StorageAdaptor + 'static,
 {
     type Error = Error;
 
@@ -513,12 +495,12 @@ where
         .await?;
 
         // Mark as deleted in stream
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert("deleted".to_string(), "true".to_string());
-        metadata.insert("key".to_string(), key.to_string());
+        let message = proven_engine::Message::new(vec![])
+            .with_header("deleted", "true")
+            .with_header("key", key);
 
         self.client
-            .publish(self.get_stream_name(), vec![], Some(metadata))
+            .publish_to_stream(self.get_stream_name(), vec![message])
             .await
             .map(|_| ())
             .map_err(|e| Error::Engine(e.to_string()))?;
@@ -606,13 +588,12 @@ where
             .try_into()
             .map_err(|e| Error::Serialization(e.to_string()))?;
 
-        // Create metadata with the key
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert("key".to_string(), key.to_string());
+        // Create message with key in header
+        let message = proven_engine::Message::new(bytes.to_vec()).with_header("key", key);
 
         // Publish the value
         self.client
-            .publish(self.get_stream_name(), bytes.to_vec(), Some(metadata))
+            .publish_to_stream(self.get_stream_name(), vec![message])
             .await
             .map(|_| ())
             .map_err(|e| Error::Engine(e.to_string()))?;
@@ -641,7 +622,7 @@ macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
             #[doc = $doc]
-            pub struct [< EngineStore $index >]<T, D, S, Tr, G, St>
+            pub struct [< EngineStore $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -652,16 +633,13 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
-                Tr: proven_transport::Transport + 'static,
-                G: proven_topology::TopologyAdaptor + 'static,
-                St: proven_storage::StorageAdaptor + 'static,
             {
-                client: Arc<Client<Tr, G, St>>,
+                client: Arc<Client>,
                 prefix: Option<String>,
                 _marker: std::marker::PhantomData<(T, D, S)>,
             }
 
-            impl<T, D, S, Tr, G, St> Clone for [< EngineStore $index >]<T, D, S, Tr, G, St>
+            impl<T, D, S> Clone for [< EngineStore $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -672,9 +650,6 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
-                Tr: proven_transport::Transport + 'static,
-                G: proven_topology::TopologyAdaptor + 'static,
-                St: proven_storage::StorageAdaptor + 'static,
             {
                 fn clone(&self) -> Self {
                     Self {
@@ -685,7 +660,7 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, D, S, Tr, G, St> Debug for [< EngineStore $index >]<T, D, S, Tr, G, St>
+            impl<T, D, S> Debug for [< EngineStore $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -696,9 +671,6 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
-                Tr: proven_transport::Transport + 'static,
-                G: proven_topology::TopologyAdaptor + 'static,
-                St: proven_storage::StorageAdaptor + 'static,
             {
                 fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
                     f.debug_struct(stringify!([< EngineStore $index >]))
@@ -707,7 +679,7 @@ macro_rules! impl_scoped_store {
                 }
             }
 
-            impl<T, D, S, Tr, G, St> [< EngineStore $index >]<T, D, S, Tr, G, St>
+            impl<T, D, S> [< EngineStore $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -718,14 +690,11 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
-                Tr: proven_transport::Transport + 'static,
-                G: proven_topology::TopologyAdaptor + 'static,
-                St: proven_storage::StorageAdaptor + 'static,
             {
                 /// Create a new scoped engine store with automatic group assignment
                 #[must_use]
                 pub const fn new(
-                    client: Arc<Client<Tr, G, St>>,
+                    client: Arc<Client>,
                 ) -> Self {
                     Self {
                         client,
@@ -737,7 +706,7 @@ macro_rules! impl_scoped_store {
                 /// Create a scoped store
                 #[allow(dead_code)]
                 const fn with_scope(
-                    client: Arc<Client<Tr, G, St>>,
+                    client: Arc<Client>,
                     prefix: String,
                 ) -> Self {
                     Self {
@@ -749,7 +718,7 @@ macro_rules! impl_scoped_store {
             }
 
             #[async_trait]
-            impl<T, D, S, Tr, G, St> [< Store $index >]<T, D, S> for [< EngineStore $index >]<T, D, S, Tr, G, St>
+            impl<T, D, S> [< Store $index >]<T, D, S> for [< EngineStore $index >]<T, D, S>
             where
                 T: Clone
                     + Debug
@@ -760,14 +729,11 @@ macro_rules! impl_scoped_store {
                     + 'static,
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
-                Tr: proven_transport::Transport + 'static,
-                G: proven_topology::TopologyAdaptor + 'static,
-                St: proven_storage::StorageAdaptor + 'static,
             {
                 type Error = Error;
-                type Scoped = $parent<T, D, S, Tr, G, St>;
+                type Scoped = $parent<T, D, S>;
 
-                fn scope<K>(&self, scope: K) -> $parent<T, D, S, Tr, G, St>
+                fn scope<K>(&self, scope: K) -> $parent<T, D, S>
                 where
                     K: AsRef<str> + Send,
                 {
@@ -775,7 +741,7 @@ macro_rules! impl_scoped_store {
                         Some(existing_scope) => format!("{}:{}", existing_scope, scope.as_ref()),
                         None => scope.as_ref().to_string(),
                     };
-                    $parent::<T, D, S, Tr, G, St>::with_scope(
+                    $parent::<T, D, S>::with_scope(
                         self.client.clone(),
                         new_scope,
                     )

@@ -1,23 +1,18 @@
 //! Group consensus service
 
-use std::num::NonZero;
+use proven_attestation::Attestor;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use proven_network::NetworkManager;
-use proven_storage::{
-    ConsensusStorage, LogStorage, StorageAdaptor, StorageManager, StorageNamespace,
-};
+use proven_storage::{LogStorage, StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 use tracing::info;
 
 use super::{callbacks, config::GroupConsensusConfig};
-use crate::foundation::{
-    GroupState, GroupStateRead, GroupStateReader, GroupStateWriter, StreamState,
-    create_group_state_access,
-};
+use crate::foundation::{GroupStateRead, StreamState, create_group_state_access};
 use crate::{
     consensus::group::GroupConsensusLayer,
     error::{ConsensusResult, Error, ErrorKind},
@@ -27,30 +22,26 @@ use crate::{
     services::group_consensus::events::GroupConsensusEvent,
     services::stream::StreamService,
 };
-use async_trait::async_trait;
 
-/// Type alias for the consensus layers
-type ConsensusLayers<S> = Arc<
-    RwLock<
-        std::collections::HashMap<ConsensusGroupId, Arc<GroupConsensusLayer<ConsensusStorage<S>>>>,
-    >,
->;
+use super::types::{ConsensusLayers, States};
 
-type States = Arc<RwLock<std::collections::HashMap<ConsensusGroupId, GroupStateReader>>>;
+/// Type alias for stream service reference
+type StreamServiceRef<T, G, A, S> = Arc<RwLock<Option<Arc<StreamService<T, G, A, S>>>>>;
 
 /// Group consensus service
-pub struct GroupConsensusService<T, G, S>
+pub struct GroupConsensusService<T, G, A, S>
 where
     T: Transport,
     G: TopologyAdaptor,
     S: StorageAdaptor,
+    A: Attestor,
 {
     /// Configuration
     config: GroupConsensusConfig,
     /// Node ID
     node_id: NodeId,
     /// Network manager
-    network_manager: Arc<NetworkManager<T, G>>,
+    network_manager: Arc<NetworkManager<T, G, A>>,
     /// Storage manager
     storage_manager: Arc<StorageManager<S>>,
     /// Group states (read-only access)
@@ -62,22 +53,23 @@ where
     /// Topology manager
     topology_manager: Option<Arc<proven_topology::TopologyManager<G>>>,
     /// Stream service for message persistence
-    stream_service: Arc<RwLock<Option<Arc<StreamService<S>>>>>,
+    stream_service: StreamServiceRef<T, G, A, S>,
     /// Routing table
     routing_table: Arc<RoutingTable>,
 }
 
-impl<T, G, S> GroupConsensusService<T, G, S>
+impl<T, G, A, S> GroupConsensusService<T, G, A, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
+    A: Attestor + Send + Sync + 'static,
 {
     /// Create new group consensus service
     pub fn new(
         config: GroupConsensusConfig,
         node_id: NodeId,
-        network_manager: Arc<NetworkManager<T, G>>,
+        network_manager: Arc<NetworkManager<T, G, A>>,
         storage_manager: Arc<StorageManager<S>>,
         event_bus: Arc<EventBus>,
         routing_table: Arc<RoutingTable>,
@@ -109,7 +101,7 @@ where
     }
 
     /// Set stream service
-    pub async fn set_stream_service(&self, stream_service: Arc<StreamService<S>>) {
+    pub async fn set_stream_service(&self, stream_service: Arc<StreamService<T, G, A, S>>) {
         *self.stream_service.write().await = Some(stream_service);
     }
 
@@ -119,52 +111,73 @@ where
         self.register_message_handlers().await?;
 
         // Register command handlers
-        use crate::services::group_consensus::command_handlers::global_consensus::*;
+        use crate::services::group_consensus::command_handlers::*;
         use crate::services::group_consensus::commands::*;
 
         let service_arc = Arc::new(self.clone());
 
         // Register CreateGroup handler
-        let create_handler = CreateGroupHandler::new(service_arc.clone());
+        let create_handler = CreateGroupHandler::new(
+            self.node_id.clone(),
+            self.consensus_layers.clone(),
+            self.group_states.clone(),
+            self.network_manager.clone(),
+            self.storage_manager.clone(),
+            self.topology_manager
+                .clone()
+                .expect("topology_manager is required"),
+            self.event_bus.clone(),
+        );
         self.event_bus
             .handle_requests::<CreateGroup, _>(create_handler)
             .expect("Failed to register CreateGroup handler");
 
         // Register DissolveGroup handler
-        let dissolve_handler = DissolveGroupHandler::new(service_arc.clone());
+        let dissolve_handler = DissolveGroupHandler::new(self.consensus_layers.clone());
         self.event_bus
             .handle_requests::<DissolveGroup, _>(dissolve_handler)
             .expect("Failed to register DissolveGroup handler");
 
         // Register InitializeStreamInGroup handler
-        let init_stream_handler = InitializeStreamInGroupHandler::new(service_arc.clone());
+        let init_stream_handler = InitializeStreamInGroupHandler::new(
+            self.node_id.clone(),
+            self.consensus_layers.clone(),
+        );
         self.event_bus
             .handle_requests::<InitializeStreamInGroup, _>(init_stream_handler)
             .expect("Failed to register InitializeStreamInGroup handler");
 
         // Register SubmitToGroup handler
-        let submit_handler = SubmitToGroupHandler::new(service_arc.clone());
+        let submit_handler = SubmitToGroupHandler::new(self.consensus_layers.clone());
         self.event_bus
             .handle_requests::<SubmitToGroup, _>(submit_handler)
             .expect("Failed to register SubmitToGroup handler");
 
         // Register GetNodeGroups handler
-        let get_groups_handler = GetNodeGroupsHandler::new(service_arc.clone());
+        let get_groups_handler = GetNodeGroupsHandler::new(self.consensus_layers.clone());
         self.event_bus
             .handle_requests::<GetNodeGroups, _>(get_groups_handler)
             .expect("Failed to register GetNodeGroups handler");
 
         // Register GetGroupInfo handler
-        let get_info_handler = GetGroupInfoHandler::new(service_arc.clone());
+        let get_info_handler =
+            GetGroupInfoHandler::new(self.consensus_layers.clone(), self.group_states.clone());
         self.event_bus
             .handle_requests::<GetGroupInfo, _>(get_info_handler)
             .expect("Failed to register GetGroupInfo handler");
 
         // Register GetStreamState handler
-        let get_stream_state_handler = GetStreamStateHandler::new(service_arc.clone());
+        let get_stream_state_handler =
+            GetStreamStateHandler::new(self.consensus_layers.clone(), self.group_states.clone());
         self.event_bus
             .handle_requests::<GetStreamState, _>(get_stream_state_handler)
             .expect("Failed to register GetStreamState handler");
+
+        // Register GetGroupState handler
+        let get_group_state_handler = GetGroupStateHandler::new(service_arc.clone());
+        self.event_bus
+            .handle_requests::<GetGroupState, _>(get_group_state_handler)
+            .expect("Failed to register GetGroupState handler");
 
         tracing::info!("GroupConsensusService: Registered command handlers");
 
@@ -227,16 +240,8 @@ where
         groups.clear();
         drop(groups);
 
-        use super::messages::GroupConsensusMessage;
-        if let Err(e) = self
-            .network_manager
-            .unregister_service::<GroupConsensusMessage>()
-            .await
-        {
-            tracing::warn!("Failed to unregister group consensus service: {}", e);
-        } else {
-            tracing::debug!("Group consensus service handler unregistered");
-        }
+        // Note: NetworkManager doesn't provide unregister_service method
+        // The handler will be cleaned up when the service is dropped
 
         Ok(())
     }
@@ -430,91 +435,12 @@ where
 
     /// Register message handlers
     async fn register_message_handlers(&self) -> ConsensusResult<()> {
-        use super::messages::{GroupConsensusMessage, GroupConsensusServiceResponse};
-        use crate::consensus::group::raft::GroupRaftMessageHandler;
+        use super::handler::GroupConsensusHandler;
 
-        let groups = self.consensus_layers.clone();
-
-        // Register the service handler
+        // Create and register the service handler
+        let handler = GroupConsensusHandler::new(self.consensus_layers.clone());
         self.network_manager
-            .register_service::<GroupConsensusMessage, _>(move |_sender, message| {
-                let groups = groups.clone();
-                Box::pin(async move {
-                    match message {
-                        GroupConsensusMessage::Vote { group_id, request } => {
-                            let groups_guard = groups.read().await;
-                            let layer = groups_guard.get(&group_id).ok_or_else(|| {
-                                proven_network::NetworkError::Other(format!(
-                                    "Group {group_id} not found"
-                                ))
-                            })?;
-
-                            let handler: &dyn GroupRaftMessageHandler = layer.as_ref();
-                            let resp = handler
-                                .handle_vote(request)
-                                .await
-                                .map_err(|e| proven_network::NetworkError::Other(e.to_string()))?;
-                            Ok(GroupConsensusServiceResponse::Vote {
-                                group_id,
-                                response: resp,
-                            })
-                        }
-                        GroupConsensusMessage::AppendEntries { group_id, request } => {
-                            let groups_guard = groups.read().await;
-                            let layer = groups_guard.get(&group_id).ok_or_else(|| {
-                                proven_network::NetworkError::Other(format!(
-                                    "Group {group_id} not found"
-                                ))
-                            })?;
-
-                            let handler: &dyn GroupRaftMessageHandler = layer.as_ref();
-                            let resp = handler
-                                .handle_append_entries(request)
-                                .await
-                                .map_err(|e| proven_network::NetworkError::Other(e.to_string()))?;
-                            Ok(GroupConsensusServiceResponse::AppendEntries {
-                                group_id,
-                                response: resp,
-                            })
-                        }
-                        GroupConsensusMessage::InstallSnapshot { group_id, request } => {
-                            let groups_guard = groups.read().await;
-                            let layer = groups_guard.get(&group_id).ok_or_else(|| {
-                                proven_network::NetworkError::Other(format!(
-                                    "Group {group_id} not found"
-                                ))
-                            })?;
-
-                            let handler: &dyn GroupRaftMessageHandler = layer.as_ref();
-                            let resp = handler
-                                .handle_install_snapshot(request)
-                                .await
-                                .map_err(|e| proven_network::NetworkError::Other(e.to_string()))?;
-                            Ok(GroupConsensusServiceResponse::InstallSnapshot {
-                                group_id,
-                                response: resp,
-                            })
-                        }
-                        GroupConsensusMessage::Consensus { group_id, request } => {
-                            let groups_guard = groups.read().await;
-                            let layer = groups_guard.get(&group_id).ok_or_else(|| {
-                                proven_network::NetworkError::Other(format!(
-                                    "Group {group_id} not found"
-                                ))
-                            })?;
-
-                            let resp = layer
-                                .submit_request(request)
-                                .await
-                                .map_err(|e| proven_network::NetworkError::Other(e.to_string()))?;
-                            Ok(GroupConsensusServiceResponse::Consensus {
-                                group_id,
-                                response: resp,
-                            })
-                        }
-                    }
-                })
-            })
+            .register_service(handler)
             .await
             .map_err(|e| Error::with_context(ErrorKind::Network, e.to_string()))?;
 
@@ -532,17 +458,57 @@ where
         group_id: ConsensusGroupId,
         request: crate::consensus::group::GroupRequest,
     ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
-        let groups = self.consensus_layers.read().await;
-        let layer = groups.get(&group_id).ok_or_else(|| {
-            Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
-        })?;
+        // Check if we're a member of this group
+        let is_local = self
+            .routing_table
+            .is_group_local(group_id)
+            .await
+            .unwrap_or(false);
 
-        let response = layer.submit_request(request.clone()).await?;
+        if is_local {
+            // We're a member - try to handle locally
+            let groups = self.consensus_layers.read().await;
+            if let Some(layer) = groups.get(&group_id) {
+                match layer.submit_request(request.clone()).await {
+                    Ok(response) => Ok(response),
+                    Err(e) if e.is_not_leader() => {
+                        // We're not the leader - forward to the leader
+                        if let Some(leader) = e.get_leader() {
+                            self.forward_to_node(group_id, leader.clone(), request)
+                                .await
+                        } else {
+                            // No leader info in error, return the error as-is
+                            Err(e)
+                        }
+                    }
+                    Err(e) => Err(e),
+                }
+            } else {
+                Err(Error::with_context(
+                    ErrorKind::NotFound,
+                    format!("Group {group_id} not found locally"),
+                ))
+            }
+        } else {
+            // Remote group - forward to any member
+            let route = self
+                .routing_table
+                .get_group_route(group_id)
+                .await?
+                .ok_or_else(|| {
+                    Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
+                })?;
 
-        // Handle response for event publishing
-        // Event publishing is now handled by callbacks
-
-        Ok(response)
+            if let Some(member) = route.members.first() {
+                self.forward_to_node(group_id, member.clone(), request)
+                    .await
+            } else {
+                Err(Error::with_context(
+                    ErrorKind::InvalidState,
+                    format!("Group {group_id} has no members"),
+                ))
+            }
+        }
     }
 
     /// Get stream state from a specific group
@@ -565,7 +531,7 @@ where
             )
         })?;
 
-        let stream_name = crate::services::stream::StreamName::new(stream_name);
+        let stream_name = crate::foundation::StreamName::new(stream_name);
         Ok(state.get_stream(&stream_name).await)
     }
 
@@ -600,16 +566,9 @@ where
             })?
         };
 
-        // Get Raft metrics to find leader and term
-        let metrics_rx = layer.metrics();
-        let (current_leader, current_term) = {
-            let raft_metrics = metrics_rx.borrow();
-            (
-                raft_metrics.current_leader.clone(),
-                raft_metrics.current_term,
-            )
-        };
-        // raft_metrics is now dropped, so we can safely await
+        // Get Raft info to find leader and term
+        let current_leader = layer.get_leader();
+        let current_term = layer.get_current_term();
 
         // Collect stream information
         let stream_names = state.list_streams().await;
@@ -652,96 +611,73 @@ where
         })
     }
 
+    /// Forward a request to a specific node
+    async fn forward_to_node(
+        &self,
+        group_id: ConsensusGroupId,
+        target_node: NodeId,
+        request: crate::consensus::group::GroupRequest,
+    ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
+        use super::messages::{GroupConsensusMessage, GroupConsensusServiceResponse};
+
+        tracing::debug!(
+            "Forwarding group request to node {} for group {:?}",
+            target_node,
+            group_id
+        );
+
+        let message = GroupConsensusMessage::Consensus { group_id, request };
+
+        match self
+            .network_manager
+            .request_with_timeout(target_node, message, std::time::Duration::from_secs(30))
+            .await
+        {
+            Ok(GroupConsensusServiceResponse::Consensus { response, .. }) => Ok(response),
+            Ok(_) => Err(Error::with_context(
+                ErrorKind::Internal,
+                "Unexpected response type from group consensus",
+            )),
+            Err(e) => Err(Error::with_context(
+                ErrorKind::Network,
+                format!("Failed to forward request: {e}"),
+            )),
+        }
+    }
+
     /// Start monitoring a group consensus layer for events
     fn start_group_event_monitoring<L>(
         layer: Arc<GroupConsensusLayer<L>>,
         event_bus: Arc<EventBus>,
         _node_id: NodeId,
         group_id: ConsensusGroupId,
-        routing_table: Arc<RoutingTable>,
+        _routing_table: Arc<RoutingTable>,
     ) where
         L: LogStorage + 'static,
     {
-        // Monitor for leader changes
-        let mut metrics_rx = layer.metrics();
-        let event_bus_clone = event_bus.clone();
-        let group_id_clone = group_id;
+        // Start leader monitoring with callback
+        layer.start_leader_monitoring(group_id, move |group_id, old_leader, new_leader, _term| {
+            if let Some(new_leader) = new_leader {
+                // Publish event
+                let event = GroupConsensusEvent::LeaderChanged {
+                    group_id,
+                    old_leader,
+                    new_leader: Some(new_leader),
+                };
 
-        tokio::spawn(async move {
-            let mut current_leader: Option<NodeId> = None;
-            let mut current_term: u64 = 0;
-
-            loop {
-                tokio::select! {
-                    Ok(_) = metrics_rx.changed() => {
-                        let metrics = metrics_rx.borrow().clone();
-
-                        // Check for leader change
-                        if metrics.current_leader != current_leader || metrics.current_term != current_term {
-                            let old_leader = current_leader.clone();
-                            current_leader = metrics.current_leader.clone();
-                            current_term = metrics.current_term;
-
-                            if let Some(new_leader) = &current_leader {
-                                tracing::info!(
-                                    "Group {} consensus leader changed: {:?} -> {} (term {})",
-                                    group_id_clone, old_leader, new_leader, current_term
-                                );
-
-                                // Update routing table
-                                {
-                                    let routing_table_clone = routing_table.clone();
-                                    let new_leader_clone = new_leader.clone();
-                                    let group_id_for_update = group_id_clone;
-
-                                    tokio::spawn(async move {
-                                        if let Ok(Some(route)) = routing_table_clone.get_group_route(group_id_for_update).await {
-                                            if let Err(e) = routing_table_clone
-                                                .update_group_route(group_id_for_update, route.members, Some(new_leader_clone.clone()))
-                                                .await
-                                            {
-                                                tracing::error!(
-                                                    "Failed to update leader for group {:?}: {}",
-                                                    group_id_for_update,
-                                                    e
-                                                );
-                                            } else {
-                                                tracing::debug!(
-                                                    "Updated routing table: group {:?} leader = {:?}",
-                                                    group_id_for_update,
-                                                    new_leader_clone
-                                                );
-                                            }
-                                        }
-                                    });
-                                }
-
-                                // Publish event
-                                let event = GroupConsensusEvent::LeaderChanged {
-                                    group_id: group_id_clone,
-                                    old_leader,
-                                    new_leader: Some(new_leader.clone()),
-                                };
-
-                                event_bus_clone.emit(event);
-                            }
-                        }
-                    }
-                    else => break,
-                }
+                event_bus.emit(event);
             }
-
-            tracing::debug!("Group {} leader monitoring task stopped", group_id_clone);
         });
     }
 }
 
 // Implement Clone for the service
-impl<T, G, S> Clone for GroupConsensusService<T, G, S>
+impl<T, G, A, S> Clone for GroupConsensusService<T, G, A, S>
 where
     T: Transport + 'static,
     G: TopologyAdaptor + 'static,
     S: StorageAdaptor + 'static,
+    A: Attestor + Send + Sync + 'static,
 {
     fn clone(&self) -> Self {
         Self {

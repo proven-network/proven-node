@@ -8,9 +8,8 @@ use proven_topology::NodeId;
 use super::global_state::GlobalState;
 use super::group_state::GroupState;
 use crate::error::ConsensusResult;
-use crate::foundation::models::{GroupInfo, NodeInfo, StreamInfo, StreamState};
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamConfig, StreamName};
+use crate::foundation::models::{GroupInfo, NodeInfo, StreamConfig, StreamInfo, StreamState};
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 
 /// Trait for read-only operations on GlobalState
 #[async_trait::async_trait]

@@ -45,7 +45,10 @@ async fn test_rocksdb_storage_basic() {
     for i in 1..=5 {
         let message = format!("RocksDB test message {i}");
         client
-            .publish(stream_name.to_string(), message.into_bytes(), None)
+            .publish_to_stream(
+                stream_name.to_string(),
+                vec![proven_engine::Message::new(message.into_bytes())],
+            )
             .await
             .expect("Failed to publish message");
     }
@@ -134,7 +137,10 @@ async fn test_rocksdb_multi_node() {
         for i in 1..=3 {
             let message = format!("Node {} message {}", node_idx + 1, i);
             client
-                .publish(stream_name.to_string(), message.into_bytes(), None)
+                .publish_to_stream(
+                    stream_name.to_string(),
+                    vec![proven_engine::Message::new(message.into_bytes())],
+                )
                 .await
                 .expect("Failed to publish message");
         }

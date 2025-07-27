@@ -1,13 +1,9 @@
 //! Events emitted by the group consensus service (new event system)
 
-use std::num::NonZero;
-
 use proven_topology::NodeId;
 
-use crate::consensus::group::types::MessageData;
 use crate::foundation::events::Event;
 use crate::foundation::types::ConsensusGroupId;
-use std::sync::Arc;
 
 /// Messages appended event details
 #[derive(Debug, Clone)]

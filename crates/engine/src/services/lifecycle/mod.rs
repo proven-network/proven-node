@@ -34,11 +34,5 @@ mod shutdown;
 mod startup;
 mod types;
 
-pub use health::{HealthChecker, HealthReport};
 pub use service::{LifecycleConfig, LifecycleService};
-pub use shutdown::{ShutdownCoordinator, ShutdownOptions};
-pub use startup::{StartupCoordinator, StartupOptions};
-pub use types::{
-    ClusterFormationStrategy, ComponentHealth, ComponentState, HealthStatus, InitializationMode,
-    LifecycleError, LifecycleResult, ShutdownPhase, StartupPhase,
-};
+pub use types::{ComponentState, LifecycleError};

@@ -1,5 +1,6 @@
 //! Command handlers for group consensus commands
 
+use proven_attestation::Attestor;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
@@ -11,28 +12,39 @@ use crate::services::stream::{
     },
 };
 use proven_storage::{LogStorage, StorageAdaptor};
+use proven_topology::TopologyAdaptor;
+use proven_transport::Transport;
 
 /// Handler for PersistMessages command from group consensus
 #[derive(Clone)]
-pub struct PersistMessagesHandler<S>
+pub struct PersistMessagesHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    stream_service: Arc<StreamService<S>>,
+    stream_service: Arc<StreamService<T, G, A, S>>,
 }
 
-impl<S> PersistMessagesHandler<S>
+impl<T, G, A, S> PersistMessagesHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    pub fn new(stream_service: Arc<StreamService<S>>) -> Self {
+    pub fn new(stream_service: Arc<StreamService<T, G, A, S>>) -> Self {
         Self { stream_service }
     }
 }
 
 #[async_trait::async_trait]
-impl<S> RequestHandler<PersistMessages> for PersistMessagesHandler<S>
+impl<T, G, A, S> RequestHandler<PersistMessages> for PersistMessagesHandler<T, G, A, S>
 where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn handle(
@@ -86,25 +98,34 @@ where
 
 /// Handler for CreateStream command
 #[derive(Clone)]
-pub struct CreateStreamHandler<S>
+pub struct CreateStreamHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    stream_service: Arc<StreamService<S>>,
+    stream_service: Arc<StreamService<T, G, A, S>>,
 }
 
-impl<S> CreateStreamHandler<S>
+impl<T, G, A, S> CreateStreamHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    pub fn new(stream_service: Arc<StreamService<S>>) -> Self {
+    pub fn new(stream_service: Arc<StreamService<T, G, A, S>>) -> Self {
         Self { stream_service }
     }
 }
 
 #[async_trait::async_trait]
-impl<S> RequestHandler<CreateStream> for CreateStreamHandler<S>
+impl<T, G, A, S> RequestHandler<CreateStream> for CreateStreamHandler<T, G, A, S>
 where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn handle(
@@ -136,25 +157,34 @@ where
 
 /// Handler for DeleteStream command
 #[derive(Clone)]
-pub struct DeleteStreamHandler<S>
+pub struct DeleteStreamHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    stream_service: Arc<StreamService<S>>,
+    stream_service: Arc<StreamService<T, G, A, S>>,
 }
 
-impl<S> DeleteStreamHandler<S>
+impl<T, G, A, S> DeleteStreamHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    pub fn new(stream_service: Arc<StreamService<S>>) -> Self {
+    pub fn new(stream_service: Arc<StreamService<T, G, A, S>>) -> Self {
         Self { stream_service }
     }
 }
 
 #[async_trait::async_trait]
-impl<S> RequestHandler<DeleteStream> for DeleteStreamHandler<S>
+impl<T, G, A, S> RequestHandler<DeleteStream> for DeleteStreamHandler<T, G, A, S>
 where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn handle(
@@ -175,25 +205,34 @@ where
 
 /// Handler for ReadMessages command
 #[derive(Clone)]
-pub struct ReadMessagesHandler<S>
+pub struct ReadMessagesHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    stream_service: Arc<StreamService<S>>,
+    stream_service: Arc<StreamService<T, G, A, S>>,
 }
 
-impl<S> ReadMessagesHandler<S>
+impl<T, G, A, S> ReadMessagesHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    pub fn new(stream_service: Arc<StreamService<S>>) -> Self {
+    pub fn new(stream_service: Arc<StreamService<T, G, A, S>>) -> Self {
         Self { stream_service }
     }
 }
 
 #[async_trait::async_trait]
-impl<S> RequestHandler<ReadMessages> for ReadMessagesHandler<S>
+impl<T, G, A, S> RequestHandler<ReadMessages> for ReadMessagesHandler<T, G, A, S>
 where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn handle(
@@ -205,7 +244,7 @@ where
             .stream_service
             .read_messages(
                 request.stream_name.as_str(),
-                proven_storage::LogIndex::new(request.start_offset).expect("Invalid start offset"),
+                request.start_offset,
                 proven_storage::LogIndex::new(request.count).expect("Invalid count"),
             )
             .await
@@ -224,25 +263,34 @@ where
 
 /// Handler for GetStreamInfo command
 #[derive(Clone)]
-pub struct GetStreamInfoHandler<S>
+pub struct GetStreamInfoHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    stream_service: Arc<StreamService<S>>,
+    stream_service: Arc<StreamService<T, G, A, S>>,
 }
 
-impl<S> GetStreamInfoHandler<S>
+impl<T, G, A, S> GetStreamInfoHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    pub fn new(stream_service: Arc<StreamService<S>>) -> Self {
+    pub fn new(stream_service: Arc<StreamService<T, G, A, S>>) -> Self {
         Self { stream_service }
     }
 }
 
 #[async_trait::async_trait]
-impl<S> RequestHandler<GetStreamInfo> for GetStreamInfoHandler<S>
+impl<T, G, A, S> RequestHandler<GetStreamInfo> for GetStreamInfoHandler<T, G, A, S>
 where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn handle(

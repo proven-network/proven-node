@@ -1,0 +1,320 @@
+//! Example streaming echo service demonstrating the streaming network APIs
+
+use bytes::Bytes;
+use proven_network_new::{service::StreamingService, stream::Stream, NetworkError, NetworkResult};
+use proven_topology::NodeId;
+use std::collections::HashMap;
+use tracing::{error, info};
+
+/// A simple echo service that echoes back all data received on a stream
+pub struct EchoStreamingService;
+
+impl StreamingService for EchoStreamingService {
+    fn stream_type(&self) -> &'static str {
+        "echo_stream"
+    }
+}
+
+impl StreamingService for EchoStreamingService {
+    async fn handle_stream(
+        &self,
+        peer: NodeId,
+        mut stream: Stream,
+        metadata: HashMap<String, String>,
+    ) -> NetworkResult<()> {
+        info!(
+            "New echo stream from peer {} with metadata: {:?}",
+            peer, metadata
+        );
+
+        // Echo back all received data
+        loop {
+            match stream.recv().await {
+                Ok(data) => {
+                    info!("Received {} bytes from {}", data.len(), peer);
+
+                    // Echo the data back
+                    if let Err(e) = stream.send(data).await {
+                        error!("Failed to echo data: {}", e);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    info!("Stream closed: {}", e);
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// A more complex example: file transfer service
+pub struct FileTransferStreamingService {
+    storage_path: std::path::PathBuf,
+}
+
+impl FileTransferStreamingService {
+    pub fn new(storage_path: std::path::PathBuf) -> Self {
+        Self { storage_path }
+    }
+}
+
+impl StreamingService for FileTransferStreamingService {
+    fn stream_type(&self) -> &'static str {
+        "file_transfer"
+    }
+}
+
+impl StreamingService for FileTransferStreamingService {
+    async fn handle_stream(
+        &self,
+        peer: NodeId,
+        mut stream: Stream,
+        metadata: HashMap<String, String>,
+    ) -> NetworkResult<()> {
+        // Check operation type from metadata
+        match metadata.get("operation").map(|s| s.as_str()) {
+            Some("upload") => self.handle_upload(peer, stream, metadata).await,
+            Some("download") => self.handle_download(peer, stream, metadata).await,
+            _ => {
+                error!("Unknown operation in file transfer");
+                Err(NetworkError::Protocol("Unknown operation".to_string()))
+            }
+        }
+    }
+}
+
+impl FileTransferStreamingService {
+    async fn handle_upload(
+        &self,
+        peer: NodeId,
+        mut stream: Stream,
+        metadata: HashMap<String, String>,
+    ) -> NetworkResult<()> {
+        let filename = metadata
+            .get("filename")
+            .ok_or_else(|| NetworkError::Protocol("Missing filename".to_string()))?;
+
+        let file_size = metadata
+            .get("size")
+            .and_then(|s| s.parse::<u64>().ok())
+            .ok_or_else(|| NetworkError::Protocol("Invalid file size".to_string()))?;
+
+        info!(
+            "Receiving file '{}' ({} bytes) from {}",
+            filename, file_size, peer
+        );
+
+        // Create file path
+        let file_path = self.storage_path.join(filename);
+        let mut file = tokio::fs::File::create(&file_path)
+            .await
+            .map_err(|e| NetworkError::Io(e.to_string()))?;
+
+        let mut received = 0u64;
+
+        // Receive file data
+        while received < file_size {
+            match stream.recv().await {
+                Ok(data) => {
+                    use tokio::io::AsyncWriteExt;
+                    file.write_all(&data)
+                        .await
+                        .map_err(|e| NetworkError::Io(e.to_string()))?;
+
+                    received += data.len() as u64;
+
+                    // Send progress update
+                    let progress = format!("{}", (received * 100) / file_size);
+                    stream.send(Bytes::from(progress)).await?;
+                }
+                Err(e) => {
+                    error!("Error receiving file data: {}", e);
+                    return Err(NetworkError::Io(format!("Stream error: {}", e)));
+                }
+            }
+        }
+
+        info!("File '{}' received successfully", filename);
+        Ok(())
+    }
+
+    async fn handle_download(
+        &self,
+        peer: NodeId,
+        mut stream: Stream,
+        metadata: HashMap<String, String>,
+    ) -> NetworkResult<()> {
+        let filename = metadata
+            .get("filename")
+            .ok_or_else(|| NetworkError::Protocol("Missing filename".to_string()))?;
+
+        info!("Sending file '{}' to {}", filename, peer);
+
+        // Read file
+        let file_path = self.storage_path.join(filename);
+        let file_data = tokio::fs::read(&file_path)
+            .await
+            .map_err(|e| NetworkError::Io(e.to_string()))?;
+
+        // Send file in chunks
+        const CHUNK_SIZE: usize = 64 * 1024; // 64KB chunks
+
+        for chunk in file_data.chunks(CHUNK_SIZE) {
+            stream.send(Bytes::copy_from_slice(chunk)).await?;
+
+            // Wait for progress acknowledgment
+            match stream.recv().await {
+                Ok(progress) => {
+                    if let Ok(progress_str) = std::str::from_utf8(&progress) {
+                        info!("Download progress: {}%", progress_str);
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to receive progress ack: {}", e);
+                    break;
+                }
+            }
+        }
+
+        info!("File '{}' sent successfully", filename);
+        Ok(())
+    }
+}
+
+/// Bidirectional chat service example
+pub struct ChatStreamingService;
+
+impl StreamingService for ChatStreamingService {
+    fn stream_type(&self) -> &'static str {
+        "chat"
+    }
+}
+
+impl StreamingService for ChatStreamingService {
+    async fn handle_stream(
+        &self,
+        peer: NodeId,
+        mut stream: Stream,
+        metadata: HashMap<String, String>,
+    ) -> NetworkResult<()> {
+        let username = metadata
+            .get("username")
+            .cloned()
+            .unwrap_or_else(|| peer.to_string());
+        info!("Chat session started with {}", username);
+
+        // In a real implementation, you might spawn separate tasks for sending/receiving
+        loop {
+            match stream.recv().await {
+                Ok(message) => {
+                    if let Ok(text) = std::str::from_utf8(&message) {
+                        info!("[{}]: {}", username, text);
+
+                        // Echo back with acknowledgment
+                        let response = format!("Received: {}", text);
+                        if let Err(e) = stream.send(Bytes::from(response)).await {
+                            error!("Failed to send response: {}", e);
+                            break;
+                        }
+                    }
+                }
+                Err(e) => {
+                    info!("Chat session with {} ended: {}", username, e);
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ed25519_dalek::SigningKey;
+    use proven_attestation::MockAttestor;
+    use proven_network_new::{
+        service::create_streaming_handler, ConnectionPoolConfig, NetworkManager,
+    };
+    use proven_topology::{MockTopologyAdaptor, TopologyManager};
+    use proven_transport_tcp_new::TcpTransport;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn test_echo_service() {
+        // Create network managers
+        let transport1 = Arc::new(TcpTransport::new());
+        let transport2 = Arc::new(TcpTransport::new());
+
+        let topology = Arc::new(TopologyManager::new(MockTopologyAdaptor::new()));
+        let attestor = Arc::new(MockAttestor::new());
+        let governance = Arc::new(MockTopologyAdaptor::new());
+
+        let node1_id = NodeId::from([1u8; 32]);
+        let node2_id = NodeId::from([2u8; 32]);
+
+        let key1 = SigningKey::from_bytes(&[1u8; 32]);
+        let key2 = SigningKey::from_bytes(&[2u8; 32]);
+
+        let manager1 = NetworkManager::new(
+            node1_id.clone(),
+            transport1,
+            topology.clone(),
+            key1,
+            ConnectionPoolConfig::default(),
+            governance.clone(),
+            attestor.clone(),
+        );
+
+        let manager2 = NetworkManager::new(
+            node2_id.clone(),
+            transport2,
+            topology.clone(),
+            key2,
+            ConnectionPoolConfig::default(),
+            governance.clone(),
+            attestor.clone(),
+        );
+
+        // Register echo service on node 2
+        manager2
+            .register_streaming_service(EchoStreamingService)
+            .await
+            .unwrap();
+
+        // Start both managers
+        manager1
+            .start("127.0.0.1:0".parse().unwrap())
+            .await
+            .unwrap();
+        manager2
+            .start("127.0.0.1:0".parse().unwrap())
+            .await
+            .unwrap();
+
+        // Open stream from node 1 to node 2
+        let mut metadata = HashMap::new();
+        metadata.insert("test".to_string(), "true".to_string());
+
+        let mut stream = manager1
+            .open_stream(node2_id, "echo_stream", metadata)
+            .await
+            .unwrap();
+
+        // Send test data
+        let test_data = Bytes::from("Hello, streaming world!");
+        stream.send(test_data.clone()).await.unwrap();
+
+        // Receive echo
+        let echoed = stream.recv().await.unwrap();
+        assert_eq!(echoed, test_data);
+
+        // Cleanup
+        manager1.stop().await.unwrap();
+        manager2.stop().await.unwrap();
+    }
+}

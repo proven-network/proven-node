@@ -1,9 +1,9 @@
 //! Error types for the consensus system
 
-use proven_topology::NodeId;
 use std::fmt;
+
+use proven_topology::NodeId;
 use thiserror::Error;
-use tokio::task::JoinError;
 
 /// Result type for consensus operations
 pub type ConsensusResult<T> = Result<T, Error>;

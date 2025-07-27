@@ -4,46 +4,50 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use proven_attestation::Attestor;
 use tokio::sync::RwLock;
 use tokio::time::{interval, timeout};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use proven_network::NetworkManager;
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
 
 use crate::error::ConsensusResult;
+use crate::foundation::NodeStatus;
 use crate::services::membership::messages::{
     GlobalConsensusInfo, HealthCheckRequest, HealthCheckResponse, MembershipMessage,
     MembershipResponse,
 };
-use crate::services::membership::types::{HealthInfo, MembershipView, NodeStatus};
+use crate::services::membership::types::MembershipView;
 
 /// Health monitor for cluster members
-pub struct HealthMonitor<T, G>
+pub struct HealthMonitor<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     node_id: NodeId,
-    network: Arc<NetworkManager<T, G>>,
+    network_manager: Arc<NetworkManager<T, G, A>>,
     config: super::config::HealthConfig,
     health_sequence: Arc<RwLock<u64>>,
 }
 
-impl<T, G> HealthMonitor<T, G>
+impl<T, G, A> HealthMonitor<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     pub fn new(
         node_id: NodeId,
-        network: Arc<NetworkManager<T, G>>,
+        network_manager: Arc<NetworkManager<T, G, A>>,
         config: super::config::HealthConfig,
     ) -> Self {
         Self {
             node_id,
-            network,
+            network_manager,
             config,
             health_sequence: Arc::new(RwLock::new(0)),
         }
@@ -104,7 +108,7 @@ where
         // Check all nodes concurrently
         let mut handles = Vec::new();
         for node_id in nodes_to_check {
-            let network = self.network.clone();
+            let network_manager = self.network_manager.clone();
             let sequence = self.next_sequence().await;
             let timeout_duration = self.config.health_check_timeout;
 
@@ -117,7 +121,11 @@ where
                 let start = std::time::Instant::now();
                 let result = timeout(
                     timeout_duration,
-                    network.service_request(node_id.clone(), request, timeout_duration),
+                    network_manager.request_with_timeout(
+                        node_id.clone(),
+                        request,
+                        timeout_duration,
+                    ),
                 )
                 .await;
 
@@ -287,7 +295,7 @@ where
         member: &mut crate::services::membership::types::NodeMembership,
         info: GlobalConsensusInfo,
     ) {
-        use crate::services::membership::types::NodeRole;
+        use crate::foundation::NodeRole;
 
         // Clear existing global consensus roles
         member.roles.retain(|r| {

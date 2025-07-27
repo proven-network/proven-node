@@ -1,8 +1,8 @@
 //! Events emitted by the stream service (new event system)
 
+use crate::foundation::StreamConfig;
 use crate::foundation::events::Event;
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamConfig, StreamName};
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 
 /// Events emitted by the stream service
 #[derive(Debug, Clone)]

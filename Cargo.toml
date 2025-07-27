@@ -19,7 +19,7 @@ members = [
     "crates/code-package",
     "crates/core",
     "crates/dnscrypt-proxy",
-    "crates/enclave",
+    # "crates/enclave",
     "crates/engine",
     "crates/ethereum-lighthouse",
     "crates/ethereum-reth",
@@ -39,10 +39,7 @@ members = [
     "crates/local",
     "crates/local-cli",
     "crates/local-tui",
-    "crates/locks",
-    "crates/locks-memory",
     "crates/messaging",
-    "crates/messaging-engine",
     "crates/messaging-memory",
     "crates/network",
     "crates/passkeys",
@@ -75,6 +72,7 @@ members = [
     "crates/topology-governance",
     "crates/topology-mock",
     "crates/transport",
+    "crates/transport-memory",
     "crates/transport-tcp",
     "crates/transport-ws",
     "crates/util",
@@ -90,13 +88,13 @@ default-members = [
     "crates/attestation",
     "crates/attestation-mock",
     "crates/attestation-nsm",
-    "crates/bitcoin-core",
     "crates/bootable",
+    "crates/bitcoin-core",
     "crates/cert-store",
     "crates/code-package",
     "crates/core",
     "crates/dnscrypt-proxy",
-    "crates/enclave",
+    # "crates/enclave",
     "crates/engine",
     "crates/ethereum-lighthouse",
     "crates/ethereum-reth",
@@ -116,10 +114,7 @@ default-members = [
     "crates/local",
     "crates/local-cli",
     "crates/local-tui",
-    "crates/locks",
-    "crates/locks-memory",
     "crates/messaging",
-    "crates/messaging-engine",
     "crates/messaging-memory",
     "crates/network",
     "crates/passkeys",
@@ -152,6 +147,7 @@ default-members = [
     "crates/topology-governance",
     "crates/topology-mock",
     "crates/transport",
+    "crates/transport-memory",
     "crates/transport-tcp",
     "crates/transport-ws",
     "crates/util",
@@ -328,9 +324,11 @@ fastwebsockets = { version = "0.10.0", features = ["upgrade", "unstable-split"] 
 fdlimit = "0.3.0"
 filetime = "0.2.16"
 flate2 = { version = "1.1.2", default-features = false }
+flume = "0.11.0"
 fqdn = "0.4.6"
 fs3 = "0.5.0"
 futures = "0.3.21"
+futures-util = "0.3.21"
 glob = "0.3.2"
 h2 = "0.4.11"
 headers = "0.4.1"
@@ -398,6 +396,7 @@ notify = "8.1.0"
 nsm-nitro-enclave-utils = { version = "0.1.2", features = ["pki", "seed", "verify"] }
 num-bigint = { version = "0.4", features = ["rand"] }
 num-bigint-dig = "0.8.2"
+num_cpus = "1.16.0"
 num-integer = "0.1.45"
 num-traits = "0.2.19"
 once_cell = "1.21.3"
@@ -443,7 +442,7 @@ proven-cert-store = { path = "crates/cert-store" }
 proven-code-package = { path = "crates/code-package" }
 proven-core = { path = "crates/core" }
 proven-dnscrypt-proxy = { path = "crates/dnscrypt-proxy" }
-proven-enclave = { path = "crates/enclave" }
+# proven-enclave = { path = "crates/enclave" }
 proven-engine = { path = "crates/engine" }
 proven-ethereum-lighthouse = { path = "crates/ethereum-lighthouse" }
 proven-ethereum-reth = { path = "crates/ethereum-reth" }
@@ -463,10 +462,7 @@ proven-libsql = { path = "crates/libsql" }
 proven-local = { path = "crates/local" }
 proven-local-cli = { path = "crates/local-cli" }
 proven-local-tui = { path = "crates/local-tui" }
-proven-locks = { path = "crates/locks" }
-proven-locks-memory = { path = "crates/locks-memory" }
 proven-messaging = { path = "crates/messaging" }
-proven-messaging-engine = { path = "crates/messaging-engine" }
 proven-messaging-memory = { path = "crates/messaging-memory" }
 proven-network = { path = "crates/network" }
 proven-passkeys = { path = "crates/passkeys" }
@@ -487,7 +483,6 @@ proven-sql-direct = { path = "crates/sql-direct" }
 proven-sql-streamed = { path = "crates/sql-streamed" }
 proven-storage = { path = "crates/storage" }
 proven-storage-memory = { path = "crates/storage-memory" }
-proven-transport-memory = { path = "crates/transport-memory" }
 proven-storage-rocksdb = { path = "crates/storage-rocksdb" }
 proven-storage-s3 = { path = "crates/storage-s3" }
 proven-store = { path = "crates/store" }
@@ -500,6 +495,7 @@ proven-topology = { path = "crates/topology" }
 proven-topology-governance = { path = "crates/topology-governance" }
 proven-topology-mock = { path = "crates/topology-mock" }
 proven-transport = { path = "crates/transport" }
+proven-transport-memory = { path = "crates/transport-memory" }
 proven-transport-tcp = { path = "crates/transport-tcp" }
 proven-transport-ws = { path = "crates/transport-ws" }
 proven-util = { path = "crates/util" }

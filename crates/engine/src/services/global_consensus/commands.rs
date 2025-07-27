@@ -1,16 +1,18 @@
 //! Commands for the global consensus service (request-response patterns)
 
-use crate::consensus::global::{GlobalRequest, GlobalResponse};
-use crate::foundation::events::Request;
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamConfig, StreamName};
-use proven_topology::NodeId;
+use std::collections::BTreeMap;
 use std::time::Duration;
+
+use proven_topology::{Node, NodeId};
+
+use crate::foundation::StreamConfig;
+use crate::foundation::events::Request;
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 
 /// Initialize the global consensus cluster
 #[derive(Debug, Clone)]
 pub struct InitializeGlobalConsensus {
-    pub members: Vec<NodeId>,
+    pub members: BTreeMap<NodeId, Node>,
 }
 
 impl Request for InitializeGlobalConsensus {
@@ -133,6 +135,25 @@ impl Request for RemoveNodeFromConsensus {
 
     fn default_timeout() -> Duration {
         Duration::from_secs(30)
+    }
+}
+
+/// Add a node to a specific consensus group
+#[derive(Debug, Clone)]
+pub struct AddNodeToGroup {
+    pub node_id: NodeId,
+    pub group_id: ConsensusGroupId,
+}
+
+impl Request for AddNodeToGroup {
+    type Response = (); // No response needed
+
+    fn request_type() -> &'static str {
+        "AddNodeToGroup"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(10)
     }
 }
 

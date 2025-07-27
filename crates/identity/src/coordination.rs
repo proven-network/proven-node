@@ -53,14 +53,9 @@ impl LeadershipLease {
 }
 
 /// Coordinates leadership election using a stream.
-pub struct LeadershipCoordinator<T, G, S>
-where
-    T: proven_transport::Transport,
-    G: proven_topology::TopologyAdaptor,
-    S: proven_storage::StorageAdaptor,
-{
+pub struct LeadershipCoordinator {
     /// Engine client
-    client: Arc<Client<T, G, S>>,
+    client: Arc<Client>,
     /// Stream name for coordination
     stream_name: String,
     /// This node's ID
@@ -85,15 +80,10 @@ struct LeadershipState {
     last_seen_sequence: u64,
 }
 
-impl<T, G, S> LeadershipCoordinator<T, G, S>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    S: proven_storage::StorageAdaptor + 'static,
-{
+impl LeadershipCoordinator {
     /// Create a new leadership coordinator.
     pub fn new(
-        client: Arc<Client<T, G, S>>,
+        client: Arc<Client>,
         stream_name: String,
         node_id: NodeId,
         lease_duration: Duration,
@@ -177,65 +167,59 @@ where
     /// Watch the leadership stream for changes.
     #[allow(clippy::cognitive_complexity)]
     async fn watch_leadership_stream(
-        client: Arc<Client<T, G, S>>,
+        client: Arc<Client>,
         stream_name: String,
         node_id: NodeId,
         state: Arc<RwLock<LeadershipState>>,
     ) -> Result<(), Error> {
+        use tokio::pin;
+
         // Start from the beginning to build complete state
         let start_seq = LogIndex::new(1).unwrap();
 
-        let mut stream = client
+        let stream = client
             .stream_messages(stream_name.clone(), start_seq, None)
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 
+        pin!(stream);
+
         tracing::info!("Started watching leadership stream with follow mode");
 
-        while let Some(result) = tokio_stream::StreamExt::next(&mut stream).await {
-            match result {
-                Ok(message) => {
-                    // Deserialize lease
-                    let lease: LeadershipLease =
-                        ciborium::de::from_reader(&message.data.payload[..])
-                            .map_err(|e| Error::Deserialization(e.to_string()))?;
+        while let Some(message) = tokio_stream::StreamExt::next(&mut stream).await {
+            // Deserialize lease
+            let lease: LeadershipLease = ciborium::de::from_reader(&message.data.payload[..])
+                .map_err(|e| Error::Deserialization(e.to_string()))?;
 
-                    // Update state
-                    let mut state_guard = state.write().await;
+            // Update state
+            let mut state_guard = state.write().await;
 
-                    // Only consider valid leases
-                    if lease.is_valid() {
-                        state_guard.current_lease = Some(lease.clone());
-                        state_guard.is_leader = lease.node_id == node_id;
+            // Only consider valid leases
+            if lease.is_valid() {
+                state_guard.current_lease = Some(lease.clone());
+                state_guard.is_leader = lease.node_id == node_id;
 
-                        if state_guard.is_leader {
-                            tracing::info!(
-                                "We are the leader (lease expires at {})",
-                                lease.expires_at_ms
-                            );
-                        } else {
-                            tracing::debug!("Node {:?} is the leader", lease.node_id);
-                        }
-                    } else if let Some(current) = &state_guard.current_lease {
-                        // Lease expired
-                        if current.node_id == lease.node_id {
-                            tracing::info!("Leadership lease expired for node {:?}", lease.node_id);
-                            state_guard.current_lease = None;
-                            if state_guard.is_leader {
-                                state_guard.is_leader = false;
-                                tracing::warn!("We lost leadership due to lease expiry");
-                            }
-                        }
-                    }
-
-                    state_guard.last_seen_sequence = message.sequence.get();
+                if state_guard.is_leader {
+                    tracing::info!(
+                        "We are the leader (lease expires at {})",
+                        lease.expires_at_ms
+                    );
+                } else {
+                    tracing::debug!("Node {:?} is the leader", lease.node_id);
                 }
-                Err(e) => {
-                    tracing::error!("Error reading leadership stream: {}", e);
-                    // Continue watching after errors
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+            } else if let Some(current) = &state_guard.current_lease {
+                // Lease expired
+                if current.node_id == lease.node_id {
+                    tracing::info!("Leadership lease expired for node {:?}", lease.node_id);
+                    state_guard.current_lease = None;
+                    if state_guard.is_leader {
+                        state_guard.is_leader = false;
+                        tracing::warn!("We lost leadership due to lease expiry");
+                    }
                 }
             }
+
+            state_guard.last_seen_sequence = message.sequence.get();
         }
 
         Ok(())
@@ -244,7 +228,7 @@ where
     /// Periodically attempt to acquire or renew leadership.
     #[allow(clippy::cognitive_complexity)]
     async fn leadership_renewal_loop(
-        client: Arc<Client<T, G, S>>,
+        client: Arc<Client>,
         stream_name: String,
         node_id: NodeId,
         state: Arc<RwLock<LeadershipState>>,
@@ -291,7 +275,11 @@ where
                 }
 
                 // Publish lease claim
-                match client.publish(stream_name.clone(), payload, None).await {
+                let message = proven_engine::Message::new(payload);
+                match client
+                    .publish_to_stream(stream_name.clone(), vec![message])
+                    .await
+                {
                     Ok(_) => {
                         tracing::debug!("Published leadership lease claim");
                     }
@@ -304,12 +292,7 @@ where
     }
 }
 
-impl<T, G, S> Drop for LeadershipCoordinator<T, G, S>
-where
-    T: proven_transport::Transport,
-    G: proven_topology::TopologyAdaptor,
-    S: proven_storage::StorageAdaptor,
-{
+impl Drop for LeadershipCoordinator {
     fn drop(&mut self) {
         // Cancel background tasks
         let tasks = self.tasks.clone();

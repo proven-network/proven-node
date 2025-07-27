@@ -1,6 +1,7 @@
 //! Network adaptor for group consensus Raft integration
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use openraft::{
     error::{InstallSnapshotError, RPCError, RaftError},
@@ -10,7 +11,7 @@ use openraft::{
         InstallSnapshotResponse, VoteRequest, VoteResponse,
     },
 };
-use tokio::sync::RwLock;
+use proven_attestation::Attestor;
 
 use proven_network::NetworkManager;
 use proven_topology::NodeId;
@@ -22,22 +23,24 @@ use crate::consensus::group::GroupTypeConfig;
 use crate::foundation::types::ConsensusGroupId;
 
 /// Factory for creating group Raft network instances
-pub struct GroupNetworkFactory<T, G>
+pub struct GroupNetworkFactory<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
-    network_manager: Arc<NetworkManager<T, G>>,
+    network_manager: Arc<NetworkManager<T, G, A>>,
     group_id: ConsensusGroupId,
 }
 
-impl<T, G> GroupNetworkFactory<T, G>
+impl<T, G, A> GroupNetworkFactory<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     /// Create a new group network factory
-    pub fn new(network_manager: Arc<NetworkManager<T, G>>, group_id: ConsensusGroupId) -> Self {
+    pub fn new(network_manager: Arc<NetworkManager<T, G, A>>, group_id: ConsensusGroupId) -> Self {
         Self {
             network_manager,
             group_id,
@@ -45,12 +48,13 @@ where
     }
 }
 
-impl<T, G> RaftNetworkFactory<GroupTypeConfig> for GroupNetworkFactory<T, G>
+impl<T, G, A> RaftNetworkFactory<GroupTypeConfig> for GroupNetworkFactory<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
-    type Network = GroupRaftNetworkAdapter<T, G>;
+    type Network = GroupRaftNetworkAdapter<T, G, A>;
 
     async fn new_client(&mut self, target: NodeId, _node: &proven_topology::Node) -> Self::Network {
         GroupRaftNetworkAdapter {
@@ -62,23 +66,25 @@ where
 }
 
 /// Network adapter for group consensus
-pub struct GroupRaftNetworkAdapter<T, G>
+pub struct GroupRaftNetworkAdapter<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     /// Network manager for sending messages
-    network_manager: Arc<NetworkManager<T, G>>,
+    network_manager: Arc<NetworkManager<T, G, A>>,
     /// Group ID
     group_id: ConsensusGroupId,
     /// Target node ID
     target_node_id: NodeId,
 }
 
-impl<T, G> RaftNetwork<GroupTypeConfig> for GroupRaftNetworkAdapter<T, G>
+impl<T, G, A> RaftNetwork<GroupTypeConfig> for GroupRaftNetworkAdapter<T, G, A>
 where
     T: Transport,
     G: TopologyAdaptor,
+    A: Attestor,
 {
     async fn append_entries(
         &mut self,
@@ -90,6 +96,9 @@ where
     > {
         let timeout = option.hard_ttl();
 
+        // Ensure minimum timeout of 1 second for network operations
+        let timeout = timeout.max(Duration::from_secs(1));
+
         // Create the request message
         let message = GroupConsensusMessage::AppendEntries {
             group_id: self.group_id,
@@ -99,7 +108,7 @@ where
         // Send request and wait for response
         let response = self
             .network_manager
-            .service_request(self.target_node_id.clone(), message, timeout)
+            .request_with_timeout(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
 
@@ -130,6 +139,9 @@ where
     > {
         let timeout = option.hard_ttl();
 
+        // Ensure minimum timeout of 5 seconds for snapshot operations
+        let timeout = timeout.max(Duration::from_secs(5));
+
         // Create the request message
         let message = GroupConsensusMessage::InstallSnapshot {
             group_id: self.group_id,
@@ -139,7 +151,7 @@ where
         // Send request and wait for response
         let response = self
             .network_manager
-            .service_request(self.target_node_id.clone(), message, timeout)
+            .request_with_timeout(self.target_node_id.clone(), message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
 
@@ -168,6 +180,9 @@ where
     {
         let timeout = option.hard_ttl();
 
+        // Ensure minimum timeout of 1 second for vote operations
+        let timeout = timeout.max(Duration::from_secs(1));
+
         // Create the request message
         let message = GroupConsensusMessage::Vote {
             group_id: self.group_id,
@@ -182,7 +197,7 @@ where
         loop {
             match self
                 .network_manager
-                .service_request(self.target_node_id.clone(), message.clone(), timeout)
+                .request_with_timeout(self.target_node_id.clone(), message.clone(), timeout)
                 .await
             {
                 Ok(response) => {

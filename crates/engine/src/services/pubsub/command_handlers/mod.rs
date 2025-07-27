@@ -1,5 +1,7 @@
 //! Command handlers for PubSub service
 
-pub mod client;
+pub mod publish;
+pub mod subscribe;
 
-pub use client::{PublishMessageHandler, SubscribeHandler, UnsubscribeHandler};
+pub use publish::PublishHandler;
+pub use subscribe::SubscribeHandler;

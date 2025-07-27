@@ -2,9 +2,7 @@
 //!
 //! This module handles creating and restoring snapshots of the global state.
 
-use std::sync::Arc;
-
-use crate::foundation::{GlobalState, GlobalStateRead, GlobalStateWriter};
+use crate::foundation::{GlobalStateRead, GlobalStateWriter};
 use openraft::{
     LogId, RaftSnapshotBuilder, SnapshotMeta, StorageError, StoredMembership, storage::Snapshot,
 };

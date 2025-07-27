@@ -3,21 +3,18 @@
 //! This module provides a pure storage implementation that only handles
 //! log persistence without any business logic.
 
-use std::num::NonZero;
 use std::ops::RangeBounds;
 use std::sync::Arc;
 
+use bytes::Bytes;
 use openraft::{
     Entry, LogId, StorageError,
     storage::{IOFlushed, LogState, RaftLogReader, RaftLogStorage},
 };
-use tokio::sync::RwLock;
-
-use bytes::Bytes;
 use proven_storage::{LogIndex, LogStorage, StorageNamespace};
 
 use super::raft::GlobalTypeConfig;
-use crate::consensus::{LogIndexExt, OptionLogIndexExt, from_openraft_u64};
+use crate::consensus::from_openraft_u64;
 
 /// Raft log storage - only handles log persistence
 ///

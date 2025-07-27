@@ -1,13 +1,13 @@
 //! Group consensus callbacks implementation
 
 use async_trait::async_trait;
-use std::{num::NonZero, sync::Arc};
+use std::sync::Arc;
 
 use crate::{
     consensus::group::callbacks::GroupConsensusCallbacks,
     error::ConsensusResult,
     foundation::events::EventBus,
-    foundation::{GroupState, types::ConsensusGroupId},
+    foundation::types::ConsensusGroupId,
     services::group_consensus::events::{
         GroupConsensusEvent, MembershipChangedData, MessagesAppendedData,
     },
@@ -108,7 +108,7 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
 
         // Send command to persist messages
         if let Some(ref event_bus) = self.event_bus {
-            use crate::services::stream::StreamName;
+            use crate::foundation::StreamName;
             use crate::services::stream::commands::PersistMessages;
 
             let command = PersistMessages {

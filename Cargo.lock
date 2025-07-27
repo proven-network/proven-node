@@ -1306,12 +1306,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "assert_matches"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
-
-[[package]]
 name = "ast_node"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3733,9 +3727,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.23.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7825da0551e670a270a3a20b92f8a0bffeb7d6120fa86b64e5daa969b8dd1a10"
+checksum = "4d5ed53fe1a9476cc0238aa130024ea031384c592e3c895a7b8c25bcad5f2f33"
 dependencies = [
  "async-trait",
  "base32",
@@ -3746,7 +3740,7 @@ dependencies = [
  "data-url",
  "deno_error",
  "deno_media_type",
- "deno_path_util",
+ "deno_path_util 0.5.2",
  "http 1.3.1",
  "indexmap 2.10.0",
  "log",
@@ -3781,7 +3775,7 @@ dependencies = [
  "capacity_builder",
  "deno_error",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_semver",
  "glob",
  "ignore",
@@ -3824,7 +3818,7 @@ dependencies = [
  "deno_core_icudata",
  "deno_error",
  "deno_ops",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_unsync",
  "futures",
  "indexmap 2.10.0",
@@ -3955,7 +3949,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_fs",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "deno_tls",
  "dyn-clone",
@@ -4020,7 +4014,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_io",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "filetime",
  "junction",
@@ -4047,7 +4041,7 @@ dependencies = [
  "deno_ast",
  "deno_error",
  "deno_media_type",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_semver",
  "deno_unsync",
  "futures",
@@ -4149,7 +4143,7 @@ dependencies = [
  "deno_error",
  "deno_features",
  "deno_fetch",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "deno_tls",
  "denokv_proto",
@@ -4180,7 +4174,7 @@ dependencies = [
  "deno_node",
  "deno_npm 0.35.0",
  "deno_npm_installer",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
@@ -4316,7 +4310,7 @@ dependencies = [
  "deno_io",
  "deno_net",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "deno_process",
  "deno_subprocess_windows",
@@ -4436,7 +4430,7 @@ dependencies = [
  "deno_cache_dir",
  "deno_error",
  "deno_npm 0.35.0",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_semver",
  "deno_unsync",
  "faster-hex",
@@ -4473,7 +4467,7 @@ dependencies = [
  "deno_npm 0.35.0",
  "deno_npm_cache",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_resolver",
  "deno_semver",
  "deno_terminal",
@@ -4518,7 +4512,7 @@ version = "0.26.0"
 dependencies = [
  "deno_core",
  "deno_error",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "deno_telemetry",
  "libc",
@@ -4539,7 +4533,7 @@ version = "0.11.0"
 dependencies = [
  "boxed_error",
  "deno_error",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_semver",
  "indexmap 2.10.0",
  "pretty_assertions",
@@ -4564,12 +4558,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_path_util"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "995a5563d815755b07c0f4b7a25a99cd3ef1c2f261ed7d1e9a53eae050a3f77e"
+dependencies = [
+ "deno_error",
+ "percent-encoding",
+ "sys_traits",
+ "thiserror 2.0.12",
+ "url",
+]
+
+[[package]]
 name = "deno_permissions"
 version = "0.68.0"
 dependencies = [
  "capacity_builder",
  "deno_error",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_terminal",
  "deno_unsync",
  "fqdn",
@@ -4599,7 +4606,7 @@ dependencies = [
  "deno_fs",
  "deno_io",
  "deno_os",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "deno_subprocess_windows",
  "libc",
@@ -4637,7 +4644,7 @@ dependencies = [
  "deno_media_type",
  "deno_npm 0.35.0",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "deno_semver",
  "deno_terminal",
@@ -4686,7 +4693,7 @@ dependencies = [
  "deno_net",
  "deno_node",
  "deno_os",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "deno_process",
  "deno_resolver",
@@ -4992,7 +4999,7 @@ name = "denort_helper"
 version = "0.7.0"
 dependencies = [
  "deno_error",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "sys_traits",
  "tempfile",
  "thiserror 2.0.12",
@@ -5767,16 +5774,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
-]
-
-[[package]]
-name = "fdlimit"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e182f7dbc2ef73d9ef67351c5fbbea084729c48362d3ce9dd44c28e32e277fe5"
-dependencies = [
- "libc",
- "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -8060,9 +8057,9 @@ dependencies = [
 
 [[package]]
 name = "libsql"
-version = "0.9.18"
+version = "0.9.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acd99c54790a50cffb62b1bf3e82c747fafad296c2fd21acce3154e4d9112241"
+checksum = "c92f460194a673c29e82520a061a82f83892faca9ce6881db93d591cd38cb3dc"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -8076,9 +8073,9 @@ dependencies = [
 
 [[package]]
 name = "libsql-ffi"
-version = "0.9.18"
+version = "0.9.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f72c71234e1ad056592c977f5353b9ee87a2f9923cc7ac80bce52b7e30dbe702"
+checksum = "64691b229b9d5c0754115f59a0e5c0d1bcc102bfe402b96f2bbf9d5150a4ab3c"
 dependencies = [
  "bindgen 0.66.1",
  "cc",
@@ -8088,9 +8085,9 @@ dependencies = [
 
 [[package]]
 name = "libsql-rusqlite"
-version = "0.9.18"
+version = "0.9.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc5d27776273a28e4eb1a63e9abb924f7e0d8a3f26b5b713724826f3e0c8bf6f"
+checksum = "c502ebc6fd1a7ba1b686c47226016fb8e913080c4021491bda33ca33c6fa1ab4"
 dependencies = [
  "bitflags 2.9.1",
  "fallible-iterator 0.2.0",
@@ -8102,9 +8099,9 @@ dependencies = [
 
 [[package]]
 name = "libsql-sys"
-version = "0.9.18"
+version = "0.9.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11f4b1c9314de9c3f4d768e3b03d5e2d0b95747423dcb55c69494c49a3630728"
+checksum = "9e7b9ab82fa6122efe2b2fe066043d6330aa4a7aa656b4ec0df9768ffd1ea6a0"
 dependencies = [
  "bytes",
  "libsql-ffi",
@@ -8186,9 +8183,9 @@ checksum = "241eaef5fd12c88705a01fc1066c48c4b36e0dd4377dcdc7ec3942cea7a69956"
 
 [[package]]
 name = "litrs"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
+checksum = "f5e54036fe321fd421e10d732f155734c4e4afd610dd556d9a82833ab3ee0bed"
 
 [[package]]
 name = "lock_api"
@@ -8620,71 +8617,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "netlink-packet-core"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72724faf704479d67b388da142b186f916188505e7e0b26719019c525882eda4"
-dependencies = [
- "anyhow",
- "byteorder",
- "netlink-packet-utils",
-]
-
-[[package]]
-name = "netlink-packet-route"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56d83370a96813d7c977f8b63054f1162df6e5784f1c598d689236564fb5a6f2"
-dependencies = [
- "anyhow",
- "bitflags 2.9.1",
- "byteorder",
- "libc",
- "log",
- "netlink-packet-core",
- "netlink-packet-utils",
-]
-
-[[package]]
-name = "netlink-packet-utils"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ede8a08c71ad5a95cdd0e4e52facd37190977039a4704eb82a283f713747d34"
-dependencies = [
- "anyhow",
- "byteorder",
- "paste",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "netlink-proto"
-version = "0.11.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72452e012c2f8d612410d89eea01e2d9b56205274abb35d53f60200b2ec41d60"
-dependencies = [
- "bytes",
- "futures",
- "log",
- "netlink-packet-core",
- "netlink-sys",
- "thiserror 2.0.12",
-]
-
-[[package]]
-name = "netlink-sys"
-version = "0.8.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16c903aa70590cb93691bf97a767c8d1d6122d2cc9070433deb3bbf36ce8bd23"
-dependencies = [
- "bytes",
- "futures",
- "libc",
- "log",
- "tokio",
-]
-
-[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8749,7 +8681,7 @@ dependencies = [
  "deno_graph",
  "deno_media_type",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_semver",
  "futures",
  "lazy-regex",
@@ -9833,6 +9765,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "portpicker"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be97d76faf1bfab666e1375477b23fde79eccf0276e9b63b92a39d676a889ba9"
+dependencies = [
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10088,21 +10029,6 @@ dependencies = [
 
 [[package]]
 name = "prometheus"
-version = "0.13.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
-dependencies = [
- "cfg-if",
- "fnv",
- "lazy_static",
- "memchr",
- "parking_lot 0.12.4",
- "protobuf 2.28.0",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "prometheus"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ca5326d8d0b950a9acd87e6a3f94745394f62e4dae1b1ee22b2bc0c394af43a"
@@ -10112,7 +10038,7 @@ dependencies = [
  "lazy_static",
  "memchr",
  "parking_lot 0.12.4",
- "protobuf 3.7.2",
+ "protobuf",
  "thiserror 2.0.12",
 ]
 
@@ -10190,12 +10116,6 @@ dependencies = [
 
 [[package]]
 name = "protobuf"
-version = "2.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
-
-[[package]]
-name = "protobuf"
 version = "3.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d65a1d4ddae7d8b5de68153b48f6aa3bba8cb002b243dbdbc55a5afbc98f99f4"
@@ -10224,6 +10144,7 @@ dependencies = [
  "ciborium",
  "ed25519-dalek",
  "futures",
+ "proven-attestation-mock",
  "proven-engine",
  "proven-network",
  "proven-storage",
@@ -10404,78 +10325,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-enclave"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum 0.8.4",
- "bytes",
- "ciborium",
- "cidr",
- "ed25519-dalek",
- "fdlimit",
- "futures",
- "hex",
- "http 1.3.1",
- "proven-applications",
- "proven-attestation",
- "proven-attestation-nsm",
- "proven-bootable",
- "proven-cert-store",
- "proven-core",
- "proven-dnscrypt-proxy",
- "proven-engine",
- "proven-external-fs",
- "proven-http-letsencrypt",
- "proven-identity",
- "proven-imds",
- "proven-instance-details",
- "proven-kms",
- "proven-messaging",
- "proven-messaging-memory",
- "proven-network",
- "proven-passkeys",
- "proven-postgres",
- "proven-radix-aggregator",
- "proven-radix-gateway",
- "proven-radix-nft-verifier-gateway",
- "proven-radix-node",
- "proven-runtime",
- "proven-sessions",
- "proven-sql",
- "proven-sql-streamed",
- "proven-storage",
- "proven-storage-memory",
- "proven-store",
- "proven-store-asm",
- "proven-store-memory",
- "proven-store-s3",
- "proven-topology",
- "proven-topology-mock",
- "proven-transport",
- "proven-transport-ws",
- "proven-vsock-cac",
- "proven-vsock-proxy",
- "proven-vsock-rpc",
- "proven-vsock-tracing",
- "radix-common 1.3.0",
- "rand 0.8.5",
- "rlimit",
- "rtnetlink",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "tokio-vsock",
- "tower-http",
- "tracing",
- "tracing-panic",
- "tracing-subscriber 0.3.19",
- "uuid",
-]
-
-[[package]]
 name = "proven-engine"
 version = "0.1.0"
 dependencies = [
@@ -10501,7 +10350,7 @@ dependencies = [
  "num_cpus",
  "openraft",
  "parking_lot 0.12.4",
- "prometheus 0.13.4",
+ "prometheus",
  "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
@@ -10707,7 +10556,9 @@ dependencies = [
  "bytes",
  "chrono",
  "ciborium",
+ "ed25519-dalek",
  "futures",
+ "proven-attestation-mock",
  "proven-engine",
  "proven-network",
  "proven-storage",
@@ -10934,26 +10785,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-locks"
-version = "0.1.0"
-dependencies = [
- "async-trait",
-]
-
-[[package]]
-name = "proven-locks-memory"
-version = "0.1.0"
-dependencies = [
- "assert_matches",
- "async-trait",
- "proven-locks",
- "thiserror 2.0.12",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "proven-messaging"
 version = "0.1.0"
 dependencies = [
@@ -10962,44 +10793,6 @@ dependencies = [
  "futures",
  "paste",
  "proven-bootable",
-]
-
-[[package]]
-name = "proven-messaging-engine"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "ed25519-dalek",
- "futures",
- "hex",
- "parking_lot 0.12.4",
- "paste",
- "proven-attestation-mock",
- "proven-bootable",
- "proven-engine",
- "proven-messaging",
- "proven-network",
- "proven-storage",
- "proven-storage-memory",
- "proven-topology",
- "proven-topology-mock",
- "proven-transport",
- "proven-transport-memory",
- "proven-util",
- "rand 0.8.5",
- "serde",
- "serde_cbor",
- "serde_json",
- "serial_test",
- "tempfile",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
- "tracing-test",
- "uuid",
 ]
 
 [[package]]
@@ -11028,10 +10821,13 @@ dependencies = [
  "async-trait",
  "bytes",
  "ciborium",
- "dashmap 6.1.0",
+ "coset",
+ "dashmap 5.5.3",
  "ed25519-dalek",
+ "flume",
  "futures",
- "hex",
+ "pin-project-lite",
+ "proven-attestation",
  "proven-attestation-mock",
  "proven-bootable",
  "proven-topology",
@@ -11039,12 +10835,11 @@ dependencies = [
  "proven-transport",
  "proven-transport-tcp",
  "proven-util",
- "proven-verification",
+ "rand 0.8.5",
  "serde",
- "thiserror 2.0.12",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-test",
- "tokio-util",
  "tracing",
  "tracing-subscriber 0.3.19",
  "uuid",
@@ -11400,7 +11195,7 @@ dependencies = [
  "lru 0.16.0",
  "md5",
  "miniz_oxide",
- "prometheus 0.14.0",
+ "prometheus",
  "proven-storage",
  "proven-vsock-rpc",
  "rand 0.8.5",
@@ -11449,8 +11244,10 @@ dependencies = [
  "async-trait",
  "bytes",
  "deno_error",
+ "ed25519-dalek",
  "lru 0.12.5",
  "paste",
+ "proven-attestation-mock",
  "proven-engine",
  "proven-network",
  "proven-storage",
@@ -11587,7 +11384,6 @@ dependencies = [
  "proven-verification",
  "rand 0.8.5",
  "serde",
- "serde_json",
  "thiserror 2.0.12",
  "tokio",
  "tokio-test",
@@ -11602,12 +11398,15 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "futures",
+ "dashmap 5.5.3",
+ "flume",
+ "once_cell",
  "proven-topology",
  "proven-transport",
- "thiserror 2.0.12",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "tracing-subscriber 0.3.19",
  "uuid",
 ]
 
@@ -11645,27 +11444,20 @@ dependencies = [
  "axum 0.8.4",
  "bytes",
  "dashmap 6.1.0",
- "ed25519-dalek",
- "futures",
- "proven-attestation",
- "proven-attestation-mock",
- "proven-network",
+ "flume",
+ "futures-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "portpicker",
  "proven-topology",
- "proven-topology-mock",
  "proven-transport",
- "proven-util",
- "proven-verification",
- "rand 0.8.5",
- "reqwest",
- "serde",
+ "thiserror 2.0.12",
  "tokio",
- "tokio-test",
  "tokio-tungstenite 0.27.0",
- "tower-http",
+ "tower 0.5.2",
  "tracing",
  "tracing-subscriber 0.3.19",
  "url",
- "uuid",
 ]
 
 [[package]]
@@ -11741,7 +11533,7 @@ dependencies = [
  "parking_lot 0.12.4",
  "pathdiff",
  "pin-project",
- "prometheus 0.14.0",
+ "prometheus",
  "proptest",
  "proven-util",
  "proven-vsock-rpc",
@@ -12764,15 +12556,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rlimit"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7043b63bd0cd1aaa628e476b80e6d4023a3b50eb32789f2728908107bd0c793a"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "rlp"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12828,24 +12611,6 @@ dependencies = [
  "spki",
  "subtle",
  "zeroize",
-]
-
-[[package]]
-name = "rtnetlink"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fbe0a03f6b9b483c67d4b328fc5d66c8db0b6aa274e0fa2def71b5e442a69acf"
-dependencies = [
- "futures",
- "log",
- "netlink-packet-core",
- "netlink-packet-route",
- "netlink-packet-utils",
- "netlink-proto",
- "netlink-sys",
- "nix 0.29.0",
- "thiserror 1.0.69",
- "tokio",
 ]
 
 [[package]]
@@ -13180,7 +12945,7 @@ dependencies = [
  "deno_node",
  "deno_npm 0.35.0",
  "deno_package_json",
- "deno_path_util",
+ "deno_path_util 0.4.0",
  "deno_permissions",
  "deno_process",
  "deno_resolver",
@@ -15558,16 +15323,6 @@ dependencies = [
  "log",
  "once_cell",
  "tracing-core",
-]
-
-[[package]]
-name = "tracing-panic"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7bf1298a179837099f9309243af3b554e840f7f67f65e9f55294913299bd4cc5"
-dependencies = [
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]

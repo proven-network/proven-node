@@ -7,7 +7,10 @@ use std::time::SystemTime;
 use tokio::sync::RwLock;
 
 use super::types::*;
-use crate::{error::ConsensusResult, foundation::ConsensusGroupId};
+use crate::{
+    error::ConsensusResult,
+    foundation::{ConsensusGroupId, HealthStatus},
+};
 use proven_topology::NodeId;
 
 /// Cluster information

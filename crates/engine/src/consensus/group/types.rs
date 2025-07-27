@@ -1,13 +1,13 @@
 //! Types for group consensus layer
 
-use std::{num::NonZero, sync::Arc};
+use std::sync::Arc;
 
 use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 
 /// Message type for consensus operations
 pub type MessageData = crate::foundation::Message;
-use crate::services::stream::StreamName;
+use crate::foundation::StreamName;
 
 /// Group consensus request
 #[derive(Debug, Clone, Serialize, Deserialize)]

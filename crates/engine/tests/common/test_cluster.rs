@@ -7,23 +7,22 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use ed25519_dalek::SigningKey;
+use futures::future;
 use proven_attestation_mock::MockAttestor;
-use proven_bootable::Bootable;
 use proven_engine::{Engine, EngineBuilder, EngineConfig};
-use proven_network::NetworkManager;
+use proven_network::{NetworkManager, connection_pool::ConnectionPoolConfig};
 use proven_storage::{StorageAdaptor, StorageManager};
 use proven_storage_memory::MemoryStorage;
 use proven_storage_rocksdb::RocksDbStorage;
 use proven_topology::{Node as TopologyNode, TopologyAdaptor, Version};
 use proven_topology::{NodeId, TopologyManager};
 use proven_topology_mock::MockTopologyAdaptor;
-use proven_transport::Config as TransportConfig;
-use proven_transport_tcp::{TcpConfig, TcpTransport};
+use proven_transport_tcp::{TcpOptions, TcpTransport};
 use proven_util::port_allocator::allocate_port;
 use rand::rngs::OsRng;
 use tempfile::TempDir;
-use tokio::sync::RwLock;
-use tracing::info;
+use tokio::sync::{Mutex, RwLock};
+use tracing::{info, warn};
 
 /// Transport type for test cluster
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -59,8 +58,9 @@ pub struct TestCluster {
     /// Temp directories to keep alive
     temp_dirs: Vec<TempDir>,
     /// Storage managers for RocksDB nodes (kept alive across restarts)
-    rocksdb_storage_managers:
-        std::sync::Mutex<HashMap<String, Arc<StorageManager<RocksDbStorage>>>>,
+    rocksdb_storage_managers: Mutex<HashMap<String, Arc<StorageManager<RocksDbStorage>>>>,
+    /// Topology managers for test access
+    topology_managers: Mutex<Vec<Arc<TopologyManager<MockTopologyAdaptor>>>>,
 }
 
 impl TestCluster {
@@ -99,7 +99,8 @@ impl TestCluster {
             versions,
             cluster_id,
             temp_dirs: Vec::new(),
-            rocksdb_storage_managers: std::sync::Mutex::new(HashMap::new()),
+            rocksdb_storage_managers: Mutex::new(HashMap::new()),
+            topology_managers: Mutex::new(Vec::new()),
         }
     }
 
@@ -129,24 +130,50 @@ impl TestCluster {
         &mut self,
         count: usize,
     ) -> (
-        Vec<
-            Engine<
-                TcpTransport<MockTopologyAdaptor, MockAttestor>,
-                MockTopologyAdaptor,
-                MemoryStorage,
-            >,
-        >,
+        Vec<Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, MemoryStorage>>,
+        Vec<NodeInfo>,
+    ) {
+        self.add_nodes_with_mode(count, true).await
+    }
+
+    /// Add nodes to the cluster without starting them
+    /// Returns (engines, node_infos) tuple
+    pub async fn add_nodes_without_starting(
+        &mut self,
+        count: usize,
+    ) -> (
+        Vec<Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, MemoryStorage>>,
+        Vec<NodeInfo>,
+    ) {
+        self.add_nodes_with_mode(count, false).await
+    }
+
+    /// Internal method to add nodes with optional auto-start
+    async fn add_nodes_with_mode(
+        &mut self,
+        count: usize,
+        auto_start: bool,
+    ) -> (
+        Vec<Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, MemoryStorage>>,
         Vec<NodeInfo>,
     ) {
         let mut engines = Vec::new();
         let mut node_infos = Vec::new();
 
-        // Create and fully start each node one at a time
+        // Create and optionally start each node one at a time
         // This ensures nodes are added to topology incrementally
         for i in 0..count {
-            info!("Creating and starting node {} of {}", i + 1, count);
+            if auto_start {
+                info!("Creating and starting node {} of {}", i + 1, count);
+            } else {
+                info!("Creating node {} of {} (without starting)", i + 1, count);
+            }
 
-            let (engine, node_info) = self.create_tcp_node().await;
+            let (engine, node_info) = if auto_start {
+                self.create_tcp_node().await
+            } else {
+                self.create_tcp_node_without_starting().await
+            };
 
             // Get short node ID for logging
             let node_id_str = node_info.node_id.to_string();
@@ -159,6 +186,64 @@ impl TestCluster {
 
             engines.push(engine);
             node_infos.push(node_info);
+
+            // After adding each node, refresh topology on ALL nodes so they see each other
+            let manager_count = self.topology_managers.lock().await.len();
+            if manager_count > 1 {
+                info!(
+                    "Refreshing topology on all {} nodes after adding node {}",
+                    manager_count,
+                    i + 1
+                );
+
+                // Give the first node's services time to fully initialize before the second node tries to connect
+                info!("Waiting for services to initialize...");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+
+                // Refresh all topology managers including the new node's
+                let managers = self.topology_managers.lock().await;
+                let refresh_futures: Vec<_> = managers
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, manager)| {
+                        let manager = manager.clone();
+                        async move {
+                            if let Err(e) = manager.refresh_topology().await {
+                                warn!("Failed to refresh topology on manager {}: {}", idx, e);
+                            } else {
+                                let peers = manager.get_all_peers().await;
+                                info!("Manager {} now sees {} peers", idx, peers.len());
+                            }
+                        }
+                    })
+                    .collect();
+                drop(managers); // Drop the lock before awaiting
+                future::join_all(refresh_futures).await;
+
+                // Wait for topology to propagate
+                info!("Waiting for topology to propagate...");
+                tokio::time::sleep(Duration::from_secs(2)).await;
+
+                // Verify all nodes can see each other
+                let managers = self.topology_managers.lock().await;
+                let peer_check_futures: Vec<_> = managers
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, manager)| {
+                        let manager = manager.clone();
+                        async move {
+                            let peers = manager.get_all_peers().await;
+                            info!(
+                                "After propagation, manager {} sees {} peers",
+                                idx,
+                                peers.len()
+                            );
+                        }
+                    })
+                    .collect();
+                drop(managers); // Drop the lock before awaiting
+                future::join_all(peer_check_futures).await;
+            }
         }
 
         info!("All {} nodes created and started successfully", count);
@@ -166,11 +251,32 @@ impl TestCluster {
         (engines, node_infos)
     }
 
+    /// Create a single TCP node without starting it
+    async fn create_tcp_node_without_starting(
+        &mut self,
+    ) -> (
+        Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, MemoryStorage>,
+        NodeInfo,
+    ) {
+        self.create_tcp_node_internal(false).await
+    }
+
     /// Create a single TCP node and start it
     async fn create_tcp_node(
         &mut self,
     ) -> (
-        Engine<TcpTransport<MockTopologyAdaptor, MockAttestor>, MockTopologyAdaptor, MemoryStorage>,
+        Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, MemoryStorage>,
+        NodeInfo,
+    ) {
+        self.create_tcp_node_internal(true).await
+    }
+
+    /// Internal method to create a TCP node with optional start
+    async fn create_tcp_node_internal(
+        &mut self,
+        _start_immediately: bool,
+    ) -> (
+        Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, MemoryStorage>,
         NodeInfo,
     ) {
         // Generate node identity
@@ -190,6 +296,9 @@ impl TestCluster {
         // Add node to governance
         self.add_node_to_governance(&signing_key, port).await;
         info!("[Node-{}] Added to governance with port {}", short_id, port);
+
+        // Give governance a moment to propagate the update
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Create governance instance for this node
         let governance = self.governance.read().await.clone();
@@ -212,28 +321,30 @@ impl TestCluster {
             topology_config,
         ));
 
+        // Store the topology manager for test access
+        {
+            let mut managers = self.topology_managers.lock().await;
+            managers.push(topology_manager.clone());
+        }
+
         // Create TCP transport
-        let tcp_config = TcpConfig {
-            transport: TransportConfig::default(),
-            local_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            retry_attempts: 3,
-            retry_delay_ms: 500,
+        let tcp_options = TcpOptions {
+            listen_addr: Some(format!("127.0.0.1:{port}").parse().unwrap()),
         };
 
-        let transport = TcpTransport::new(
-            tcp_config,
-            Arc::new(self.attestor.clone()),
-            governance,
-            signing_key.clone(),
-            topology_manager.clone(),
-        );
+        let transport = TcpTransport::new(tcp_options);
         let transport = Arc::new(transport);
 
         // Create network manager
+        let connection_pool_config = ConnectionPoolConfig::default();
         let network_manager = Arc::new(NetworkManager::new(
             node_id.clone(),
             transport.clone(),
             topology_manager.clone(),
+            signing_key.clone(),
+            connection_pool_config,
+            governance.clone(),
+            Arc::new(self.attestor.clone()),
         ));
 
         // Create storage manager
@@ -252,19 +363,28 @@ impl TestCluster {
             .expect("Failed to build engine");
 
         // Start all components
-        let actual_addr = transport
-            .start()
-            .await
-            .expect("Failed to start TCP transport");
-        info!(
-            "[Node-{}] TCP transport listening on {}",
-            short_id, actual_addr
-        );
+        info!("[Node-{}] Starting components on port {}", short_id, port);
 
         topology_manager
             .start()
             .await
             .expect("Failed to start topology manager");
+
+        // Force an immediate topology refresh so the node sees any existing nodes
+        info!(
+            "[Node-{}] Refreshing topology before starting network",
+            short_id
+        );
+        if let Err(e) = topology_manager.refresh_topology().await {
+            warn!("[Node-{}] Failed to refresh topology: {}", short_id, e);
+        } else {
+            let peers = topology_manager.get_all_peers().await;
+            info!(
+                "[Node-{}] Sees {} peers before engine start",
+                short_id,
+                peers.len()
+            );
+        }
 
         network_manager
             .start()
@@ -304,11 +424,7 @@ impl TestCluster {
         signing_key: Option<SigningKey>,
         existing_port: Option<u16>,
     ) -> (
-        Engine<
-            TcpTransport<MockTopologyAdaptor, MockAttestor>,
-            MockTopologyAdaptor,
-            RocksDbStorage,
-        >,
+        Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, RocksDbStorage>,
         NodeInfo,
     ) {
         // Use provided signing key or generate new one
@@ -329,6 +445,9 @@ impl TestCluster {
         if existing_port.is_none() {
             self.add_node_to_governance(&signing_key, port).await;
             info!("[Node-{}] Added to governance with port {}", short_id, port);
+
+            // Give governance a moment to propagate the update
+            tokio::time::sleep(Duration::from_millis(100)).await;
         } else {
             info!(
                 "[Node-{}] Already in governance, reusing port {}",
@@ -357,34 +476,36 @@ impl TestCluster {
             topology_config,
         ));
 
+        // Store the topology manager for test access
+        {
+            let mut managers = self.topology_managers.lock().await;
+            managers.push(topology_manager.clone());
+        }
+
         // Create TCP transport
-        let tcp_config = TcpConfig {
-            transport: TransportConfig::default(),
-            local_addr: format!("127.0.0.1:{port}").parse().unwrap(),
-            retry_attempts: 3,
-            retry_delay_ms: 500,
+        let tcp_options = TcpOptions {
+            listen_addr: Some(format!("127.0.0.1:{port}").parse().unwrap()),
         };
 
-        let transport = TcpTransport::new(
-            tcp_config,
-            Arc::new(self.attestor.clone()),
-            governance,
-            signing_key.clone(),
-            topology_manager.clone(),
-        );
+        let transport = TcpTransport::new(tcp_options);
         let transport = Arc::new(transport);
 
         // Create network manager
+        let connection_pool_config = ConnectionPoolConfig::default();
         let network_manager = Arc::new(NetworkManager::new(
             node_id.clone(),
             transport.clone(),
             topology_manager.clone(),
+            signing_key.clone(),
+            connection_pool_config,
+            governance.clone(),
+            Arc::new(self.attestor.clone()),
         ));
 
         // Check if we already have a storage manager for this node (for restarts)
         let node_key = node_id.to_string();
         let existing_manager = {
-            let managers = self.rocksdb_storage_managers.lock().unwrap();
+            let managers = self.rocksdb_storage_managers.lock().await;
             managers.get(&node_key).cloned()
         };
 
@@ -403,7 +524,7 @@ impl TestCluster {
 
             // Store it for future reuse
             {
-                let mut managers = self.rocksdb_storage_managers.lock().unwrap();
+                let mut managers = self.rocksdb_storage_managers.lock().await;
                 managers.insert(node_key.clone(), storage_manager.clone());
             }
             info!("[Node-{}] Created new storage manager", short_id);
@@ -422,19 +543,28 @@ impl TestCluster {
             .expect("Failed to build engine");
 
         // Start all components
-        let actual_addr = transport
-            .start()
-            .await
-            .expect("Failed to start TCP transport");
-        info!(
-            "[Node-{}] TCP transport listening on {}",
-            short_id, actual_addr
-        );
+        info!("[Node-{}] Starting components on port {}", short_id, port);
 
         topology_manager
             .start()
             .await
             .expect("Failed to start topology manager");
+
+        // Force an immediate topology refresh so the node sees any existing nodes
+        info!(
+            "[Node-{}] Refreshing topology before starting network",
+            short_id
+        );
+        if let Err(e) = topology_manager.refresh_topology().await {
+            warn!("[Node-{}] Failed to refresh topology: {}", short_id, e);
+        } else {
+            let peers = topology_manager.get_all_peers().await;
+            info!(
+                "[Node-{}] Sees {} peers before engine start",
+                short_id,
+                peers.len()
+            );
+        }
 
         network_manager
             .start()
@@ -487,14 +617,15 @@ impl TestCluster {
 
     /// Wait for global cluster formation
     /// This waits for all nodes to discover each other and establish global consensus
-    pub async fn wait_for_global_cluster<T, G, S>(
+    pub async fn wait_for_global_cluster<T, G, A, S>(
         &self,
-        engines: &[Engine<T, G, S>],
+        engines: &[Engine<T, G, A, S>],
         timeout: Duration,
     ) -> Result<(), String>
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
+        A: proven_attestation::Attestor,
         S: StorageAdaptor,
     {
         let start = std::time::Instant::now();
@@ -512,7 +643,7 @@ impl TestCluster {
         // After the initial wait, verify that at least the coordinator has created groups
         let mut any_has_groups = false;
         for engine in engines {
-            if let Ok(groups) = engine.node_groups().await
+            if let Ok(groups) = engine.client().node_groups().await
                 && !groups.is_empty()
             {
                 any_has_groups = true;
@@ -555,14 +686,15 @@ impl TestCluster {
     }
 
     /// Wait for all nodes to have joined consensus groups
-    pub async fn wait_for_group_formation<T, G, S>(
+    pub async fn wait_for_group_formation<T, G, A, S>(
         &self,
-        engines: &[Engine<T, G, S>],
+        engines: &[Engine<T, G, A, S>],
         timeout: Duration,
     ) -> Result<(), String>
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
+        A: proven_attestation::Attestor,
         S: StorageAdaptor,
     {
         let start = Instant::now();
@@ -572,7 +704,7 @@ impl TestCluster {
 
             for engine in engines {
                 // Check if node has any groups
-                match engine.node_groups().await {
+                match engine.client().node_groups().await {
                     Ok(groups) => {
                         if groups.is_empty() {
                             all_have_groups = false;
@@ -596,7 +728,7 @@ impl TestCluster {
 
         // Log which nodes don't have groups
         for (i, engine) in engines.iter().enumerate() {
-            match engine.node_groups().await {
+            match engine.client().node_groups().await {
                 Ok(groups) => {
                     if groups.is_empty() {
                         info!("Node {} has no groups", i);
@@ -617,14 +749,15 @@ impl TestCluster {
 
     /// Wait for the default group (ID 1) to become routable
     /// This only requires at least 1 member (typically the coordinator)
-    pub async fn wait_for_default_group_routable<T, G, S>(
+    pub async fn wait_for_default_group_routable<T, G, A, S>(
         &self,
-        engines: &[Engine<T, G, S>],
+        engines: &[Engine<T, G, A, S>],
         timeout: Duration,
     ) -> Result<(), String>
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
+        A: proven_attestation::Attestor,
         S: StorageAdaptor,
     {
         self.wait_for_specific_group(
@@ -637,9 +770,9 @@ impl TestCluster {
     }
 
     /// Wait for a specific group to be formed on all expected nodes
-    pub async fn wait_for_specific_group<T, G, S>(
+    pub async fn wait_for_specific_group<T, G, A, S>(
         &self,
-        engines: &[Engine<T, G, S>],
+        engines: &[Engine<T, G, A, S>],
         group_id: proven_engine::foundation::types::ConsensusGroupId,
         expected_members: usize,
         timeout: Duration,
@@ -647,6 +780,7 @@ impl TestCluster {
     where
         T: proven_transport::Transport,
         G: TopologyAdaptor,
+        A: proven_attestation::Attestor,
         S: StorageAdaptor,
     {
         let start = Instant::now();
@@ -655,14 +789,17 @@ impl TestCluster {
             let mut members_found = 0;
 
             for engine in engines {
-                match engine.group_state(group_id).await {
-                    Ok(state) => {
+                match engine.client().group_state(group_id).await {
+                    Ok(Some(state)) => {
                         if state.is_member {
                             members_found += 1;
                         }
                     }
-                    Err(_) => {
+                    Ok(None) => {
                         // Group doesn't exist on this node yet
+                    }
+                    Err(_) => {
+                        // Error getting group state
                     }
                 }
             }
@@ -689,13 +826,7 @@ impl TestCluster {
         &mut self,
         count: usize,
     ) -> (
-        Vec<
-            Engine<
-                TcpTransport<MockTopologyAdaptor, MockAttestor>,
-                MockTopologyAdaptor,
-                RocksDbStorage,
-            >,
-        >,
+        Vec<Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, RocksDbStorage>>,
         Vec<NodeInfo>,
     ) {
         self.add_nodes_with_rocksdb_internal(count, None).await
@@ -706,13 +837,7 @@ impl TestCluster {
         &mut self,
         node_infos: Vec<NodeInfo>,
     ) -> (
-        Vec<
-            Engine<
-                TcpTransport<MockTopologyAdaptor, MockAttestor>,
-                MockTopologyAdaptor,
-                RocksDbStorage,
-            >,
-        >,
+        Vec<Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, RocksDbStorage>>,
         Vec<NodeInfo>,
     ) {
         self.add_nodes_with_rocksdb_internal(node_infos.len(), Some(node_infos))
@@ -725,13 +850,7 @@ impl TestCluster {
         count: usize,
         existing_node_infos: Option<Vec<NodeInfo>>,
     ) -> (
-        Vec<
-            Engine<
-                TcpTransport<MockTopologyAdaptor, MockAttestor>,
-                MockTopologyAdaptor,
-                RocksDbStorage,
-            >,
-        >,
+        Vec<Engine<TcpTransport, MockTopologyAdaptor, MockAttestor, RocksDbStorage>>,
         Vec<NodeInfo>,
     ) {
         let mut engines = Vec::new();
@@ -785,9 +904,42 @@ impl TestCluster {
             engines.push(engine);
             node_infos.push(node_info);
 
-            // Give a small delay between nodes to allow topology updates to propagate
-            if i < count - 1 {
-                tokio::time::sleep(Duration::from_millis(100)).await;
+            // Force topology refresh on all nodes (including the new one) so they see each other
+            if i > 0 {
+                let manager_count = self.topology_managers.lock().await.len();
+                info!("Refreshing topology on all {} nodes", manager_count);
+
+                // Refresh all topology managers including the new node's
+                let managers = self.topology_managers.lock().await;
+                let refresh_futures: Vec<_> = managers
+                    .iter()
+                    .map(|manager| {
+                        let manager = manager.clone();
+                        async move {
+                            if let Err(e) = manager.refresh_topology().await {
+                                warn!("Failed to refresh topology: {}", e);
+                            }
+                        }
+                    })
+                    .collect();
+                drop(managers); // Drop the lock before awaiting
+                future::join_all(refresh_futures).await;
+
+                // Wait for topology to propagate
+                info!("Waiting for topology to propagate...");
+                tokio::time::sleep(Duration::from_secs(1)).await;
+
+                // Verify the new node can see existing nodes
+                let managers = self.topology_managers.lock().await;
+                if let Some(new_manager) = managers.last() {
+                    let new_manager = new_manager.clone();
+                    drop(managers); // Drop the lock before awaiting
+                    let peers = new_manager.get_all_peers().await;
+                    info!("New node sees {} peers after topology refresh", peers.len());
+                    if peers.is_empty() {
+                        warn!("WARNING: New node still sees no peers after topology refresh!");
+                    }
+                }
             }
         }
 
@@ -800,14 +952,15 @@ impl TestCluster {
     }
 
     /// Stop a specific engine by index
-    pub async fn stop_engine<T, G, L>(
+    pub async fn stop_engine<T, G, A, L>(
         &self,
-        engines: &mut [Engine<T, G, L>],
+        engines: &mut [Engine<T, G, A, L>],
         index: usize,
     ) -> Result<(), proven_engine::error::Error>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
+        A: proven_attestation::Attestor,
         L: proven_storage::StorageAdaptor,
     {
         if index >= engines.len() {
@@ -824,14 +977,15 @@ impl TestCluster {
     }
 
     /// Start a specific engine by index
-    pub async fn start_engine<T, G, L>(
+    pub async fn start_engine<T, G, A, L>(
         &self,
-        engines: &mut [Engine<T, G, L>],
+        engines: &mut [Engine<T, G, A, L>],
         index: usize,
     ) -> Result<(), proven_engine::error::Error>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
+        A: proven_attestation::Attestor,
         L: proven_storage::StorageAdaptor,
     {
         if index >= engines.len() {
@@ -848,13 +1002,14 @@ impl TestCluster {
     }
 
     /// Stop all engines
-    pub async fn stop_all_engines<T, G, L>(
+    pub async fn stop_all_engines<T, G, A, L>(
         &self,
-        engines: &mut [Engine<T, G, L>],
+        engines: &mut [Engine<T, G, A, L>],
     ) -> Result<(), proven_engine::error::Error>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
+        A: proven_attestation::Attestor,
         L: proven_storage::StorageAdaptor,
     {
         info!("Stopping all {} engines", engines.len());
@@ -867,13 +1022,14 @@ impl TestCluster {
     }
 
     /// Start all engines
-    pub async fn start_all_engines<T, G, L>(
+    pub async fn start_all_engines<T, G, A, L>(
         &self,
-        engines: &mut [Engine<T, G, L>],
+        engines: &mut [Engine<T, G, A, L>],
     ) -> Result<(), proven_engine::error::Error>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
+        A: proven_attestation::Attestor,
         L: proven_storage::StorageAdaptor,
     {
         info!("Starting all {} engines", engines.len());
@@ -884,7 +1040,7 @@ impl TestCluster {
         }
 
         // Wait for all engines to start
-        let results = futures::future::join_all(start_futures).await;
+        let results = future::join_all(start_futures).await;
         for (i, result) in results.into_iter().enumerate() {
             result.map_err(|e| {
                 proven_engine::error::Error::with_context(
@@ -898,38 +1054,67 @@ impl TestCluster {
     }
 
     /// Wait for all nodes to see the expected topology size
-    pub async fn wait_for_topology_size<T, G, L>(
+    pub async fn wait_for_topology_size<T, G, A, L>(
         &self,
-        engines: &[Engine<T, G, L>],
+        _engines: &[Engine<T, G, A, L>],
         expected_size: usize,
         timeout: Duration,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
         T: proven_transport::Transport,
         G: proven_topology::TopologyAdaptor,
+        A: proven_attestation::Attestor,
         L: proven_storage::StorageAdaptor,
     {
         let start = tokio::time::Instant::now();
 
         loop {
-            // Force refresh on all nodes
-            for engine in engines {
-                let _ = engine.topology_manager().force_refresh().await;
+            // Force refresh on all topology managers
+            {
+                let managers = self.topology_managers.lock().await;
+                let refresh_futures: Vec<_> = managers
+                    .iter()
+                    .map(|manager| {
+                        let manager = manager.clone();
+                        async move {
+                            let _ = manager.force_refresh().await;
+                        }
+                    })
+                    .collect();
+                drop(managers); // Drop the lock before awaiting
+                future::join_all(refresh_futures).await;
             }
 
             // Check if all nodes see the expected size
             let mut all_see_size = true;
-            for (i, engine) in engines.iter().enumerate() {
-                let nodes = engine.topology_manager().get_cached_nodes().await?;
-                if nodes.len() != expected_size {
-                    all_see_size = false;
-                    tracing::debug!(
-                        "Node {} sees {} nodes, expected {}",
-                        i,
-                        nodes.len(),
-                        expected_size
-                    );
-                    break;
+            {
+                let managers = self.topology_managers.lock().await;
+                let node_check_futures: Vec<_> = managers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, manager)| {
+                        let manager = manager.clone();
+                        async move {
+                            let nodes = manager.get_cached_nodes().await;
+                            (i, nodes)
+                        }
+                    })
+                    .collect();
+                drop(managers); // Drop the lock before awaiting
+
+                let results = future::join_all(node_check_futures).await;
+                for (i, nodes) in results {
+                    let nodes = nodes?;
+                    if nodes.len() != expected_size {
+                        all_see_size = false;
+                        tracing::debug!(
+                            "Node {} sees {} nodes, expected {}",
+                            i,
+                            nodes.len(),
+                            expected_size
+                        );
+                        break;
+                    }
                 }
             }
 

@@ -9,10 +9,11 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use proven_engine::EngineState;
+use bytes::Bytes;
+use futures::StreamExt;
+use proven_engine::{EngineState, StreamName};
 use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
 use proven_storage::LogIndex;
-use tokio_stream::StreamExt;
 use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
@@ -99,7 +100,7 @@ async fn test_stream_operations() {
 
     println!("Publishing {num_messages} messages to stream");
     for i in 0..num_messages {
-        let payload = format!("Message {i}").into_bytes();
+        let payload = Bytes::from(format!("Message {i}"));
         let mut metadata = HashMap::new();
         metadata.insert("index".to_string(), i.to_string());
         metadata.insert(
@@ -113,26 +114,29 @@ async fn test_stream_operations() {
 
         expected_messages.push((payload.clone(), metadata.clone()));
 
+        // Convert payload and metadata to match publish_to_stream API
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+            .to_string();
+        let message = proven_engine::Message::new(payload.to_vec())
+            .with_header("index", i.to_string())
+            .with_header("timestamp", &timestamp);
+
         let response = client
-            .publish(stream_name.clone(), payload, Some(metadata))
+            .publish_to_stream(stream_name.clone(), vec![message])
             .await
             .expect("Failed to publish message");
 
-        match response {
-            proven_engine::consensus::group::types::GroupResponse::Appended {
-                sequence, ..
-            } => {
-                println!("  Published message {i} with sequence {sequence}");
-                // Verify sequences are monotonically increasing
-                assert_eq!(
-                    sequence,
-                    LogIndex::new(i as u64 + 1).unwrap(),
-                    "Sequence should be {}",
-                    i + 1
-                );
-            }
-            other => panic!("Unexpected response: {other:?}"),
-        }
+        println!("  Published message {i} with sequence {response}");
+        // Verify sequences are monotonically increasing
+        assert_eq!(
+            response,
+            LogIndex::new(i as u64 + 1).unwrap(),
+            "Sequence should be {}",
+            i + 1
+        );
     }
 
     // Give time for all messages to be persisted
@@ -147,19 +151,16 @@ async fn test_stream_operations() {
         .expect("Stream should exist");
 
     println!("Stream info: {stream_info:?}");
-    assert_eq!(stream_info.name, stream_name);
-    assert_eq!(
-        stream_info.last_sequence,
-        LogIndex::new(num_messages as u64).unwrap()
-    );
+    assert_eq!(stream_info.name, StreamName::from(stream_name.clone()));
+    assert_eq!(stream_info.end_offset, num_messages as u64);
 
     // Step 5: Read messages back
     println!("Reading messages back from stream");
     let read_messages = client
-        .read_stream(
+        .read_from_stream(
             stream_name.clone(),
             LogIndex::new(1).unwrap(),
-            LogIndex::new(num_messages as u64).unwrap(),
+            num_messages as u64,
         )
         .await
         .expect("Failed to read messages");
@@ -256,7 +257,7 @@ async fn test_ephemeral_stream() {
     for i in 0..5 {
         let payload = format!("Ephemeral message {i}").into_bytes();
         client
-            .publish(stream_name.clone(), payload, None)
+            .publish_to_stream(stream_name.clone(), vec![payload])
             .await
             .expect("Failed to publish to ephemeral stream");
     }
@@ -270,7 +271,7 @@ async fn test_ephemeral_stream() {
 
     // TODO: Once ClientService properly queries stream service, check last_sequence
     // assert_eq!(info.last_sequence, 5);
-    assert_eq!(info.name, stream_name);
+    assert_eq!(info.name, StreamName::from(stream_name));
 
     println!("Ephemeral stream test completed successfully!");
 
@@ -296,7 +297,7 @@ async fn test_stream_not_found() {
 
     // Try to publish to non-existent stream
     let result = client
-        .publish("non-existent-stream".to_string(), vec![1, 2, 3], None)
+        .publish_to_stream("non-existent-stream".to_string(), vec![vec![1, 2, 3]])
         .await;
 
     assert!(result.is_err());
@@ -368,8 +369,13 @@ async fn test_stream_reading() {
 
         expected_messages.push((payload.clone(), metadata.clone()));
 
+        // Convert payload and metadata to match publish_to_stream API
+        let message = proven_engine::Message::new(payload)
+            .with_header("index", i.to_string())
+            .with_header("test_id", "stream_reading");
+
         client
-            .publish(stream_name.clone(), payload, Some(metadata))
+            .publish_to_stream(stream_name.clone(), vec![message])
             .await
             .expect("Failed to publish message");
     }
@@ -379,7 +385,7 @@ async fn test_stream_reading() {
 
     // Test 1: Stream all messages
     println!("\nTest 1: Streaming all messages");
-    let mut stream = client
+    let stream = client
         .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create stream reader");
@@ -387,8 +393,9 @@ async fn test_stream_reading() {
     println!("Stream reader created, starting to read messages...");
 
     let mut count = 0usize;
-    while let Some(result) = stream.next().await {
-        let msg = result.expect("Failed to read message from stream");
+    futures::pin_mut!(stream);
+    while let Some(msg) = stream.next().await {
+        // msg is already a StoredMessage, not a Result
 
         // Verify sequence number
         assert_eq!(
@@ -431,7 +438,7 @@ async fn test_stream_reading() {
 
     // Test 2: Stream a range of messages
     println!("\nTest 2: Streaming range [10, 30)");
-    let mut stream = client
+    let stream = client
         .stream_messages(
             stream_name.clone(),
             LogIndex::new(10).unwrap(),
@@ -442,8 +449,8 @@ async fn test_stream_reading() {
 
     let mut count = 0;
     let mut range_index = 9; // Start at index 9 (sequence 10)
-    while let Some(result) = stream.next().await {
-        let msg = result.expect("Failed to read message from stream");
+    futures::pin_mut!(stream);
+    while let Some(msg) = stream.next().await {
         assert!(
             msg.sequence >= LogIndex::new(10).unwrap() && msg.sequence < LogIndex::new(30).unwrap(),
             "Message outside range"
@@ -476,7 +483,7 @@ async fn test_stream_reading() {
 
     // Test 3: Stream with custom batch size (batch size is now handled internally)
     println!("\nTest 3: Streaming messages");
-    let mut stream = client
+    let stream = client
         .stream_messages(
             stream_name.clone(),
             LogIndex::new(1).unwrap(),
@@ -486,9 +493,8 @@ async fn test_stream_reading() {
         .expect("Failed to create stream reader");
 
     let mut count = 0;
-    while let Some(result) = stream.next().await {
-        let msg = result.expect("Failed to read message from stream");
-
+    futures::pin_mut!(stream);
+    while let Some(msg) = stream.next().await {
         // Verify this message matches our expected content
         let msg_index = (msg.sequence.get() - 1) as usize;
         let (expected_payload, _expected_metadata) = &expected_messages[msg_index];
@@ -515,19 +521,16 @@ async fn test_stream_reading() {
 
     // Test 4: Early termination (drop stream before finishing)
     println!("\nTest 4: Testing early termination");
-    let mut stream = client
+    let stream = client
         .stream_messages(stream_name.clone(), LogIndex::new(1).unwrap(), None)
         .await
         .expect("Failed to create stream reader");
 
+    futures::pin_mut!(stream);
     // Read only 5 messages then drop
     for (i, (expected_payload, _expected_metadata)) in expected_messages.iter().enumerate().take(5)
     {
-        let msg = stream
-            .next()
-            .await
-            .unwrap()
-            .expect("Failed to read message");
+        let msg = stream.next().await.unwrap();
 
         // Even when terminating early, verify the messages we do read
         assert_eq!(
@@ -536,8 +539,6 @@ async fn test_stream_reading() {
             "Payload mismatch at position {i} during early termination"
         );
     }
-    drop(stream);
-    println!("Successfully dropped stream early after verifying 5 messages");
 
     // Give time for cleanup
     tokio::time::sleep(Duration::from_millis(500)).await;

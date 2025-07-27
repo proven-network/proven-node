@@ -5,8 +5,8 @@
 
 use std::time::Duration;
 
+use crate::foundation::StoredMessage;
 use crate::foundation::events::StreamRequest;
-use crate::services::stream::StoredMessage;
 use proven_storage::LogIndex;
 
 /// Stream messages from a stream

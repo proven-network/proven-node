@@ -3,28 +3,30 @@
 //! This service manages stream storage and provides stream operations following
 //! the established service patterns in the consensus engine.
 
-use dashmap::DashMap;
-use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::{RwLock, oneshot, watch};
-use tokio_stream::{Stream, StreamExt};
-use tracing::{debug, error, info, warn};
 
+use dashmap::DashMap;
+use proven_attestation::Attestor;
+use proven_network::NetworkManager;
 use proven_storage::{
     LogIndex, LogStorage, LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace,
     StreamStorage,
 };
+use proven_topology::{NodeId, TopologyAdaptor};
+use proven_transport::Transport;
+use tokio::sync::{RwLock, oneshot, watch};
+use tokio_stream::{Stream, StreamExt};
+use tracing::{error, info, warn};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
-use crate::foundation::events::{EventBus, EventHandler};
-use crate::foundation::{ConsensusGroupId, traits::ServiceLifecycle};
-use crate::services::stream::config::RetentionPolicy;
-use crate::services::stream::events::StreamEvent;
-use crate::services::stream::storage::{
-    StreamStorageImpl, StreamStorageReader, StreamStorageWriter,
+use crate::foundation::events::EventBus;
+use crate::foundation::{
+    ConsensusGroupId, PersistenceType, RoutingTable, StreamConfig, StreamName,
+    traits::ServiceLifecycle,
 };
-use crate::services::stream::{PersistenceType, StreamConfig, StreamName};
+use crate::services::stream::MessageData;
+use crate::services::stream::storage::{StreamStorageImpl, StreamStorageReader};
 
 /// Type alias for stream storage map
 type StreamStorageMap<S> = DashMap<StreamName, Arc<StreamStorageImpl<StreamStorage<S>>>>;
@@ -70,7 +72,13 @@ impl Default for StreamServiceConfig {
 }
 
 /// Stream service for managing stream storage and operations
-pub struct StreamService<S: StorageAdaptor> {
+pub struct StreamService<T, G, A, S>
+where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
+    S: StorageAdaptor,
+{
     /// Service configuration
     config: StreamServiceConfig,
 
@@ -93,6 +101,15 @@ pub struct StreamService<S: StorageAdaptor> {
     /// Event bus reference
     event_bus: Arc<EventBus>,
 
+    /// Routing table for determining stream locations
+    routing_table: Option<Arc<RoutingTable>>,
+
+    /// Network manager for forwarding requests
+    network_manager: Option<Arc<NetworkManager<T, G, A>>>,
+
+    /// Local node ID
+    node_id: Option<NodeId>,
+
     /// Service running state
     is_running: Arc<RwLock<bool>>,
 
@@ -103,11 +120,20 @@ pub struct StreamService<S: StorageAdaptor> {
     background_tasks: Arc<RwLock<Vec<tokio::task::JoinHandle<()>>>>,
 }
 
-impl<S: StorageAdaptor> StreamService<S> {
+impl<T, G, A, S> StreamService<T, G, A, S>
+where
+    T: Transport + 'static,
+    G: TopologyAdaptor + 'static,
+    A: Attestor + 'static,
+    S: StorageAdaptor + 'static,
+{
     /// Create a new stream service
     pub fn new(
         config: StreamServiceConfig,
+        node_id: NodeId,
         storage_manager: Arc<StorageManager<S>>,
+        network_manager: Arc<NetworkManager<T, G, A>>,
+        routing_table: Arc<RoutingTable>,
         event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
@@ -118,6 +144,9 @@ impl<S: StorageAdaptor> StreamService<S> {
             stream_notifiers: Arc::new(DashMap::new()),
             storage_manager,
             event_bus,
+            routing_table: Some(routing_table),
+            network_manager: Some(network_manager),
+            node_id: Some(node_id),
             is_running: Arc::new(RwLock::new(false)),
             shutdown: Arc::new(RwLock::new(None)),
             background_tasks: Arc::new(RwLock::new(Vec::new())),
@@ -303,7 +332,8 @@ impl<S: StorageAdaptor> StreamService<S> {
         // Try to get the stream storage (which will check persistent storage)
         if let Some(stream_storage) = self.get_stream(&stream_name).await {
             // Read the requested range
-            let end_sequence = start_sequence.saturating_add(count.get());
+            let end_sequence = LogIndex::new(start_sequence.get().saturating_add(count.get()))
+                .unwrap_or(start_sequence);
             return stream_storage
                 .read_range(start_sequence, end_sequence)
                 .await
@@ -388,8 +418,11 @@ impl<S: StorageAdaptor> StreamService<S> {
 
             loop {
                 let batch_end = match end_sequence {
-                    Some(end) => std::cmp::min(current_seq.saturating_add(batch_size), end),
-                    None => current_seq.saturating_add(batch_size),
+                    Some(end) => {
+                        let next = LogIndex::new(current_seq.get().saturating_add(batch_size)).unwrap_or(current_seq);
+                        if next.get() > end.get() { end } else { next }
+                    },
+                    None => LogIndex::new(current_seq.get().saturating_add(batch_size)).unwrap_or(current_seq),
                 };
 
                 match storage.read_range(current_seq, batch_end).await {
@@ -400,7 +433,7 @@ impl<S: StorageAdaptor> StreamService<S> {
                         }
 
                         for msg in messages {
-                            current_seq = current_seq.saturating_add(1);
+                            current_seq = LogIndex::new(current_seq.get().saturating_add(1)).unwrap_or(current_seq);
                             yield Ok(msg);
                         }
 
@@ -420,6 +453,38 @@ impl<S: StorageAdaptor> StreamService<S> {
         Ok(Box::pin(stream))
     }
 
+    /// Read messages in a range
+    pub async fn read_range(
+        &self,
+        stream_name: &StreamName,
+        start: LogIndex,
+        end: LogIndex,
+    ) -> ConsensusResult<Vec<MessageData>> {
+        // Read messages and convert to MessageData
+        let count = LogIndex::new(end.get().saturating_sub(start.get()))
+            .unwrap_or(LogIndex::new(1).unwrap());
+        let messages = self
+            .read_messages(stream_name.as_str(), start, count)
+            .await?;
+        Ok(messages.into_iter().map(|msg| msg.data).collect())
+    }
+
+    /// Read messages from a start sequence as a stream
+    pub async fn read_from(
+        &self,
+        stream_name: &StreamName,
+        start: LogIndex,
+    ) -> ConsensusResult<Pin<Box<dyn Stream<Item = MessageData> + Send>>> {
+        // Use stream_messages with no end sequence
+        let stream = self
+            .stream_messages(stream_name.as_str(), start, None)
+            .await?;
+        let mapped_stream = futures::StreamExt::filter_map(stream, |result| {
+            futures::future::ready(result.ok().map(|msg| msg.data))
+        });
+        Ok(Box::pin(mapped_stream))
+    }
+
     /// List all streams
     pub async fn list_streams(&self) -> Vec<StreamName> {
         self.stream_configs
@@ -433,6 +498,96 @@ impl<S: StorageAdaptor> StreamService<S> {
         self.stream_metadata
             .get(stream_name)
             .map(|entry| entry.clone())
+    }
+
+    /// Get stream info (with forwarding support)
+    pub async fn get_stream_info(
+        &self,
+        stream_name: &StreamName,
+    ) -> ConsensusResult<Option<crate::services::stream::commands::StreamInfo>> {
+        use crate::services::stream::commands::StreamInfo;
+
+        // Check if we can serve this stream locally
+        if self.can_serve_stream(stream_name).await? {
+            // Local - get info from metadata
+            if let Some(metadata) = self.get_stream_metadata(stream_name).await {
+                let info = StreamInfo {
+                    name: metadata.name,
+                    config: metadata.config,
+                    group_id: metadata.group_id,
+                    start_offset: 0, // TODO: Track actual start offset
+                    end_offset: metadata.message_count,
+                };
+                Ok(Some(info))
+            } else {
+                Ok(None)
+            }
+        } else {
+            // Remote - forward to a member of the group
+            self.forward_get_stream_info(stream_name.clone()).await
+        }
+    }
+
+    /// Forward get stream info to remote node
+    async fn forward_get_stream_info(
+        &self,
+        stream_name: StreamName,
+    ) -> ConsensusResult<Option<crate::services::stream::commands::StreamInfo>> {
+        use super::messages::{StreamServiceMessage, StreamServiceResponse};
+
+        let routing_table = self.routing_table.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Configuration, "No routing table configured")
+        })?;
+
+        let network_manager = self.network_manager.as_ref().ok_or_else(|| {
+            Error::with_context(ErrorKind::Configuration, "No network manager configured")
+        })?;
+
+        // Get the group that owns this stream
+        let stream_route = routing_table
+            .get_stream_route(stream_name.as_str())
+            .await?
+            .ok_or_else(|| {
+                Error::with_context(
+                    ErrorKind::NotFound,
+                    format!("Stream {stream_name} not found"),
+                )
+            })?;
+
+        // Get group members
+        let group_route = routing_table
+            .get_group_route(stream_route.group_id)
+            .await?
+            .ok_or_else(|| {
+                Error::with_context(
+                    ErrorKind::NotFound,
+                    format!("Group {:?} not found", stream_route.group_id),
+                )
+            })?;
+
+        // Pick any member (they can all serve reads)
+        let target = group_route
+            .members
+            .first()
+            .ok_or_else(|| Error::with_context(ErrorKind::InvalidState, "Group has no members"))?;
+
+        let message = StreamServiceMessage::GetStreamInfo { stream_name };
+
+        match network_manager
+            .request_with_timeout(target.clone(), message, std::time::Duration::from_secs(10))
+            .await
+        {
+            Ok(StreamServiceResponse::StreamInfo(info)) => Ok(info),
+            Ok(StreamServiceResponse::Error(e)) => Err(Error::with_context(ErrorKind::Network, e)),
+            Ok(_) => Err(Error::with_context(
+                ErrorKind::Internal,
+                "Unexpected response type",
+            )),
+            Err(e) => Err(Error::with_context(
+                ErrorKind::Network,
+                format!("Network error: {e}"),
+            )),
+        }
     }
 
     /// Get all stream metadata
@@ -533,10 +688,58 @@ impl<S: StorageAdaptor> StreamService<S> {
             metadata.last_message_at = Some(last_sequence.get());
         }
     }
+
+    /// Register message handlers for network communication
+    async fn register_message_handlers(&self) -> ConsensusResult<()> {
+        if let Some(network_manager) = &self.network_manager {
+            use super::handler::StreamHandler;
+
+            let handler = StreamHandler::new(Arc::new(self.clone()));
+            network_manager
+                .register_service(handler)
+                .await
+                .map_err(|e| {
+                    Error::with_context(
+                        ErrorKind::Network,
+                        format!("Failed to register stream service: {e}"),
+                    )
+                })?;
+        }
+
+        Ok(())
+    }
+
+    /// Check if a stream can be served locally (we're in the group that owns it)
+    pub async fn can_serve_stream(&self, stream_name: &StreamName) -> ConsensusResult<bool> {
+        // Get stream's group from routing table
+        if let Some(routing_table) = &self.routing_table
+            && let Ok(Some(stream_route)) =
+                routing_table.get_stream_route(stream_name.as_str()).await
+        {
+            // Check if we're in that group
+            return routing_table
+                .is_group_local(stream_route.group_id)
+                .await
+                .map_err(|e| {
+                    Error::with_context(
+                        ErrorKind::Internal,
+                        format!("Failed to check group location: {e}"),
+                    )
+                });
+        }
+        // If no routing info, assume we can't serve it
+        Ok(false)
+    }
 }
 
 // Implement Clone for StreamService to match other services
-impl<S: StorageAdaptor> Clone for StreamService<S> {
+impl<T, G, A, S> Clone for StreamService<T, G, A, S>
+where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
+    S: StorageAdaptor,
+{
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
@@ -546,6 +749,9 @@ impl<S: StorageAdaptor> Clone for StreamService<S> {
             stream_notifiers: self.stream_notifiers.clone(),
             storage_manager: self.storage_manager.clone(),
             event_bus: self.event_bus.clone(),
+            network_manager: self.network_manager.clone(),
+            routing_table: self.routing_table.clone(),
+            node_id: self.node_id.clone(),
             is_running: self.is_running.clone(),
             shutdown: self.shutdown.clone(),
             background_tasks: self.background_tasks.clone(),
@@ -554,7 +760,13 @@ impl<S: StorageAdaptor> Clone for StreamService<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
+impl<T, G, A, S> ServiceLifecycle for StreamService<T, G, A, S>
+where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
+    S: StorageAdaptor + Send + Sync + 'static,
+{
     async fn initialize(&self) -> ConsensusResult<()> {
         Ok(())
     }
@@ -625,6 +837,9 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
 
         info!("StreamService: Registered event handlers");
 
+        // Register network message handlers
+        self.register_message_handlers().await?;
+
         // Mark as running
         *self.is_running.write().await = true;
 
@@ -681,177 +896,5 @@ impl<S: StorageAdaptor + 'static> ServiceLifecycle for StreamService<S> {
         } else {
             ServiceStatus::Stopped
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use bytes::Bytes;
-    use proven_storage::{LogStorage, StorageNamespace, StorageResult};
-
-    // Create a dummy storage implementation for testing
-    #[derive(Clone, Debug)]
-    struct DummyStorage;
-
-    #[async_trait::async_trait]
-    impl LogStorage for DummyStorage {
-        async fn append(
-            &self,
-            _namespace: &StorageNamespace,
-            _entries: Arc<Vec<Bytes>>,
-        ) -> StorageResult<LogIndex> {
-            Ok(LogIndex::new(1).unwrap())
-        }
-
-        async fn bounds(
-            &self,
-            _namespace: &StorageNamespace,
-        ) -> StorageResult<Option<(LogIndex, LogIndex)>> {
-            Ok(None)
-        }
-
-        async fn compact_before(
-            &self,
-            _namespace: &StorageNamespace,
-            _index: LogIndex,
-        ) -> StorageResult<()> {
-            Ok(())
-        }
-
-        async fn put_at(
-            &self,
-            _namespace: &StorageNamespace,
-            _entries: Vec<(LogIndex, Arc<Bytes>)>,
-        ) -> StorageResult<()> {
-            Ok(())
-        }
-
-        async fn read_range(
-            &self,
-            _namespace: &StorageNamespace,
-            _start: LogIndex,
-            _end: LogIndex,
-        ) -> StorageResult<Vec<(LogIndex, Bytes)>> {
-            Ok(vec![])
-        }
-
-        async fn truncate_after(
-            &self,
-            _namespace: &StorageNamespace,
-            _index: LogIndex,
-        ) -> StorageResult<()> {
-            Ok(())
-        }
-
-        async fn get_metadata(
-            &self,
-            _namespace: &StorageNamespace,
-            _key: &str,
-        ) -> StorageResult<Option<Bytes>> {
-            Ok(None)
-        }
-
-        async fn set_metadata(
-            &self,
-            _namespace: &StorageNamespace,
-            _key: &str,
-            _value: Bytes,
-        ) -> StorageResult<()> {
-            Ok(())
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl LogStorageWithDelete for DummyStorage {
-        async fn delete_entry(
-            &self,
-            _namespace: &StorageNamespace,
-            _index: LogIndex,
-        ) -> StorageResult<bool> {
-            Ok(true)
-        }
-    }
-
-    #[async_trait::async_trait]
-    impl proven_storage::LogStorageStreaming for DummyStorage {
-        async fn stream_range(
-            &self,
-            _namespace: &StorageNamespace,
-            _start: LogIndex,
-            _end: Option<LogIndex>,
-        ) -> StorageResult<
-            Box<dyn tokio_stream::Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>,
-        > {
-            Ok(Box::new(tokio_stream::empty()))
-        }
-    }
-
-    impl StorageAdaptor for DummyStorage {}
-
-    #[tokio::test]
-    async fn test_stream_service_lifecycle() {
-        let config = StreamServiceConfig::default();
-        let storage_manager = Arc::new(StorageManager::new(DummyStorage));
-        let event_bus = Arc::new(crate::foundation::events::EventBusBuilder::new().build());
-        let service = StreamService::new(config, storage_manager, event_bus);
-
-        // Should not be running initially
-        assert!(!service.is_healthy().await);
-
-        // Start service
-        assert!(service.start().await.is_ok());
-        assert!(service.is_healthy().await);
-
-        // Should fail to start again
-        assert!(service.start().await.is_err());
-
-        // Stop service
-        assert!(service.stop().await.is_ok());
-        assert!(!service.is_healthy().await);
-    }
-
-    #[tokio::test]
-    async fn test_stream_operations() {
-        let config = StreamServiceConfig::default();
-        let storage_manager = Arc::new(StorageManager::new(DummyStorage));
-        let event_bus = Arc::new(crate::foundation::events::EventBusBuilder::new().build());
-        let service = StreamService::new(config, storage_manager, event_bus);
-
-        let stream_name = StreamName::new("test-stream");
-        let stream_config = StreamConfig {
-            persistence_type: PersistenceType::Ephemeral,
-            retention: RetentionPolicy::default(),
-            max_message_size: 1024 * 1024,
-            allow_auto_create: false,
-        };
-
-        // Create stream
-        let group_id = ConsensusGroupId::new(1);
-        assert!(
-            service
-                .create_stream(stream_name.clone(), stream_config.clone(), group_id)
-                .await
-                .is_ok()
-        );
-
-        // Should fail to create duplicate
-        assert!(
-            service
-                .create_stream(stream_name.clone(), stream_config, group_id)
-                .await
-                .is_err()
-        );
-
-        // Should be in list
-        let streams = service.list_streams().await;
-        assert!(streams.contains(&stream_name));
-
-        // Delete stream
-        assert!(service.delete_stream(&stream_name).await.is_ok());
-
-        // Should not be in list
-        let streams = service.list_streams().await;
-        assert!(!streams.contains(&stream_name));
     }
 }

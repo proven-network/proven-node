@@ -1,353 +1,248 @@
 //! Integration tests for WebSocket transport
-//!
-//! These tests verify that the WebSocket transport works correctly
-//! with a real HTTP server and can handle discovery, connections,
-//! and message passing between nodes.
 
+use axum::{Router, routing::get};
+use bytes::Bytes;
+use proven_topology::{Node, NodeId};
+use proven_transport::Transport;
+use proven_transport_ws::WebSocketTransport;
 use std::collections::HashSet;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::Duration;
-
-use axum::Router;
-use bytes::Bytes;
-use ed25519_dalek::SigningKey;
-use futures::StreamExt;
-use proven_attestation_mock::MockAttestor;
-use proven_topology::{Node, NodeId, TopologyManager, Version};
-use proven_topology_mock::MockTopologyAdaptor;
-use proven_transport::{HttpIntegratedTransport, Transport};
-use proven_transport_ws::{WebsocketConfig, WebsocketTransport};
-use proven_util::port_allocator::allocate_port;
-use tower_http::cors::CorsLayer;
-use tracing::{error, info};
-
-/// Start an Axum server with the WebSocket transport router
-async fn start_server(router: Router, port: u16) -> Result<tokio::task::JoinHandle<()>, String> {
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-
-    info!("Binding server to {}", addr);
-
-    let app = router.layer(CorsLayer::very_permissive());
-
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .map_err(|e| format!("Failed to bind TCP listener: {e}"))?;
-
-    info!("Server bound successfully to {}", addr);
-
-    let handle = tokio::spawn(async move {
-        info!("Starting to serve on {}", addr);
-        if let Err(e) = axum::serve(listener, app).await {
-            error!("Server failed: {}", e);
-        }
-    });
-
-    Ok(handle)
-}
+use tokio::time::timeout;
+use tracing::info;
 
 #[tokio::test]
-async fn test_websocket_transport_basic() {
-    // Initialize tracing
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .try_init();
+async fn test_websocket_echo_server() {
+    let _ = tracing_subscriber::fmt::try_init();
 
-    // Create two nodes with deterministic keys
-    let node1_key = SigningKey::from_bytes(&[1u8; 32]);
-    let node1_id = NodeId::from(node1_key.verifying_key());
-    let node1_port = allocate_port();
+    // Create transport
+    let transport = WebSocketTransport::new();
 
-    let node2_key = SigningKey::from_bytes(&[2u8; 32]);
-    let node2_id = NodeId::from(node2_key.verifying_key());
-    let node2_port = allocate_port();
+    // Create a test server address
+    let port = portpicker::pick_unused_port().expect("No ports available");
+    let server_addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+    let ws_path = "/ws";
 
-    info!("Node 1: {} on port {}", node1_id, node1_port);
-    info!("Node 2: {} on port {}", node2_id, node2_port);
-
-    // Create mock governance with both nodes
-    let attestor = MockAttestor::new();
-    let pcrs = attestor.pcrs_sync();
-    let governance = Arc::new(MockTopologyAdaptor::new(
-        vec![
-            Node::new(
-                "test-az".to_string(),
-                format!("http://127.0.0.1:{node1_port}"),
-                NodeId::from(node1_key.verifying_key()),
-                "test-region".to_string(),
-                HashSet::new(),
-            ),
-            Node::new(
-                "test-az".to_string(),
-                format!("http://127.0.0.1:{node2_port}"),
-                NodeId::from(node2_key.verifying_key()),
-                "test-region".to_string(),
-                HashSet::new(),
-            ),
-        ],
-        vec![Version {
-            ne_pcr0: pcrs.pcr0,
-            ne_pcr1: pcrs.pcr1,
-            ne_pcr2: pcrs.pcr2,
-        }],
-        "https://auth.test.com".to_string(),
-        vec![],
-    ));
-
-    // Create topology managers
-    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id.clone()));
-    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id.clone()));
-
-    // Create WebSocket transports
-    let ws_config = WebsocketConfig::default();
-
-    let transport1 = Arc::new(WebsocketTransport::new(
-        ws_config.clone(),
-        Arc::new(attestor.clone()),
-        governance.clone(),
-        node1_key,
-        topology1.clone(),
-    ));
-
-    let transport2 = Arc::new(WebsocketTransport::new(
-        ws_config,
-        Arc::new(attestor.clone()),
-        governance.clone(),
-        node2_key,
-        topology2.clone(),
-    ));
-
-    // Create router integrations
-    let router1 = transport1
-        .create_router_integration()
-        .expect("Failed to create router 1");
-    let router2 = transport2
-        .create_router_integration()
-        .expect("Failed to create router 2");
-
-    // Start HTTP servers
-    info!("Starting HTTP servers...");
-    let _server1_handle = start_server(router1, node1_port)
+    // Create Axum app with WebSocket handler
+    let app = Router::new();
+    let app = transport
+        .mount_into_router(app, ws_path)
         .await
-        .expect("Failed to start server 1");
-    let _server2_handle = start_server(router2, node2_port)
-        .await
-        .expect("Failed to start server 2");
+        .expect("Failed to mount WebSocket handler");
 
-    // Give servers time to start
-    info!("Waiting for servers to start...");
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Add a health check endpoint
+    let app = app.route("/health", get(|| async { "OK" }));
 
-    // Verify servers are actually listening by checking health endpoint
-    info!("Verifying servers are listening via health endpoint...");
-    for (node_id, port) in [
-        (node1_id.clone(), node1_port),
-        (node2_id.clone(), node2_port),
-    ] {
-        let health_url = format!("http://127.0.0.1:{port}/consensus/health");
-        match reqwest::get(&health_url).await {
-            Ok(resp) => {
-                let status = resp.status();
-                let body = resp.text().await.unwrap_or_default();
-                info!(
-                    "Health check for {} on port {}: status={}, body={}",
-                    node_id, port, status, body
-                );
-                if !status.is_success() {
-                    panic!("Health check failed for port {port}: status={status}");
-                }
-            }
-            Err(e) => {
-                error!(
-                    "Failed to check health for {} on port {}: {}",
-                    node_id, port, e
-                );
-                panic!("Server health check failed on port {port}: {e}");
-            }
-        }
-    }
+    // Start the server
+    let server = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(server_addr)
+            .await
+            .expect("Failed to bind");
+        info!("Test server listening on {}", server_addr);
 
-    // Start topology managers
-    topology1.start().await.unwrap();
-    topology2.start().await.unwrap();
-
-    // WebSocket transports don't need to be started - they're integrated with the HTTP server
-    info!("WebSocket transports ready");
-
-    // Set up a task to consume incoming messages on transport 2
-    let transport2_clone = transport2.clone();
-    let node1_id_clone = node1_id.clone();
-    let incoming_task = tokio::spawn(async move {
-        info!("Starting to listen for incoming messages on transport 2");
-        let mut incoming = transport2_clone.incoming();
-
-        if let Some(envelope) = incoming.next().await {
-            info!(
-                "Transport 2 received message from {}: type={}, payload_len={}, correlation_id={:?}",
-                envelope.sender,
-                envelope.message_type,
-                envelope.payload.len(),
-                envelope.correlation_id
-            );
-
-            // Verify this is the expected application message
-            assert_eq!(
-                envelope.message_type, "test.message",
-                "Expected test.message, got {}",
-                envelope.message_type
-            );
-            assert_eq!(
-                envelope.payload,
-                Bytes::from("Hello from node 1!"),
-                "Payload mismatch"
-            );
-            assert_eq!(envelope.sender, node1_id_clone, "Sender mismatch");
-        } else {
-            panic!("No message received on transport 2");
-        }
+        axum::serve(listener, app).await.expect("Server failed");
     });
-
-    // Give everything time to initialize and establish WebSocket connections
-    info!("Waiting for initialization...");
-    tokio::time::sleep(Duration::from_secs(3)).await;
-
-    // Test sending a message from node1 to node2
-    let test_payload = Bytes::from("Hello from node 1!");
-    let test_message_type = "test.message";
-
-    info!(
-        "Attempting to send message from node 1 ({}) to node 2 ({})",
-        node1_id, node2_id
-    );
-    info!(
-        "Payload: {:?}, Message type: {}",
-        test_payload, test_message_type
-    );
-
-    info!("About to call send_envelope...");
-    let send_future = transport1.send_envelope(&node2_id, &test_payload, test_message_type, None);
-
-    match tokio::time::timeout(Duration::from_secs(10), send_future).await {
-        Ok(Ok(_)) => {
-            info!("Message sent successfully!");
-            // Give a moment for the message to be delivered
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
-        Ok(Err(e)) => {
-            eprintln!("Failed to send message: {e:?}");
-            panic!("Transport send failed: {e:?}");
-        }
-        Err(_) => {
-            eprintln!("Send operation timed out after 10 seconds");
-            panic!("Transport send timed out");
-        }
-    }
-
-    // Wait for the incoming message to be received
-    info!("Waiting for incoming message task to complete...");
-    match tokio::time::timeout(Duration::from_secs(5), incoming_task).await {
-        Ok(Ok(_)) => info!("Incoming message received successfully"),
-        Ok(Err(e)) => panic!("Incoming task failed: {e:?}"),
-        Err(_) => panic!("Incoming message task timed out"),
-    }
-
-    info!("WebSocket transport basic test completed");
-}
-
-#[tokio::test]
-async fn test_websocket_transport_connection_failure() {
-    // Initialize tracing
-    let _ = tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .try_init();
-
-    // Create node with deterministic key
-    let node1_key = SigningKey::from_bytes(&[3u8; 32]);
-    let node1_id = NodeId::from(node1_key.verifying_key());
-    let node1_port = allocate_port();
-
-    // Create a non-existent node
-    let node2_key = SigningKey::from_bytes(&[4u8; 32]);
-    let node2_id = NodeId::from(node2_key.verifying_key());
-    let node2_port = 19999; // Non-existent port
-
-    info!("Node 1: {} on port {}", node1_id, node1_port);
-    info!("Node 2 (non-existent): {} on port {}", node2_id, node2_port);
-
-    // Create mock governance with both nodes
-    let attestor = MockAttestor::new();
-    let pcrs = attestor.pcrs_sync();
-    let governance = Arc::new(MockTopologyAdaptor::new(
-        vec![
-            Node::new(
-                "test-az".to_string(),
-                format!("http://127.0.0.1:{node1_port}"),
-                node1_id.clone(),
-                "test-region".to_string(),
-                HashSet::new(),
-            ),
-            Node::new(
-                "test-az".to_string(),
-                format!("http://127.0.0.1:{node2_port}"),
-                node2_id.clone(),
-                "test-region".to_string(),
-                HashSet::new(),
-            ),
-        ],
-        vec![Version {
-            ne_pcr0: pcrs.pcr0,
-            ne_pcr1: pcrs.pcr1,
-            ne_pcr2: pcrs.pcr2,
-        }],
-        "https://auth.test.com".to_string(),
-        vec![],
-    ));
-
-    // Create topology manager and transport for node 1
-    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id.clone()));
-    let transport1 = Arc::new(WebsocketTransport::new(
-        WebsocketConfig::default(),
-        Arc::new(attestor),
-        governance,
-        node1_key,
-        topology1.clone(),
-    ));
-
-    // Create router and start server
-    let router1 = transport1
-        .create_router_integration()
-        .expect("Failed to create router");
-    let _server1 = start_server(router1, node1_port)
-        .await
-        .expect("Failed to start server");
 
     // Give server time to start
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Start topology manager (WebSocket transport doesn't need separate start)
-    topology1.start().await.unwrap();
+    // Get the listener that was already created by mount_into_router
+    let listener = transport
+        .get_listener()
+        .await
+        .expect("Listener should exist");
 
-    // Wait a bit for initialization
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    // Start accepting connections in the background
+    let accept_task = tokio::spawn(async move {
+        let conn = timeout(Duration::from_secs(5), listener.accept())
+            .await
+            .expect("Accept timeout")
+            .expect("Failed to accept connection");
 
-    // Try to send message to non-existent node
-    let test_payload = Bytes::from("This should fail");
-    let test_message_type = "test.message";
+        info!("Server accepted connection");
 
-    info!("Attempting to send message to non-existent node");
-    let start = tokio::time::Instant::now();
-    let result = transport1
-        .send_envelope(&node2_id, &test_payload, test_message_type, None)
-        .await;
-    let elapsed = start.elapsed();
+        // Echo server
+        loop {
+            match conn.recv().await {
+                Ok(data) => {
+                    info!("Server received: {} bytes", data.len());
+                    if let Err(e) = conn.send(data).await {
+                        info!("Server send error: {}", e);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    info!("Server receive error: {}", e);
+                    break;
+                }
+            }
+        }
+    });
 
-    // Should fail
-    assert!(result.is_err(), "Expected send to fail");
-    info!(
-        "Send failed as expected after {:?}: {:?}",
-        elapsed,
-        result.err()
+    // Give accept task time to start
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Connect as client
+    let ws_url = format!("ws://127.0.0.1:{port}{ws_path}");
+    info!("Connecting to {}", ws_url);
+
+    // Create a node for connection
+    let node = Node::new(
+        "test-az".to_string(),
+        ws_url,
+        NodeId::from_seed(1),
+        "test-region".to_string(),
+        HashSet::new(),
     );
 
-    info!("WebSocket transport connection failure test completed");
+    let client_conn = transport.connect(&node).await.expect("Failed to connect");
+
+    // Send test messages
+    let test_messages = vec![
+        Bytes::from("Hello, WebSocket!"),
+        Bytes::from("Test message 2"),
+        Bytes::from("Final message"),
+    ];
+
+    for msg in test_messages {
+        info!("Client sending: {} bytes", msg.len());
+        client_conn.send(msg.clone()).await.expect("Failed to send");
+
+        let response = timeout(Duration::from_secs(1), client_conn.recv())
+            .await
+            .expect("Receive timeout")
+            .expect("Failed to receive");
+
+        assert_eq!(msg, response);
+        info!("Client received echo: {} bytes", response.len());
+    }
+
+    // Close connection
+    client_conn.close().await.expect("Failed to close");
+
+    // Cleanup
+    accept_task.abort();
+    server.abort();
+}
+
+#[tokio::test]
+async fn test_multiple_connections() {
+    let _ = tracing_subscriber::fmt::try_init();
+
+    let transport = WebSocketTransport::new();
+    let port = portpicker::pick_unused_port().expect("No ports available");
+    let server_addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
+
+    // Create server with WebSocket endpoint
+    let app = Router::new();
+    let app = transport
+        .mount_into_router(app, "/ws")
+        .await
+        .expect("Failed to mount");
+
+    // Start server
+    let server = tokio::spawn(async move {
+        let listener = tokio::net::TcpListener::bind(server_addr)
+            .await
+            .expect("Failed to bind");
+        axum::serve(listener, app).await.expect("Server failed");
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Accept connections in background
+    let transport_for_accept = transport.clone();
+    let accept_task = tokio::spawn(async move {
+        // Get the listener that was already created by mount_into_router
+        let listener = transport_for_accept
+            .get_listener()
+            .await
+            .expect("Listener should exist");
+
+        let mut connections = vec![];
+
+        // Accept 3 connections
+        for i in 0..3 {
+            let conn = timeout(Duration::from_secs(5), listener.accept())
+                .await
+                .expect("Accept timeout")
+                .expect("Failed to accept");
+
+            info!("Accepted connection {}", i);
+            connections.push(conn);
+        }
+
+        // Echo on all connections
+        let mut handles = vec![];
+        for (i, conn) in connections.into_iter().enumerate() {
+            let handle = tokio::spawn(async move {
+                loop {
+                    match conn.recv().await {
+                        Ok(data) => {
+                            // Add connection ID to response
+                            let mut response = data.to_vec();
+                            response.extend_from_slice(format!(" from conn {i}").as_bytes());
+                            let response = Bytes::from(response);
+                            if let Err(e) = conn.send(response).await {
+                                info!("Connection {} send error: {}", i, e);
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            info!("Connection {} receive error: {}", i, e);
+                            break;
+                        }
+                    }
+                }
+            });
+            handles.push(handle);
+        }
+
+        // Wait for all to complete
+        for handle in handles {
+            let _ = handle.await;
+        }
+    });
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Create multiple client connections
+    let mut clients = vec![];
+    for i in 0..3 {
+        let node = Node::new(
+            "test-az".to_string(),
+            format!("ws://127.0.0.1:{port}/ws"),
+            NodeId::from_seed(i as u8),
+            "test-region".to_string(),
+            HashSet::new(),
+        );
+        let conn = transport.connect(&node).await.expect("Failed to connect");
+        clients.push((i, conn));
+    }
+
+    // Send messages from each client
+    for (id, conn) in &clients {
+        let msg = Bytes::from(format!("Hello from client {id}"));
+        conn.send(msg.clone()).await.expect("Failed to send");
+
+        let response = timeout(Duration::from_secs(1), conn.recv())
+            .await
+            .expect("Timeout")
+            .expect("Failed to receive");
+
+        info!(
+            "Client {} received: {:?}",
+            id,
+            String::from_utf8_lossy(&response)
+        );
+        assert!(response.starts_with(&msg));
+    }
+
+    // Cleanup
+    for (_, conn) in clients {
+        let _ = conn.close().await;
+    }
+
+    accept_task.abort();
+    server.abort();
 }

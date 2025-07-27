@@ -1,34 +1,46 @@
 //! Event handlers for group consensus events (non-critical)
 
+use proven_attestation::Attestor;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::debug;
 
 use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::services::group_consensus::events::GroupConsensusEvent;
 use crate::services::stream::StreamService;
 use proven_storage::StorageAdaptor;
+use proven_topology::TopologyAdaptor;
+use proven_transport::Transport;
 
 /// Handler for non-critical group consensus events
 #[derive(Clone)]
-pub struct GroupConsensusEventHandler<S>
+pub struct GroupConsensusEventHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    stream_service: Arc<StreamService<S>>,
+    stream_service: Arc<StreamService<T, G, A, S>>,
 }
 
-impl<S> GroupConsensusEventHandler<S>
+impl<T, G, A, S> GroupConsensusEventHandler<T, G, A, S>
 where
+    T: Transport,
+    G: TopologyAdaptor,
+    A: Attestor,
     S: StorageAdaptor,
 {
-    pub fn new(stream_service: Arc<StreamService<S>>) -> Self {
+    pub fn new(stream_service: Arc<StreamService<T, G, A, S>>) -> Self {
         Self { stream_service }
     }
 }
 
 #[async_trait::async_trait]
-impl<S> EventHandler<GroupConsensusEvent> for GroupConsensusEventHandler<S>
+impl<T, G, A, S> EventHandler<GroupConsensusEvent> for GroupConsensusEventHandler<T, G, A, S>
 where
+    T: Transport + Send + Sync + 'static,
+    G: TopologyAdaptor + Send + Sync + 'static,
+    A: Attestor + Send + Sync + 'static,
     S: StorageAdaptor + 'static,
 {
     async fn handle(&self, event: GroupConsensusEvent, _metadata: EventMetadata) {

@@ -135,14 +135,9 @@ where
 /// - Event stream for state changes
 /// - Stream-based leadership election
 /// - In-memory view built from events
-pub struct ApplicationManager<T, G, S>
-where
-    T: proven_transport::Transport,
-    G: proven_topology::TopologyAdaptor,
-    S: proven_storage::StorageAdaptor,
-{
+pub struct ApplicationManager {
     /// Engine client
-    client: Arc<Client<T, G, S>>,
+    client: Arc<Client>,
 
     /// Configuration
     config: ApplicationManagerConfig,
@@ -151,10 +146,10 @@ where
     command_service: Arc<Mutex<Option<CommandService>>>,
 
     /// Service handler for direct execution when leader
-    service_handler: Arc<CommandServiceHandler<T, G, S>>,
+    service_handler: Arc<CommandServiceHandler>,
 
     /// Leadership coordinator
-    leadership: Arc<LeadershipCoordinator<T, G, S>>,
+    leadership: Arc<LeadershipCoordinator>,
 
     /// Event consumer
     event_consumer: Arc<Mutex<Option<JoinHandle<()>>>>,
@@ -168,12 +163,7 @@ where
     leadership_stream: String,
 }
 
-impl<T, G, S> ApplicationManager<T, G, S>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    S: proven_storage::StorageAdaptor + 'static,
-{
+impl ApplicationManager {
     /// Create a new application manager.
     ///
     /// # Errors
@@ -181,10 +171,7 @@ where
     /// Returns an error if:
     /// - Failed to create any of the required streams
     /// - Failed to start the event consumer
-    pub async fn new(
-        client: Arc<Client<T, G, S>>,
-        config: ApplicationManagerConfig,
-    ) -> Result<Self, Error> {
+    pub async fn new(client: Arc<Client>, config: ApplicationManagerConfig) -> Result<Self, Error> {
         // Create stream names
         let command_stream = format!("{}-commands", config.stream_prefix);
         let event_stream = format!("{}-events", config.stream_prefix);
@@ -341,12 +328,7 @@ where
     }
 }
 
-impl<T, G, S> Clone for ApplicationManager<T, G, S>
-where
-    T: proven_transport::Transport,
-    G: proven_topology::TopologyAdaptor,
-    S: proven_storage::StorageAdaptor,
-{
+impl Clone for ApplicationManager {
     fn clone(&self) -> Self {
         Self {
             client: Arc::clone(&self.client),
@@ -364,12 +346,7 @@ where
 }
 
 #[async_trait]
-impl<T, G, S> ApplicationManagement for ApplicationManager<T, G, S>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    S: proven_storage::StorageAdaptor + 'static,
-{
+impl ApplicationManagement for ApplicationManager {
     async fn add_allowed_origin(
         &self,
         application_id: &Uuid,

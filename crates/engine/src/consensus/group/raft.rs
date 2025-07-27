@@ -3,10 +3,11 @@
 //! This module integrates the group state with OpenRaft for consensus.
 //! It uses separated storage and state machine components.
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use openraft::{
-    Config, Entry, Raft, RaftMetrics, RaftNetworkFactory,
+    Config, Entry, Raft, RaftNetworkFactory,
+    async_runtime::watch::WatchReceiver,
     raft::{
         AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest,
         InstallSnapshotResponse, VoteRequest, VoteResponse,
@@ -79,16 +80,12 @@ pub struct GroupConsensusLayer<L: LogStorage> {
     group_id: ConsensusGroupId,
     /// Raft instance
     raft: Raft<GroupTypeConfig>,
-    /// Group state
-    state: GroupStateWriter,
-    /// Operation handler
-    handler: Arc<GroupOperationHandler>,
-    /// Log storage (consensus logs - no deletion allowed)
-    log_storage: Arc<GroupRaftLogStorage<L>>,
     /// State machine
     state_machine: Arc<GroupStateMachine>,
     /// Whether this group needs initialization (no persisted state)
     needs_initialization: bool,
+    /// Log storage marker
+    _marker: PhantomData<L>,
 }
 
 impl<L: LogStorage> GroupConsensusLayer<L> {
@@ -169,11 +166,9 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
             node_id,
             group_id,
             raft,
-            state,
-            handler,
-            log_storage,
             state_machine,
             needs_initialization: replay_boundary.is_none(),
+            _marker: PhantomData,
         })
     }
 
@@ -214,9 +209,73 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
         self.raft.current_leader().await
     }
 
-    /// Get metrics
-    pub fn metrics(&self) -> tokio::sync::watch::Receiver<RaftMetrics<GroupTypeConfig>> {
-        self.raft.metrics()
+    /// Get current members
+    pub async fn current_members(&self) -> Vec<NodeId> {
+        self.raft
+            .metrics()
+            .borrow()
+            .membership_config
+            .membership()
+            .voter_ids()
+            .collect()
+    }
+
+    /// Get current members
+    pub fn get_members(&self) -> Vec<NodeId> {
+        let metrics = self.raft.metrics().borrow_watched().clone();
+        metrics.membership_config.membership().voter_ids().collect()
+    }
+
+    /// Get current leader
+    pub fn get_leader(&self) -> Option<NodeId> {
+        let metrics = self.raft.metrics().borrow_watched().clone();
+        metrics.current_leader
+    }
+
+    /// Get current term
+    pub fn get_current_term(&self) -> u64 {
+        let metrics = self.raft.metrics().borrow_watched().clone();
+        metrics.current_term
+    }
+
+    /// Start monitoring for leader changes
+    pub fn start_leader_monitoring<F>(&self, group_id: ConsensusGroupId, callback: F)
+    where
+        F: Fn(ConsensusGroupId, Option<NodeId>, Option<NodeId>, u64) + Send + 'static,
+    {
+        let mut metrics_rx = self.raft.metrics();
+
+        tokio::spawn(async move {
+            let mut current_leader: Option<NodeId> = None;
+            let mut current_term: u64 = 0;
+
+            loop {
+                tokio::select! {
+                    Ok(_) = metrics_rx.changed() => {
+                        let metrics = metrics_rx.borrow().clone();
+
+                        // Check for leader change or term change
+                        if metrics.current_leader != current_leader || metrics.current_term != current_term {
+                            let old_leader = current_leader.clone();
+                            current_leader = metrics.current_leader.clone();
+                            current_term = metrics.current_term;
+
+                            tracing::info!(
+                                "Group {} consensus leader changed: {:?} -> {:?} (term {})",
+                                group_id, old_leader, current_leader, current_term
+                            );
+
+                            // Call the callback
+                            callback(group_id, old_leader, current_leader.clone(), current_term);
+                        }
+                    }
+                    else => {
+                        tracing::debug!("Group {} leader monitoring task stopped", group_id);
+                        break;
+                    }
+                }
+            }
+        });
     }
 
     /// Check if Raft has been initialized
@@ -249,12 +308,12 @@ impl<L: LogStorage> ConsensusLayer for GroupConsensusLayer<L> {
     }
 
     async fn current_term(&self) -> Term {
-        let metrics = self.raft.metrics().borrow().clone();
+        let metrics = self.raft.metrics().borrow_watched().clone();
         Term::new(metrics.current_term)
     }
 
     async fn current_role(&self) -> ConsensusRole {
-        let metrics = self.raft.metrics().borrow().clone();
+        let metrics = self.raft.metrics().borrow_watched().clone();
         if metrics.current_leader == Some(self.node_id.clone()) {
             ConsensusRole::Leader
         } else {

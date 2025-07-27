@@ -125,3 +125,37 @@ impl Request for GetOnlineMembers {
         Duration::from_secs(5)
     }
 }
+
+/// Get information about the current node
+#[derive(Debug, Clone)]
+pub struct GetNodeInfo;
+
+impl Request for GetNodeInfo {
+    type Response = Node;
+
+    fn request_type() -> &'static str {
+        "GetNodeInfo"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+}
+
+/// Get information about a specific peer
+#[derive(Debug, Clone)]
+pub struct GetPeerInfo {
+    pub node_id: NodeId,
+}
+
+impl Request for GetPeerInfo {
+    type Response = Option<Node>;
+
+    fn request_type() -> &'static str {
+        "GetPeerInfo"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+}

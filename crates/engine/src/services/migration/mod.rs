@@ -42,14 +42,5 @@ mod service;
 mod stream_migration;
 mod types;
 
-pub use allocator::{GroupAllocation, GroupAllocator};
-pub use node_migration::{NodeMigrationCoordinator, NodeMigrationProgress};
-pub use rebalancer::{Rebalancer, RebalancingRecommendation};
 pub use service::{MigrationConfig, MigrationService};
-pub use stream_migration::{StreamMigrationCoordinator, StreamMigrationProgress};
-pub use types::{
-    AllocationConfig, AllocationStrategy, MigrationError, MigrationProgress, MigrationReason,
-    MigrationResult, MigrationStatus, NodeMigrationConfig, NodeMigrationState,
-    PlannedNodeMigration, PlannedStreamMigration, RebalancingConfig, RebalancingPlan,
-    RebalancingStrategy, StreamMigrationConfig, StreamMigrationState,
-};
+pub use types::MigrationError;

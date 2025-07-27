@@ -2,12 +2,10 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::{
-    GroupState, GroupStateRead, GroupStateWrite, GroupStateWriter, traits::OperationHandler,
-    types::OperationId, validations,
+    GroupStateRead, GroupStateWrite, GroupStateWriter, traits::OperationHandler, types::OperationId,
 };
 
 use super::types::{AdminOperation, GroupRequest, GroupResponse, StreamOperation};

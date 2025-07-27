@@ -1,6 +1,6 @@
 //! Messages for global consensus service
 
-use proven_network::ServiceMessage;
+use proven_network::{NetworkMessage, ServiceMessage};
 use serde::{Deserialize, Serialize};
 
 use openraft::raft::{
@@ -62,6 +62,18 @@ pub struct CheckClusterExistsResponse {
     pub current_term: u64,
     /// Members of the cluster if known
     pub members: Vec<NodeId>,
+}
+
+impl NetworkMessage for GlobalConsensusMessage {
+    fn message_type() -> &'static str {
+        "global_consensus_message"
+    }
+}
+
+impl NetworkMessage for GlobalConsensusResponse {
+    fn message_type() -> &'static str {
+        "global_consensus_response"
+    }
 }
 
 impl ServiceMessage for GlobalConsensusMessage {

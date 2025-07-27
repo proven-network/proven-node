@@ -2,9 +2,9 @@
 
 use proven_topology::NodeId;
 
+use crate::foundation::StreamConfig;
 use crate::foundation::events::Event;
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamConfig, StreamName};
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 
 /// Snapshot of global consensus state for synchronization
 #[derive(Debug, Clone)]

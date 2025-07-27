@@ -43,32 +43,18 @@ struct StreamResponse {
 }
 
 /// Handler for processing commands
-pub struct CommandServiceHandler<T, G, S>
-where
-    T: proven_transport::Transport,
-    G: proven_topology::TopologyAdaptor,
-    S: proven_storage::StorageAdaptor,
-{
+pub struct CommandServiceHandler {
     /// Application view for validation
     view: ApplicationView,
     /// Engine client for publishing events
-    client: Arc<Client<T, G, S>>,
+    client: Arc<Client>,
     /// Event stream name
     event_stream: String,
 }
 
-impl<T, G, S> CommandServiceHandler<T, G, S>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    S: proven_storage::StorageAdaptor + 'static,
-{
+impl CommandServiceHandler {
     /// Create a new command service handler.
-    pub const fn new(
-        view: ApplicationView,
-        client: Arc<Client<T, G, S>>,
-        event_stream: String,
-    ) -> Self {
+    pub const fn new(view: ApplicationView, client: Arc<Client>, event_stream: String) -> Self {
         Self {
             view,
             client,
@@ -83,7 +69,7 @@ where
             // Get last event sequence
             match self.client.get_stream_info(&self.event_stream).await {
                 Ok(Some(info)) => {
-                    self.view.wait_for_seq(info.last_sequence.get()).await;
+                    self.view.wait_for_seq(info.end_offset).await;
                 }
                 Ok(None) => {
                     return Response::InternalError {
@@ -158,15 +144,16 @@ where
             .map_err(|e| format!("Failed to serialize event: {e}"))?;
 
         // Publish to event stream
+        let message = proven_engine::Message::new(payload);
         match self
             .client
-            .publish(self.event_stream.clone(), payload, None)
+            .publish_to_stream(self.event_stream.clone(), vec![message])
             .await
         {
             Ok(_) => {
                 // Get stream info to return the sequence number
                 match self.client.get_stream_info(&self.event_stream).await {
-                    Ok(Some(info)) => Ok(info.last_sequence.get()),
+                    Ok(Some(info)) => Ok(info.end_offset),
                     Ok(None) => Err("Event stream not found".to_string()),
                     Err(e) => Err(e.to_string()),
                 }
@@ -383,16 +370,11 @@ pub struct CommandService {
 
 impl CommandService {
     /// Create and start a new command service.
-    pub fn new<T, G, S>(
-        client: Arc<Client<T, G, S>>,
+    pub fn new(
+        client: Arc<Client>,
         command_stream: String,
-        handler: Arc<CommandServiceHandler<T, G, S>>,
-    ) -> Self
-    where
-        T: proven_transport::Transport + 'static,
-        G: proven_topology::TopologyAdaptor + 'static,
-        S: proven_storage::StorageAdaptor + 'static,
-    {
+        handler: Arc<CommandServiceHandler>,
+    ) -> Self {
         let mut service = Self {
             handle: None,
             shutdown_tx: None,
@@ -404,16 +386,12 @@ impl CommandService {
     }
 
     /// Start the service.
-    pub fn start<T, G, S>(
+    pub fn start(
         &mut self,
-        client: Arc<Client<T, G, S>>,
+        client: Arc<Client>,
         command_stream: String,
-        handler: Arc<CommandServiceHandler<T, G, S>>,
-    ) where
-        T: proven_transport::Transport + 'static,
-        G: proven_topology::TopologyAdaptor + 'static,
-        S: proven_storage::StorageAdaptor + 'static,
-    {
+        handler: Arc<CommandServiceHandler>,
+    ) {
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         self.shutdown_tx = Some(shutdown_tx);
 
@@ -440,17 +418,12 @@ impl CommandService {
 
     /// Run the service loop.
     #[allow(clippy::cognitive_complexity)]
-    async fn run_service_loop<T, G, S>(
-        client: Arc<Client<T, G, S>>,
+    async fn run_service_loop(
+        client: Arc<Client>,
         command_stream: String,
-        handler: Arc<CommandServiceHandler<T, G, S>>,
+        handler: Arc<CommandServiceHandler>,
         mut shutdown_rx: oneshot::Receiver<()>,
-    ) -> Result<(), Error>
-    where
-        T: proven_transport::Transport + 'static,
-        G: proven_topology::TopologyAdaptor + 'static,
-        S: proven_storage::StorageAdaptor + 'static,
-    {
+    ) -> Result<(), Error> {
         // Track last processed sequence
         let mut last_sequence = 0u64;
 
@@ -466,7 +439,7 @@ impl CommandService {
             let count = LogIndex::new(10).unwrap(); // Process up to 10 at a time
 
             match client
-                .read_stream(command_stream.clone(), start_seq, count)
+                .read_from_stream(command_stream.clone(), start_seq, count.get())
                 .await
             {
                 Ok(messages) => {
@@ -498,17 +471,12 @@ impl CommandService {
     }
 
     /// Process a single command message.
-    async fn process_message<T, G, S>(
-        client: &Arc<Client<T, G, S>>,
+    async fn process_message(
+        client: &Arc<Client>,
         command_stream: &str,
-        handler: &Arc<CommandServiceHandler<T, G, S>>,
+        handler: &Arc<CommandServiceHandler>,
         message: StoredMessage,
-    ) -> Result<(), Error>
-    where
-        T: proven_transport::Transport + 'static,
-        G: proven_topology::TopologyAdaptor + 'static,
-        S: proven_storage::StorageAdaptor + 'static,
-    {
+    ) -> Result<(), Error> {
         // Check if this is a request
         let headers: HashMap<String, String> = message
             .data
@@ -547,8 +515,12 @@ impl CommandService {
                 response_metadata.insert(REQUEST_TYPE_KEY.to_string(), "response".to_string());
 
                 // Publish response
+                let mut message = proven_engine::Message::new(payload);
+                for (k, v) in response_metadata {
+                    message = message.with_header(k, v);
+                }
                 client
-                    .publish(command_stream.to_string(), payload, Some(response_metadata))
+                    .publish_to_stream(command_stream.to_string(), vec![message])
                     .await
                     .map_err(|e| Error::Stream(e.to_string()))?;
             }
@@ -565,17 +537,12 @@ impl CommandService {
 }
 
 /// Execute a command via the stream and wait for response.
-pub async fn execute_command_via_stream<T, G, S>(
-    client: &Arc<Client<T, G, S>>,
+pub async fn execute_command_via_stream(
+    client: &Arc<Client>,
     command_stream: &str,
     command: Command,
     timeout_duration: Duration,
-) -> Result<Response, Error>
-where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    S: proven_storage::StorageAdaptor + 'static,
-{
+) -> Result<Response, Error> {
     let request_id = Uuid::new_v4();
 
     // Create request
@@ -605,8 +572,12 @@ where
     });
 
     // Publish request
+    let mut message = proven_engine::Message::new(payload);
+    for (k, v) in metadata {
+        message = message.with_header(k, v);
+    }
     client
-        .publish(command_stream.to_string(), payload, Some(metadata))
+        .publish_to_stream(command_stream.to_string(), vec![message])
         .await
         .map_err(|e| Error::Stream(e.to_string()))?;
 
@@ -625,22 +596,20 @@ where
 }
 
 /// Listen for a response to a specific request.
-async fn listen_for_response<T, G, S>(
-    client: Arc<Client<T, G, S>>,
+async fn listen_for_response(
+    client: Arc<Client>,
     command_stream: String,
     request_id: Uuid,
     response_tx: oneshot::Sender<Response>,
-) where
-    T: proven_transport::Transport + 'static,
-    G: proven_topology::TopologyAdaptor + 'static,
-    S: proven_storage::StorageAdaptor + 'static,
-{
+) {
+    use tokio::pin;
+
     // Start from the beginning of the stream to find our response
     // We could optimize this by tracking message positions, but for now this works
     let start_seq = LogIndex::new(1).unwrap();
 
     // Use follow mode to wait for our response
-    let mut stream = match client
+    let stream = match client
         .stream_messages(command_stream.clone(), start_seq, None)
         .await
     {
@@ -651,38 +620,31 @@ async fn listen_for_response<T, G, S>(
         }
     };
 
-    while let Some(result) = tokio_stream::StreamExt::next(&mut stream).await {
-        match result {
-            Ok(message) => {
-                let headers: HashMap<String, String> = message
-                    .data
-                    .headers
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
+    pin!(stream);
+    while let Some(message) = tokio_stream::StreamExt::next(&mut stream).await {
+        let headers: HashMap<String, String> = message
+            .data
+            .headers
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
 
-                if headers
-                    .get(RESPONSE_TO_KEY)
-                    .map(std::string::String::as_str)
-                    == Some(&request_id.to_string())
-                    && headers
-                        .get(REQUEST_TYPE_KEY)
-                        .map(std::string::String::as_str)
-                        == Some("response")
-                {
-                    // Found our response!
-                    if let Ok(stream_response) =
-                        ciborium::de::from_reader::<StreamResponse, _>(&message.data.payload[..])
-                        && stream_response.request_id == request_id
-                    {
-                        let _ = response_tx.send(stream_response.response);
-                        return;
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::error!("Error reading response stream: {}", e);
-                // Continue listening after errors
+        if headers
+            .get(RESPONSE_TO_KEY)
+            .map(std::string::String::as_str)
+            == Some(&request_id.to_string())
+            && headers
+                .get(REQUEST_TYPE_KEY)
+                .map(std::string::String::as_str)
+                == Some("response")
+        {
+            // Found our response!
+            if let Ok(stream_response) =
+                ciborium::de::from_reader::<StreamResponse, _>(&message.data.payload[..])
+                && stream_response.request_id == request_id
+            {
+                let _ = response_tx.send(stream_response.response);
+                return;
             }
         }
     }

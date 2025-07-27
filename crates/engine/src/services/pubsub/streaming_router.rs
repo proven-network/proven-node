@@ -6,11 +6,11 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, warn};
+use tracing::debug;
 
-use super::events::PubSubMessage;
 use super::types::{PubSubNetworkMessage, Subscription};
-use crate::foundation::types::{SubjectPattern, subject_matches_pattern};
+use crate::foundation::Message;
+use crate::foundation::types::subject_matches_pattern;
 
 /// Type alias for subscription IDs
 type SubscriptionIds = Vec<String>;
@@ -23,25 +23,28 @@ type QueueGroupSubscriptions = HashMap<String, PatternSubscriptions>;
 #[derive(Clone)]
 pub struct MessageChannel {
     /// Direct streaming channel
-    sender: flume::Sender<PubSubMessage>,
+    sender: flume::Sender<Message>,
 }
 
 impl MessageChannel {
     /// Create a new message channel
-    pub fn new(sender: flume::Sender<PubSubMessage>) -> Self {
+    pub fn new(sender: flume::Sender<Message>) -> Self {
         Self { sender }
     }
 
     /// Send a message through the channel
     pub async fn send(&self, msg: PubSubNetworkMessage) -> Result<(), String> {
-        // Convert PubSubNetworkMessage to PubSubMessage
-        let pubsub_msg = PubSubMessage {
-            subject: msg.subject.clone(),
-            payload: msg.payload.clone(),
-            headers: msg.headers.clone(),
-        };
+        // Convert PubSubNetworkMessage to Message
+        // The subject is already in the headers
+        let mut message = Message::new(msg.payload.clone());
+
+        // Add all headers (including subject)
+        for (key, value) in msg.headers {
+            message = message.with_header(key, value);
+        }
+
         self.sender
-            .send_async(pubsub_msg)
+            .send_async(message)
             .await
             .map_err(|e| e.to_string())
     }
@@ -93,7 +96,7 @@ impl StreamingMessageRouter {
         &self,
         sub_id: String,
         subscription: Subscription,
-        sender: flume::Sender<PubSubMessage>,
+        sender: flume::Sender<Message>,
     ) {
         let channel = MessageChannel::new(sender);
         self.add_subscription(sub_id, subscription, channel).await;
@@ -206,7 +209,7 @@ impl StreamingMessageRouter {
 
     /// Route a message and return number of local subscribers
     pub async fn route(&self, message: &PubSubNetworkMessage) -> usize {
-        let subject = message.subject.as_str();
+        let subject = message.subject().unwrap_or("");
         let mut delivered_count = 0;
 
         // First check exact matches (optimization)

@@ -1,14 +1,12 @@
 //! Commands for the group consensus service (request-response patterns)
 
-use std::num::NonZero;
 use std::time::Duration;
 
 use proven_topology::NodeId;
 
 use crate::consensus::group::types::{GroupRequest, GroupResponse};
 use crate::foundation::events::Request;
-use crate::foundation::types::ConsensusGroupId;
-use crate::services::stream::{StreamConfig, StreamName, StreamState};
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 
 /// Create a new consensus group
 #[derive(Debug, Clone)]
@@ -139,6 +137,24 @@ impl Request for GetStreamState {
 
     fn request_type() -> &'static str {
         "GetStreamState"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+}
+
+/// Get the state information for a specific group
+#[derive(Debug, Clone)]
+pub struct GetGroupState {
+    pub group_id: ConsensusGroupId,
+}
+
+impl Request for GetGroupState {
+    type Response = Option<crate::foundation::GroupStateInfo>;
+
+    fn request_type() -> &'static str {
+        "GetGroupState"
     }
 
     fn default_timeout() -> Duration {
