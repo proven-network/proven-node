@@ -13,7 +13,6 @@ use crate::foundation::events::{EventHandler, EventMetadata};
 use crate::foundation::types::SubjectPattern;
 use crate::services::membership::events::MembershipEvent;
 use crate::services::pubsub::interest::InterestTracker;
-use crate::services::pubsub::messages::PubSubServiceMessage;
 use crate::services::pubsub::streaming_router::StreamingMessageRouter;
 use proven_network::NetworkManager;
 use proven_topology::{NodeId, TopologyAdaptor};
@@ -32,6 +31,7 @@ where
     message_router: StreamingMessageRouter,
     network: Arc<NetworkManager<T, G, A>>,
     cluster_members: Arc<RwLock<HashSet<NodeId>>>,
+    interest_propagator: Arc<super::super::internal::InterestPropagator>,
 }
 
 impl<T, G, A> MembershipEventSubscriber<T, G, A>
@@ -47,6 +47,7 @@ where
         message_router: StreamingMessageRouter,
         network: Arc<NetworkManager<T, G, A>>,
         cluster_members: Arc<RwLock<HashSet<NodeId>>>,
+        interest_propagator: Arc<super::super::internal::InterestPropagator>,
     ) -> Self {
         Self {
             node_id,
@@ -54,6 +55,7 @@ where
             message_router,
             network,
             cluster_members,
+            interest_propagator,
         }
     }
 
@@ -75,43 +77,11 @@ where
         self.cluster_members.write().await.remove(node_id);
     }
 
-    /// Broadcast current interests to specific nodes
-    async fn broadcast_interests_to_nodes(&self, nodes: &[NodeId]) -> Result<(), String> {
-        let subscriptions = self
-            .message_router
-            .get_node_subscriptions(&self.node_id)
-            .await;
-
-        if subscriptions.is_empty() {
-            return Ok(());
+    /// Broadcast current interests to specific nodes via control streams
+    async fn broadcast_interests_to_nodes(&self, _nodes: &[NodeId]) -> Result<(), String> {
+        if let Err(e) = self.interest_propagator.propagate_interests().await {
+            debug!("Failed to propagate interests: {}", e);
         }
-
-        let patterns: Vec<SubjectPattern> = subscriptions
-            .into_iter()
-            .map(|sub| sub.subject_pattern)
-            .collect();
-
-        let msg = PubSubServiceMessage::RegisterInterest {
-            patterns,
-            timestamp: std::time::SystemTime::now(),
-        };
-
-        // Send to specified nodes
-        for node in nodes {
-            if node != &self.node_id
-                && let Err(e) = self
-                    .network
-                    .request_with_timeout::<PubSubServiceMessage>(
-                        node.clone(),
-                        msg.clone(),
-                        std::time::Duration::from_millis(100),
-                    )
-                    .await
-            {
-                debug!("Failed to send interests to node {}: {}", node, e);
-            }
-        }
-
         Ok(())
     }
 }
@@ -178,6 +148,29 @@ where
 
                 // Remove the node's interests from our tracker
                 self.remove_node_interests(&node_id).await;
+            }
+
+            MembershipEvent::MembershipChangeRequired { add_nodes, .. } => {
+                info!(
+                    "PubSubService: Membership change required, adding {} nodes",
+                    add_nodes.len()
+                );
+
+                // Add new nodes to cluster members
+                let new_nodes: Vec<NodeId> = add_nodes
+                    .iter()
+                    .map(|(node_id, _)| node_id.clone())
+                    .collect();
+                for node_id in &new_nodes {
+                    self.add_cluster_member(node_id).await;
+                }
+
+                // Propagate interests to new nodes
+                if !new_nodes.is_empty()
+                    && let Err(e) = self.broadcast_interests_to_nodes(&new_nodes).await
+                {
+                    debug!("Failed to send interests to new nodes: {}", e);
+                }
             }
 
             _ => {

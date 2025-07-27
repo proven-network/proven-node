@@ -239,6 +239,46 @@ async fn test_pubsub_stream_api() {
 
 #[tracing_test::traced_test]
 #[tokio::test]
+async fn test_pubsub_two_nodes() {
+    let mut cluster = TestCluster::new(TransportType::Tcp);
+    let (engines, _) = cluster.add_nodes(2).await;
+
+    // Give cluster time to form and membership events to propagate
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    // Subscribe on node 0
+    let client0 = engines[0].client();
+    let mut receiver = client0
+        .subscribe("simple.*", None)
+        .await
+        .expect("Failed to subscribe on node 0");
+
+    // Give time for interest propagation after subscription
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+
+    // Publish from node 1
+    let client1 = engines[1].client();
+    client1
+        .publish(
+            "simple.test",
+            vec![Message::new("two-node message").with_header("from", "node1")],
+        )
+        .await
+        .expect("Failed to publish from node 1");
+
+    // Receive on node 0
+    let msg = timeout(Duration::from_secs(5), receiver.next())
+        .await
+        .expect("Timeout waiting for two-node message")
+        .expect("Failed to receive two-node message");
+
+    assert_eq!(msg.subject(), Some("simple.test"));
+    assert_eq!(msg.payload, Bytes::from("two-node message"));
+    assert_eq!(msg.get_header("from"), Some("node1"));
+}
+
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_pubsub_multi_node() {
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(3).await;

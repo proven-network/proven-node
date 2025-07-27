@@ -626,6 +626,12 @@ where
         Ok(())
     }
 
+    /// Unregister a streaming service
+    pub async fn unregister_streaming_service(&self, stream_type: &str) -> NetworkResult<()> {
+        self.streaming_handlers.remove(stream_type);
+        Ok(())
+    }
+
     /// Stop the network manager
     pub async fn stop(&self) -> NetworkResult<()> {
         // Signal shutdown

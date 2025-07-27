@@ -2,12 +2,13 @@
 
 use async_trait::async_trait;
 use std::time::SystemTime;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::foundation::Message;
 use crate::foundation::events::{Error as EventError, EventMetadata, StreamHandler};
 use crate::foundation::types::SubjectPattern;
 use crate::services::pubsub::interest::InterestTracker;
+use crate::services::pubsub::internal::InterestPropagator;
 use crate::services::pubsub::streaming_router::StreamingMessageRouter;
 use crate::services::pubsub::types::Subscription;
 use crate::services::pubsub::{Subscribe, SubscriptionControl};
@@ -19,6 +20,7 @@ pub struct SubscribeHandler {
     max_subscriptions_per_node: usize,
     interest_tracker: InterestTracker,
     message_router: StreamingMessageRouter,
+    interest_propagator: std::sync::Arc<InterestPropagator>,
 }
 
 impl SubscribeHandler {
@@ -27,12 +29,14 @@ impl SubscribeHandler {
         max_subscriptions_per_node: usize,
         interest_tracker: InterestTracker,
         message_router: StreamingMessageRouter,
+        interest_propagator: std::sync::Arc<InterestPropagator>,
     ) -> Self {
         Self {
             node_id,
             max_subscriptions_per_node,
             interest_tracker,
             message_router,
+            interest_propagator,
         }
     }
 }
@@ -86,6 +90,17 @@ impl StreamHandler<Subscribe> for SubscribeHandler {
         self.interest_tracker
             .add_interest(self.node_id.clone(), pattern.clone())
             .await;
+
+        // Propagate interests to all connected peers
+        info!(
+            "Propagating interests after new subscription to pattern: {}",
+            pattern
+        );
+        if let Err(e) = self.interest_propagator.propagate_interests().await {
+            warn!("Failed to propagate interests: {}", e);
+        } else {
+            info!("Successfully propagated interests");
+        }
 
         // Create control channel for subscription management
         let (_control_tx, control_rx) = flume::bounded(10);

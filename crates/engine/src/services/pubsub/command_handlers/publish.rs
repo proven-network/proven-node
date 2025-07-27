@@ -4,68 +4,46 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;
-use proven_attestation::Attestor;
-use proven_network::NetworkManager;
-use proven_topology::{NodeId, TopologyAdaptor};
-use proven_transport::Transport;
-use tracing::debug;
+use proven_topology::NodeId;
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use crate::foundation::events::{Error, EventBus, EventMetadata, RequestHandler};
+use crate::foundation::events::{Error, EventMetadata, RequestHandler};
 use crate::services::pubsub::commands::PublishMessage;
 use crate::services::pubsub::interest::InterestTracker;
-use crate::services::pubsub::messages::{MessageNotification, PubSubServiceMessage};
+use crate::services::pubsub::internal::StreamManager;
 use crate::services::pubsub::streaming_router::StreamingMessageRouter;
-use crate::services::pubsub::types::{PubSubMessageType, PubSubNetworkMessage};
 
 /// Handler for PublishMessage command
 #[derive(Clone)]
-pub struct PublishHandler<T, G, A>
-where
-    T: Transport,
-    G: TopologyAdaptor,
-    A: Attestor,
-{
+pub struct PublishHandler {
     node_id: NodeId,
     max_message_size: usize,
     interest_tracker: InterestTracker,
     message_router: StreamingMessageRouter,
-    network: Arc<NetworkManager<T, G, A>>,
-    event_bus: Arc<EventBus>,
+    stream_manager: StreamManager,
 }
 
-impl<T, G, A> PublishHandler<T, G, A>
-where
-    T: Transport,
-    G: TopologyAdaptor,
-    A: Attestor,
-{
+impl PublishHandler {
     pub fn new(
         node_id: NodeId,
         max_message_size: usize,
         interest_tracker: InterestTracker,
         message_router: StreamingMessageRouter,
-        network: Arc<NetworkManager<T, G, A>>,
-        event_bus: Arc<EventBus>,
+        stream_manager: StreamManager,
     ) -> Self {
         Self {
             node_id,
             max_message_size,
             interest_tracker,
             message_router,
-            network,
-            event_bus,
+            stream_manager,
         }
     }
 }
 
 #[async_trait]
-impl<T, G, A> RequestHandler<PublishMessage> for PublishHandler<T, G, A>
-where
-    T: Transport + 'static,
-    G: TopologyAdaptor + 'static,
-    A: Attestor + 'static,
-{
+impl RequestHandler<PublishMessage> for PublishHandler {
     async fn handle(&self, request: PublishMessage, _metadata: EventMetadata) -> Result<(), Error> {
         debug!(
             "PublishMessageHandler: Processing {} messages for subject: {}",
@@ -77,7 +55,7 @@ where
         let subject_string = request.subject.as_ref().to_string();
 
         // Process each message
-        for message in request.messages {
+        for mut message in request.messages {
             // Check message size
             if message.payload.len() > self.max_message_size {
                 return Err(Error::Internal(format!(
@@ -87,20 +65,22 @@ where
                 )));
             }
 
-            let id = Uuid::new_v4();
-
-            // Create network message - message already has subject in headers
-            let network_message = PubSubNetworkMessage {
-                id,
-                msg_type: PubSubMessageType::Publish,
-                source: self.node_id.clone(),
-                payload: message.payload.clone(),
-                headers: message.headers.clone(),
-                timestamp: SystemTime::now(),
-            };
+            // Add metadata headers if not present
+            if message.get_header("message_id").is_none() {
+                message = message.with_header("message_id", Uuid::new_v4().to_string());
+            }
+            if message.get_header("timestamp").is_none() {
+                message = message.with_header(
+                    "timestamp",
+                    humantime::format_rfc3339(SystemTime::now()).to_string(),
+                );
+            }
+            if message.get_header("source").is_none() {
+                message = message.with_header("source", self.node_id.to_string());
+            }
 
             // Route locally first
-            let local_count = self.message_router.route(&network_message).await;
+            let local_count = self.message_router.route(&message).await;
             debug!("Routed message to {} local subscribers", local_count);
 
             // Get interested nodes
@@ -111,38 +91,41 @@ where
 
             if !interested_nodes.is_empty() {
                 debug!(
-                    "Broadcasting message to {} interested nodes",
+                    "Sending message to {} interested nodes via streams",
                     interested_nodes.len()
+                );
+
+                // Get publish streams
+                let publish_streams = self.stream_manager.get_publish_streams();
+                let streams = publish_streams.read().await;
+
+                info!(
+                    "Publishing to {} interested nodes, we have {} publish streams",
+                    interested_nodes.len(),
+                    streams.len()
                 );
 
                 for node_id in interested_nodes {
                     if node_id != self.node_id {
-                        // Send message to interested node via PubSubServiceMessage
-                        // Extract subject from headers - we know it exists because we validated it
-                        let subject = crate::foundation::types::Subject::new(&subject_string)
-                            .expect("Subject was already validated");
+                        if let Some(stream) = streams.get(&node_id) {
+                            info!("Sending message to {} via stream", node_id);
+                            // Serialize and send via stream
+                            let mut buf = Vec::new();
+                            if let Err(e) = ciborium::into_writer(&message, &mut buf) {
+                                warn!("Failed to serialize message: {}", e);
+                                continue;
+                            }
 
-                        let notification = MessageNotification {
-                            id: network_message.id,
-                            subject,
-                            payload: network_message.payload.clone(),
-                            headers: network_message.headers.clone(),
-                            timestamp: network_message.timestamp,
-                            source: network_message.source.clone(),
-                        };
-                        let service_msg = PubSubServiceMessage::Notify {
-                            messages: vec![notification],
-                        };
-                        if let Err(e) = self
-                            .network
-                            .request_with_timeout(
-                                node_id.clone(),
-                                service_msg,
-                                std::time::Duration::from_secs(5),
-                            )
-                            .await
-                        {
-                            debug!("Failed to send message to {}: {}", node_id, e);
+                            if let Err(e) = stream.send(buf).await {
+                                warn!("Failed to send message to {} via stream: {}", node_id, e);
+                            } else {
+                                info!("Successfully sent message to {} via stream", node_id);
+                            }
+                        } else {
+                            warn!(
+                                "No publish stream available for interested node {}",
+                                node_id
+                            );
                         }
                     }
                 }

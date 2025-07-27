@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::debug;
 
-use super::types::{PubSubNetworkMessage, Subscription};
+use super::types::Subscription;
 use crate::foundation::Message;
 use crate::foundation::types::subject_matches_pattern;
 
@@ -33,20 +33,8 @@ impl MessageChannel {
     }
 
     /// Send a message through the channel
-    pub async fn send(&self, msg: PubSubNetworkMessage) -> Result<(), String> {
-        // Convert PubSubNetworkMessage to Message
-        // The subject is already in the headers
-        let mut message = Message::new(msg.payload.clone());
-
-        // Add all headers (including subject)
-        for (key, value) in msg.headers {
-            message = message.with_header(key, value);
-        }
-
-        self.sender
-            .send_async(message)
-            .await
-            .map_err(|e| e.to_string())
+    pub async fn send(&self, msg: Message) -> Result<(), String> {
+        self.sender.send_async(msg).await.map_err(|e| e.to_string())
     }
 
     /// Check if the channel is closed
@@ -208,7 +196,7 @@ impl StreamingMessageRouter {
     }
 
     /// Route a message and return number of local subscribers
-    pub async fn route(&self, message: &PubSubNetworkMessage) -> usize {
+    pub async fn route(&self, message: &Message) -> usize {
         let subject = message.subject().unwrap_or("");
         let mut delivered_count = 0;
 

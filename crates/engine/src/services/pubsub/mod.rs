@@ -11,10 +11,10 @@ pub mod command_handlers;
 pub mod commands;
 pub mod event_handlers;
 pub mod events;
-mod handler;
 pub mod interest;
-pub mod messages;
+pub mod internal;
 pub mod service;
+pub mod streaming;
 pub mod streaming_router;
 pub mod types;
 

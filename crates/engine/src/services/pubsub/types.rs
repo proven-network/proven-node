@@ -2,49 +2,11 @@
 
 use std::time::SystemTime;
 
-use bytes::Bytes;
 use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use uuid::Uuid;
 
 use crate::foundation::types::{SubjectError, SubjectPattern};
-
-/// Message type for PubSub
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PubSubMessageType {
-    /// Regular publish message
-    Publish,
-    /// Control message (subscribe, unsubscribe, interest updates, etc)
-    Control,
-}
-
-/// Internal network message for PubSub
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PubSubNetworkMessage {
-    /// Unique message ID
-    pub id: Uuid,
-    /// Message payload
-    pub payload: Bytes,
-    /// Headers (including subject)
-    pub headers: Vec<(String, String)>,
-    /// Timestamp
-    pub timestamp: SystemTime,
-    /// Source node
-    pub source: NodeId,
-    /// Message type
-    pub msg_type: PubSubMessageType,
-}
-
-impl PubSubNetworkMessage {
-    /// Get the subject from headers
-    pub fn subject(&self) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(k, _)| k == "subject")
-            .map(|(_, v)| v.as_str())
-    }
-}
 
 /// Errors that can occur in PubSub operations
 #[derive(Error, Debug)]

@@ -1,21 +1,22 @@
 //! PubSub service implementation
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use proven_attestation::Attestor;
-use proven_network::NetworkManager;
+use proven_network::{NetworkManager, Stream};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 use tokio::sync::RwLock;
-use tracing::info;
+use tracing::{debug, info, warn};
 
 use crate::foundation::events::EventBus;
 use crate::services::lifecycle::ComponentState;
 
 use super::interest::InterestTracker;
+use super::internal::{InterestManager, InterestPropagator, StreamManager};
 use super::streaming_router::StreamingMessageRouter;
 
 /// Configuration for PubSub service
@@ -65,6 +66,10 @@ where
     state: Arc<RwLock<ComponentState>>,
     /// Known cluster members (maintained by membership events)
     cluster_members: Arc<RwLock<HashSet<NodeId>>>,
+    /// Stream manager for publish and control streams
+    stream_manager: StreamManager,
+    /// Interest propagator
+    interest_propagator: Arc<InterestPropagator>,
 }
 
 impl<T, G, A> PubSubService<T, G, A>
@@ -80,16 +85,70 @@ where
         network_manager: Arc<NetworkManager<T, G, A>>,
         event_bus: Arc<EventBus>,
     ) -> Self {
+        let stream_manager = StreamManager::new();
+        let interest_tracker = InterestTracker::new();
+        let interest_propagator = Arc::new(InterestPropagator::new(
+            node_id.clone(),
+            interest_tracker.clone(),
+            stream_manager.get_control_streams(),
+        ));
+
         Self {
             config,
             node_id: node_id.clone(),
-            interest_tracker: InterestTracker::new(),
+            interest_tracker,
             message_router: StreamingMessageRouter::new(),
             network_manager: network_manager.clone(),
             event_bus,
             state: Arc::new(RwLock::new(ComponentState::NotInitialized)),
             cluster_members: Arc::new(RwLock::new(HashSet::new())),
+            stream_manager,
+            interest_propagator,
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl<T, G, A> InterestManager for PubSubService<T, G, A>
+where
+    T: Transport + Send + Sync,
+    G: TopologyAdaptor + Send + Sync,
+    A: Attestor + Send + Sync,
+{
+    async fn add_node_interest(
+        &self,
+        node_id: NodeId,
+        pattern: crate::foundation::types::SubjectPattern,
+    ) {
+        self.interest_tracker.add_interest(node_id, pattern).await;
+    }
+
+    async fn remove_node_interest(
+        &self,
+        node_id: NodeId,
+        pattern: &crate::foundation::types::SubjectPattern,
+    ) {
+        self.interest_tracker
+            .remove_interest(node_id, pattern)
+            .await;
+    }
+
+    async fn remove_all_node_interests(&self, node_id: &NodeId) {
+        self.interest_tracker.remove_node(node_id).await;
+    }
+
+    async fn update_peer_interests(
+        &self,
+        node_id: NodeId,
+        patterns: Vec<crate::foundation::types::SubjectPattern>,
+    ) {
+        self.interest_tracker
+            .update_interests(node_id, patterns)
+            .await;
+    }
+
+    async fn route_message(&self, message: &crate::foundation::Message) -> usize {
+        self.message_router.route(message).await
     }
 }
 
@@ -101,17 +160,18 @@ where
 {
     /// Start the service
     pub async fn start(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error>> {
-        info!("Starting PubSub service");
+        info!("Starting PubSub service for node {}", self.node_id);
         *self.state.write().await = ComponentState::Starting;
 
-        // Register network handlers
-        use super::handler::PubSubHandler;
+        // Register streaming service instead of request/response handler
+        use super::streaming::PubSubStreamingService;
 
-        let handler = PubSubHandler::new(self.clone());
+        let streaming_service =
+            PubSubStreamingService::new(self.clone() as Arc<dyn InterestManager>);
         self.network_manager
-            .register_service(handler)
+            .register_streaming_service(streaming_service)
             .await
-            .map_err(|e| format!("Failed to register network service: {e}"))?;
+            .map_err(|e| format!("Failed to register streaming service: {e}"))?;
 
         // Setup event handlers
         use super::command_handlers::{PublishHandler, SubscribeHandler};
@@ -123,8 +183,7 @@ where
             self.config.max_message_size,
             self.interest_tracker.clone(),
             self.message_router.clone(),
-            self.network_manager.clone(),
-            self.event_bus.clone(),
+            self.stream_manager.clone(),
         );
         self.event_bus
             .handle_requests(publish_handler)
@@ -136,6 +195,7 @@ where
             self.config.max_subscriptions_per_node,
             self.interest_tracker.clone(),
             self.message_router.clone(),
+            self.interest_propagator.clone(),
         );
         self.event_bus
             .handle_streams(subscribe_handler)
@@ -148,8 +208,27 @@ where
             self.message_router.clone(),
             self.network_manager.clone(),
             self.cluster_members.clone(),
+            self.interest_propagator.clone(),
         );
         let _membership_receiver = self.event_bus.subscribe(membership_subscriber);
+
+        // Start stream maintenance task
+        let stream_manager = self.stream_manager.clone();
+        let node_id = self.node_id.clone();
+        let cluster_members = self.cluster_members.clone();
+        let network_manager = self.network_manager.clone();
+        let interest_propagator = self.interest_propagator.clone();
+
+        tokio::spawn(async move {
+            stream_manager
+                .maintain_streams(
+                    &node_id,
+                    cluster_members,
+                    network_manager,
+                    interest_propagator,
+                )
+                .await;
+        });
 
         *self.state.write().await = ComponentState::Running;
         info!("PubSub service started");
@@ -161,8 +240,14 @@ where
         info!("Stopping PubSub service");
         *self.state.write().await = ComponentState::ShuttingDown;
 
-        // Unregister from network service
-        let _ = self.network_manager.unregister_service("pubsub").await;
+        // Clear all streams
+        self.stream_manager.clear().await;
+
+        // Unregister streaming service
+        let _ = self
+            .network_manager
+            .unregister_streaming_service("pubsub")
+            .await;
 
         // Unregister all event handlers to allow re-registration on restart
         use crate::services::pubsub::commands::{PublishMessage, Subscribe};
@@ -178,38 +263,5 @@ where
         *self.state.write().await = ComponentState::Stopped;
         info!("PubSub service stopped");
         Ok(())
-    }
-
-    /// Route a network message
-    pub async fn route_network_message(
-        &self,
-        message: &crate::services::pubsub::types::PubSubNetworkMessage,
-    ) {
-        self.message_router.route(message).await;
-    }
-
-    /// Add interest pattern for a node
-    pub async fn add_node_interest(
-        &self,
-        node_id: proven_topology::NodeId,
-        pattern: crate::foundation::types::SubjectPattern,
-    ) {
-        self.interest_tracker.add_interest(node_id, pattern).await;
-    }
-
-    /// Remove interest pattern for a node
-    pub async fn remove_node_interest(
-        &self,
-        node_id: proven_topology::NodeId,
-        pattern: &crate::foundation::types::SubjectPattern,
-    ) {
-        self.interest_tracker
-            .remove_interest(node_id, pattern)
-            .await;
-    }
-
-    /// Remove all interests for a node
-    pub async fn remove_all_node_interests(&self, node_id: &proven_topology::NodeId) {
-        self.interest_tracker.remove_node(node_id).await;
     }
 }

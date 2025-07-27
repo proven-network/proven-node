@@ -2,23 +2,8 @@
 
 use uuid::Uuid;
 
-use super::types::PubSubNetworkMessage;
-use crate::foundation::events::Event;
-
 use crate::foundation::Message;
-
-impl From<PubSubNetworkMessage> for Message {
-    fn from(msg: PubSubNetworkMessage) -> Self {
-        let mut message = Message::new(msg.payload);
-
-        // Add all headers (subject is already in headers)
-        for (key, value) in msg.headers {
-            message = message.with_header(key, value);
-        }
-
-        message
-    }
-}
+use crate::foundation::events::Event;
 
 /// Response events from PubSub service (sent back to client)
 #[derive(Debug, Clone)]

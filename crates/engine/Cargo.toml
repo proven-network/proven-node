@@ -29,6 +29,9 @@ tokio-tungstenite.workspace = true
 ed25519-dalek.workspace = true
 coset.workspace = true
 
+# Time formatting
+humantime = "2.1"
+
 # Concurrent data structures
 dashmap.workspace = true
 hex.workspace = true
