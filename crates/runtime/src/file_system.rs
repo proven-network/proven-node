@@ -15,8 +15,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use bytes::{Bytes, BytesMut};
-use deno_fs::{AccessCheckCb, FileSystem as DenoFileSystem, FsDirEntry, FsFileType, OpenOptions};
+use deno_fs::{FileSystem as DenoFileSystem, FsDirEntry, FsFileType, OpenOptions};
 use deno_io::fs::{File as DenoFile, FsResult, FsStat};
+use deno_permissions::{CheckedPath, CheckedPathBuf};
 use futures::executor::block_on;
 use proven_store::Store;
 
@@ -251,7 +252,7 @@ where
         todo!()
     }
 
-    fn chdir(&self, _path: &Path) -> FsResult<()> {
+    fn chdir(&self, _path: &CheckedPath) -> FsResult<()> {
         todo!()
     }
 
@@ -259,25 +260,17 @@ where
         todo!()
     }
 
-    fn open_sync(
-        &self,
-        path: &Path,
-        options: OpenOptions,
-        access_check: Option<AccessCheckCb>,
-    ) -> FsResult<Rc<dyn DenoFile>> {
-        let path = path.to_path_buf();
-        let mut boxed_check = access_check.map(Box::new);
-        let access_check = boxed_check.as_mut().map(|b| b as AccessCheckCb);
-        block_on(self.open_async(path, options, access_check))
+    fn open_sync(&self, path: &CheckedPath, options: OpenOptions) -> FsResult<Rc<dyn DenoFile>> {
+        let path = <&Path>::from(path).to_path_buf();
+        block_on(self.open_async(CheckedPathBuf::unsafe_new(path), options))
     }
 
     async fn open_async<'a>(
         &'a self,
-        path: PathBuf,
+        path: CheckedPathBuf,
         open_options: OpenOptions,
-        _access_check: Option<AccessCheckCb<'a>>,
     ) -> FsResult<Rc<dyn DenoFile>> {
-        let normalized_path = PathBuf::from(Self::normalize_path(&path));
+        let normalized_path = PathBuf::from(Self::normalize_path(path.as_ref()));
 
         let entry = match self.get_entry(&normalized_path, &open_options).await? {
             Some(entry) => {
@@ -343,101 +336,121 @@ where
         }
     }
 
-    fn mkdir_sync(&self, _path: &Path, _recursive: bool, _mode: Option<u32>) -> FsResult<()> {
-        todo!()
-    }
-
-    async fn mkdir_async(
+    fn mkdir_sync(
         &self,
-        _path: PathBuf,
+        _path: &CheckedPath,
         _recursive: bool,
         _mode: Option<u32>,
     ) -> FsResult<()> {
         todo!()
     }
 
-    async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
-        self.chmod(&path, mode).await
+    async fn mkdir_async(
+        &self,
+        _path: CheckedPathBuf,
+        _recursive: bool,
+        _mode: Option<u32>,
+    ) -> FsResult<()> {
+        todo!()
+    }
+
+    async fn chmod_async(&self, path: CheckedPathBuf, mode: u32) -> FsResult<()> {
+        self.chmod(path.as_ref(), mode).await
     }
 
     async fn chown_async(
         &self,
-        _path: PathBuf,
+        _path: CheckedPathBuf,
         _uid: Option<u32>,
         _gid: Option<u32>,
     ) -> FsResult<()> {
         todo!()
     }
 
-    fn chown_sync(&self, _path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+    fn chown_sync(
+        &self,
+        _path: &CheckedPath,
+        _uid: Option<u32>,
+        _gid: Option<u32>,
+    ) -> FsResult<()> {
         todo!()
     }
 
-    fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
-        block_on(self.chmod(path, mode))
+    fn chmod_sync(&self, path: &CheckedPath, mode: u32) -> FsResult<()> {
+        block_on(self.chmod(path.as_ref(), mode))
     }
 
-    fn lchmod_sync(&self, _path: &Path, _mode: u32) -> FsResult<()> {
+    fn lchmod_sync(&self, _path: &CheckedPath, _mode: u32) -> FsResult<()> {
         todo!()
     }
 
-    async fn lchmod_async(&self, _path: PathBuf, _mode: u32) -> FsResult<()> {
+    async fn lchmod_async(&self, _path: CheckedPathBuf, _mode: u32) -> FsResult<()> {
         todo!()
     }
 
-    fn lchown_sync(&self, _path: &Path, _uid: Option<u32>, _gid: Option<u32>) -> FsResult<()> {
+    fn lchown_sync(
+        &self,
+        _path: &CheckedPath,
+        _uid: Option<u32>,
+        _gid: Option<u32>,
+    ) -> FsResult<()> {
         todo!()
     }
 
     async fn lchown_async(
         &self,
-        _path: PathBuf,
+        _path: CheckedPathBuf,
         _uid: Option<u32>,
         _gid: Option<u32>,
     ) -> FsResult<()> {
         todo!()
     }
 
-    fn remove_sync(&self, _path: &Path, _recursive: bool) -> FsResult<()> {
+    fn remove_sync(&self, _path: &CheckedPath, _recursive: bool) -> FsResult<()> {
         todo!()
     }
 
-    async fn remove_async(&self, _path: PathBuf, _recursive: bool) -> FsResult<()> {
+    async fn remove_async(&self, _path: CheckedPathBuf, _recursive: bool) -> FsResult<()> {
         todo!()
     }
 
-    fn copy_file_sync(&self, _oldpath: &Path, _newpath: &Path) -> FsResult<()> {
+    fn copy_file_sync(&self, _oldpath: &CheckedPath, _newpath: &CheckedPath) -> FsResult<()> {
         todo!()
     }
 
-    async fn copy_file_async(&self, _oldpath: PathBuf, _newpath: PathBuf) -> FsResult<()> {
+    async fn copy_file_async(
+        &self,
+        _oldpath: CheckedPathBuf,
+        _newpath: CheckedPathBuf,
+    ) -> FsResult<()> {
         todo!()
     }
 
-    fn cp_sync(&self, _path: &Path, _new_path: &Path) -> FsResult<()> {
+    fn cp_sync(&self, _path: &CheckedPath, _new_path: &CheckedPath) -> FsResult<()> {
         todo!()
     }
 
-    async fn cp_async(&self, _path: PathBuf, _new_path: PathBuf) -> FsResult<()> {
+    async fn cp_async(&self, _path: CheckedPathBuf, _new_path: CheckedPathBuf) -> FsResult<()> {
         todo!()
     }
 
-    fn stat_sync(&self, _path: &Path) -> FsResult<FsStat> {
+    fn stat_sync(&self, _path: &CheckedPath) -> FsResult<FsStat> {
         todo!()
     }
 
-    async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-        let resolved = self.follow_symlinks(path).await?;
-        self.lstat_async(resolved).await
+    async fn stat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
+        let resolved = self.follow_symlinks(path.as_ref().to_path_buf()).await?;
+        self.lstat_async(CheckedPathBuf::unsafe_new(resolved)).await
     }
 
-    fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
-        block_on(self.lstat_async(path.to_path_buf()))
+    fn lstat_sync(&self, path: &CheckedPath) -> FsResult<FsStat> {
+        let path_buf = <&Path>::from(path).to_path_buf();
+        block_on(self.lstat_async(CheckedPathBuf::unsafe_new(path_buf)))
     }
 
-    async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+    async fn lstat_async(&self, path: CheckedPathBuf) -> FsResult<FsStat> {
         // Get stats without following symlinks
-        (self.get_stored_entry(&path).await?).map_or_else(
+        (self.get_stored_entry(path.as_ref()).await?).map_or_else(
             || Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Not found").into()),
             |stored_entry| {
                 let metadata = stored_entry.metadata();
@@ -468,20 +481,20 @@ where
         )
     }
 
-    fn realpath_sync(&self, _path: &Path) -> FsResult<PathBuf> {
+    fn realpath_sync(&self, _path: &CheckedPath) -> FsResult<PathBuf> {
         todo!()
     }
 
-    async fn realpath_async(&self, _path: PathBuf) -> FsResult<PathBuf> {
+    async fn realpath_async(&self, _path: CheckedPathBuf) -> FsResult<PathBuf> {
         todo!()
     }
 
-    fn read_dir_sync(&self, _path: &Path) -> FsResult<Vec<FsDirEntry>> {
+    fn read_dir_sync(&self, _path: &CheckedPath) -> FsResult<Vec<FsDirEntry>> {
         todo!()
     }
 
-    async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
-        let children = self.list_directory(&path).await?;
+    async fn read_dir_async(&self, path: CheckedPathBuf) -> FsResult<Vec<FsDirEntry>> {
+        let children = self.list_directory(path.as_ref()).await?;
 
         let mut entries = Vec::new();
         for name in children {
@@ -499,46 +512,59 @@ where
         Ok(entries)
     }
 
-    fn rename_sync(&self, _oldpath: &Path, _newpath: &Path) -> FsResult<()> {
+    fn rename_sync(&self, _oldpath: &CheckedPath, _newpath: &CheckedPath) -> FsResult<()> {
         todo!()
     }
 
-    async fn rename_async(&self, _oldpath: PathBuf, _newpath: PathBuf) -> FsResult<()> {
+    async fn rename_async(
+        &self,
+        _oldpath: CheckedPathBuf,
+        _newpath: CheckedPathBuf,
+    ) -> FsResult<()> {
         todo!()
     }
 
-    fn link_sync(&self, _oldpath: &Path, _newpath: &Path) -> FsResult<()> {
+    fn link_sync(&self, _oldpath: &CheckedPath, _newpath: &CheckedPath) -> FsResult<()> {
         todo!()
     }
 
-    async fn link_async(&self, _oldpath: PathBuf, _newpath: PathBuf) -> FsResult<()> {
+    async fn link_async(&self, _oldpath: CheckedPathBuf, _newpath: CheckedPathBuf) -> FsResult<()> {
         todo!()
     }
 
     fn symlink_sync(
         &self,
-        oldpath: &Path,
-        newpath: &Path,
+        oldpath: &CheckedPath,
+        newpath: &CheckedPath,
         file_type: Option<FsFileType>,
     ) -> FsResult<()> {
-        block_on(self.symlink_async(oldpath.to_path_buf(), newpath.to_path_buf(), file_type))
+        // Need to convert CheckedPath to PathBuf for internal use
+        let oldpath_buf = <&Path>::from(oldpath).to_path_buf();
+        let newpath_buf = <&Path>::from(newpath).to_path_buf();
+        block_on(self.symlink_async(
+            CheckedPathBuf::unsafe_new(oldpath_buf),
+            CheckedPathBuf::unsafe_new(newpath_buf),
+            file_type,
+        ))
     }
 
     async fn symlink_async(
         &self,
-        oldpath: PathBuf,
-        newpath: PathBuf,
+        oldpath: CheckedPathBuf,
+        newpath: CheckedPathBuf,
         file_type: Option<FsFileType>,
     ) -> FsResult<()> {
-        self.create_symlink(&oldpath, &newpath, file_type).await
+        self.create_symlink(oldpath.as_ref(), newpath.as_ref(), file_type)
+            .await
     }
 
-    fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf> {
-        block_on(self.read_link_async(path.to_path_buf()))
+    fn read_link_sync(&self, path: &CheckedPath) -> FsResult<PathBuf> {
+        let path_buf = <&Path>::from(path).to_path_buf();
+        block_on(self.read_link_async(CheckedPathBuf::unsafe_new(path_buf)))
     }
 
-    async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
-        match self.get_stored_entry(&path).await? {
+    async fn read_link_async(&self, path: CheckedPathBuf) -> FsResult<PathBuf> {
+        match self.get_stored_entry(path.as_ref()).await? {
             Some(StoredEntry::Symlink { target, .. }) => Ok(PathBuf::from(target)),
             Some(_) => {
                 Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "Not a symlink").into())
@@ -547,17 +573,17 @@ where
         }
     }
 
-    fn truncate_sync(&self, path: &Path, len: u64) -> FsResult<()> {
-        block_on(self.truncate(path, len))
+    fn truncate_sync(&self, path: &CheckedPath, len: u64) -> FsResult<()> {
+        block_on(self.truncate(path.as_ref(), len))
     }
 
-    async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()> {
-        self.truncate(&path, len).await
+    async fn truncate_async(&self, path: CheckedPathBuf, len: u64) -> FsResult<()> {
+        self.truncate(path.as_ref(), len).await
     }
 
     fn utime_sync(
         &self,
-        _path: &Path,
+        _path: &CheckedPath,
         _atime_secs: i64,
         _atime_nanos: u32,
         _mtime_secs: i64,
@@ -568,7 +594,7 @@ where
 
     async fn utime_async(
         &self,
-        _path: PathBuf,
+        _path: CheckedPathBuf,
         _atime_secs: i64,
         _atime_nanos: u32,
         _mtime_secs: i64,
@@ -579,7 +605,7 @@ where
 
     fn lutime_sync(
         &self,
-        _path: &Path,
+        _path: &CheckedPath,
         _atime_secs: i64,
         _atime_nanos: u32,
         _mtime_secs: i64,
@@ -590,7 +616,7 @@ where
 
     async fn lutime_async(
         &self,
-        _path: PathBuf,
+        _path: CheckedPathBuf,
         _atime_secs: i64,
         _atime_nanos: u32,
         _mtime_secs: i64,
@@ -722,7 +748,7 @@ mod tests {
         let fs = setup();
         let result = fs
             .open_async(
-                PathBuf::from("/nonexistent.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/nonexistent.txt")),
                 OpenOptions {
                     read: true,
                     write: false,
@@ -732,7 +758,6 @@ mod tests {
                     create_new: false,
                     mode: Some(0o755),
                 },
-                None,
             )
             .await;
         assert!(result.is_err());
@@ -743,7 +768,7 @@ mod tests {
         let fs = setup();
         let result = fs
             .open_async(
-                PathBuf::from("/new.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/new.txt")),
                 OpenOptions {
                     read: true,
                     write: true,
@@ -753,7 +778,6 @@ mod tests {
                     create_new: false,
                     mode: Some(0o755),
                 },
-                None,
             )
             .await;
 

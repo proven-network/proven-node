@@ -4,7 +4,8 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use deno_core::url::Url;
-use deno_fs::{CheckedPath, FsError, GetPath};
+use deno_fs::FsError;
+use deno_permissions::{CheckedPath, OpenAccessKind};
 use rustyscript::{PermissionDeniedError, SystemsPermissionKind, WebPermissions};
 
 // Inner container for the allowlist permission set
@@ -62,8 +63,9 @@ impl WebPermissions for OriginAllowlistWebPermissions {
         _port: Option<u16>,
         _api_name: &str,
     ) -> Result<(), PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
+        Err(PermissionDeniedError {
             access: host.to_string(),
+            name: "permission",
         })
     }
 
@@ -77,8 +79,9 @@ impl WebPermissions for OriginAllowlistWebPermissions {
         {
             Ok(())
         } else {
-            Err(PermissionDeniedError::Fatal {
+            Err(PermissionDeniedError {
                 access: url_str.to_string(),
+                name: "permission",
             })
         }
     }
@@ -88,8 +91,9 @@ impl WebPermissions for OriginAllowlistWebPermissions {
         _p: &'a Path,
         _api_name: Option<&str>,
     ) -> Result<Cow<'a, Path>, PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
+        Err(PermissionDeniedError {
             access: "read".to_string(),
+            name: "permission",
         })
     }
 
@@ -98,35 +102,59 @@ impl WebPermissions for OriginAllowlistWebPermissions {
         p: &'a Path,
         _api_name: Option<&str>,
     ) -> Result<Cow<'a, Path>, PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
+        Err(PermissionDeniedError {
             access: p.display().to_string(),
+            name: "permission",
         })
     }
 
     fn check_open<'a>(
         &self,
-        _read: bool,
-        _write: bool,
         _path: Cow<'a, Path>,
+        _access_kind: OpenAccessKind,
         _api_name: &str,
-        _get_path: &'a dyn GetPath,
-    ) -> Result<CheckedPath<'a>, FsError> {
-        Err(FsError::NotCapable("open"))
+    ) -> Result<CheckedPath<'a>, deno_permissions::PermissionCheckError> {
+        Err(deno_permissions::PermissionCheckError::PermissionDenied(
+            PermissionDeniedError {
+                access: "open".to_string(),
+                name: "open",
+            },
+        ))
+    }
+
+    fn check_open_blind<'a>(
+        &self,
+        path: Cow<'a, Path>,
+        access_kind: OpenAccessKind,
+        _display: &str,
+        api_name: &str,
+    ) -> Result<CheckedPath<'a>, deno_permissions::PermissionCheckError> {
+        self.check_open(path, access_kind, api_name)
     }
 
     fn check_read_path<'a>(
         &self,
         _p: Cow<'a, Path>,
         _api_name: Option<&str>,
-        _get_path: &'a dyn GetPath,
     ) -> Result<CheckedPath<'a>, FsError> {
-        Err(FsError::NotCapable("read"))
+        Err(FsError::PermissionCheck(
+            deno_permissions::PermissionCheckError::PermissionDenied(PermissionDeniedError {
+                access: "read".to_string(),
+                name: "read",
+            }),
+        ))
     }
 
-    fn check_read_all(&self, _api_name: Option<&str>) -> Result<(), PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
-            access: "read_all".to_string(),
-        })
+    fn check_read_all(
+        &self,
+        _api_name: &str,
+    ) -> Result<(), deno_permissions::PermissionCheckError> {
+        Err(deno_permissions::PermissionCheckError::PermissionDenied(
+            PermissionDeniedError {
+                access: "read_all".to_string(),
+                name: "permission",
+            },
+        ))
     }
 
     fn check_read_blind(
@@ -135,15 +163,22 @@ impl WebPermissions for OriginAllowlistWebPermissions {
         _display: &str,
         _api_name: &str,
     ) -> Result<(), PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
+        Err(PermissionDeniedError {
             access: "read_all".to_string(),
+            name: "permission",
         })
     }
 
-    fn check_write_all(&self, _api_name: &str) -> Result<(), PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
-            access: "write_all".to_string(),
-        })
+    fn check_write_all(
+        &self,
+        _api_name: &str,
+    ) -> Result<(), deno_permissions::PermissionCheckError> {
+        Err(deno_permissions::PermissionCheckError::PermissionDenied(
+            PermissionDeniedError {
+                access: "write_all".to_string(),
+                name: "permission",
+            },
+        ))
     }
 
     fn check_write_blind(
@@ -152,19 +187,23 @@ impl WebPermissions for OriginAllowlistWebPermissions {
         _display: &str,
         _api_name: &str,
     ) -> Result<(), PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
+        Err(PermissionDeniedError {
             access: "write_blind".to_string(),
+            name: "permission",
         })
     }
 
-    fn check_write_partial(
+    fn check_write_partial<'a>(
         &self,
-        _path: &str,
+        _path: Cow<'a, Path>,
         _api_name: &str,
-    ) -> Result<std::path::PathBuf, PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
-            access: "write_partial".to_string(),
-        })
+    ) -> Result<CheckedPath<'a>, deno_permissions::PermissionCheckError> {
+        Err(deno_permissions::PermissionCheckError::PermissionDenied(
+            PermissionDeniedError {
+                access: "write_partial".to_string(),
+                name: "permission",
+            },
+        ))
     }
 
     fn check_sys(
@@ -172,20 +211,23 @@ impl WebPermissions for OriginAllowlistWebPermissions {
         kind: SystemsPermissionKind,
         _api_name: &str,
     ) -> Result<(), PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
+        Err(PermissionDeniedError {
             access: kind.as_str().to_string(),
+            name: "permission",
         })
     }
 
     fn check_env(&self, var: &str) -> Result<(), PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
+        Err(PermissionDeniedError {
             access: var.to_string(),
+            name: "permission",
         })
     }
 
     fn check_exec(&self) -> Result<(), PermissionDeniedError> {
-        Err(PermissionDeniedError::Fatal {
+        Err(PermissionDeniedError {
             access: "ffi".to_string(),
+            name: "permission",
         })
     }
 }

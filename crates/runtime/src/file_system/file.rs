@@ -464,6 +464,7 @@ mod tests {
 
     use crate::file_system::FileSystem;
     use deno_fs::FileSystem as DenoFileSystem;
+    use deno_permissions::CheckedPathBuf;
     use proven_store_memory::MemoryStore;
     use std::io::SeekFrom;
 
@@ -482,7 +483,7 @@ mod tests {
         let fs = setup();
         let file = fs
             .open_async(
-                PathBuf::from("/test.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/test.txt")),
                 OpenOptions {
                     read: true,
                     write: true,
@@ -492,7 +493,6 @@ mod tests {
                     create_new: false,
                     mode: Some(0o644),
                 },
-                None,
             )
             .await
             .unwrap();
@@ -507,7 +507,7 @@ mod tests {
         // Reopen to verify complete content
         let file = fs
             .open_async(
-                PathBuf::from("/test.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/test.txt")),
                 OpenOptions {
                     read: true,
                     write: false,
@@ -517,7 +517,6 @@ mod tests {
                     create_new: false,
                     mode: None,
                 },
-                None,
             )
             .await
             .unwrap();
@@ -531,7 +530,7 @@ mod tests {
         let fs = setup();
         let file = fs
             .open_async(
-                PathBuf::from("/append.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/append.txt")),
                 OpenOptions {
                     read: true,
                     write: true,
@@ -541,7 +540,6 @@ mod tests {
                     create_new: false,
                     mode: Some(0o644),
                 },
-                None,
             )
             .await
             .unwrap();
@@ -552,7 +550,7 @@ mod tests {
         // Reopen to verify content
         let file = fs
             .open_async(
-                PathBuf::from("/append.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/append.txt")),
                 OpenOptions {
                     read: true,
                     write: false,
@@ -562,7 +560,6 @@ mod tests {
                     create_new: false,
                     mode: None,
                 },
-                None,
             )
             .await
             .unwrap();
@@ -576,7 +573,7 @@ mod tests {
         let fs = setup();
         let file = fs
             .open_async(
-                PathBuf::from("/seek.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/seek.txt")),
                 OpenOptions {
                     read: true,
                     write: true,
@@ -586,7 +583,6 @@ mod tests {
                     create_new: false,
                     mode: Some(0o644),
                 },
-                None,
             )
             .await
             .unwrap();
@@ -597,7 +593,7 @@ mod tests {
         // Reopen file to verify content
         let file = fs
             .open_async(
-                PathBuf::from("/seek.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/seek.txt")),
                 OpenOptions {
                     read: true,
                     write: true,
@@ -607,7 +603,6 @@ mod tests {
                     create_new: false,
                     mode: None,
                 },
-                None,
             )
             .await
             .unwrap();
@@ -644,7 +639,7 @@ mod tests {
         // Create and test read-only file
         let readonly_file = fs
             .open_async(
-                PathBuf::from("/readonly.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/readonly.txt")),
                 OpenOptions {
                     read: true,
                     write: true, // Need write permission initially to set up test
@@ -654,7 +649,6 @@ mod tests {
                     create_new: false,
                     mode: Some(0o444),
                 },
-                None,
             )
             .await
             .unwrap();
@@ -667,7 +661,7 @@ mod tests {
         // Reopen as read-only
         let readonly_file = fs
             .open_async(
-                PathBuf::from("/readonly.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/readonly.txt")),
                 OpenOptions {
                     read: true,
                     write: false,
@@ -677,7 +671,6 @@ mod tests {
                     create_new: false,
                     mode: None,
                 },
-                None,
             )
             .await
             .unwrap();
@@ -693,7 +686,7 @@ mod tests {
         // Create and test write-only file
         let writeonly_file = fs
             .open_async(
-                PathBuf::from("/writeonly.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/writeonly.txt")),
                 OpenOptions {
                     read: false,
                     write: true,
@@ -703,7 +696,6 @@ mod tests {
                     create_new: false,
                     mode: Some(0o222),
                 },
-                None,
             )
             .await
             .unwrap();
@@ -714,7 +706,7 @@ mod tests {
         // Verify content by reopening with read permissions
         let readable_file = fs
             .open_async(
-                PathBuf::from("/writeonly.txt"),
+                CheckedPathBuf::unsafe_new(PathBuf::from("/writeonly.txt")),
                 OpenOptions {
                     read: true,
                     write: false,
@@ -724,7 +716,6 @@ mod tests {
                     create_new: false,
                     mode: None,
                 },
-                None,
             )
             .await
             .unwrap();
