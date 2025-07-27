@@ -873,8 +873,22 @@ where
             Err(_) => warn!("Some membership tasks did not complete within timeout"),
         }
 
-        // Note: NetworkManager doesn't provide unregister_service method
-        // The handler will be cleaned up when the service is dropped
+        // Unregister from network service
+        let _ = self.network_manager.unregister_service("membership").await;
+
+        // Unregister all event handlers to allow re-registration on restart
+        use crate::services::membership::commands::{
+            GetMembership, GetNodeInfo, GetOnlineMembers, GetPeerInfo, InitializeCluster,
+        };
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<InitializeCluster>();
+        let _ = self.event_bus.unregister_request_handler::<GetMembership>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<GetOnlineMembers>();
+        let _ = self.event_bus.unregister_request_handler::<GetNodeInfo>();
+        let _ = self.event_bus.unregister_request_handler::<GetPeerInfo>();
 
         *self.state.write().await = ServiceState::Stopped;
         info!("Membership service stopped");

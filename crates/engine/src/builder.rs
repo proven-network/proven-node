@@ -443,8 +443,12 @@ where
     }
 
     async fn stop(&self) -> ConsensusResult<()> {
-        // PubSubService needs to be mutable to stop
-        Ok(())
+        self.service.clone().stop().await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Failed to stop PubSub service: {e}"),
+            )
+        })
     }
 
     async fn is_healthy(&self) -> bool {

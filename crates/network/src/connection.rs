@@ -966,6 +966,14 @@ where
     G: TopologyAdaptor + Send + Sync + 'static + std::fmt::Debug + Clone,
     A: Attestor + Send + Sync + 'static + std::fmt::Debug + Clone,
 {
+    /// Check if the connection is still healthy (can send messages)
+    pub fn is_healthy(&self) -> bool {
+        match self {
+            Connection::Outgoing(c) => !c.outgoing_tx.is_disconnected(),
+            Connection::Incoming(c) => !c.outgoing_tx.is_disconnected(),
+        }
+    }
+
     /// Create a new outgoing connection
     pub async fn new_outgoing(
         id: String,

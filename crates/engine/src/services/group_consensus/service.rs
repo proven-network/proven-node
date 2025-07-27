@@ -240,8 +240,26 @@ where
         groups.clear();
         drop(groups);
 
-        // Note: NetworkManager doesn't provide unregister_service method
-        // The handler will be cleaned up when the service is dropped
+        // Unregister from network service
+        let _ = self
+            .network_manager
+            .unregister_service("group_consensus")
+            .await;
+
+        // Unregister all event handlers to allow re-registration on restart
+        use crate::services::group_consensus::commands::*;
+        let _ = self.event_bus.unregister_request_handler::<CreateGroup>();
+        let _ = self.event_bus.unregister_request_handler::<DissolveGroup>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<InitializeStreamInGroup>();
+        let _ = self.event_bus.unregister_request_handler::<SubmitToGroup>();
+        let _ = self.event_bus.unregister_request_handler::<GetNodeGroups>();
+        let _ = self.event_bus.unregister_request_handler::<GetGroupInfo>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<GetStreamState>();
+        let _ = self.event_bus.unregister_request_handler::<GetGroupState>();
 
         Ok(())
     }

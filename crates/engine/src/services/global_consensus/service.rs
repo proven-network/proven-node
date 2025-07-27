@@ -200,8 +200,39 @@ where
         drop(consensus_layer);
         tracing::debug!("Consensus layer cleared and lock released");
 
-        // Note: NetworkManager doesn't provide unregister_service method
-        // The handler will be cleaned up when the service is dropped
+        // Unregister from network service
+        let _ = self
+            .network_manager
+            .unregister_service("global_consensus")
+            .await;
+
+        // Unregister all event handlers to allow re-registration on restart
+        use crate::services::global_consensus::commands::*;
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<SubmitGlobalRequest>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<InitializeGlobalConsensus>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<AddNodeToConsensus>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<AddNodeToGroup>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<RemoveNodeFromConsensus>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<GetGlobalConsensusMembers>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<UpdateGlobalMembership>();
+        let _ = self.event_bus.unregister_request_handler::<CreateStream>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<GetGlobalState>();
 
         tracing::debug!("GlobalConsensusService stop completed");
         Ok(())

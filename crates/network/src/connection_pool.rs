@@ -131,6 +131,12 @@ where
             // Check if we have an existing verified connection
             if let Some(conns) = self.connections.get(&peer_id) {
                 for conn in conns.iter() {
+                    // Skip unhealthy connections
+                    if !conn.is_healthy() {
+                        debug!("Skipping unhealthy connection to {}", peer_id);
+                        continue;
+                    }
+
                     // Connection manages its own verification state
                     if let Some(verified_peer) = conn.peer_id().await {
                         if verified_peer == peer_id {
@@ -388,7 +394,53 @@ where
         );
         let result = conn.send(payload, headers).await;
         debug!("ConnectionPool::send - send result: {:?}", result);
+
+        // If send failed due to closed channel, remove the connection from pool
+        if let Err(NetworkError::ChannelClosed(_)) = &result {
+            debug!(
+                "Connection to {} closed, removing from pool",
+                peer.node_id()
+            );
+            self.remove_connection(peer.node_id(), &conn).await;
+        }
+
         result
+    }
+
+    /// Remove a broken connection from the pool
+    async fn remove_connection(&self, peer_id: &NodeId, conn: &Arc<Connection<G, A>>) {
+        // Remove from peer connections
+        if let Some(mut conns) = self.connections.get_mut(peer_id) {
+            conns.retain(|c| !Arc::ptr_eq(c, conn));
+            if conns.is_empty() {
+                drop(conns);
+                self.connections.remove(peer_id);
+            }
+        }
+
+        // Remove from connections by ID if it's there
+        self.connections_by_id.remove(conn.id());
+    }
+
+    /// Clean up all unhealthy connections
+    pub async fn cleanup_unhealthy_connections(&self) {
+        let mut to_remove = Vec::new();
+
+        // Find all unhealthy connections
+        for entry in self.connections.iter() {
+            let peer_id = entry.key().clone();
+            for conn in entry.value().iter() {
+                if !conn.is_healthy() {
+                    to_remove.push((peer_id.clone(), conn.clone()));
+                }
+            }
+        }
+
+        // Remove them
+        for (peer_id, conn) in to_remove {
+            debug!("Removing unhealthy connection to {}", peer_id);
+            self.remove_connection(&peer_id, &conn).await;
+        }
     }
 
     /// Handle an incoming connection

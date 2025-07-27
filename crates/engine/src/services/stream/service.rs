@@ -859,6 +859,24 @@ where
             return Ok(());
         }
 
+        // Unregister from network service
+        if let Some(network_manager) = &self.network_manager {
+            let _ = network_manager.unregister_service("stream").await;
+        }
+
+        // Unregister all event handlers to allow re-registration on restart
+        use crate::services::stream::commands::*;
+        use crate::services::stream::streaming_commands::StreamMessages;
+
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<PersistMessages>();
+        let _ = self.event_bus.unregister_request_handler::<CreateStream>();
+        let _ = self.event_bus.unregister_request_handler::<DeleteStream>();
+        let _ = self.event_bus.unregister_request_handler::<ReadMessages>();
+        let _ = self.event_bus.unregister_request_handler::<GetStreamInfo>();
+        let _ = self.event_bus.unregister_stream_handler::<StreamMessages>();
+
         // Signal shutdown
         if let Some(shutdown_tx) = self.shutdown.write().await.take() {
             let _ = shutdown_tx.send(());

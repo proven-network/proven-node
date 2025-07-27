@@ -531,6 +531,12 @@ where
         Ok(())
     }
 
+    /// Unregister a request-response service
+    pub async fn unregister_service(&self, service_id: &str) -> NetworkResult<()> {
+        self.service_handlers.remove(service_id);
+        Ok(())
+    }
+
     /// Open a stream to a remote peer
     pub async fn open_stream(
         &self,

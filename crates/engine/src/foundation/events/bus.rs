@@ -433,6 +433,22 @@ impl EventBus {
         Ok(())
     }
 
+    /// Unregister a request handler
+    pub fn unregister_request_handler<R: Request>(&self) -> Result<()> {
+        if self.request_handlers.remove(&TypeId::of::<R>()).is_none() {
+            warn!("No handler registered for {}", R::request_type());
+        }
+        Ok(())
+    }
+
+    /// Unregister a stream handler
+    pub fn unregister_stream_handler<R: StreamRequest>(&self) -> Result<()> {
+        if self.stream_handlers.remove(&TypeId::of::<R>()).is_none() {
+            warn!("No handler registered for {}", R::request_type());
+        }
+        Ok(())
+    }
+
     /// Get metrics summary
     pub fn metrics_summary(&self) -> HashMap<&'static str, super::metrics::TypeStatsSummary> {
         self.metrics.get_summary()

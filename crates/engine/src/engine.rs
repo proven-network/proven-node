@@ -11,7 +11,7 @@ use proven_storage::{StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::RoutingTable;

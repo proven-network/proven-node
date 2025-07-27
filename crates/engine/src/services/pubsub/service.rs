@@ -157,9 +157,19 @@ where
     }
 
     /// Stop the service
-    pub async fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn stop(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error>> {
         info!("Stopping PubSub service");
         *self.state.write().await = ComponentState::ShuttingDown;
+
+        // Unregister from network service
+        let _ = self.network_manager.unregister_service("pubsub").await;
+
+        // Unregister all event handlers to allow re-registration on restart
+        use crate::services::pubsub::commands::{PublishMessage, Subscribe};
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<PublishMessage>();
+        let _ = self.event_bus.unregister_stream_handler::<Subscribe>();
 
         // Clear all subscriptions
         self.message_router.clear().await;
