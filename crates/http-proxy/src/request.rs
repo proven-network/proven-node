@@ -1,10 +1,16 @@
+//! HTTP proxy request types.
+
 use bytes::Bytes;
 use http::{HeaderMap, Method};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-/// A request to a SQL store.
+/// A request to the HTTP proxy.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Request {
+    /// The request ID for correlation.
+    pub id: Uuid,
+
     /// The body of the request.
     pub body: Option<Bytes>,
 
@@ -18,22 +24,4 @@ pub struct Request {
 
     /// The path of the request.
     pub path: String,
-}
-
-impl TryFrom<Bytes> for Request {
-    type Error = ciborium::de::Error<std::io::Error>;
-
-    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
-        ciborium::de::from_reader(bytes.as_ref())
-    }
-}
-
-impl TryInto<Bytes> for Request {
-    type Error = ciborium::ser::Error<std::io::Error>;
-
-    fn try_into(self) -> Result<Bytes, Self::Error> {
-        let mut bytes = Vec::new();
-        ciborium::ser::into_writer(&self, &mut bytes)?;
-        Ok(Bytes::from(bytes))
-    }
 }

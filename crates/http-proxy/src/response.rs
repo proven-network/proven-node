@@ -1,12 +1,18 @@
+//! HTTP proxy response types.
+
 use axum::body::Body;
 use axum::response::{IntoResponse as IntoAxumResponse, Response as AxumResponse};
 use bytes::Bytes;
 use http::{HeaderMap, StatusCode};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-/// A response from a SQL store.
+/// A response from the HTTP proxy.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Response {
+    /// The request ID this response is for.
+    pub request_id: Uuid,
+
     /// The body of the response.
     pub body: Bytes,
 
@@ -17,24 +23,6 @@ pub struct Response {
     /// The status code of the response.
     #[serde(with = "http_serde::status_code")]
     pub status_code: StatusCode,
-}
-
-impl TryFrom<Bytes> for Response {
-    type Error = ciborium::de::Error<std::io::Error>;
-
-    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
-        ciborium::de::from_reader(bytes.as_ref())
-    }
-}
-
-impl TryInto<Bytes> for Response {
-    type Error = ciborium::ser::Error<std::io::Error>;
-
-    fn try_into(self) -> Result<Bytes, Self::Error> {
-        let mut bytes = Vec::new();
-        ciborium::ser::into_writer(&self, &mut bytes)?;
-        Ok(Bytes::from(bytes))
-    }
 }
 
 impl IntoAxumResponse for Response {

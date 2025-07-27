@@ -11,13 +11,7 @@ use crate::error::Error;
 
 use proven_bitcoin_core::{BitcoinNetwork, BitcoinNode, BitcoinNodeOptions};
 use proven_bootable::Bootable;
-use proven_http_proxy::{
-    HttpProxyClient, HttpProxyClientOptions, HttpProxyService, HttpProxyServiceOptions,
-};
-use proven_messaging::stream::Stream;
-use proven_messaging_memory::client::MemoryClientOptions;
-use proven_messaging_memory::service::MemoryServiceOptions;
-use proven_messaging_memory::stream::{MemoryStream, MemoryStreamOptions};
+use proven_http_proxy::{ProxyClient, ProxyService};
 use proven_topology::{NodeSpecialization, TopologyAdaptor};
 use tracing::info;
 use url::Url;
@@ -28,12 +22,12 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         panic!("node not set before bitcoin mainnet node step");
     });
 
-    // Create memory stream for bitcoin mainnet proxy
-    let bitcoin_mainnet_proxy_stream =
-        MemoryStream::new("BITCOIN_MAINNET_PROXY", MemoryStreamOptions)
-            .init()
-            .await
-            .map_err(|e| Error::Stream(e.to_string()))?;
+    // Get the engine client from bootstrap
+    let engine_client = bootstrap
+        .engine_client
+        .as_ref()
+        .expect("Engine client not available")
+        .clone();
 
     if node
         .specializations()
@@ -54,12 +48,11 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
         info!("bitcoin mainnet node started");
 
-        let bitcoin_mainnet_proxy_service = HttpProxyService::new(HttpProxyServiceOptions {
-            service_options: MemoryServiceOptions,
-            stream: bitcoin_mainnet_proxy_stream,
-            target_addr: bitcoin_mainnet_node.rpc_socket_addr().await?,
-        })
-        .await?;
+        let bitcoin_mainnet_proxy_service = ProxyService::new(
+            engine_client,
+            "bitcoin-mainnet-proxy",
+            bitcoin_mainnet_node.rpc_socket_addr().await?,
+        );
 
         bitcoin_mainnet_proxy_service
             .start()
@@ -74,11 +67,11 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
         info!("bitcoin mainnet proxy service started");
     } else {
-        let bitcoin_mainnet_proxy_client = HttpProxyClient::new(HttpProxyClientOptions {
-            client_options: MemoryClientOptions,
-            http_port: bootstrap.config.bitcoin_mainnet_proxy_port,
-            stream: bitcoin_mainnet_proxy_stream,
-        });
+        let bitcoin_mainnet_proxy_client = ProxyClient::new(
+            engine_client,
+            "bitcoin-mainnet-proxy",
+            bootstrap.config.bitcoin_mainnet_proxy_port,
+        );
 
         bitcoin_mainnet_proxy_client
             .start()
