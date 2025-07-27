@@ -57,7 +57,7 @@ members = [
     "crates/sessions",
     "crates/sql",
     "crates/sql-direct",
-    "crates/sql-streamed",
+    "crates/sql-engine",
     "crates/storage",
     "crates/storage-memory",
     "crates/storage-rocksdb",
@@ -132,7 +132,7 @@ default-members = [
     "crates/sessions",
     "crates/sql",
     "crates/sql-direct",
-    "crates/sql-streamed",
+    "crates/sql-engine",
     "crates/storage",
     "crates/storage-memory",
     "crates/storage-rocksdb",
@@ -480,7 +480,7 @@ proven-runtime = { path = "crates/runtime" }
 proven-sessions = { path = "crates/sessions" }
 proven-sql = { path = "crates/sql" }
 proven-sql-direct = { path = "crates/sql-direct" }
-proven-sql-streamed = { path = "crates/sql-streamed" }
+proven-sql-engine = { path = "crates/sql-engine" }
 proven-storage = { path = "crates/storage" }
 proven-storage-memory = { path = "crates/storage-memory" }
 proven-storage-rocksdb = { path = "crates/storage-rocksdb" }

@@ -17,20 +17,15 @@ use proven_applications::{ApplicationManagement, ApplicationManager, Application
 
 use proven_core::BootstrapUpgrade;
 use proven_identity::{IdentityManager, IdentityManagerConfig};
-use proven_messaging_memory::{
-    client::MemoryClientOptions,
-    service::MemoryServiceOptions,
-    stream::{MemoryStream2, MemoryStream3, MemoryStreamOptions},
-};
 use proven_passkeys::{PasskeyManagement, PasskeyManager, PasskeyManagerOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
 use proven_runtime::{
     RpcEndpoints, RuntimePoolManagement, RuntimePoolManager, RuntimePoolManagerOptions,
 };
 use proven_sessions::{SessionManagement, SessionManager, SessionManagerOptions};
-use proven_sql_streamed::{StreamedSqlStore2, StreamedSqlStore3};
+use proven_sql_engine::{SqlEngineStore2, SqlEngineStore3};
 use proven_store_engine::{EngineStore, EngineStore1, EngineStore2, EngineStore3};
-use proven_store_fs::{FsStore, FsStore2, FsStore3};
+use proven_store_fs::FsStore;
 use proven_topology::TopologyAdaptor;
 use tracing::info;
 
@@ -79,32 +74,11 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     info!("current application count: {}", applications.len());
 
     let application_store = EngineStore2::new(engine_client.clone());
-
-    let application_sql_store = StreamedSqlStore2::new(
-        MemoryStream2::new("APPLICATION_SQL".to_string(), MemoryStreamOptions),
-        MemoryServiceOptions,
-        MemoryClientOptions,
-        FsStore2::new("/tmp/proven/application_snapshots"),
-    );
-
+    let application_sql_store = SqlEngineStore2::new(engine_client.clone(), "APPLICATION_SQL");
     let personal_store = EngineStore3::new(engine_client.clone());
-
-    let personal_sql_store = StreamedSqlStore3::new(
-        MemoryStream3::new("PERSONAL_SQL".to_string(), MemoryStreamOptions),
-        MemoryServiceOptions,
-        MemoryClientOptions,
-        FsStore3::new("/tmp/proven/personal_snapshots"),
-    );
-
+    let personal_sql_store = SqlEngineStore3::new(engine_client.clone(), "PERSONAL_SQL");
     let nft_store = EngineStore3::new(engine_client.clone());
-
-    let nft_sql_store = StreamedSqlStore3::new(
-        MemoryStream3::new("NFT_SQL".to_string(), MemoryStreamOptions),
-        MemoryServiceOptions,
-        MemoryClientOptions,
-        FsStore3::new("/tmp/proven/nft_snapshots"),
-    );
-
+    let nft_sql_store = SqlEngineStore3::new(engine_client.clone(), "NFT_SQL");
     let file_system_store = FsStore::new("/tmp/proven/file_systems");
 
     let radix_nft_verifier = GatewayRadixNftVerifier::new(GATEWAY_URL);

@@ -7,6 +7,7 @@
 
 mod error;
 mod statement_type;
+mod transaction;
 
 use std::fmt::Debug;
 use std::future::Future;
@@ -14,6 +15,7 @@ use std::path::PathBuf;
 
 pub use error::Error;
 use statement_type::StatementType;
+pub use transaction::Transaction;
 
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
@@ -349,7 +351,19 @@ impl Database {
         }
     }
 
-    fn convert_params(params: Vec<SqlParam>) -> Vec<Value> {
+    /// Begin a new transaction
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - A backup is in progress
+    /// - The underlying libsql connection fails to create a transaction
+    pub async fn begin_transaction(&self) -> Result<Transaction, Error> {
+        let libsql_tx = self.get_connection()?.transaction().await?;
+        Ok(Transaction::new(libsql_tx))
+    }
+
+    pub(crate) fn convert_params(params: Vec<SqlParam>) -> Vec<Value> {
         params
             .into_iter()
             .map(|p| match p {

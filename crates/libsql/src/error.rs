@@ -122,6 +122,10 @@ pub enum Error {
     /// Disallow schema names (unneeded complication when DBs are easy to create).
     #[error("Schema names (e.g., \"main.table\") are not allowed in migrations")]
     SchemaNameNotAllowed,
+
+    /// Transaction already completed (committed or rolled back).
+    #[error("Transaction already completed")]
+    TransactionCompleted,
 }
 
 impl From<libsql::Error> for Error {

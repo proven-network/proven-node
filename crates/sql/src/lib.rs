@@ -49,6 +49,42 @@ where
         query: Q,
         params: Vec<SqlParam>,
     ) -> Result<Box<dyn futures::Stream<Item = Vec<SqlParam>> + Send + Unpin>, Self::Error>;
+
+    /// The transaction type for this connection
+    type Transaction: SqlTransaction<Error = Self::Error>;
+
+    /// Begin a new transaction
+    async fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error>;
+}
+
+/// A trait representing an active SQL transaction.
+#[async_trait]
+pub trait SqlTransaction
+where
+    Self: Send + Sync + 'static,
+{
+    /// The error type for the transaction
+    type Error: SqlStoreError;
+
+    /// Execute a SQL statement within the transaction
+    async fn execute<Q: Clone + Into<String> + Send>(
+        &self,
+        query: Q,
+        params: Vec<SqlParam>,
+    ) -> Result<u64, Self::Error>;
+
+    /// Execute a SQL query within the transaction
+    async fn query<Q: Clone + Into<String> + Send>(
+        &self,
+        query: Q,
+        params: Vec<SqlParam>,
+    ) -> Result<Box<dyn futures::Stream<Item = Vec<SqlParam>> + Send + Unpin>, Self::Error>;
+
+    /// Commit the transaction
+    async fn commit(self) -> Result<(), Self::Error>;
+
+    /// Rollback the transaction
+    async fn rollback(self) -> Result<(), Self::Error>;
 }
 
 /// A trait representing a SQL store with asynchronous operations.

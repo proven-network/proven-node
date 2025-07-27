@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use proven_sql::SqlParam;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// A request to a SQL store.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -17,8 +18,20 @@ pub enum Request {
     /// Executes a SQL query.
     Query(String, Vec<SqlParam>),
 
-    /// Marks a snapshot with key for lookup.
-    Snapshot(String),
+    /// Begin a new transaction.
+    BeginTransaction,
+
+    /// Execute within a transaction.
+    TransactionExecute(Uuid, String, Vec<SqlParam>),
+
+    /// Query within a transaction.
+    TransactionQuery(Uuid, String, Vec<SqlParam>),
+
+    /// Commit a transaction.
+    TransactionCommit(Uuid),
+
+    /// Rollback a transaction.
+    TransactionRollback(Uuid),
 }
 
 impl TryFrom<Bytes> for Request {

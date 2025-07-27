@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{Error, transaction::Transaction};
 
 use std::{path::PathBuf, sync::Arc};
 
@@ -23,6 +23,7 @@ impl Connection {
 #[async_trait]
 impl SqlConnection for Connection {
     type Error = Error;
+    type Transaction = Transaction;
 
     async fn execute<Q: Clone + Into<String> + Send>(
         &self,
@@ -70,5 +71,10 @@ impl SqlConnection for Connection {
             Ok(query_stream) => Ok(Box::new(query_stream)),
             Err(e) => Err(e.into()),
         }
+    }
+
+    async fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error> {
+        let tx = self.database.lock().await.begin_transaction().await?;
+        Ok(Transaction::new(tx))
     }
 }

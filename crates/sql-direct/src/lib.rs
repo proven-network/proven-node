@@ -6,6 +6,7 @@
 
 mod connection;
 mod error;
+mod transaction;
 
 use connection::Connection;
 
@@ -111,7 +112,7 @@ impl_scoped_sql_store!(
 mod tests {
     use super::*;
     use futures::StreamExt;
-    use proven_sql::{SqlConnection, SqlParam};
+    use proven_sql::{SqlConnection, SqlParam, SqlTransaction};
     use tempfile::tempdir;
 
     #[tokio::test]
@@ -186,5 +187,101 @@ mod tests {
         }
 
         assert_eq!(results.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_transactions() {
+        let dir = tempdir().unwrap();
+        let mut path = dir.path().to_path_buf();
+        path.push("test_transactions.db");
+
+        let store = DirectSqlStore::new(path);
+        let connection = store
+            .connect(vec![
+                "CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY, balance INTEGER)",
+            ])
+            .await
+            .unwrap();
+
+        // Insert initial data
+        connection
+            .execute(
+                "INSERT INTO accounts (id, balance) VALUES (?1, ?2), (?3, ?4)",
+                vec![
+                    SqlParam::Integer(1),
+                    SqlParam::Integer(100),
+                    SqlParam::Integer(2),
+                    SqlParam::Integer(50),
+                ],
+            )
+            .await
+            .unwrap();
+
+        // Test successful transaction
+        let tx = connection.begin_transaction().await.unwrap();
+
+        tx.execute(
+            "UPDATE accounts SET balance = balance - ?1 WHERE id = ?2",
+            vec![SqlParam::Integer(30), SqlParam::Integer(1)],
+        )
+        .await
+        .unwrap();
+
+        tx.execute(
+            "UPDATE accounts SET balance = balance + ?1 WHERE id = ?2",
+            vec![SqlParam::Integer(30), SqlParam::Integer(2)],
+        )
+        .await
+        .unwrap();
+
+        tx.commit().await.unwrap();
+
+        // Verify the transaction succeeded
+        let mut rows = connection
+            .query("SELECT id, balance FROM accounts ORDER BY id", vec![])
+            .await
+            .unwrap();
+
+        let first_row = rows.next().await.unwrap();
+        assert_eq!(
+            first_row,
+            vec![
+                SqlParam::IntegerWithName("id".to_string(), 1),
+                SqlParam::IntegerWithName("balance".to_string(), 70),
+            ]
+        );
+
+        let second_row = rows.next().await.unwrap();
+        assert_eq!(
+            second_row,
+            vec![SqlParam::Integer(2), SqlParam::Integer(80),]
+        );
+
+        // Test rollback
+        let tx = connection.begin_transaction().await.unwrap();
+
+        tx.execute(
+            "UPDATE accounts SET balance = balance - ?1 WHERE id = ?2",
+            vec![SqlParam::Integer(20), SqlParam::Integer(1)],
+        )
+        .await
+        .unwrap();
+
+        tx.rollback().await.unwrap();
+
+        // Verify rollback worked - balance should be unchanged
+        let mut rows = connection
+            .query(
+                "SELECT balance FROM accounts WHERE id = ?1",
+                vec![SqlParam::Integer(1)],
+            )
+            .await
+            .unwrap();
+
+        let row = rows.next().await.unwrap();
+        assert_eq!(
+            row,
+            vec![SqlParam::IntegerWithName("balance".to_string(), 70)]
+        );
     }
 }

@@ -9,6 +9,11 @@ pub enum Error {
     #[class(generic)]
     #[error(transparent)]
     Libsql(#[from] proven_libsql::Error),
+
+    /// Transaction already completed (committed or rolled back)
+    #[class(generic)]
+    #[error("Transaction already completed")]
+    TransactionCompleted,
 }
 
 impl SqlStoreError for Error {}
