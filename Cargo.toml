@@ -39,8 +39,6 @@ members = [
     "crates/local",
     "crates/local-cli",
     "crates/local-tui",
-    "crates/messaging",
-    "crates/messaging-memory",
     "crates/network",
     "crates/passkeys",
     "crates/postgres",
@@ -52,7 +50,7 @@ members = [
     "crates/radix-nft-verifier-mock",
     "crates/radix-node",
     "crates/radix-rola",
-    "crates/radix-stream",
+    # "crates/radix-stream",
     "crates/runtime",
     "crates/sessions",
     "crates/sql",
@@ -114,8 +112,6 @@ default-members = [
     "crates/local",
     "crates/local-cli",
     "crates/local-tui",
-    "crates/messaging",
-    "crates/messaging-memory",
     "crates/network",
     "crates/passkeys",
     "crates/postgres",
@@ -127,7 +123,7 @@ default-members = [
     "crates/radix-nft-verifier-mock",
     "crates/radix-node",
     "crates/radix-rola",
-    "crates/radix-stream",
+    # "crates/radix-stream",
     "crates/runtime",
     "crates/sessions",
     "crates/sql",
@@ -462,8 +458,6 @@ proven-libsql = { path = "crates/libsql" }
 proven-local = { path = "crates/local" }
 proven-local-cli = { path = "crates/local-cli" }
 proven-local-tui = { path = "crates/local-tui" }
-proven-messaging = { path = "crates/messaging" }
-proven-messaging-memory = { path = "crates/messaging-memory" }
 proven-network = { path = "crates/network" }
 proven-passkeys = { path = "crates/passkeys" }
 proven-postgres = { path = "crates/postgres" }
@@ -475,7 +469,7 @@ proven-radix-nft-verifier-gateway = { path = "crates/radix-nft-verifier-gateway"
 proven-radix-nft-verifier-mock = { path = "crates/radix-nft-verifier-mock" }
 proven-radix-node = { path = "crates/radix-node" }
 proven-radix-rola = { path = "crates/radix-rola" }
-proven-radix-stream = { path = "crates/radix-stream" }
+# proven-radix-stream = { path = "crates/radix-stream" }
 proven-runtime = { path = "crates/runtime" }
 proven-sessions = { path = "crates/sessions" }
 proven-sql = { path = "crates/sql" }

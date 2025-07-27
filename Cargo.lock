@@ -10793,36 +10793,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proven-messaging"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "futures",
- "paste",
- "proven-bootable",
-]
-
-[[package]]
-name = "proven-messaging-memory"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "futures",
- "paste",
- "proven-bootable",
- "proven-messaging",
- "serial_test",
- "thiserror 2.0.12",
- "tokio",
- "tokio-stream",
- "tokio-util",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "proven-network"
 version = "0.1.0"
 dependencies = [
@@ -11000,26 +10970,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "proven-radix-stream"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "ciborium",
- "proven-messaging",
- "proven-messaging-memory",
- "proven-radix-gateway-sdk",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]
