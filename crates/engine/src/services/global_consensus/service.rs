@@ -448,7 +448,8 @@ where
             .expect("Failed to register UpdateGlobalMembership handler");
 
         // Register CreateStream handler
-        let create_stream_handler = CreateStreamHandler::new(consensus_layer, routing_table);
+        let create_stream_handler =
+            CreateStreamHandler::new(consensus_layer.clone(), routing_table, event_bus.clone());
         event_bus
             .handle_requests::<CreateStream, _>(create_stream_handler)
             .expect("Failed to register CreateStream handler");

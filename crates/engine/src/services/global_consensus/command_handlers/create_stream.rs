@@ -7,11 +7,11 @@ use tracing::{debug, info};
 
 use crate::consensus::global::{GlobalConsensusLayer, GlobalRequest, GlobalResponse};
 use crate::foundation::{
-    events::{Error as EventError, EventMetadata, RequestHandler},
+    events::{Error as EventError, EventBus, EventMetadata, RequestHandler},
     routing::RoutingTable,
     types::ConsensusGroupId,
 };
-use crate::services::global_consensus::commands::CreateStream;
+use crate::services::global_consensus::commands::{CreateStream, SubmitGlobalRequest};
 use proven_storage::LogStorage;
 
 /// Handler for CreateStream command
@@ -21,6 +21,7 @@ where
 {
     consensus_layer: Arc<RwLock<Option<Arc<GlobalConsensusLayer<L>>>>>,
     routing_table: Arc<RoutingTable>,
+    event_bus: Arc<EventBus>,
 }
 
 impl<L> CreateStreamHandler<L>
@@ -30,10 +31,12 @@ where
     pub fn new(
         consensus_layer: Arc<RwLock<Option<Arc<GlobalConsensusLayer<L>>>>>,
         routing_table: Arc<RoutingTable>,
+        event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
             consensus_layer,
             routing_table,
+            event_bus,
         }
     }
 }
@@ -73,10 +76,14 @@ where
         );
 
         // Check if consensus layer is initialized
-        let consensus_guard = self.consensus_layer.read().await;
-        let consensus = consensus_guard
-            .as_ref()
-            .ok_or_else(|| EventError::Internal("Global consensus not initialized".to_string()))?;
+        {
+            let consensus_guard = self.consensus_layer.read().await;
+            if consensus_guard.is_none() {
+                return Err(EventError::Internal(
+                    "Global consensus not initialized".to_string(),
+                ));
+            }
+        }
 
         // Submit the request to global consensus
         let global_request = GlobalRequest::CreateStream {
@@ -85,7 +92,12 @@ where
             group_id,
         };
 
-        match consensus.submit_request(global_request).await {
+        // Use SubmitGlobalRequest which handles leader forwarding
+        let submit_request = SubmitGlobalRequest {
+            request: global_request,
+        };
+
+        match self.event_bus.request(submit_request).await {
             Ok(GlobalResponse::StreamCreated { name: _, group_id }) => {
                 info!(
                     "Stream '{}' created successfully in group {:?}",
