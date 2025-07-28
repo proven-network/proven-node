@@ -305,36 +305,52 @@ async fn test_single_node_persistence() {
     // Give the stream service a moment to fully sync
     tokio::time::sleep(Duration::from_millis(500)).await;
 
-    // First check if the stream exists
-    match client.get_stream_info(stream_name).await {
-        Ok(Some(info)) => {
+    // First check if the stream exists and has the right state
+    match client.get_stream_state(stream_name).await {
+        Ok(Some(state)) => {
             info!(
-                "Stream '{}' exists with end_offset {}",
-                stream_name, info.end_offset
+                "Stream '{}' exists with last_sequence {:?}",
+                stream_name, state.last_sequence
             );
-            assert_eq!(info.end_offset, 20, "Should have 20 messages");
+            assert_eq!(
+                state.last_sequence,
+                Some(LogIndex::new(20).unwrap()),
+                "Should have 20 messages (last sequence is 20)"
+            );
         }
         Ok(None) => {
-            panic!("Stream '{stream_name}' not found after restart!");
+            panic!("Stream '{stream_name}' state not found after restart!");
         }
         Err(e) => {
-            panic!("Failed to get stream info: {e}");
+            panic!("Failed to get stream state: {e}");
         }
     }
 
     // Now try to read the messages
+    use futures::StreamExt;
+    use tokio::pin;
     match client
-        .read_from_stream(stream_name.to_string(), LogIndex::new(1).unwrap(), 20)
+        .stream_messages(
+            stream_name.to_string(),
+            LogIndex::new(1).unwrap(),
+            Some(LogIndex::new(21).unwrap()),
+        )
         .await
     {
-        Ok(messages) => {
+        Ok(stream) => {
+            pin!(stream);
+            let mut messages = Vec::new();
+            while let Some((message, _timestamp, _sequence)) = stream.next().await {
+                messages.push(message);
+            }
+
             info!("Successfully read {} messages from stream", messages.len());
             assert_eq!(messages.len(), 20, "Should have read 20 messages");
 
             // Verify message content
             for (i, msg) in messages.iter().enumerate() {
                 let expected = format!("Single node message {}", i + 1);
-                let actual = String::from_utf8_lossy(&msg.data.payload);
+                let actual = String::from_utf8_lossy(&msg.payload);
                 assert_eq!(actual, expected, "Message {} content mismatch", i + 1);
             }
         }

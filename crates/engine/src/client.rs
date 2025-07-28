@@ -18,8 +18,9 @@ use crate::{
         group::{GroupRequest, GroupResponse},
     },
     error::{ConsensusResult, Error, ErrorKind},
+    foundation::StreamName,
     foundation::{
-        GroupStateInfo, Message, StoredMessage, StreamConfig,
+        GroupStateInfo, Message, StreamConfig,
         events::EventBus,
         types::{ConsensusGroupId, Subject, SubjectPattern},
     },
@@ -27,7 +28,7 @@ use crate::{
         global_consensus::commands as global_commands,
         group_consensus::commands as group_commands,
         pubsub::{PublishMessage, Subscribe},
-        stream::{commands as stream_commands, streaming_commands},
+        stream::commands as stream_commands,
     },
 };
 
@@ -245,41 +246,19 @@ impl Client {
         }
     }
 
-    /// Read messages from a stream (direct read, no consensus)
-    pub async fn read_from_stream(
-        &self,
-        stream_name: String,
-        start_offset: LogIndex,
-        count: u64,
-    ) -> ConsensusResult<Vec<StoredMessage>> {
-        debug!(
-            "Reading {} messages from stream '{}' starting at {}",
-            count, stream_name, start_offset
-        );
-
-        let cmd = stream_commands::ReadMessages {
-            stream_name: stream_name.into(),
-            start_offset,
-            count,
-        };
-        self.event_bus.request(cmd).await.map_err(|e| {
-            Error::with_context(ErrorKind::Service, format!("Read stream failed: {e}"))
-        })
-    }
-
     /// Stream messages from a stream
     pub async fn stream_messages(
         &self,
         stream_name: String,
         start_sequence: LogIndex,
         end_sequence: Option<LogIndex>,
-    ) -> ConsensusResult<impl Stream<Item = StoredMessage>> {
+    ) -> ConsensusResult<impl Stream<Item = (Message, u64, u64)>> {
         debug!(
             "Creating stream for '{}' from {:?} to {:?}",
             stream_name, start_sequence, end_sequence
         );
 
-        let cmd = streaming_commands::StreamMessages {
+        let cmd = stream_commands::StreamMessages {
             stream_name,
             start_sequence,
             end_sequence,
@@ -298,18 +277,58 @@ impl Client {
         }))
     }
 
-    /// Get information about a stream
+    /// Get information about a stream from global consensus
     pub async fn get_stream_info(
         &self,
         stream_name: &str,
-    ) -> ConsensusResult<Option<stream_commands::StreamInfo>> {
-        debug!("Getting info for stream '{}'", stream_name);
+    ) -> ConsensusResult<Option<crate::foundation::models::StreamInfo>> {
+        debug!(
+            "Getting info for stream '{}' from global consensus",
+            stream_name
+        );
 
-        let cmd = stream_commands::GetStreamInfo {
-            stream_name: stream_name.into(),
+        // Get the global state snapshot
+        let global_state = self.get_global_state().await?;
+
+        // Find the stream in the snapshot
+        Ok(global_state
+            .streams
+            .into_iter()
+            .find(|s| s.stream_name.as_str() == stream_name)
+            .map(|s| crate::foundation::models::StreamInfo {
+                name: s.stream_name,
+                config: s.config,
+                group_id: s.group_id,
+                created_at: 0, // TODO: Add created_at to StreamSnapshot
+            }))
+    }
+
+    /// Get detailed stream state from group consensus
+    pub async fn get_stream_state(
+        &self,
+        stream_name: &str,
+    ) -> ConsensusResult<Option<crate::foundation::models::stream::StreamState>> {
+        debug!(
+            "Getting state for stream '{}' from group consensus",
+            stream_name
+        );
+
+        // First, get the stream info to find which group owns it
+        let stream_info = self.get_stream_info(stream_name).await?.ok_or_else(|| {
+            Error::with_context(
+                ErrorKind::NotFound,
+                format!("Stream '{stream_name}' not found"),
+            )
+        })?;
+
+        // Query the group consensus for stream state
+        let cmd = group_commands::GetStreamState {
+            group_id: stream_info.group_id,
+            stream_name: StreamName::from(stream_name),
         };
+
         self.event_bus.request(cmd).await.map_err(|e| {
-            Error::with_context(ErrorKind::Service, format!("Get stream info failed: {e}"))
+            Error::with_context(ErrorKind::Service, format!("Get stream state failed: {e}"))
         })
     }
 
@@ -424,11 +443,7 @@ impl Client {
     // ===== Query Operations =====
 
     /// Execute a query across streams
-    pub async fn query(
-        &self,
-        query: String,
-        _timeout: Duration,
-    ) -> ConsensusResult<Vec<StoredMessage>> {
+    pub async fn query(&self, query: String, _timeout: Duration) -> ConsensusResult<Vec<Message>> {
         debug!("Executing query: {}", query);
 
         // For now, queries are not implemented - this is a placeholder

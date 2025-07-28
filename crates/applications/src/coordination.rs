@@ -185,9 +185,11 @@ impl LeadershipCoordinator {
         tracing::info!("Started watching leadership stream with follow mode");
 
         pin!(stream);
-        while let Some(message) = tokio_stream::StreamExt::next(&mut stream).await {
+        while let Some((message, _timestamp, sequence)) =
+            tokio_stream::StreamExt::next(&mut stream).await
+        {
             // Deserialize lease
-            let lease: LeadershipLease = ciborium::de::from_reader(&message.data.payload[..])
+            let lease: LeadershipLease = ciborium::de::from_reader(&message.payload[..])
                 .map_err(|e| Error::Deserialization(e.to_string()))?;
 
             // Update state
@@ -218,7 +220,7 @@ impl LeadershipCoordinator {
                 }
             }
 
-            state_guard.last_seen_sequence = message.sequence.get();
+            state_guard.last_seen_sequence = sequence;
         }
 
         Ok(())

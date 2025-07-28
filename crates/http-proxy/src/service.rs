@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use proven_bootable::Bootable;
-use proven_engine::{Client, Message, StoredMessage, StreamConfig};
+use proven_engine::{Client, Message, StreamConfig};
 use proven_storage::LogIndex;
 use reqwest::Client as HttpClient;
 use tokio::sync::RwLock;
@@ -46,62 +46,58 @@ impl ProxyService {
     }
 
     /// Process incoming requests.
+    #[allow(clippy::cognitive_complexity)]
     async fn run_service(self: Arc<Self>) {
+        use tokio::pin;
+        use tokio_stream::StreamExt;
+
         info!(
             "Starting HTTP proxy service for stream '{}'",
             self.stream_name
         );
 
+        let start_sequence = LogIndex::new(1).unwrap();
+
         loop {
-            match self.process_requests().await {
-                Ok(()) => {
-                    // Normal completion (no more messages)
-                    tokio::time::sleep(Duration::from_millis(100)).await;
-                }
-                Err(e) => {
-                    error!("Error processing HTTP proxy requests: {}", e);
+            match self
+                .client
+                .stream_messages(self.stream_name.clone(), start_sequence, None)
+                .await
+            {
+                Ok(stream) => {
+                    pin!(stream);
+
+                    while let Some((message, _timestamp, sequence)) = stream.next().await {
+                        if let Err(e) = self.process_message(message, sequence).await {
+                            error!("Failed to process message: {}", e);
+                            // Continue processing other messages
+                        }
+                    }
+
+                    // Stream ended, will retry
+                    info!("Request stream ended, will retry");
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
+                Err(e) => {
+                    error!("Error starting request stream: {}", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
             }
         }
-    }
-
-    /// Process pending requests from the stream.
-    async fn process_requests(&self) -> Result<(), Error> {
-        let start_sequence = {
-            let last = self.last_sequence.read().await;
-            last.map_or_else(|| LogIndex::new(1).unwrap(), |seq| seq.saturating_add(1))
-        };
-
-        // Read messages from stream
-        let messages = self
-            .client
-            .read_from_stream(self.stream_name.clone(), start_sequence, 100)
-            .await?;
-
-        for msg in messages {
-            if let Err(e) = self.process_message(msg).await {
-                error!("Failed to process message: {}", e);
-                // Continue processing other messages
-            }
-        }
-
-        Ok(())
     }
 
     /// Process a single message.
-    async fn process_message(&self, msg: StoredMessage) -> Result<(), Error> {
-        debug!("Processing message at sequence {}", msg.sequence);
+    async fn process_message(&self, message: Message, sequence: u64) -> Result<(), Error> {
+        debug!("Processing message at sequence {}", sequence);
 
         // Update last processed sequence
         {
             let mut last = self.last_sequence.write().await;
-            *last = Some(msg.sequence);
+            *last = Some(LogIndex::new(sequence).unwrap());
         }
 
         // Extract request ID from headers
-        let _request_id = msg
-            .data
+        let _request_id = message
             .headers
             .iter()
             .find(|(k, _)| k == REQUEST_ID_KEY)
@@ -109,7 +105,7 @@ impl ProxyService {
             .ok_or_else(|| Error::Deserialization("Missing or invalid request ID".to_string()))?;
 
         // Deserialize request
-        let request: Request = ciborium::de::from_reader(msg.data.payload.as_ref())?;
+        let request: Request = ciborium::de::from_reader(message.payload.as_ref())?;
 
         // Process the request
         let response = self.handle_request(request).await?;
@@ -191,23 +187,23 @@ impl Bootable for ProxyService {
 
         let stream_config = StreamConfig::default();
 
-        if self
-            .client
-            .get_stream_info(&self.stream_name)
-            .await?
-            .is_none()
-        {
+        let request_stream_exists = match self.client.get_stream_info(&self.stream_name).await {
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => false,
+        };
+
+        if !request_stream_exists {
             self.client
                 .create_stream(self.stream_name.clone(), stream_config.clone())
                 .await?;
         }
 
-        if self
-            .client
-            .get_stream_info(&response_stream)
-            .await?
-            .is_none()
-        {
+        let response_stream_exists = match self.client.get_stream_info(&response_stream).await {
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => false,
+        };
+
+        if !response_stream_exists {
             self.client
                 .create_stream(response_stream.clone(), stream_config)
                 .await?;

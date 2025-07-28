@@ -4,8 +4,7 @@ use proven_network::{NetworkMessage, ServiceMessage};
 use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 
-use crate::foundation::{StreamConfig, StreamName};
-use crate::services::stream::{StreamInfo, StreamMessage};
+use crate::foundation::{Message, StreamConfig, StreamName};
 
 /// Range of sequence numbers to read from a stream
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,21 +20,19 @@ pub struct StreamSequenceRange {
 #[serde(tag = "type", content = "data")]
 pub enum StreamServiceMessage {
     /// Create a new stream
-    CreateStream {
+    Create {
         stream_name: StreamName,
         config: StreamConfig,
     },
     /// Delete a stream
-    DeleteStream { stream_name: StreamName },
-    /// Get stream information
-    GetStreamInfo { stream_name: StreamName },
+    Delete { stream_name: StreamName },
     /// Read from a stream
-    ReadStream {
+    Read {
         stream_name: StreamName,
         sequence_range: StreamSequenceRange,
     },
     /// Query stream (streaming read) - unimplemented for now
-    QueryStream {
+    Query {
         stream_name: StreamName,
         sequence_range: StreamSequenceRange,
     },
@@ -49,10 +46,8 @@ pub enum StreamServiceResponse {
     StreamCreated,
     /// Stream deleted successfully
     StreamDeleted,
-    /// Stream information
-    StreamInfo(Option<StreamInfo>),
     /// Messages read from stream
-    Messages(Vec<StreamMessage>),
+    Messages(Vec<Message>),
     /// Error response
     Error(String),
 }

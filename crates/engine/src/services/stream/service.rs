@@ -10,63 +10,36 @@ use dashmap::DashMap;
 use proven_attestation::Attestor;
 use proven_network::NetworkManager;
 use proven_storage::{
-    LogIndex, LogStorage, LogStorageWithDelete, StorageAdaptor, StorageManager, StorageNamespace,
-    StreamStorage,
+    LogIndex, LogStorage, StorageAdaptor, StorageManager, StorageNamespace, StreamStorage,
 };
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
 use tokio::sync::{RwLock, oneshot, watch};
 use tokio_stream::{Stream, StreamExt};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::events::EventBus;
 use crate::foundation::{
-    ConsensusGroupId, PersistenceType, RoutingTable, StreamConfig, StreamName,
-    traits::ServiceLifecycle,
+    Message, PersistenceType, RoutingTable, StreamConfig, StreamName, traits::ServiceLifecycle,
 };
-use crate::services::stream::MessageData;
-use crate::services::stream::storage::{StreamStorageImpl, StreamStorageReader};
+use crate::services::stream::internal::storage::{StreamStorageImpl, StreamStorageReader};
 
 /// Type alias for stream storage map
-type StreamStorageMap<S> = DashMap<StreamName, Arc<StreamStorageImpl<StreamStorage<S>>>>;
-
-/// Stream metadata
-#[derive(Debug, Clone)]
-pub struct StreamMetadata {
-    /// Stream name
-    pub name: StreamName,
-    /// Stream configuration
-    pub config: StreamConfig,
-    /// Group ID that owns this stream
-    pub group_id: crate::foundation::types::ConsensusGroupId,
-    /// Creation timestamp
-    pub created_at: u64,
-    /// Last message timestamp
-    pub last_message_at: Option<u64>,
-    /// Total messages stored
-    pub message_count: u64,
-    /// Total bytes stored
-    pub total_bytes: u64,
-}
+type StreamStorageMap<S> =
+    DashMap<StreamName, Arc<StreamStorageImpl<proven_storage::StreamStorage<S>>>>;
 
 /// Stream service configuration
 #[derive(Debug, Clone)]
 pub struct StreamServiceConfig {
     /// Default persistence type for new streams
     pub default_persistence: PersistenceType,
-    /// Whether to auto-create streams on first message
-    pub auto_create: bool,
-    /// Maximum number of streams to cache in memory
-    pub max_cached_streams: usize,
 }
 
 impl Default for StreamServiceConfig {
     fn default() -> Self {
         Self {
             default_persistence: PersistenceType::Persistent,
-            auto_create: true,
-            max_cached_streams: 1000,
         }
     }
 }
@@ -87,9 +60,6 @@ where
 
     /// Stream configurations
     stream_configs: Arc<DashMap<StreamName, StreamConfig>>,
-
-    /// Stream metadata
-    stream_metadata: Arc<DashMap<StreamName, StreamMetadata>>,
 
     /// Stream append notifiers - watchers are notified when new messages are appended
     /// The value is the latest sequence number in the stream
@@ -140,7 +110,6 @@ where
             config,
             streams: Arc::new(DashMap::new()),
             stream_configs: Arc::new(DashMap::new()),
-            stream_metadata: Arc::new(DashMap::new()),
             stream_notifiers: Arc::new(DashMap::new()),
             storage_manager,
             event_bus,
@@ -152,108 +121,6 @@ where
             background_tasks: Arc::new(RwLock::new(Vec::new())),
         }
     }
-
-    /// Create a new stream with the given configuration
-    pub async fn create_stream(
-        &self,
-        name: StreamName,
-        config: StreamConfig,
-        group_id: ConsensusGroupId,
-    ) -> ConsensusResult<()> {
-        if self.stream_configs.contains_key(&name) {
-            return Err(Error::with_context(
-                ErrorKind::InvalidState,
-                format!("Stream {name} already exists"),
-            ));
-        }
-
-        self.stream_configs.insert(name.clone(), config.clone());
-
-        // Initialize stream metadata
-        let metadata = StreamMetadata {
-            name: name.clone(),
-            config: config.clone(),
-            group_id,
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-            last_message_at: None,
-            message_count: 0,
-            total_bytes: 0,
-        };
-        self.stream_metadata.insert(name.clone(), metadata);
-
-        // Create a notifier for this stream (start at sequence 1)
-        let (tx, _rx) = watch::channel(LogIndex::new(1).unwrap());
-        self.stream_notifiers.insert(name.clone(), tx);
-
-        // Create storage if persistence is required
-        if config.persistence_type == PersistenceType::Persistent {
-            let namespace = proven_storage::StorageNamespace::new(format!("stream_{name}"));
-            let storage = Arc::new(StreamStorageImpl::persistent(
-                name.clone(),
-                self.storage_manager.stream_storage(),
-                namespace,
-            ));
-
-            self.streams.insert(name.clone(), storage);
-        }
-
-        info!(
-            "Created stream {} in group {} with config {:?}",
-            name, group_id, config
-        );
-        Ok(())
-    }
-
-    /// Delete a stream
-    pub async fn delete_stream(&self, name: &StreamName) -> ConsensusResult<()> {
-        self.stream_configs.remove(name);
-        self.streams.remove(name);
-        self.stream_notifiers.remove(name);
-
-        info!("Deleted stream {}", name);
-        Ok(())
-    }
-
-    /// Get or create stream storage
-    pub async fn get_or_create_storage(
-        &self,
-        stream_name: &StreamName,
-    ) -> Arc<StreamStorageImpl<StreamStorage<S>>> {
-        if let Some(storage) = self.streams.get(stream_name) {
-            return storage.clone();
-        }
-
-        // Read configs to determine persistence type
-        let persistence_type = self
-            .stream_configs
-            .get(stream_name)
-            .map(|entry| entry.persistence_type)
-            .unwrap_or(self.config.default_persistence);
-
-        let storage = match persistence_type {
-            PersistenceType::Persistent => {
-                let namespace =
-                    proven_storage::StorageNamespace::new(format!("stream_{stream_name}"));
-                Arc::new(StreamStorageImpl::persistent(
-                    stream_name.clone(),
-                    self.storage_manager.stream_storage(),
-                    namespace,
-                ))
-            }
-            PersistenceType::Ephemeral => {
-                Arc::new(StreamStorageImpl::ephemeral(stream_name.clone()))
-            }
-        };
-
-        self.streams.insert(stream_name.clone(), storage.clone());
-        storage
-    }
-
-    // Note: StreamService publishes events but doesn't consume them.
-    // It receives operations via direct method calls from consensus services.
 
     /// Get stream storage for reading
     pub async fn get_stream(
@@ -326,7 +193,7 @@ where
         stream_name: &str,
         start_sequence: LogIndex,
         count: LogIndex,
-    ) -> ConsensusResult<Vec<crate::services::stream::StoredMessage>> {
+    ) -> ConsensusResult<Vec<Message>> {
         let stream_name = StreamName::new(stream_name);
 
         // Try to get the stream storage (which will check persistent storage)
@@ -356,9 +223,8 @@ where
         stream_name: &str,
         start_sequence: LogIndex,
         end_sequence: Option<LogIndex>,
-    ) -> ConsensusResult<
-        Pin<Box<dyn Stream<Item = ConsensusResult<crate::services::stream::StoredMessage>> + Send>>,
-    > {
+    ) -> ConsensusResult<Pin<Box<dyn Stream<Item = ConsensusResult<(Message, u64, u64)>> + Send>>>
+    {
         let stream_name_str = stream_name.to_string();
         let stream_name = StreamName::new(stream_name);
 
@@ -385,13 +251,18 @@ where
             )
             .await
             {
-                // Convert storage stream to StoredMessage stream
+                // Convert storage stream to (Message, timestamp, sequence) stream
                 let mapped_stream = storage_stream.map(move |result| {
                     result
                         .and_then(|(_seq, bytes)| {
-                            crate::services::stream::deserialize_stored_message(bytes).map_err(
-                                |e| proven_storage::StorageError::InvalidValue(e.to_string()),
-                            )
+                            match crate::foundation::deserialize_entry(&bytes) {
+                                Ok((message, timestamp, sequence)) => {
+                                    Ok((message, timestamp, sequence))
+                                }
+                                Err(e) => {
+                                    Err(proven_storage::StorageError::InvalidValue(e.to_string()))
+                                }
+                            }
                         })
                         .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))
                 });
@@ -425,16 +296,16 @@ where
                     None => LogIndex::new(current_seq.get().saturating_add(batch_size)).unwrap_or(current_seq),
                 };
 
-                match storage.read_range(current_seq, batch_end).await {
+                match storage.read_range_with_metadata(current_seq, batch_end).await {
                     Ok(messages) => {
                         if messages.is_empty() {
                             // No more messages
                             break;
                         }
 
-                        for msg in messages {
+                        for (msg, timestamp, sequence) in messages {
                             current_seq = LogIndex::new(current_seq.get().saturating_add(1)).unwrap_or(current_seq);
-                            yield Ok(msg);
+                            yield Ok((msg, timestamp, sequence));
                         }
 
                         // If we've reached the end sequence, stop
@@ -459,14 +330,14 @@ where
         stream_name: &StreamName,
         start: LogIndex,
         end: LogIndex,
-    ) -> ConsensusResult<Vec<MessageData>> {
+    ) -> ConsensusResult<Vec<Message>> {
         // Read messages and convert to MessageData
         let count = LogIndex::new(end.get().saturating_sub(start.get()))
             .unwrap_or(LogIndex::new(1).unwrap());
         let messages = self
             .read_messages(stream_name.as_str(), start, count)
             .await?;
-        Ok(messages.into_iter().map(|msg| msg.data).collect())
+        Ok(messages)
     }
 
     /// Read messages from a start sequence as a stream
@@ -474,219 +345,14 @@ where
         &self,
         stream_name: &StreamName,
         start: LogIndex,
-    ) -> ConsensusResult<Pin<Box<dyn Stream<Item = MessageData> + Send>>> {
+    ) -> ConsensusResult<Pin<Box<dyn Stream<Item = (Message, u64, u64)> + Send>>> {
         // Use stream_messages with no end sequence
         let stream = self
             .stream_messages(stream_name.as_str(), start, None)
             .await?;
-        let mapped_stream = futures::StreamExt::filter_map(stream, |result| {
-            futures::future::ready(result.ok().map(|msg| msg.data))
-        });
+        let mapped_stream =
+            futures::StreamExt::filter_map(stream, |result| futures::future::ready(result.ok()));
         Ok(Box::pin(mapped_stream))
-    }
-
-    /// List all streams
-    pub async fn list_streams(&self) -> Vec<StreamName> {
-        self.stream_configs
-            .iter()
-            .map(|entry| entry.key().clone())
-            .collect()
-    }
-
-    /// Get stream metadata
-    pub async fn get_stream_metadata(&self, stream_name: &StreamName) -> Option<StreamMetadata> {
-        self.stream_metadata
-            .get(stream_name)
-            .map(|entry| entry.clone())
-    }
-
-    /// Get stream info (with forwarding support)
-    pub async fn get_stream_info(
-        &self,
-        stream_name: &StreamName,
-    ) -> ConsensusResult<Option<crate::services::stream::commands::StreamInfo>> {
-        use crate::services::stream::commands::StreamInfo;
-
-        // Check if we can serve this stream locally
-        if self.can_serve_stream(stream_name).await? {
-            // Local - get info from metadata
-            if let Some(metadata) = self.get_stream_metadata(stream_name).await {
-                let info = StreamInfo {
-                    name: metadata.name,
-                    config: metadata.config,
-                    group_id: metadata.group_id,
-                    start_offset: 0, // TODO: Track actual start offset
-                    end_offset: metadata.message_count,
-                };
-                Ok(Some(info))
-            } else {
-                Ok(None)
-            }
-        } else {
-            // Remote - forward to a member of the group
-            self.forward_get_stream_info(stream_name.clone()).await
-        }
-    }
-
-    /// Forward get stream info to remote node
-    async fn forward_get_stream_info(
-        &self,
-        stream_name: StreamName,
-    ) -> ConsensusResult<Option<crate::services::stream::commands::StreamInfo>> {
-        use super::messages::{StreamServiceMessage, StreamServiceResponse};
-
-        let routing_table = self.routing_table.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Configuration, "No routing table configured")
-        })?;
-
-        let network_manager = self.network_manager.as_ref().ok_or_else(|| {
-            Error::with_context(ErrorKind::Configuration, "No network manager configured")
-        })?;
-
-        // Get the group that owns this stream
-        let stream_route = routing_table
-            .get_stream_route(stream_name.as_str())
-            .await?
-            .ok_or_else(|| {
-                Error::with_context(
-                    ErrorKind::NotFound,
-                    format!("Stream {stream_name} not found"),
-                )
-            })?;
-
-        // Get group members
-        let group_route = routing_table
-            .get_group_route(stream_route.group_id)
-            .await?
-            .ok_or_else(|| {
-                Error::with_context(
-                    ErrorKind::NotFound,
-                    format!("Group {:?} not found", stream_route.group_id),
-                )
-            })?;
-
-        // Pick any member (they can all serve reads)
-        let target = group_route
-            .members
-            .first()
-            .ok_or_else(|| Error::with_context(ErrorKind::InvalidState, "Group has no members"))?;
-
-        let message = StreamServiceMessage::GetStreamInfo { stream_name };
-
-        match network_manager
-            .request_with_timeout(target.clone(), message, std::time::Duration::from_secs(10))
-            .await
-        {
-            Ok(StreamServiceResponse::StreamInfo(info)) => Ok(info),
-            Ok(StreamServiceResponse::Error(e)) => Err(Error::with_context(ErrorKind::Network, e)),
-            Ok(_) => Err(Error::with_context(
-                ErrorKind::Internal,
-                "Unexpected response type",
-            )),
-            Err(e) => Err(Error::with_context(
-                ErrorKind::Network,
-                format!("Network error: {e}"),
-            )),
-        }
-    }
-
-    /// Get all stream metadata
-    pub async fn get_all_stream_metadata(&self) -> Vec<StreamMetadata> {
-        self.stream_metadata
-            .iter()
-            .map(|entry| entry.value().clone())
-            .collect()
-    }
-
-    /// Get the underlying storage manager
-    pub fn storage_manager(&self) -> Arc<StorageManager<S>> {
-        self.storage_manager.clone()
-    }
-
-    /// Notify watchers that new messages have been appended to a stream
-    pub async fn notify_stream_append(&self, stream_name: &StreamName, last_sequence: LogIndex) {
-        if let Some(notifier) = self.stream_notifiers.get(stream_name) {
-            // Don't care if there are no receivers
-            let _ = notifier.send(last_sequence);
-        }
-    }
-
-    /// Subscribe to stream append notifications
-    pub async fn subscribe_to_stream(
-        &self,
-        stream_name: &StreamName,
-    ) -> Option<watch::Receiver<LogIndex>> {
-        self.stream_notifiers
-            .get(stream_name)
-            .map(|notifier| notifier.subscribe())
-    }
-
-    /// Delete a message from storage immediately (for consensus operations)
-    pub async fn delete_message_from_storage(
-        &self,
-        stream_name: &StreamName,
-        sequence: LogIndex,
-    ) -> ConsensusResult<bool> {
-        let storage_namespace = StorageNamespace::new(format!("stream_{stream_name}"));
-        let stream_storage = self.storage_manager.stream_storage();
-        match stream_storage
-            .delete_entry(&storage_namespace, sequence)
-            .await
-        {
-            Ok(deleted) => {
-                if deleted {
-                    // Update metadata
-                    if let Some(mut metadata) = self.stream_metadata.get_mut(stream_name)
-                        && metadata.message_count > 0
-                    {
-                        metadata.message_count -= 1;
-                    }
-                    info!(
-                        "Deleted message {} from stream {} storage",
-                        sequence, stream_name
-                    );
-                }
-                Ok(deleted)
-            }
-            Err(e) => {
-                error!(
-                    "Failed to delete message {} from stream {}: {}",
-                    sequence, stream_name, e
-                );
-                Err(Error::with_context(
-                    ErrorKind::Storage,
-                    format!("Failed to delete message: {e}"),
-                ))
-            }
-        }
-    }
-
-    /// Update stream metadata after appending a message (for consensus operations)
-    pub async fn update_stream_metadata_for_append(
-        &self,
-        stream_name: &StreamName,
-        timestamp: u64,
-        message_size: u64,
-    ) {
-        if let Some(mut metadata) = self.stream_metadata.get_mut(stream_name) {
-            metadata.last_message_at = Some(timestamp);
-            metadata.message_count += 1;
-            metadata.total_bytes += message_size;
-        }
-    }
-
-    /// Update stream metadata from a consensus event
-    pub async fn update_stream_metadata_for_event(
-        &self,
-        stream_name: &StreamName,
-        message_count: usize,
-        last_sequence: LogIndex,
-    ) {
-        if let Some(mut metadata) = self.stream_metadata.get_mut(stream_name) {
-            metadata.message_count += message_count as u64;
-            // Update timestamp based on sequence number (approximate)
-            metadata.last_message_at = Some(last_sequence.get());
-        }
     }
 
     /// Register message handlers for network communication
@@ -745,7 +411,6 @@ where
             config: self.config.clone(),
             streams: self.streams.clone(),
             stream_configs: self.stream_configs.clone(),
-            stream_metadata: self.stream_metadata.clone(),
             stream_notifiers: self.stream_notifiers.clone(),
             storage_manager: self.storage_manager.clone(),
             event_bus: self.event_bus.clone(),
@@ -783,59 +448,60 @@ where
         }
 
         // Register command handlers
-        use crate::services::stream::command_handlers::group_consensus::*;
+        use crate::services::stream::command_handlers;
         use crate::services::stream::commands::*;
 
-        let service_arc = Arc::new(self.clone());
-
         // Register PersistMessages handler for group consensus
-        let persist_handler = PersistMessagesHandler::new(service_arc.clone());
+        let persist_handler = command_handlers::PersistMessagesHandler::new(
+            self.streams.clone(),
+            self.storage_manager.clone(),
+            self.stream_notifiers.clone(),
+        );
         self.event_bus
             .handle_requests::<PersistMessages, _>(persist_handler)
             .expect("Failed to register PersistMessages handler");
 
         // Register CreateStream handler
-        let create_handler = CreateStreamHandler::new(service_arc.clone());
+        let create_handler = command_handlers::CreateStreamHandler::new(
+            self.streams.clone(),
+            self.stream_configs.clone(),
+            self.stream_notifiers.clone(),
+            self.storage_manager.clone(),
+            self.config.default_persistence,
+        );
         self.event_bus
             .handle_requests::<CreateStream, _>(create_handler)
             .expect("Failed to register CreateStream handler");
 
         // Register DeleteStream handler
-        let delete_handler = DeleteStreamHandler::new(service_arc.clone());
+        let delete_handler = command_handlers::DeleteStreamHandler::new(
+            self.streams.clone(),
+            self.stream_configs.clone(),
+            self.stream_notifiers.clone(),
+        );
         self.event_bus
             .handle_requests::<DeleteStream, _>(delete_handler)
             .expect("Failed to register DeleteStream handler");
 
-        // Register ReadMessages handler
-        let read_handler = ReadMessagesHandler::new(service_arc.clone());
-        self.event_bus
-            .handle_requests::<ReadMessages, _>(read_handler)
-            .expect("Failed to register ReadMessages handler");
-
-        // Register GetStreamInfo handler
-        let info_handler = GetStreamInfoHandler::new(service_arc.clone());
-        self.event_bus
-            .handle_requests::<GetStreamInfo, _>(info_handler)
-            .expect("Failed to register GetStreamInfo handler");
-
-        // Register StreamMessages streaming handler
-        use crate::services::stream::streaming_commands::StreamMessages;
-        use crate::services::stream::streaming_handlers::StreamMessagesHandler;
-        let stream_handler = StreamMessagesHandler::new(service_arc.clone());
-        self.event_bus
-            .handle_streams::<StreamMessages, _>(stream_handler)
-            .expect("Failed to register StreamMessages handler");
+        // Register StreamMessages streaming handler (needs network dependencies)
+        if let (Some(node_id), Some(routing_table), Some(network_manager)) = (
+            self.node_id.clone(),
+            self.routing_table.clone(),
+            self.network_manager.clone(),
+        ) {
+            let stream_handler = command_handlers::StreamMessagesHandler::new(
+                node_id,
+                self.streams.clone(),
+                self.stream_notifiers.clone(),
+                routing_table,
+                network_manager,
+            );
+            self.event_bus
+                .handle_streams::<StreamMessages, _>(stream_handler)
+                .expect("Failed to register StreamMessages handler");
+        }
 
         info!("StreamService: Registered command handlers");
-
-        // Register event handlers for non-critical events
-        use crate::services::group_consensus::events::GroupConsensusEvent;
-        use crate::services::stream::event_handlers::group_consensus::GroupConsensusEventHandler;
-        let group_event_handler = GroupConsensusEventHandler::new(service_arc.clone());
-        self.event_bus
-            .subscribe::<GroupConsensusEvent, _>(group_event_handler);
-
-        info!("StreamService: Registered event handlers");
 
         // Register network message handlers
         self.register_message_handlers().await?;
@@ -866,15 +532,12 @@ where
 
         // Unregister all event handlers to allow re-registration on restart
         use crate::services::stream::commands::*;
-        use crate::services::stream::streaming_commands::StreamMessages;
 
         let _ = self
             .event_bus
             .unregister_request_handler::<PersistMessages>();
         let _ = self.event_bus.unregister_request_handler::<CreateStream>();
         let _ = self.event_bus.unregister_request_handler::<DeleteStream>();
-        let _ = self.event_bus.unregister_request_handler::<ReadMessages>();
-        let _ = self.event_bus.unregister_request_handler::<GetStreamInfo>();
         let _ = self.event_bus.unregister_stream_handler::<StreamMessages>();
 
         // Signal shutdown
@@ -893,7 +556,6 @@ where
         // Clear all stream storage instances to release storage references
         self.streams.clear();
         self.stream_configs.clear();
-        self.stream_metadata.clear();
         self.stream_notifiers.clear();
 
         // Mark as not running

@@ -81,78 +81,71 @@ impl Transaction {
         }
 
         // Publish request
-        let sequence = self
-            .client
+        self.client
             .publish_to_stream(self.command_stream.clone(), vec![message])
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 
-        debug!(
-            "Published SQL transaction request {} at sequence {}",
-            request_id, sequence
-        );
+        debug!("Published SQL transaction request {}", request_id);
 
-        // Poll for response
-        self.poll_for_response(request_id, sequence).await
+        // Wait for response using streaming
+        self.wait_for_response(request_id).await
     }
 
-    /// Poll the command stream for a response matching the request ID.
-    async fn poll_for_response(
-        &self,
-        request_id: Uuid,
-        start_sequence: LogIndex,
-    ) -> Result<Response, Error> {
-        let deadline = tokio::time::Instant::now() + self.timeout_duration;
-        let mut last_sequence = start_sequence.get();
+    /// Wait for a response using streaming API.
+    #[allow(clippy::cognitive_complexity)]
+    async fn wait_for_response(&self, request_id: Uuid) -> Result<Response, Error> {
+        use tokio::pin;
+        use tokio_stream::StreamExt;
+
+        // Start from the beginning to find our response
+        let start_seq = LogIndex::new(1).unwrap();
+
+        // Create timeout future
+        let timeout_fut = tokio::time::sleep(self.timeout_duration);
+        tokio::pin!(timeout_fut);
+
+        // Start streaming messages
+        let stream = self
+            .client
+            .stream_messages(self.command_stream.clone(), start_seq, None)
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+
+        pin!(stream);
 
         loop {
-            // Check if we've timed out
-            if tokio::time::Instant::now() >= deadline {
-                error!("Transaction request {} timed out", request_id);
-                return Err(Error::RequestTimeout);
-            }
+            tokio::select! {
+                () = &mut timeout_fut => {
+                    error!("Transaction request {} timed out", request_id);
+                    return Err(Error::RequestTimeout);
+                }
+                result = stream.next() => {
+                    if let Some((message, _timestamp, _sequence)) = result {
+                        // Check headers
+                        let headers: HashMap<String, String> = message
+                            .headers
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
 
-            // Read messages from the stream
-            let messages = self
-                .client
-                .read_from_stream(
-                    self.command_stream.clone(),
-                    LogIndex::new(last_sequence + 1).unwrap(),
-                    20, // Read up to 20 messages at a time
-                )
-                .await
-                .map_err(|e| Error::Stream(e.to_string()))?;
+                        // Is this a response to our request?
+                        if headers.get(REQUEST_TYPE_KEY).map(String::as_str) == Some("sql_response")
+                            && headers.get(RESPONSE_TO_KEY).map(String::as_str)
+                                == Some(&request_id.to_string())
+                        {
+                            // Found our response!
+                            let stream_response: StreamResponse =
+                                ciborium::de::from_reader(&message.payload[..])
+                                    .map_err(|e| Error::Deserialization(e.to_string()))?;
 
-            if messages.is_empty() {
-                // No new messages, wait a bit
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                continue;
-            }
-
-            // Check each message for our response
-            for message in messages {
-                last_sequence = message.sequence.get();
-
-                // Check headers
-                let headers: HashMap<String, String> = message
-                    .data
-                    .headers
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-
-                // Is this a response to our request?
-                if headers.get(REQUEST_TYPE_KEY).map(String::as_str) == Some("sql_response")
-                    && headers.get(RESPONSE_TO_KEY).map(String::as_str)
-                        == Some(&request_id.to_string())
-                {
-                    // Found our response!
-                    let stream_response: StreamResponse =
-                        ciborium::de::from_reader(&message.data.payload[..])
-                            .map_err(|e| Error::Deserialization(e.to_string()))?;
-
-                    debug!("Found response for transaction request {}", request_id);
-                    return Ok(stream_response.response);
+                            debug!("Found response for transaction request {}", request_id);
+                            return Ok(stream_response.response);
+                        }
+                    } else {
+                        error!("Stream ended while waiting for response");
+                        return Err(Error::Stream("Stream ended unexpectedly".to_string()));
+                    }
                 }
             }
         }
@@ -164,6 +157,9 @@ impl Transaction {
         query: String,
         params: Vec<SqlParam>,
     ) -> Result<Box<dyn Stream<Item = Vec<SqlParam>> + Send + Unpin>, Error> {
+        use tokio::pin;
+        use tokio_stream::StreamExt;
+
         // For queries, we need to handle streaming results differently
         // For now, we'll collect all results and return them as a stream
 
@@ -190,70 +186,71 @@ impl Transaction {
             message = message.with_header(k, v);
         }
 
-        let sequence = self
-            .client
+        self.client
             .publish_to_stream(self.command_stream.clone(), vec![message])
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 
-        // For now, collect all row responses
+        // Wait for response using streaming API
+
         let mut rows = Vec::new();
-        let deadline = tokio::time::Instant::now() + self.timeout_duration;
-        let mut last_sequence = sequence.get();
-        let mut found_response = false;
+        let start_seq = LogIndex::new(1).unwrap();
 
-        while !found_response && tokio::time::Instant::now() < deadline {
-            let messages = self
-                .client
-                .read_from_stream(
-                    self.command_stream.clone(),
-                    LogIndex::new(last_sequence + 1).unwrap(),
-                    20,
-                )
-                .await
-                .map_err(|e| Error::Stream(e.to_string()))?;
+        // Create timeout future
+        let timeout_fut = tokio::time::sleep(self.timeout_duration);
+        tokio::pin!(timeout_fut);
 
-            if messages.is_empty() {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                continue;
-            }
+        // Start streaming messages
+        let stream = self
+            .client
+            .stream_messages(self.command_stream.clone(), start_seq, None)
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
 
-            for message in messages {
-                last_sequence = message.sequence.get();
+        pin!(stream);
 
-                let headers: HashMap<String, String> = message
-                    .data
-                    .headers
-                    .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
+        loop {
+            tokio::select! {
+                () = &mut timeout_fut => {
+                    return Err(Error::RequestTimeout);
+                }
+                result = stream.next() => {
+                    match result {
+                        Some((message, _timestamp, _sequence)) => {
+                            let headers: HashMap<String, String> = message
+                                .headers
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect();
 
-                if headers.get(REQUEST_TYPE_KEY).map(String::as_str) == Some("sql_response")
-                    && headers.get(RESPONSE_TO_KEY).map(String::as_str)
-                        == Some(&request_id.to_string())
-                {
-                    let stream_response: StreamResponse =
-                        ciborium::de::from_reader(&message.data.payload[..])
-                            .map_err(|e| Error::Deserialization(e.to_string()))?;
+                            if headers.get(REQUEST_TYPE_KEY).map(String::as_str) == Some("sql_response")
+                                && headers.get(RESPONSE_TO_KEY).map(String::as_str)
+                                    == Some(&request_id.to_string())
+                            {
+                                let stream_response: StreamResponse =
+                                    ciborium::de::from_reader(&message.payload[..])
+                                        .map_err(|e| Error::Deserialization(e.to_string()))?;
 
-                    match stream_response.response {
-                        Response::TransactionRow(row) => {
-                            if !row.is_empty() {
-                                rows.push(row);
+                                match stream_response.response {
+                                    Response::TransactionRow(row) => {
+                                        if !row.is_empty() {
+                                            rows.push(row);
+                                        }
+                                        break;
+                                    }
+                                    Response::Failed(e) => return Err(Error::Libsql(e)),
+                                    _ => {
+                                        break;
+                                    }
+                                }
                             }
-                            found_response = true;
                         }
-                        Response::Failed(e) => return Err(Error::Libsql(e)),
-                        _ => {
-                            found_response = true;
+                        None => {
+                            return Err(Error::Stream("Stream ended unexpectedly".to_string()));
                         }
                     }
                 }
             }
-        }
-
-        if !found_response {
-            return Err(Error::RequestTimeout);
         }
 
         // Return as a stream

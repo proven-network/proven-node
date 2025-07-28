@@ -63,7 +63,7 @@ where
     /// Service state
     state: Arc<RwLock<ServiceState>>,
     /// Topology manager
-    topology_manager: Option<Arc<proven_topology::TopologyManager<G>>>,
+    topology_manager: Arc<proven_topology::TopologyManager<G>>,
     /// Event bus
     event_bus: Arc<EventBus>,
     /// Routing table
@@ -83,6 +83,7 @@ where
         node_id: NodeId,
         network_manager: Arc<NetworkManager<T, G, A>>,
         storage_manager: Arc<StorageManager<S>>,
+        topology_manager: Arc<proven_topology::TopologyManager<G>>,
         event_bus: Arc<EventBus>,
         routing_table: Arc<RoutingTable>,
     ) -> Self {
@@ -94,16 +95,10 @@ where
             global_state: Arc::new(RwLock::new(None)),
             consensus_layer: Arc::new(RwLock::new(None)),
             state: Arc::new(RwLock::new(ServiceState::NotInitialized)),
-            topology_manager: None,
+            topology_manager,
             event_bus,
             routing_table,
         }
-    }
-
-    /// Set topology manager
-    pub fn with_topology(mut self, topology: Arc<proven_topology::TopologyManager<G>>) -> Self {
-        self.topology_manager = Some(topology);
-        self
     }
 
     /// Start the service
@@ -413,12 +408,8 @@ where
             .expect("Failed to register InitializeGlobalConsensus handler");
 
         // Register AddNodeToConsensus handler (for adding nodes to global Raft consensus)
-        let topology_manager = self
-            .topology_manager
-            .clone()
-            .expect("Topology manager must be set before registering command handlers");
         let add_node_handler =
-            AddNodeToConsensusHandler::new(consensus_layer.clone(), topology_manager);
+            AddNodeToConsensusHandler::new(consensus_layer.clone(), self.topology_manager.clone());
         event_bus
             .handle_requests::<AddNodeToConsensus, _>(add_node_handler)
             .expect("Failed to register AddNodeToConsensus handler");

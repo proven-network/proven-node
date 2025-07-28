@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use proven_engine::{Client, StoredMessage};
+use proven_engine::{Client, Message};
 use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::oneshot;
@@ -68,13 +68,15 @@ impl CommandServiceHandler {
         // Ensure view is up to date for commands that need it
         if Self::requires_strong_consistency(&command) {
             // Get last event sequence
-            match self.client.get_stream_info(&self.event_stream).await {
-                Ok(Some(info)) => {
-                    self.view.wait_for_seq(info.end_offset).await;
+            match self.client.get_stream_state(&self.event_stream).await {
+                Ok(Some(state)) => {
+                    if let Some(last_seq) = state.last_sequence {
+                        self.view.wait_for_seq(last_seq.get()).await;
+                    }
                 }
                 Ok(None) => {
                     return Response::InternalError {
-                        message: "Event stream not found".to_string(),
+                        message: "Event stream state not found".to_string(),
                     };
                 }
                 Err(e) => {
@@ -124,10 +126,13 @@ impl CommandServiceHandler {
                 .map_err(|e| format!("Failed to publish event: {e}"))?;
         }
 
-        // Get stream info to return the last sequence number
-        match self.client.get_stream_info(&self.event_stream).await {
-            Ok(Some(info)) => Ok(info.end_offset),
-            Ok(None) => Err("Event stream not found".to_string()),
+        // Get stream state to return the last sequence number
+        match self.client.get_stream_state(&self.event_stream).await {
+            Ok(Some(state)) => state.last_sequence.map_or_else(
+                || Err("Stream has no messages after publish".to_string()),
+                |last_seq| Ok(last_seq.get()),
+            ),
+            Ok(None) => Err("Event stream state not found".to_string()),
             Err(e) => Err(e.to_string()),
         }
     }
@@ -267,8 +272,17 @@ impl CommandService {
         handler: Arc<CommandServiceHandler>,
         mut shutdown_rx: oneshot::Receiver<()>,
     ) -> Result<(), Error> {
-        // Track last processed sequence
-        let mut last_sequence = 0u64;
+        use tokio::pin;
+        use tokio_stream::StreamExt;
+
+        // Use streaming API instead of polling
+        let start_seq = LogIndex::new(1).unwrap();
+        let stream = client
+            .stream_messages(command_stream.clone(), start_seq, None)
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+
+        pin!(stream);
 
         loop {
             // Check for shutdown
@@ -277,35 +291,24 @@ impl CommandService {
                 break;
             }
 
-            // Read next batch of messages
-            let start_seq = LogIndex::new(last_sequence + 1).unwrap();
-            let count = 10u64; // Process up to 10 at a time
-
-            match client
-                .read_from_stream(command_stream.clone(), start_seq, count)
-                .await
-            {
-                Ok(messages) => {
-                    if messages.is_empty() {
-                        // No new messages, wait a bit
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        continue;
-                    }
-
-                    for message in messages {
-                        last_sequence = message.sequence.get();
-
-                        // Process the message
-                        if let Err(e) =
-                            Self::process_message(&client, &command_stream, &handler, message).await
-                        {
-                            tracing::error!("Failed to process message: {}", e);
-                        }
+            // Wait for next message with timeout
+            match tokio::time::timeout(Duration::from_millis(100), stream.next()).await {
+                Ok(Some((message, _timestamp, sequence))) => {
+                    // Process the message
+                    if let Err(e) =
+                        Self::process_message(&client, &command_stream, &handler, message, sequence)
+                            .await
+                    {
+                        tracing::error!("Failed to process message: {}", e);
                     }
                 }
-                Err(e) => {
-                    tracing::error!("Failed to read command stream: {}", e);
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                Ok(None) => {
+                    // Stream ended
+                    tracing::info!("Command stream ended");
+                    break;
+                }
+                Err(_) => {
+                    // Timeout - check for shutdown again
                 }
             }
         }
@@ -318,11 +321,11 @@ impl CommandService {
         client: &Arc<Client>,
         command_stream: &str,
         handler: &Arc<CommandServiceHandler>,
-        message: StoredMessage,
+        message: Message,
+        sequence: u64,
     ) -> Result<(), Error> {
         // Check if this is a request
         let headers: HashMap<String, String> = message
-            .data
             .headers
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -334,7 +337,7 @@ impl CommandService {
             == Some("command")
         {
             // Deserialize request
-            let request: StreamRequest = ciborium::de::from_reader(&message.data.payload[..])
+            let request: StreamRequest = ciborium::de::from_reader(&message.payload[..])
                 .map_err(|e| Error::Deserialization(e.to_string()))?;
 
             // Process command
@@ -370,7 +373,7 @@ impl CommandService {
 
             // Delete the processed message
             client
-                .delete_message(command_stream.to_string(), message.sequence)
+                .delete_message(command_stream.to_string(), LogIndex::new(sequence).unwrap())
                 .await
                 .map_err(|e| Error::Stream(e.to_string()))?;
         }
@@ -464,9 +467,10 @@ async fn listen_for_response(
     };
 
     pin!(stream);
-    while let Some(message) = tokio_stream::StreamExt::next(&mut stream).await {
+    while let Some((message, _timestamp, _sequence)) =
+        tokio_stream::StreamExt::next(&mut stream).await
+    {
         let headers: HashMap<String, String> = message
-            .data
             .headers
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -483,7 +487,7 @@ async fn listen_for_response(
         {
             // Found our response!
             if let Ok(stream_response) =
-                ciborium::de::from_reader::<StreamResponse, _>(&message.data.payload[..])
+                ciborium::de::from_reader::<StreamResponse, _>(&message.payload[..])
                 && stream_response.request_id == request_id
             {
                 let _ = response_tx.send(stream_response.response);

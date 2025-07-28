@@ -148,7 +148,12 @@ where
             .expect("Failed to register InitializeStreamInGroup handler");
 
         // Register SubmitToGroup handler
-        let submit_handler = SubmitToGroupHandler::new(self.consensus_layers.clone());
+        let submit_handler = SubmitToGroupHandler::new(
+            self.node_id.clone(),
+            self.consensus_layers.clone(),
+            self.routing_table.clone(),
+            self.network_manager.clone(),
+        );
         self.event_bus
             .handle_requests::<SubmitToGroup, _>(submit_handler)
             .expect("Failed to register SubmitToGroup handler");
@@ -167,8 +172,13 @@ where
             .expect("Failed to register GetGroupInfo handler");
 
         // Register GetStreamState handler
-        let get_stream_state_handler =
-            GetStreamStateHandler::new(self.consensus_layers.clone(), self.group_states.clone());
+        let get_stream_state_handler = GetStreamStateHandler::new(
+            self.node_id.clone(),
+            self.consensus_layers.clone(),
+            self.group_states.clone(),
+            self.routing_table.clone(),
+            self.network_manager.clone(),
+        );
         self.event_bus
             .handle_requests::<GetStreamState, _>(get_stream_state_handler)
             .expect("Failed to register GetStreamState handler");
@@ -456,7 +466,8 @@ where
         use super::handler::GroupConsensusHandler;
 
         // Create and register the service handler
-        let handler = GroupConsensusHandler::new(self.consensus_layers.clone());
+        let handler =
+            GroupConsensusHandler::new(self.consensus_layers.clone(), self.group_states.clone());
         self.network_manager
             .register_service(handler)
             .await
@@ -590,23 +601,15 @@ where
 
         // Collect stream information
         let stream_names = state.list_streams().await;
-        let mut stream_infos = Vec::new();
+        let mut stream_names_vec = Vec::new();
         let mut total_messages = 0u64;
         let mut total_bytes = 0u64;
 
         for stream_name in stream_names {
             if let Some(stream_state) = state.get_stream(&stream_name).await {
-                let info = super::types::StreamInfo {
-                    name: stream_name.to_string(),
-                    message_count: stream_state.stats.message_count,
-                    next_sequence: stream_state.next_sequence,
-                    first_sequence: stream_state.first_sequence,
-                    total_bytes: stream_state.stats.total_bytes,
-                    last_update: stream_state.stats.last_update,
-                };
                 total_messages += stream_state.stats.message_count;
                 total_bytes += stream_state.stats.total_bytes;
-                stream_infos.push(info);
+                stream_names_vec.push(stream_name);
             }
         }
 
@@ -621,7 +624,7 @@ where
             leader: current_leader,
             term: current_term,
             is_member,
-            streams: stream_infos,
+            stream_names: stream_names_vec,
             total_messages,
             total_bytes,
             created_at: SystemTime::now(), // TODO: Track actual creation time

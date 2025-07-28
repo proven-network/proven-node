@@ -1,6 +1,7 @@
 //! Group consensus operations
 
 use async_trait::async_trait;
+use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
@@ -129,8 +130,8 @@ impl GroupOperationHandler {
                 timestamp,
             } => {
                 // Check if stream exists and get its current state
-                let initial_next_seq = match self.state.get_stream(&stream).await {
-                    Some(state) => state.next_sequence,
+                let initial_last_seq = match self.state.get_stream(&stream).await {
+                    Some(state) => state.last_sequence,
                     None => return Ok(GroupResponse::error(format!("Stream {stream} not found"))),
                 };
 
@@ -142,9 +143,12 @@ impl GroupOperationHandler {
                     .append_messages(&stream, messages, timestamp)
                     .await;
 
-                // Calculate the last sequence number
-                // Since we know the initial next_sequence and how many messages we appended
-                let last_seq = initial_next_seq.saturating_add(message_count - 1);
+                // Calculate the last sequence number after appending
+                // If initial_last_seq was None (no messages), the first message is at sequence 1
+                let last_seq = match initial_last_seq {
+                    None => LogIndex::new(message_count).unwrap(),
+                    Some(last) => last.saturating_add(message_count),
+                };
 
                 Ok(GroupResponse::Appended {
                     stream,

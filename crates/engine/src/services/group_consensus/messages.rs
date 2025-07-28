@@ -9,7 +9,8 @@ use openraft::raft::{
 };
 
 use crate::consensus::group::{GroupRequest, GroupResponse, GroupTypeConfig};
-use crate::foundation::types::ConsensusGroupId;
+use crate::foundation::models::stream::StreamState;
+use crate::foundation::{StreamName, types::ConsensusGroupId};
 
 /// Group consensus service message
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +35,11 @@ pub enum GroupConsensusMessage {
     Consensus {
         group_id: ConsensusGroupId,
         request: GroupRequest,
+    },
+    /// Get stream state request
+    GetStreamState {
+        group_id: ConsensusGroupId,
+        stream_name: StreamName,
     },
 }
 
@@ -62,6 +68,10 @@ pub enum GroupConsensusServiceResponse {
         group_id: ConsensusGroupId,
         response: GroupResponse,
     },
+    /// Stream state response
+    StreamState(Option<StreamState>),
+    /// Error response
+    Error(String),
 }
 
 impl NetworkMessage for GroupConsensusMessage {

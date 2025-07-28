@@ -10,7 +10,7 @@ use crate::foundation::GroupStateReader;
 use crate::foundation::types::ConsensusGroupId;
 
 // Re-export types from foundation
-pub use crate::foundation::{GroupStateInfo, GroupStreamInfo as StreamInfo};
+pub use crate::foundation::GroupStateInfo;
 
 /// Type alias for the consensus layers map
 pub type ConsensusLayers<S> = Arc<

@@ -104,25 +104,20 @@ async fn run_consumer_loop(
     );
 
     pin!(stream);
-    while let Some(message) = tokio_stream::StreamExt::next(&mut stream).await {
+    while let Some((message, _timestamp, sequence)) =
+        tokio_stream::StreamExt::next(&mut stream).await
+    {
         // Deserialize event
-        let event: Event = ciborium::de::from_reader(&message.data.payload[..])
+        let event: Event = ciborium::de::from_reader(&message.payload[..])
             .map_err(|e| Error::Deserialization(e.to_string()))?;
 
         // Process event
-        tracing::debug!(
-            "Processing event at sequence {}: {:?}",
-            message.sequence.get(),
-            event
-        );
-        consumer.handle_event(event, message.sequence.get()).await;
+        tracing::debug!("Processing event at sequence {}: {:?}", sequence, event);
+        consumer.handle_event(event, sequence).await;
 
         // Log progress periodically
-        if message.sequence.get().is_multiple_of(100) {
-            tracing::debug!(
-                "Event consumer processed up to sequence {}",
-                message.sequence.get()
-            );
+        if sequence.is_multiple_of(100) {
+            tracing::debug!("Event consumer processed up to sequence {}", sequence);
         }
     }
 

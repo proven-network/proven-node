@@ -128,34 +128,15 @@ impl ProxyClient {
         }
     }
 
-    /// Start the response polling task.
-    fn start_response_poller(&self) {
+    /// Start the response streaming task.
+    fn start_response_streamer(&self) {
         let client = self.client.clone();
         let stream_name = format!("{}.responses", self.stream_prefix);
         let pending = self.pending_requests.clone();
         let shutdown = self.shutdown_token.clone();
 
-        self.task_tracker.spawn(async move {
-            let mut last_sequence: Option<LogIndex> = None;
-
-            loop {
-                tokio::select! {
-                    () = shutdown.cancelled() => break,
-                    () = tokio::time::sleep(Duration::from_millis(50)) => {
-                        if let Err(e) = poll_responses(
-                            &client,
-                            &stream_name,
-                            &pending,
-                            &mut last_sequence
-                        ).await {
-                            error!("Error polling responses: {}", e);
-                        }
-                    }
-                }
-            }
-
-            info!("Response poller stopped");
-        });
+        self.task_tracker
+            .spawn(stream_responses(client, stream_name, pending, shutdown));
     }
 }
 
@@ -180,47 +161,77 @@ async fn publish_request(
     Ok(last_index)
 }
 
-/// Poll for responses from the stream.
-async fn poll_responses(
-    client: &EngineClient,
-    stream_name: &str,
-    pending: &Arc<RwLock<HashMap<Uuid, PendingRequest>>>,
-    last_sequence: &mut Option<LogIndex>,
-) -> Result<(), Error> {
-    let start_sequence =
-        last_sequence.map_or_else(|| LogIndex::new(1).unwrap(), |seq| seq.saturating_add(1));
+/// Start streaming responses from the stream.
+#[allow(clippy::cognitive_complexity)]
+async fn stream_responses(
+    client: Arc<EngineClient>,
+    stream_name: String,
+    pending: Arc<RwLock<HashMap<Uuid, PendingRequest>>>,
+    shutdown: CancellationToken,
+) {
+    use tokio::pin;
+    use tokio_stream::StreamExt;
 
-    // Read messages from stream
-    let messages = client
-        .read_from_stream(stream_name.to_string(), start_sequence, 100)
-        .await?;
+    let start_sequence = LogIndex::new(1).unwrap();
 
-    for msg in messages {
-        *last_sequence = Some(msg.sequence);
+    loop {
+        tokio::select! {
+            () = shutdown.cancelled() => break,
+            result = client.stream_messages(stream_name.clone(), start_sequence, None) => {
+                match result {
+                    Ok(stream) => {
+                        pin!(stream);
 
-        // Extract request ID from headers
-        let request_id = msg
-            .data
-            .headers
-            .iter()
-            .find(|(k, _)| k == REQUEST_ID_KEY)
-            .and_then(|(_, v)| Uuid::parse_str(v).ok());
+                        loop {
+                            tokio::select! {
+                                () = shutdown.cancelled() => return,
+                                msg = stream.next() => {
+                                    if let Some((message, _timestamp, _sequence)) = msg {
+                                        // Extract request ID from headers
+                                        let request_id = message
+                                            .headers
+                                            .iter()
+                                            .find(|(k, _)| k == REQUEST_ID_KEY)
+                                            .and_then(|(_, v)| Uuid::parse_str(v).ok());
 
-        if let Some(id) = request_id {
-            // Deserialize response
-            let response: Response = ciborium::de::from_reader(msg.data.payload.as_ref())?;
+                                        if let Some(id) = request_id {
+                                            // Deserialize response
+                                            match ciborium::de::from_reader::<Response, _>(message.payload.as_ref()) {
+                                                Ok(response) => {
+                                                    // Find and notify pending request
+                                                    let pending_request = pending.write().await.remove(&id);
+                                                    if let Some(pending) = pending_request
+                                                        && let Err(e) = pending.tx.send(response).await
+                                                    {
+                                                        warn!("Failed to send response to waiting request: {}", e);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error!("Failed to deserialize response: {}", e);
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        warn!("Response stream ended, will retry");
+                                        break;
+                                    }
+                                }
+                            }
+                        }
 
-            // Find and notify pending request
-            let pending_request = pending.write().await.remove(&id);
-            if let Some(pending) = pending_request
-                && let Err(e) = pending.tx.send(response).await
-            {
-                warn!("Failed to send response to waiting request: {}", e);
+                        // Small delay before retrying
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                    Err(e) => {
+                        error!("Failed to start streaming responses: {}", e);
+                        tokio::time::sleep(Duration::from_secs(5)).await;
+                    }
+                }
             }
         }
     }
 
-    Ok(())
+    info!("Response streamer stopped");
 }
 
 #[async_trait]
@@ -242,30 +253,30 @@ impl Bootable for ProxyClient {
 
         let stream_config = StreamConfig::default();
 
-        if self
-            .client
-            .get_stream_info(&request_stream)
-            .await?
-            .is_none()
-        {
+        let request_stream_exists = match self.client.get_stream_info(&request_stream).await {
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => false,
+        };
+
+        if !request_stream_exists {
             self.client
                 .create_stream(request_stream.clone(), stream_config.clone())
                 .await?;
         }
 
-        if self
-            .client
-            .get_stream_info(&response_stream)
-            .await?
-            .is_none()
-        {
+        let response_stream_exists = match self.client.get_stream_info(&response_stream).await {
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => false,
+        };
+
+        if !response_stream_exists {
             self.client
                 .create_stream(response_stream.clone(), stream_config)
                 .await?;
         }
 
-        // Start response poller
-        self.start_response_poller();
+        // Start response streamer
+        self.start_response_streamer();
 
         // Build HTTP server
         let client = self.client.clone();

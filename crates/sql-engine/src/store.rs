@@ -96,12 +96,12 @@ impl SqlStore for SqlEngineStore {
         let leadership_stream = self.leadership_stream();
 
         // Create streams if they don't exist
-        if self
-            .client
-            .get_stream_info(&command_stream)
-            .await?
-            .is_none()
-        {
+        let command_stream_exists = match self.client.get_stream_info(&command_stream).await {
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => false,
+        };
+
+        if !command_stream_exists {
             info!("Creating SQL command stream: {}", command_stream);
             self.client
                 .create_stream(command_stream.clone(), StreamConfig::default())
@@ -109,18 +109,21 @@ impl SqlStore for SqlEngineStore {
                 .map_err(|e| Error::Stream(e.to_string()))?;
         }
 
-        if self
-            .client
-            .get_stream_info(&leadership_stream)
-            .await?
-            .is_none()
-        {
+        let leadership_stream_exists = match self.client.get_stream_info(&leadership_stream).await {
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => false,
+        };
+
+        if !leadership_stream_exists {
             info!("Creating SQL leadership stream: {}", leadership_stream);
             self.client
                 .create_stream(leadership_stream.clone(), StreamConfig::default())
                 .await
                 .map_err(|e| Error::Stream(e.to_string()))?;
         }
+
+        // Give streams a moment to be fully created
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Check if service is already running
         let mut running_services = RUNNING_SERVICES.lock().await;

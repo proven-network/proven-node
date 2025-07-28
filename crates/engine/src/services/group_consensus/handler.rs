@@ -2,19 +2,11 @@
 
 use async_trait::async_trait;
 use proven_network::{NetworkResult, Service, ServiceContext};
-use proven_storage::ConsensusStorage;
-use std::collections::HashMap;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use super::messages::{GroupConsensusMessage, GroupConsensusServiceResponse};
-use crate::consensus::group::GroupConsensusLayer;
+use super::types::{ConsensusLayers, States};
 use crate::consensus::group::raft::GroupRaftMessageHandler;
-use crate::foundation::types::ConsensusGroupId;
-
-/// Type alias for consensus layers
-type ConsensusLayers<S> =
-    Arc<RwLock<HashMap<ConsensusGroupId, Arc<GroupConsensusLayer<ConsensusStorage<S>>>>>>;
+use crate::foundation::GroupStateRead;
 
 /// Group consensus service handler
 pub struct GroupConsensusHandler<S>
@@ -22,6 +14,7 @@ where
     S: proven_storage::StorageAdaptor + 'static,
 {
     groups: ConsensusLayers<S>,
+    group_states: States,
 }
 
 impl<S> GroupConsensusHandler<S>
@@ -29,8 +22,11 @@ where
     S: proven_storage::StorageAdaptor + 'static,
 {
     /// Create a new handler
-    pub fn new(groups: ConsensusLayers<S>) -> Self {
-        Self { groups }
+    pub fn new(groups: ConsensusLayers<S>, group_states: States) -> Self {
+        Self {
+            groups,
+            group_states,
+        }
     }
 }
 
@@ -109,6 +105,30 @@ where
                     .map_err(|e| proven_network::NetworkError::ServiceError(e.to_string()))?;
 
                 Ok(GroupConsensusServiceResponse::Consensus { group_id, response })
+            }
+            GroupConsensusMessage::GetStreamState {
+                group_id,
+                stream_name,
+            } => {
+                // Check if we have this group locally
+                let groups_guard = self.groups.read().await;
+                if !groups_guard.contains_key(&group_id) {
+                    return Ok(GroupConsensusServiceResponse::Error(format!(
+                        "Group {group_id} not found"
+                    )));
+                }
+                drop(groups_guard);
+
+                // Get the state from our states map
+                let states_guard = self.group_states.read().await;
+                if let Some(state) = states_guard.get(&group_id) {
+                    let stream_state = state.get_stream(&stream_name).await;
+                    Ok(GroupConsensusServiceResponse::StreamState(stream_state))
+                } else {
+                    Ok(GroupConsensusServiceResponse::Error(format!(
+                        "State for group {group_id} not found"
+                    )))
+                }
             }
         }
     }

@@ -1,6 +1,5 @@
 //! Handler for PublishMessage command
 
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use async_trait::async_trait;

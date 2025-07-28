@@ -10,7 +10,6 @@ use tokio::sync::RwLock;
 use tracing::{debug, info};
 
 use crate::foundation::events::{EventHandler, EventMetadata};
-use crate::foundation::types::SubjectPattern;
 use crate::services::membership::events::MembershipEvent;
 use crate::services::pubsub::interest::InterestTracker;
 use crate::services::pubsub::streaming_router::StreamingMessageRouter;

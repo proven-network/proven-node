@@ -5,9 +5,9 @@ use proven_storage::LogIndex;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::foundation::events::Request;
+use crate::foundation::events::{Request, StreamRequest};
 use crate::foundation::types::{ConsensusGroupId, StreamName};
-use crate::foundation::{StoredMessage, StreamConfig};
+use crate::foundation::{Message, StreamConfig};
 
 /// Persist messages to a stream (from group consensus)
 #[derive(Debug, Clone)]
@@ -67,49 +67,25 @@ impl Request for DeleteStream {
     }
 }
 
-/// Read messages from a stream
+/// Stream messages from a stream
+///
+/// This returns a stream of messages directly from the stream service
+/// without any intermediate channels or session management.
 #[derive(Debug, Clone)]
-pub struct ReadMessages {
-    pub stream_name: StreamName,
-    pub start_offset: LogIndex,
-    pub count: u64,
+pub struct StreamMessages {
+    pub stream_name: String,
+    pub start_sequence: LogIndex,
+    pub end_sequence: Option<LogIndex>,
 }
 
-impl Request for ReadMessages {
-    type Response = Vec<StoredMessage>;
+impl StreamRequest for StreamMessages {
+    type Item = (Message, u64, u64); // (message, timestamp, sequence)
 
     fn request_type() -> &'static str {
-        "ReadMessages"
+        "Stream.StreamMessages"
     }
 
     fn default_timeout() -> Duration {
-        Duration::from_secs(10)
+        Duration::from_secs(300) // 5 minutes for long streams
     }
-}
-
-/// Get stream information
-#[derive(Debug, Clone)]
-pub struct GetStreamInfo {
-    pub stream_name: StreamName,
-}
-
-impl Request for GetStreamInfo {
-    type Response = Option<StreamInfo>;
-
-    fn request_type() -> &'static str {
-        "GetStreamInfo"
-    }
-
-    fn default_timeout() -> Duration {
-        Duration::from_secs(5)
-    }
-}
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct StreamInfo {
-    pub name: StreamName,
-    pub config: StreamConfig,
-    pub group_id: ConsensusGroupId,
-    pub start_offset: u64,
-    pub end_offset: u64,
 }

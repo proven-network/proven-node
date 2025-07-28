@@ -154,17 +154,15 @@ where
             snapshot_interval: config.consensus.global.snapshot_interval,
         };
 
-        let global_consensus_service = Arc::new(
-            GlobalConsensusService::new(
-                global_consensus_config,
-                self.node_id.clone(),
-                network_manager.clone(),
-                storage_manager.clone(),
-                new_event_bus.clone(),
-                routing_table.clone(),
-            )
-            .with_topology(topology_manager.clone()),
-        );
+        let global_consensus_service = Arc::new(GlobalConsensusService::new(
+            global_consensus_config,
+            self.node_id.clone(),
+            network_manager.clone(),
+            storage_manager.clone(),
+            topology_manager.clone(),
+            new_event_bus.clone(),
+            routing_table.clone(),
+        ));
 
         let group_consensus_config = GroupConsensusConfig {
             election_timeout_min: config.consensus.group.election_timeout_min,

@@ -19,9 +19,8 @@ pub use messages::{Message, deserialize_entry, headers, serialize_entry};
 
 // From models
 pub use models::{
-    GroupInfo, GroupMetadata, GroupStateInfo, GroupStreamInfo, NodeInfo, PersistenceType,
-    RetentionPolicy, StoredMessage, StreamConfig, StreamInfo, StreamState, StreamStats,
-    deserialize_stored_message, serialize_stored_message,
+    GroupInfo, GroupMetadata, GroupStateInfo, NodeInfo, PersistenceType, RetentionPolicy,
+    StreamConfig, StreamInfo, StreamState, StreamStats,
 };
 
 // From routing

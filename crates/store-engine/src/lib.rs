@@ -216,12 +216,12 @@ where
         let stream_name = self.get_stream_name();
 
         // Check if stream exists
-        let stream_info = self
-            .client
-            .get_stream_info(&stream_name)
-            .await
-            .map_err(|e| Error::Engine(e.to_string()))?;
-        if stream_info.is_none() {
+        let stream_exists = match self.client.get_stream_info(&stream_name).await {
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => false,
+        };
+
+        if !stream_exists {
             // Create the stream
             let config = StreamConfig::default();
             self.client
@@ -268,12 +268,12 @@ where
 
         // Also ensure key index stream exists
         let key_index = self.get_key_index_stream();
-        let key_index_info = self
-            .client
-            .get_stream_info(&key_index)
-            .await
-            .map_err(|e| Error::Engine(e.to_string()))?;
-        if key_index_info.is_none() {
+        let key_index_exists = match self.client.get_stream_info(&key_index).await {
+            Ok(Some(_)) => true,
+            Ok(None) | Err(_) => false,
+        };
+
+        if !key_index_exists {
             let config = StreamConfig::default();
             self.client
                 .create_stream(key_index.clone(), config)
@@ -372,6 +372,8 @@ where
 
     /// Sync state from stream (incremental)
     async fn sync_state(&self, cached_state: &Arc<CachedStoreState>) -> Result<(), Error> {
+        use futures::StreamExt;
+
         let stream_name = self.get_stream_name();
 
         // Check if we should sync
@@ -386,65 +388,67 @@ where
         };
 
         // Read only new messages since last sync
-        let batch_size = 100;
+        let start = LogIndex::new(last_sequence + 1)
+            .ok_or_else(|| Error::Engine("Start sequence must be greater than 0".to_string()))?;
+
+        // Get the current end of the stream to do a bounded read
+        let stream_state = self
+            .client
+            .get_stream_state(&stream_name)
+            .await
+            .map_err(|e| Error::Engine(e.to_string()))?;
+
+        let end_sequence = match stream_state {
+            Some(state) => match state.last_sequence {
+                Some(last_seq) if last_seq.get() > last_sequence => {
+                    Some(LogIndex::new(last_seq.get() + 1).unwrap())
+                }
+                _ => return Ok(()), // No new messages
+            },
+            None => return Ok(()), // Stream doesn't exist or has no messages
+        };
+
+        // Use streaming API for bounded read
+        let stream = self
+            .client
+            .stream_messages(stream_name.clone(), start, end_sequence)
+            .await
+            .map_err(|e| Error::Engine(e.to_string()))?;
+
         let mut total_messages = 0;
-        let mut current_sequence = last_sequence;
 
-        loop {
-            let start = LogIndex::new(current_sequence + 1).ok_or_else(|| {
-                Error::Engine("Start sequence must be greater than 0".to_string())
-            })?;
-            let messages = self
-                .client
-                .read_from_stream(stream_name.clone(), start, batch_size)
-                .await
-                .map_err(|e| Error::Engine(e.to_string()))?;
+        // Process messages
+        {
+            let mut state = cached_state.state.write().await;
+            let mut message_stream = Box::pin(stream);
 
-            if messages.is_empty() {
-                break;
-            }
+            while let Some((msg, _timestamp, sequence)) = message_stream.next().await {
+                total_messages += 1;
 
-            let message_count = messages.len();
-            total_messages += message_count;
-
-            // Process messages
-            {
-                let mut state = cached_state.state.write().await;
-
-                for msg in messages {
-                    // Extract key from headers
-                    if let Some(key) = msg
-                        .data
+                // Extract key from headers
+                if let Some(key) = msg
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k == "key")
+                    .map(|(_, v)| v.clone())
+                {
+                    // Check if this is a delete (empty payload with deleted=true)
+                    let is_deleted = msg
                         .headers
                         .iter()
-                        .find(|(k, _)| k == "key")
-                        .map(|(_, v)| v.clone())
-                    {
-                        // Check if this is a delete (empty payload with deleted=true)
-                        let is_deleted = msg
-                            .data
-                            .headers
-                            .iter()
-                            .any(|(k, v)| k == "deleted" && v == "true");
+                        .any(|(k, v)| k == "deleted" && v == "true");
 
-                        if is_deleted {
-                            state.data.remove(&key);
-                        } else {
-                            // Store the payload directly as bytes
-                            state.data.insert(key, msg.data.payload);
-                        }
+                    if is_deleted {
+                        state.data.remove(&key);
+                    } else {
+                        // Store the payload directly as bytes
+                        state.data.insert(key, msg.payload);
                     }
-
-                    state.last_sequence = msg.sequence.get();
-                    current_sequence = msg.sequence.get();
                 }
-                drop(state);
-            }
 
-            #[allow(clippy::cast_possible_truncation)]
-            if message_count < batch_size as usize {
-                break;
+                state.last_sequence = sequence;
             }
+            drop(state);
         }
 
         // Update last sync time

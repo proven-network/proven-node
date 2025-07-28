@@ -8,6 +8,7 @@ use proven_topology::NodeId;
 use super::global_state::GlobalState;
 use super::group_state::GroupState;
 use crate::error::ConsensusResult;
+use crate::foundation::Message;
 use crate::foundation::models::{GroupInfo, NodeInfo, StreamConfig, StreamInfo, StreamState};
 use crate::foundation::types::{ConsensusGroupId, StreamName};
 
@@ -93,7 +94,7 @@ pub trait GroupStateWrite: GroupStateRead {
     async fn append_messages(
         &self,
         stream: &StreamName,
-        messages: Vec<crate::consensus::group::types::MessageData>,
+        messages: Vec<Message>,
         timestamp: u64,
     ) -> Arc<Vec<bytes::Bytes>>;
 
@@ -302,7 +303,7 @@ impl GroupStateWrite for GroupStateWriter {
     async fn append_messages(
         &self,
         stream: &StreamName,
-        messages: Vec<crate::consensus::group::types::MessageData>,
+        messages: Vec<Message>,
         timestamp: u64,
     ) -> Arc<Vec<bytes::Bytes>> {
         self.inner

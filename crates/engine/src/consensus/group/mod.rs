@@ -17,4 +17,4 @@ pub mod types;
 pub use callbacks::GroupConsensusCallbacks;
 pub use operations::{GroupOperation, GroupOperationHandler};
 pub use raft::{GroupConsensusLayer, GroupTypeConfig};
-pub use types::{GroupRequest, GroupResponse, MessageData, StreamOperation};
+pub use types::{GroupRequest, GroupResponse, StreamOperation};

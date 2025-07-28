@@ -54,7 +54,7 @@ impl GroupState {
             name.clone(),
             StreamState {
                 name,
-                next_sequence: LogIndex::new(1).unwrap(),
+                last_sequence: None, // No messages yet
                 first_sequence: LogIndex::new(1).unwrap(),
                 stats: StreamStats::default(),
             },
@@ -97,7 +97,11 @@ impl GroupState {
 
         if let Some(mut state) = self.streams.get_mut(stream) {
             let mut entries = Vec::with_capacity(messages.len());
-            let start_sequence = state.next_sequence;
+            // Calculate start sequence - if last_sequence is None (no messages), start at 1
+            let start_sequence = match state.last_sequence {
+                None => LogIndex::new(1).unwrap(),
+                Some(last) => last.saturating_add(1),
+            };
 
             let mut total_size = 0u64;
             let mut message_count = 0u64;
@@ -121,8 +125,10 @@ impl GroupState {
                 }
             }
 
-            // Update state
-            state.next_sequence = start_sequence.saturating_add(message_count);
+            // Update state - last_sequence is the sequence of the last message appended
+            if message_count > 0 {
+                state.last_sequence = Some(start_sequence.saturating_add(message_count - 1));
+            }
             state.stats.message_count += message_count;
             state.stats.total_bytes += total_size;
             state.stats.last_update = timestamp_millis / 1000; // Convert to seconds
@@ -145,7 +151,9 @@ impl GroupState {
     pub async fn trim_stream(&self, stream: &StreamName, up_to_seq: LogIndex) -> Option<LogIndex> {
         if let Some(mut state) = self.streams.get_mut(stream) {
             // Can only trim if up_to_seq is valid
-            if up_to_seq >= state.first_sequence && up_to_seq < state.next_sequence {
+            if up_to_seq >= state.first_sequence
+                && state.last_sequence.is_some_and(|last| up_to_seq <= last)
+            {
                 // Update first sequence
                 state.first_sequence = up_to_seq.saturating_add(1);
 
@@ -173,7 +181,7 @@ impl GroupState {
     ) -> Option<LogIndex> {
         if let Some(state) = self.streams.get(stream) {
             // Validate sequence is valid
-            if sequence >= state.next_sequence {
+            if state.last_sequence.is_none_or(|last| sequence > last) {
                 return None;
             }
 

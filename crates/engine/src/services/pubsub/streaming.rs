@@ -4,7 +4,6 @@
 //! It replaces the request-response pattern with persistent streams between nodes.
 
 use async_trait::async_trait;
-use bytes::Bytes;
 use proven_network::{NetworkResult, Stream, StreamingService};
 use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};

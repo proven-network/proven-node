@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
-use crate::foundation::types::SubjectPattern;
 use crate::services::pubsub::interest::InterestTracker;
 use crate::services::pubsub::streaming::InterestMessage;
 use proven_network::Stream;

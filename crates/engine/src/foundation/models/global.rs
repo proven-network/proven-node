@@ -3,11 +3,10 @@
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-use proven_storage::LogIndex;
+use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};
 
-use crate::foundation::types::ConsensusGroupId;
-use proven_topology::NodeId;
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 
 /// Consensus group information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,8 +45,8 @@ pub struct GroupStateInfo {
     pub term: u64,
     /// Whether this node is a member of the group
     pub is_member: bool,
-    /// Streams managed by this group
-    pub streams: Vec<GroupStreamInfo>,
+    /// Stream names managed by this group
+    pub stream_names: Vec<StreamName>,
     /// Total messages across all streams
     pub total_messages: u64,
     /// Total bytes across all streams
@@ -56,21 +55,4 @@ pub struct GroupStateInfo {
     pub created_at: SystemTime,
     /// Last update time
     pub last_updated: SystemTime,
-}
-
-/// Stream information within a group
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GroupStreamInfo {
-    /// Stream name
-    pub name: String,
-    /// Number of messages in the stream
-    pub message_count: u64,
-    /// Next sequence number
-    pub next_sequence: LogIndex,
-    /// First sequence number
-    pub first_sequence: LogIndex,
-    /// Total bytes in the stream
-    pub total_bytes: u64,
-    /// Last update timestamp
-    pub last_update: u64,
 }

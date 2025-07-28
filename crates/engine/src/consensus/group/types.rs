@@ -5,9 +5,7 @@ use std::sync::Arc;
 use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 
-/// Message type for consensus operations
-pub type MessageData = crate::foundation::Message;
-use crate::foundation::StreamName;
+use crate::foundation::{Message, StreamName};
 
 /// Group consensus request
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,7 +24,7 @@ pub enum StreamOperation {
         /// Stream name
         stream: StreamName,
         /// Messages to append
-        messages: Vec<MessageData>,
+        messages: Vec<Message>,
         /// Timestamp assigned by the leader (milliseconds since epoch)
         timestamp: u64,
     },
@@ -112,15 +110,4 @@ impl GroupResponse {
     pub fn success() -> Self {
         Self::Success
     }
-}
-
-/// Stored message with metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StoredMessage {
-    /// Sequence number
-    pub sequence: u64,
-    /// Message data
-    pub data: MessageData,
-    /// Timestamp
-    pub timestamp: u64,
 }

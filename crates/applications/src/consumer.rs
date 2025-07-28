@@ -91,6 +91,7 @@ async fn run_consumer_loop(
     start_seq: LogIndex,
 ) -> Result<(), Error> {
     use tokio::pin;
+    use tokio_stream::StreamExt;
 
     // Use streaming API with follow mode for continuous consumption
     let stream = client
@@ -104,20 +105,17 @@ async fn run_consumer_loop(
     );
 
     pin!(stream);
-    while let Some(message) = tokio_stream::StreamExt::next(&mut stream).await {
-        // Deserialize event from the stored message payload
-        let event: Event = ciborium::de::from_reader(&message.data.payload[..])
+    while let Some((message, _timestamp, sequence)) = stream.next().await {
+        // Deserialize event from the message payload
+        let event: Event = ciborium::de::from_reader(&message.payload[..])
             .map_err(|e| Error::Deserialization(e.to_string()))?;
 
         // Process event
-        consumer.handle_event(event, message.sequence.get()).await;
+        consumer.handle_event(event, sequence).await;
 
         // Log progress periodically
-        if message.sequence.get().is_multiple_of(100) {
-            tracing::debug!(
-                "Event consumer processed up to sequence {}",
-                message.sequence.get()
-            );
+        if sequence.is_multiple_of(100) {
+            tracing::debug!("Event consumer processed up to sequence {}", sequence);
         }
     }
 

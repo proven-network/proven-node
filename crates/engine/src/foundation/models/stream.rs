@@ -1,11 +1,8 @@
 //! Stream-related data models
 
-use bytes::Bytes;
+use crate::foundation::types::{ConsensusGroupId, StreamName};
 use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
-
-use crate::foundation::Message;
-use crate::foundation::types::{ConsensusGroupId, StreamName};
 
 /// Stream persistence configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,12 +87,12 @@ pub struct StreamInfo {
 }
 
 /// State for a single stream
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamState {
     /// Stream name
     pub name: StreamName,
-    /// Next sequence number
-    pub next_sequence: LogIndex,
+    /// Last sequence number (None if no messages)
+    pub last_sequence: Option<LogIndex>,
     /// First sequence (for trimmed streams)
     pub first_sequence: LogIndex,
     /// Stream statistics
@@ -103,7 +100,7 @@ pub struct StreamState {
 }
 
 /// Stream statistics
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StreamStats {
     /// Total messages
     pub message_count: u64,
@@ -111,27 +108,4 @@ pub struct StreamStats {
     pub total_bytes: u64,
     /// Last update timestamp
     pub last_update: u64,
-}
-
-/// Stored message with metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StoredMessage {
-    /// Sequence number
-    pub sequence: LogIndex,
-    /// Message data
-    pub data: Message,
-    /// Timestamp
-    pub timestamp: u64,
-}
-
-/// Serialize a StoredMessage to bytes
-pub fn serialize_stored_message(msg: &StoredMessage) -> Result<Bytes, String> {
-    serde_json::to_vec(msg)
-        .map(Bytes::from)
-        .map_err(|e| format!("Failed to serialize message: {e}"))
-}
-
-/// Deserialize a StoredMessage from bytes
-pub fn deserialize_stored_message(bytes: Bytes) -> Result<StoredMessage, String> {
-    serde_json::from_slice(&bytes).map_err(|e| format!("Failed to deserialize message: {e}"))
 }

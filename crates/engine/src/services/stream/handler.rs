@@ -52,13 +52,7 @@ where
         _ctx: ServiceContext,
     ) -> NetworkResult<<Self::Request as proven_network::ServiceMessage>::Response> {
         match message {
-            StreamServiceMessage::GetStreamInfo { stream_name } => {
-                match self.service.get_stream_info(&stream_name).await {
-                    Ok(info) => Ok(StreamServiceResponse::StreamInfo(info)),
-                    Err(e) => Ok(StreamServiceResponse::Error(e.to_string())),
-                }
-            }
-            StreamServiceMessage::ReadStream {
+            StreamServiceMessage::Read {
                 stream_name,
                 sequence_range,
             } => {
@@ -79,7 +73,10 @@ where
                         // Read from start to latest
                         match self.service.read_from(&stream_name, start).await {
                             Ok(stream) => {
-                                let messages = stream.collect::<Vec<_>>().await;
+                                let messages: Vec<_> =
+                                    futures::StreamExt::map(stream, |(msg, _, _)| msg)
+                                        .collect()
+                                        .await;
                                 Ok(messages)
                             }
                             Err(e) => Err(e),
@@ -94,13 +91,13 @@ where
                     Err(e) => Ok(StreamServiceResponse::Error(e.to_string())),
                 }
             }
-            StreamServiceMessage::CreateStream { .. } => Ok(StreamServiceResponse::Error(
+            StreamServiceMessage::Create { .. } => Ok(StreamServiceResponse::Error(
                 "Stream creation should go through consensus".to_string(),
             )),
-            StreamServiceMessage::DeleteStream { .. } => Ok(StreamServiceResponse::Error(
+            StreamServiceMessage::Delete { .. } => Ok(StreamServiceResponse::Error(
                 "Stream deletion should go through consensus".to_string(),
             )),
-            StreamServiceMessage::QueryStream { .. } => Ok(StreamServiceResponse::Error(
+            StreamServiceMessage::Query { .. } => Ok(StreamServiceResponse::Error(
                 "Streaming queries not implemented".to_string(),
             )),
         }

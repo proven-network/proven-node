@@ -1,4 +1,0 @@
-//! Event subscribers for stream service
-
-pub mod global;
-pub mod group;

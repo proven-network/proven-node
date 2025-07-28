@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use libsql::Transaction as LibsqlTransaction;
-use proven_engine::{Client, StoredMessage};
+use proven_engine::{Client, Message};
 use proven_storage::LogIndex;
 use tempfile::NamedTempFile;
 use tokio::sync::{Mutex, oneshot};
@@ -143,13 +143,22 @@ impl SqlService {
         migrations: Vec<String>,
         mut shutdown_rx: oneshot::Receiver<()>,
     ) -> Result<(), Error> {
+        use tokio::pin;
+        use tokio_stream::StreamExt;
+
         info!("Starting SQL service for stream '{}'", command_stream);
 
         // Apply migrations first
         Self::apply_migrations(&pool, &applied_migrations, &migrations_applied, migrations).await?;
 
-        // Track last processed sequence
-        let mut last_sequence = 0u64;
+        // Use streaming API instead of polling
+        let start_seq = LogIndex::new(1).unwrap();
+        let stream = client
+            .stream_messages(command_stream.clone(), start_seq, None)
+            .await
+            .map_err(|e| Error::Stream(e.to_string()))?;
+
+        pin!(stream);
 
         loop {
             // Check for shutdown
@@ -158,41 +167,30 @@ impl SqlService {
                 break;
             }
 
-            // Read next batch of messages
-            let start_seq = LogIndex::new(last_sequence + 1).unwrap();
-            let count = 10; // Process up to 10 at a time
-
-            match client
-                .read_from_stream(command_stream.clone(), start_seq, count)
-                .await
-            {
-                Ok(messages) => {
-                    if messages.is_empty() {
-                        // No new messages, wait a bit
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                        continue;
-                    }
-
-                    for message in messages {
-                        last_sequence = message.sequence.get();
-
-                        // Process the message
-                        if let Err(e) = Self::process_message(
-                            &client,
-                            &command_stream,
-                            &pool,
-                            &transactions,
-                            message,
-                        )
-                        .await
-                        {
-                            error!("Failed to process message: {}", e);
-                        }
+            // Wait for next message with timeout
+            match tokio::time::timeout(Duration::from_millis(100), stream.next()).await {
+                Ok(Some((message, _timestamp, sequence))) => {
+                    // Process the message
+                    if let Err(e) = Self::process_message(
+                        &client,
+                        &command_stream,
+                        &pool,
+                        &transactions,
+                        message,
+                        sequence,
+                    )
+                    .await
+                    {
+                        error!("Failed to process message: {}", e);
                     }
                 }
-                Err(e) => {
-                    error!("Failed to read command stream: {}", e);
-                    tokio::time::sleep(Duration::from_secs(1)).await;
+                Ok(None) => {
+                    // Stream ended
+                    info!("SQL command stream ended");
+                    break;
+                }
+                Err(_) => {
+                    // Timeout - check for shutdown again
                 }
             }
         }
@@ -258,11 +256,11 @@ impl SqlService {
         command_stream: &str,
         pool: &Arc<ConnectionPool>,
         transactions: &Arc<Mutex<HashMap<Uuid, LibsqlTransaction>>>,
-        message: StoredMessage,
+        message: Message,
+        sequence: u64,
     ) -> Result<(), Error> {
         // Check if this is a request
         let headers: HashMap<String, String> = message
-            .data
             .headers
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
@@ -270,9 +268,8 @@ impl SqlService {
 
         if headers.get(REQUEST_TYPE_KEY).map(String::as_str) == Some("sql_request") {
             // Deserialize request
-            let stream_request: StreamRequest =
-                ciborium::de::from_reader(&message.data.payload[..])
-                    .map_err(|e| Error::Deserialization(e.to_string()))?;
+            let stream_request: StreamRequest = ciborium::de::from_reader(&message.payload[..])
+                .map_err(|e| Error::Deserialization(e.to_string()))?;
 
             debug!(
                 "Processing SQL request {:?} from node {}",
@@ -312,7 +309,7 @@ impl SqlService {
 
             // Delete the processed message
             client
-                .delete_message(command_stream.to_string(), message.sequence)
+                .delete_message(command_stream.to_string(), LogIndex::new(sequence).unwrap())
                 .await
                 .map_err(|e| Error::Stream(e.to_string()))?;
         }

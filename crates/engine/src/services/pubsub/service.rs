@@ -1,16 +1,16 @@
 //! PubSub service implementation
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
 use proven_attestation::Attestor;
-use proven_network::{NetworkManager, Stream};
+use proven_network::NetworkManager;
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::info;
 
 use crate::foundation::events::EventBus;
 use crate::services::lifecycle::ComponentState;
