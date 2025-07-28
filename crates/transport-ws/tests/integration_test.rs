@@ -21,12 +21,13 @@ async fn test_websocket_echo_server() {
     // Create a test server address
     let port = portpicker::pick_unused_port().expect("No ports available");
     let server_addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
-    let ws_path = "/ws";
+    // Create a listener first
+    let _listener = transport.listen().await.expect("Failed to create listener");
 
     // Create Axum app with WebSocket handler
     let app = Router::new();
     let app = transport
-        .mount_into_router(app, ws_path)
+        .mount_into_router(app)
         .await
         .expect("Failed to mount WebSocket handler");
 
@@ -46,11 +47,11 @@ async fn test_websocket_echo_server() {
     // Give server time to start
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // Get the listener that was already created by mount_into_router
-    let listener = transport
-        .get_listener()
-        .await
-        .expect("Listener should exist");
+    // Get the listeners that were created by mount_into_router
+    let listeners = transport.get_listeners().await;
+    assert!(!listeners.is_empty(), "Should have at least one listener");
+    let listener =
+        Box::new(listeners.into_iter().next().unwrap()) as Box<dyn proven_transport::Listener>;
 
     // Start accepting connections in the background
     let accept_task = tokio::spawn(async move {
@@ -83,13 +84,13 @@ async fn test_websocket_echo_server() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Connect as client
-    let ws_url = format!("ws://127.0.0.1:{port}{ws_path}");
-    info!("Connecting to {}", ws_url);
+    let http_url = format!("http://127.0.0.1:{port}");
+    info!("Node origin: {}", http_url);
 
-    // Create a node for connection
+    // Create a node for connection - pass HTTP URL as origin
     let node = Node::new(
         "test-az".to_string(),
-        ws_url,
+        http_url,
         NodeId::from_seed(1),
         "test-region".to_string(),
         HashSet::new(),
@@ -133,10 +134,13 @@ async fn test_multiple_connections() {
     let port = portpicker::pick_unused_port().expect("No ports available");
     let server_addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
 
+    // Create a listener first
+    let _listener = transport.listen().await.expect("Failed to create listener");
+
     // Create server with WebSocket endpoint
     let app = Router::new();
     let app = transport
-        .mount_into_router(app, "/ws")
+        .mount_into_router(app)
         .await
         .expect("Failed to mount");
 
@@ -153,11 +157,11 @@ async fn test_multiple_connections() {
     // Accept connections in background
     let transport_for_accept = transport.clone();
     let accept_task = tokio::spawn(async move {
-        // Get the listener that was already created by mount_into_router
-        let listener = transport_for_accept
-            .get_listener()
-            .await
-            .expect("Listener should exist");
+        // Get the listeners that were created by mount_into_router
+        let listeners = transport_for_accept.get_listeners().await;
+        assert!(!listeners.is_empty(), "Should have at least one listener");
+        let listener =
+            Box::new(listeners.into_iter().next().unwrap()) as Box<dyn proven_transport::Listener>;
 
         let mut connections = vec![];
 
@@ -211,7 +215,7 @@ async fn test_multiple_connections() {
     for i in 0..3 {
         let node = Node::new(
             "test-az".to_string(),
-            format!("ws://127.0.0.1:{port}/ws"),
+            format!("http://127.0.0.1:{port}"),
             NodeId::from_seed(i as u8),
             "test-region".to_string(),
             HashSet::new(),

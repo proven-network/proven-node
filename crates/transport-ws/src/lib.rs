@@ -20,15 +20,15 @@ use url::Url;
 /// WebSocket transport implementation
 #[derive(Debug, Clone)]
 pub struct WebSocketTransport {
-    /// The single listener for this transport
-    listener: Arc<tokio::sync::RwLock<Option<WebSocketListener>>>,
+    /// Multiple listeners can be created from this transport
+    listeners: Arc<tokio::sync::RwLock<Vec<WebSocketListener>>>,
 }
 
 impl WebSocketTransport {
     /// Create a new WebSocket transport with options
     pub fn new() -> Self {
         Self {
-            listener: Arc::new(tokio::sync::RwLock::new(None)),
+            listeners: Arc::new(tokio::sync::RwLock::new(Vec::new())),
         }
     }
 }
@@ -62,13 +62,6 @@ impl Transport for WebSocketTransport {
     }
 
     async fn listen(&self) -> Result<Box<dyn Listener>, TransportError> {
-        // Check if we already have a listener
-        if self.listener.read().await.is_some() {
-            return Err(TransportError::Other(
-                "Transport already has a listener".to_string(),
-            ));
-        }
-
         // For WebSocket, we don't actually bind a socket here
         // Instead, we create a listener that will receive connections from the Axum handler
         let (connection_tx, connection_rx) = mpsc::channel(100);
@@ -79,9 +72,12 @@ impl Transport for WebSocketTransport {
         };
 
         // Store the listener
-        *self.listener.write().await = Some(listener.clone());
+        self.listeners.write().await.push(listener.clone());
 
-        info!("WebSocket listener created");
+        info!(
+            "WebSocket listener created (total: {})",
+            self.listeners.read().await.len()
+        );
 
         Ok(Box::new(listener))
     }
@@ -89,7 +85,7 @@ impl Transport for WebSocketTransport {
 
 /// WebSocket listener that receives connections from the Axum handler
 #[derive(Debug, Clone)]
-struct WebSocketListener {
+pub struct WebSocketListener {
     connection_rx: Arc<tokio::sync::Mutex<mpsc::Receiver<Box<dyn Connection>>>>,
     connection_tx: mpsc::Sender<Box<dyn Connection>>,
 }
@@ -260,52 +256,46 @@ impl Connection for WebSocketServerConnection {
 
 /// Extension methods for integrating with Axum
 impl WebSocketTransport {
-    /// Get the current listener if one exists
-    pub async fn get_listener(&self) -> Option<Box<dyn Listener>> {
-        self.listener
-            .read()
-            .await
-            .as_ref()
-            .map(|l| Box::new(l.clone()) as Box<dyn Listener>)
+    /// Get all current listeners
+    pub async fn get_listeners(&self) -> Vec<WebSocketListener> {
+        self.listeners.read().await.clone()
     }
 
     /// Mount a WebSocket endpoint into an Axum router
+    ///
+    /// Uses the first available listener to receive connections from the Axum handler.
+    /// If no listener exists, returns an error.
     pub async fn mount_into_router(
         &self,
         router: axum::Router,
-        path: &str,
     ) -> Result<axum::Router, TransportError> {
-        // Ensure we have a listener
-        if self.listener.read().await.is_none() {
-            self.listen().await?;
-        }
+        const WS_PATH: &str = "/consensus/ws";
 
-        let listener = self.listener.clone();
+        // Get the first listener's connection_tx
+        let listeners = self.listeners.read().await;
+        if listeners.is_empty() {
+            return Err(TransportError::Other(
+                "No listener available. Call listen() first.".to_string(),
+            ));
+        }
+        let connection_tx = listeners[0].connection_tx.clone();
+        drop(listeners);
 
         // Create the handler inline to avoid complex type signatures
         let handler = move |ws: WebSocketUpgrade| {
-            let listener = listener.clone();
+            let connection_tx = connection_tx.clone();
 
             async move {
                 ws.on_upgrade(move |socket| async move {
-                    if let Some(ref ws_listener) = *listener.read().await {
-                        let conn = WebSocketServerConnection::new(socket);
-                        if ws_listener
-                            .connection_tx
-                            .send(Box::new(conn))
-                            .await
-                            .is_err()
-                        {
-                            error!("Failed to send connection to listener");
-                        }
-                    } else {
-                        error!("No listener configured");
+                    let conn = WebSocketServerConnection::new(socket);
+                    if connection_tx.send(Box::new(conn)).await.is_err() {
+                        error!("Failed to send connection to listener");
                     }
                 })
             }
         };
 
-        let router = router.route(path, axum::routing::get(handler));
+        let router = router.route(WS_PATH, axum::routing::get(handler));
 
         Ok(router)
     }
@@ -320,8 +310,8 @@ mod tests {
         let _ = tracing_subscriber::fmt::try_init();
 
         let transport = WebSocketTransport::new();
-        // Transport starts with no listener
-        assert!(transport.listener.read().await.is_none());
+        // Transport starts with no listeners
+        assert!(transport.listeners.read().await.is_empty());
     }
 
     #[tokio::test]
@@ -333,6 +323,6 @@ mod tests {
         let _listener = transport.listen().await.unwrap();
 
         // Verify listener is registered
-        assert!(transport.listener.read().await.is_some());
+        assert_eq!(transport.listeners.read().await.len(), 1);
     }
 }

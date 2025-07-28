@@ -35,7 +35,6 @@ use proven_storage::StorageManager;
 use proven_storage_rocksdb::RocksDbStorage;
 use proven_topology::{NodeId, TopologyManager};
 use proven_topology::{TopologyAdaptor, Version};
-use proven_transport::Transport;
 use proven_transport_ws::WebSocketTransport;
 use tower_http::cors::CorsLayer;
 use url::Url;
@@ -77,22 +76,9 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
     let transport = Arc::new(WebSocketTransport::new());
 
-    // Start listening on the transport to prepare it for connections
-    transport
-        .listen()
-        .await
-        .map_err(|e| Error::Transport(e.to_string()))?;
-
-    // Create the engine router that will be passed to Core
-    // This router will have the WebSocket endpoint mounted at /engine
-    let engine_router = transport
-        .mount_into_router(Router::new(), "/engine")
-        .await
-        .map_err(|e| Error::Transport(e.to_string()))?;
-
     let network_manager = Arc::new(NetworkManager::new(
         node_id.clone(),
-        transport,
+        transport.clone(),
         topology_manager.clone(),
         bootstrap.config.node_key.clone(),
         ConnectionPoolConfig::default(),
@@ -100,10 +86,17 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         Arc::new(bootstrap.attestor.clone()),
     ));
 
+    // Start network manager first - this creates the listener
     network_manager
         .start()
         .await
         .map_err(|e| Error::Bootable(Box::new(e)))?;
+
+    // Now mount the WebSocket endpoint - this will use the existing listener
+    let engine_router = transport
+        .mount_into_router(Router::new())
+        .await
+        .map_err(|e| Error::Transport(e.to_string()))?;
 
     let my_node = topology_manager
         .get_node_by_id(&node_id)
