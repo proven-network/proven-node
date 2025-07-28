@@ -11190,8 +11190,10 @@ dependencies = [
 name = "proven-storage-memory"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "async-trait",
  "bytes",
+ "dashmap 6.1.0",
  "proven-storage",
  "tokio",
  "tokio-stream",
@@ -11208,6 +11210,7 @@ dependencies = [
  "bytes",
  "chrono",
  "ciborium",
+ "dashmap 6.1.0",
  "proven-storage",
  "rocksdb",
  "serde",
@@ -11236,6 +11239,7 @@ dependencies = [
  "clap",
  "crc32fast",
  "crossbeam",
+ "dashmap 6.1.0",
  "futures",
  "hex",
  "lru 0.16.0",

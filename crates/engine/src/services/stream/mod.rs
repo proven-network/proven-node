@@ -8,6 +8,7 @@ pub mod events;
 mod handler;
 pub mod messages;
 pub mod service;
+pub mod streaming;
 
 // Internal implementation details
 mod internal;

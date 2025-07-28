@@ -17,6 +17,7 @@ ciborium = { workspace = true }
 clap = { workspace = true }
 crc32fast = { workspace = true }
 crossbeam = { workspace = true }
+dashmap = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 lru = { workspace = true }

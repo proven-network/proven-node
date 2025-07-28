@@ -4,6 +4,7 @@ pub mod config;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use dashmap::DashMap;
 use proven_storage::{
     LogIndex, LogStorage, StorageAdaptor, StorageError, StorageNamespace, StorageResult,
 };
@@ -12,7 +13,7 @@ use rocksdb::{
     Options, WriteBatch,
 };
 use std::{collections::HashMap, path::Path, sync::Arc};
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, broadcast};
 use tokio_stream::Stream;
 
 /// Type alias for log bounds cache to reduce type complexity
@@ -25,6 +26,8 @@ pub struct RocksDbStorage {
     db: Arc<DBWithThreadMode<MultiThreaded>>,
     /// Log bounds cache: namespace -> (first_index, last_index)
     log_bounds: LogBoundsCache,
+    /// Per-namespace broadcast channels for notifications when new entries are added
+    namespace_notifiers: Arc<DashMap<StorageNamespace, broadcast::Sender<()>>>,
 }
 
 impl RocksDbStorage {
@@ -69,6 +72,7 @@ impl RocksDbStorage {
         Ok(Self {
             db: Arc::new(db),
             log_bounds: Arc::new(RwLock::new(HashMap::new())),
+            namespace_notifiers: Arc::new(DashMap::new()),
         })
     }
 
@@ -182,6 +186,11 @@ impl LogStorage for RocksDbStorage {
         let (first, _) = existing_bounds.unwrap_or((start_index, last_index));
         bounds.insert(namespace.clone(), (first, last_index));
 
+        // Notify any waiting streams for this specific namespace
+        if let Some(notifier) = self.namespace_notifiers.get(namespace) {
+            let _ = notifier.send(());
+        }
+
         Ok(last_index)
     }
 
@@ -229,6 +238,11 @@ impl LogStorage for RocksDbStorage {
         // Update bounds cache if we have entries
         if let (Some(first), Some(last)) = (first_index, last_index) {
             bounds.insert(namespace.clone(), (first, last));
+        }
+
+        // Notify any waiting streams for this specific namespace
+        if let Some(notifier) = self.namespace_notifiers.get(namespace) {
+            let _ = notifier.send(());
         }
 
         Ok(())
@@ -477,11 +491,22 @@ impl proven_storage::LogStorageStreaming for RocksDbStorage {
     ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
         let _cf = self.get_or_create_cf(namespace)?;
-        let start_key = Self::encode_key(start);
 
         // Clone what we need for the stream
         let db = self.db.clone();
         let namespace_str = namespace.as_str().to_string();
+        let namespace_notifiers = self.namespace_notifiers.clone();
+
+        // Get or create a notifier for this specific namespace
+        let notifier = namespace_notifiers
+            .entry(namespace.clone())
+            .or_insert_with(|| {
+                let (tx, _) = broadcast::channel(16); // Smaller buffer since it's per-namespace
+                tx
+            })
+            .clone();
+
+        let mut notifier_rx = notifier.subscribe();
 
         // Create the stream using async_stream
         let stream = async_stream::stream! {
@@ -494,31 +519,63 @@ impl proven_storage::LogStorageStreaming for RocksDbStorage {
                 }
             };
 
-            // Create an iterator starting from our key
-            let iter = db.iterator_cf(&cf, IteratorMode::From(&start_key, rocksdb::Direction::Forward));
+            let mut current_start = start;
 
-            for item in iter {
-                match item {
-                    Ok((key, value)) => {
-                        // Decode the key
-                        match Self::decode_key(&key) {
-                            Ok(index) => {
-                                // Check if we've reached the end bound
-                                if let Some(end_idx) = end
-                                    && index >= end_idx {
-                                        break;
-                                    }
-                                yield Ok((index, Bytes::from(value.to_vec())));
-                            }
-                            Err(e) => {
-                                yield Err(e);
-                                break;
+            loop {
+                let current_start_key = Self::encode_key(current_start);
+                let iter = db.iterator_cf(&cf, IteratorMode::From(&current_start_key, rocksdb::Direction::Forward));
+
+                let mut found_any = false;
+
+                for item in iter {
+                    match item {
+                        Ok((key, value)) => {
+                            // Decode the key
+                            match Self::decode_key(&key) {
+                                Ok(index) => {
+                                    // Check if we've reached the end bound
+                                    if let Some(end_idx) = end
+                                        && index >= end_idx {
+                                            // We've reached the explicit end bound, stop streaming
+                                            return;
+                                        }
+
+                                    found_any = true;
+                                    current_start = index.next(); // Update for next iteration
+                                    yield Ok((index, Bytes::from(value.to_vec())));
+                                }
+                                Err(e) => {
+                                    yield Err(e);
+                                    return;
+                                }
                             }
                         }
+                        Err(e) => {
+                            yield Err(StorageError::Backend(format!("Iterator error: {e}")));
+                            return;
+                        }
                     }
-                    Err(e) => {
-                        yield Err(StorageError::Backend(format!("Iterator error: {e}")));
-                        break;
+                }
+
+                // If we have an explicit end bound, we're done after reading all entries
+                if end.is_some() {
+                    return;
+                }
+
+                // In follow mode (no end bound), wait for new entries if we haven't found any
+                if !found_any {
+                    // Wait for notification of new entries
+                    match notifier_rx.recv().await {
+                        Ok(()) => {
+                            // New entries in our namespace, continue reading
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            // We missed some notifications, but that's ok, just try reading again
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            // Channel closed, storage is shutting down
+                            return;
+                        }
                     }
                 }
             }
@@ -647,12 +704,17 @@ mod tests {
         assert_eq!(results[0], (nz(2), Bytes::from("data 2")));
         assert_eq!(results[1], (nz(3), Bytes::from("data 3")));
 
-        // Test streaming without end bound
+        // Test streaming without end bound - use take() since stream stays open
         let mut stream = storage.stream_range(&namespace, nz(3), None).await.unwrap();
 
         let mut results = Vec::new();
-        while let Some(item) = stream.next().await {
-            results.push(item.unwrap());
+        // Take exactly 3 items since we know there are 3 entries from index 3 onwards
+        for _ in 0..3 {
+            if let Some(item) = stream.next().await {
+                results.push(item.unwrap());
+            } else {
+                break;
+            }
         }
 
         assert_eq!(results.len(), 3);
@@ -660,14 +722,15 @@ mod tests {
         assert_eq!(results[1], (nz(4), Bytes::from("data 4")));
         assert_eq!(results[2], (nz(5), Bytes::from("data 5")));
 
-        // Test streaming empty namespace
+        // Test streaming empty namespace with timeout
         let empty_ns = StorageNamespace::new("empty");
         let mut stream = storage.stream_range(&empty_ns, nz(1), None).await.unwrap();
 
-        let mut count = 0;
-        while (stream.next().await).is_some() {
-            count += 1;
-        }
-        assert_eq!(count, 0);
+        // Use timeout since empty stream will wait forever
+        let result =
+            tokio::time::timeout(std::time::Duration::from_millis(100), stream.next()).await;
+
+        // Should timeout because there are no entries
+        assert!(result.is_err(), "Expected timeout for empty stream");
     }
 }

@@ -9,7 +9,6 @@ use crate::services::stream::commands::PersistMessages;
 use crate::services::stream::internal::storage::StreamStorageImpl;
 use dashmap::DashMap;
 use proven_storage::{LogIndex, LogStorage, StorageAdaptor, StorageManager};
-use tokio::sync::watch;
 
 /// Handler for PersistMessages command from group consensus
 pub struct PersistMessagesHandler<S>
@@ -20,8 +19,6 @@ where
     streams: Arc<DashMap<StreamName, Arc<StreamStorageImpl<proven_storage::StreamStorage<S>>>>>,
     /// Storage manager
     storage_manager: Arc<StorageManager<S>>,
-    /// Stream notifiers for append notifications
-    stream_notifiers: Arc<DashMap<StreamName, watch::Sender<LogIndex>>>,
 }
 
 impl<S> PersistMessagesHandler<S>
@@ -31,12 +28,10 @@ where
     pub fn new(
         streams: Arc<DashMap<StreamName, Arc<StreamStorageImpl<proven_storage::StreamStorage<S>>>>>,
         storage_manager: Arc<StorageManager<S>>,
-        stream_notifiers: Arc<DashMap<StreamName, watch::Sender<LogIndex>>>,
     ) -> Self {
         Self {
             streams,
             storage_manager,
-            stream_notifiers,
         }
     }
 
@@ -58,12 +53,6 @@ where
 
         self.streams.insert(stream_name.clone(), storage.clone());
         storage
-    }
-
-    async fn notify_stream_append(&self, stream_name: &StreamName, last_seq: LogIndex) {
-        if let Some(notifier) = self.stream_notifiers.get(stream_name) {
-            let _ = notifier.send(last_seq);
-        }
     }
 }
 
@@ -101,9 +90,6 @@ where
                         "Successfully persisted {} messages to stream {} storage (last_seq: {})",
                         message_count, stream_name, last_seq
                     );
-
-                    // Notify any stream watchers about the new messages
-                    self.notify_stream_append(stream_name, last_seq).await;
                 }
                 Err(e) => {
                     error!(

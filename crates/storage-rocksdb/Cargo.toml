@@ -9,6 +9,7 @@ async-trait = { workspace = true }
 bytes = { workspace = true }
 chrono = { workspace = true }
 ciborium = { workspace = true }
+dashmap = { workspace = true }
 proven-storage = { workspace = true }
 rocksdb = { workspace = true }
 serde = { workspace = true }

@@ -4,8 +4,10 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
+async-stream = "0.3"
 async-trait.workspace = true
 bytes.workspace = true
+dashmap.workspace = true
 proven-storage.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true

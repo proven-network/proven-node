@@ -2,12 +2,13 @@
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use dashmap::DashMap;
 use proven_storage::{LogIndex, StorageAdaptor, StorageNamespace, StorageResult};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, broadcast};
 use tokio_stream::Stream;
 
 /// Type aliases to reduce type complexity
@@ -24,6 +25,8 @@ pub struct MemoryStorage {
     log_bounds: LogBoundsCache,
     /// Metadata storage: namespace -> (key -> value)
     metadata: MetadataStorage,
+    /// Per-namespace broadcast channels for notifications when new entries are added
+    namespace_notifiers: Arc<DashMap<StorageNamespace, broadcast::Sender<()>>>,
 }
 
 impl MemoryStorage {
@@ -33,6 +36,7 @@ impl MemoryStorage {
             logs: Arc::new(RwLock::new(HashMap::new())),
             log_bounds: Arc::new(RwLock::new(HashMap::new())),
             metadata: Arc::new(RwLock::new(HashMap::new())),
+            namespace_notifiers: Arc::new(DashMap::new()),
         }
     }
 }
@@ -84,6 +88,11 @@ impl proven_storage::LogStorage for MemoryStorage {
             .unwrap_or((start_index, last_index));
         bounds.insert(namespace.clone(), (first, last_index));
 
+        // Notify any waiting streams for this specific namespace
+        if let Some(notifier) = self.namespace_notifiers.get(namespace) {
+            let _ = notifier.send(());
+        }
+
         Ok(last_index)
     }
 
@@ -128,6 +137,11 @@ impl proven_storage::LogStorage for MemoryStorage {
         // Update bounds cache if we have any entries
         if let (Some(first), Some(last)) = (first_index, last_index) {
             bounds.insert(namespace.clone(), (first, last));
+        }
+
+        // Notify any waiting streams for this specific namespace
+        if let Some(notifier) = self.namespace_notifiers.get(namespace) {
+            let _ = notifier.send(());
         }
 
         Ok(())
@@ -332,28 +346,89 @@ impl proven_storage::LogStorageStreaming for MemoryStorage {
         end: Option<LogIndex>,
     ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
-        // Clone the data we need to stream
-        let logs_guard = self.logs.read().await;
-        let entries: Vec<(LogIndex, Bytes)> = if let Some(btree) = logs_guard.get(namespace) {
-            match end {
-                Some(end_idx) => btree
-                    .range(start..end_idx)
-                    .map(|(&idx, data)| (idx, data.clone()))
-                    .collect(),
-                None => btree
-                    .range(start..)
-                    .map(|(&idx, data)| (idx, data.clone()))
-                    .collect(),
+        let logs = self.logs.clone();
+        let namespace_clone = namespace.clone();
+        let namespace_notifiers = self.namespace_notifiers.clone();
+
+        // Get or create a notifier for this specific namespace
+        let notifier = namespace_notifiers
+            .entry(namespace.clone())
+            .or_insert_with(|| {
+                let (tx, _) = broadcast::channel(16); // Smaller buffer since it's per-namespace
+                tx
+            })
+            .clone();
+
+        let mut notifier_rx = notifier.subscribe();
+
+        // Create the stream using async_stream
+        let stream = async_stream::stream! {
+            let mut current_start = start;
+
+            loop {
+                // Read current entries
+                let logs_guard = logs.read().await;
+                let mut found_any = false;
+
+                if let Some(btree) = logs_guard.get(&namespace_clone) {
+                    let range: Vec<(LogIndex, Bytes)> = match end {
+                        Some(end_idx) => {
+                            tracing::debug!("Reading bounded range [{:?}, {:?}) from namespace {:?}",
+                                         current_start, end_idx, namespace_clone);
+                            btree
+                                .range(current_start..end_idx)
+                                .map(|(&idx, data)| (idx, data.clone()))
+                                .collect()
+                        },
+                        None => btree
+                            .range(current_start..)
+                            .map(|(&idx, data)| (idx, data.clone()))
+                            .collect(),
+                    };
+
+                    for (index, data) in range {
+                        // Check if we've reached the end bound
+                        if let Some(end_idx) = end
+                            && index >= end_idx {
+                                // We've reached the explicit end bound, stop streaming
+                                return;
+                            }
+
+                        found_any = true;
+                        current_start = index.next(); // Update for next iteration
+                        yield Ok((index, data));
+                    }
+                }
+                drop(logs_guard);
+
+                // If we have an explicit end bound, we're done after reading all entries
+                if end.is_some() {
+                    // Debug: log when we exit due to end bound
+                    tracing::debug!("Exiting stream_range for namespace {:?} with end bound {:?} at current_start {:?}",
+                                   namespace_clone, end, current_start);
+                    return;
+                }
+
+                // In follow mode (no end bound), wait for new entries if we haven't found any
+                if !found_any {
+                    // Wait for notification of new entries
+                    match notifier_rx.recv().await {
+                        Ok(()) => {
+                            // New entries in our namespace, continue reading
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            // We missed some notifications, but that's ok, just try reading again
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            // Channel closed, storage is shutting down
+                            return;
+                        }
+                    }
+                }
             }
-        } else {
-            Vec::new()
         };
-        drop(logs_guard);
 
-        // Create a stream from the collected entries
-        let stream = tokio_stream::iter(entries.into_iter().map(Ok));
-
-        Ok(Box::new(stream))
+        Ok(Box::new(Box::pin(stream)))
     }
 }
 
@@ -554,12 +629,17 @@ mod tests {
         assert_eq!(results[0], (nz(2), Bytes::from("data 2")));
         assert_eq!(results[1], (nz(3), Bytes::from("data 3")));
 
-        // Test streaming without end bound
+        // Test streaming without end bound - use take() since stream stays open
         let mut stream = storage.stream_range(&namespace, nz(3), None).await.unwrap();
 
         let mut results = Vec::new();
-        while let Some(item) = stream.next().await {
-            results.push(item.unwrap());
+        // Take exactly 3 items since we know there are 3 entries from index 3 onwards
+        for _ in 0..3 {
+            if let Some(item) = stream.next().await {
+                results.push(item.unwrap());
+            } else {
+                break;
+            }
         }
 
         assert_eq!(results.len(), 3);
@@ -567,15 +647,16 @@ mod tests {
         assert_eq!(results[1], (nz(4), Bytes::from("data 4")));
         assert_eq!(results[2], (nz(5), Bytes::from("data 5")));
 
-        // Test streaming empty namespace
+        // Test streaming empty namespace with timeout
         let empty_ns = StorageNamespace::new("empty");
         let mut stream = storage.stream_range(&empty_ns, nz(1), None).await.unwrap();
 
-        let mut count = 0;
-        while (stream.next().await).is_some() {
-            count += 1;
-        }
-        assert_eq!(count, 0);
+        // Use timeout since empty stream will wait forever
+        let result =
+            tokio::time::timeout(std::time::Duration::from_millis(100), stream.next()).await;
+
+        // Should timeout because there are no entries
+        assert!(result.is_err(), "Expected timeout for empty stream");
     }
 
     #[tokio::test]

@@ -519,18 +519,24 @@ async fn test_stream_reading() {
         .expect("Failed to create stream reader");
 
     futures::pin_mut!(stream);
-    // Read only 5 messages then drop
-    for (i, (expected_payload, _expected_metadata)) in expected_messages.iter().enumerate().take(5)
-    {
-        let (message, _timestamp, _sequence) = stream.next().await.unwrap();
+    // Read only 5 messages then drop - use take() to limit the stream
+    let mut limited_stream = stream.take(5);
+    let mut count = 0;
+    while let Some((message, _timestamp, _sequence)) = limited_stream.next().await {
+        let (expected_payload, _expected_metadata) = &expected_messages[count];
 
         // Even when terminating early, verify the messages we do read
         assert_eq!(
             &message.payload.as_ref(),
             expected_payload,
-            "Payload mismatch at position {i} during early termination"
+            "Payload mismatch at position {count} during early termination"
         );
+        count += 1;
     }
+    assert_eq!(
+        count, 5,
+        "Should have read exactly 5 messages before terminating"
+    );
 
     // Give time for cleanup
     tokio::time::sleep(Duration::from_millis(500)).await;

@@ -10,9 +10,15 @@ pub mod wal;
 use async_trait::async_trait;
 use aws_sdk_s3::{Client as S3Client, primitives::ByteStream};
 use bytes::Bytes;
+use dashmap::DashMap;
+use lru::LruCache;
 use proven_storage::{LogIndex, LogStorage, StorageError, StorageNamespace, StorageResult};
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::{RwLock, mpsc};
+use std::{
+    collections::HashMap,
+    num::NonZeroUsize,
+    sync::{Arc, Mutex},
+};
+use tokio::sync::{RwLock, broadcast, mpsc};
 use tokio_stream::Stream;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -20,6 +26,7 @@ use uuid::Uuid;
 /// Type aliases to reduce type complexity
 type LogBoundsCache = Arc<RwLock<HashMap<StorageNamespace, (LogIndex, LogIndex)>>>;
 type PendingWritesMap = Arc<RwLock<HashMap<StorageNamespace, HashMap<LogIndex, Bytes>>>>;
+type AppendCache = Arc<DashMap<StorageNamespace, Arc<Mutex<LruCache<LogIndex, Bytes>>>>>;
 
 use crate::{
     batching::{BatchManager, LogBatch, UploadManager},
@@ -49,6 +56,12 @@ pub struct S3Storage {
     encryption: Option<Arc<EncryptionHandler>>,
     /// Pending writes for read-after-write consistency
     pending_writes: PendingWritesMap,
+    /// Per-namespace broadcast channels for notifications when new entries are added
+    namespace_notifiers: Arc<DashMap<StorageNamespace, broadcast::Sender<()>>>,
+    /// Per-namespace LRU cache for recently appended entries
+    append_cache: AppendCache,
+    /// Cache configuration - entries per namespace
+    cache_entries_per_namespace: usize,
 }
 
 impl S3Storage {
@@ -102,6 +115,9 @@ impl S3Storage {
             wal_client: wal_client.clone(),
             encryption: encryption.clone(),
             pending_writes: Arc::new(RwLock::new(HashMap::new())),
+            namespace_notifiers: Arc::new(DashMap::new()),
+            append_cache: Arc::new(DashMap::new()),
+            cache_entries_per_namespace: config.append_cache.entries_per_namespace,
         };
 
         // Create upload manager with closure that captures storage
@@ -296,6 +312,11 @@ impl S3Storage {
                 wal.update_pending_size(batch_size).await;
             }
 
+            // Add entries to append cache if enabled
+            if self.config.append_cache.enabled {
+                self.add_to_append_cache(&batch).await;
+            }
+
             // Complete all pending operations
             Self::complete_batch_with_success(&mut batch);
 
@@ -307,6 +328,11 @@ impl S3Storage {
                         namespace_pending.remove(idx);
                     }
                 }
+            }
+
+            // Notify any waiting streams for this specific namespace
+            if let Some(notifier) = self.namespace_notifiers.get(&batch.namespace) {
+                let _ = notifier.send(());
             }
 
             // Record metrics
@@ -367,6 +393,24 @@ impl S3Storage {
     fn complete_batch_with_error(batch: &mut LogBatch, error: String) {
         for completion in batch.completions.drain(..) {
             let _ = completion.send(Err(error.clone()));
+        }
+    }
+
+    /// Add batch entries to the append cache
+    async fn add_to_append_cache(&self, batch: &LogBatch) {
+        let cache = self
+            .append_cache
+            .entry(batch.namespace.clone())
+            .or_insert_with(|| {
+                Arc::new(Mutex::new(LruCache::new(
+                    NonZeroUsize::new(self.cache_entries_per_namespace).unwrap(),
+                )))
+            })
+            .clone();
+
+        let mut cache_guard = cache.lock().unwrap();
+        for (index, data) in &batch.entries {
+            cache_guard.put(*index, data.clone());
         }
     }
 }
@@ -997,6 +1041,20 @@ impl proven_storage::LogStorageStreaming for S3Storage {
         let pending_writes = self.pending_writes.clone();
         let prefix = self.config.s3.prefix.clone();
         let namespace_str = namespace.as_str().to_string();
+        let namespace_notifiers = self.namespace_notifiers.clone();
+        let append_cache = self.append_cache.clone();
+        let append_cache_enabled = self.config.append_cache.enabled;
+
+        // Get or create a notifier for this specific namespace
+        let notifier = namespace_notifiers
+            .entry(namespace.clone())
+            .or_insert_with(|| {
+                let (tx, _) = broadcast::channel(16); // Smaller buffer since it's per-namespace
+                tx
+            })
+            .clone();
+
+        let mut notifier_rx = notifier.subscribe();
 
         // Create a batched streaming implementation
         let stream = async_stream::stream! {
@@ -1021,6 +1079,7 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                 // Collect indices that need fetching from S3
                 let mut indices_to_fetch = Vec::new();
                 let mut cached_entries = Vec::new();
+                let mut found_any = false;
 
                 // Check cache and pending writes for the batch
                 for idx in index..batch_end {
@@ -1030,7 +1089,18 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                         None => continue,
                     };
 
-                    // Check pending writes first
+                    // Check append cache first (if enabled)
+                    if append_cache_enabled
+                        && let Some(namespace_cache) = append_cache.get(&namespace_obj) {
+                            let mut cache_guard = namespace_cache.lock().unwrap();
+                            if let Some(data) = cache_guard.get(&idx_nz) {
+                                // Cache hit - data is automatically marked as recently used
+                                cached_entries.push((idx_nz, data.clone()));
+                                continue;
+                            }
+                        }
+
+                    // Check pending writes for read-after-write consistency
                     let from_pending = {
                         let pending = pending_writes.read().await;
                         if let Some(namespace_pending) = pending.get(&namespace_obj) {
@@ -1045,7 +1115,7 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                         continue;
                     }
 
-                    // Check cache
+                    // Check regular cache
                     if let Some(data) = cache.get(&namespace_obj, idx_nz).await {
                         cached_entries.push((idx_nz, data));
                         continue;
@@ -1059,6 +1129,7 @@ impl proven_storage::LogStorageStreaming for S3Storage {
 
                 // Yield cached entries first
                 for (idx, data) in cached_entries {
+                    found_any = true;
                     yield Ok((idx, data));
                 }
 
@@ -1155,6 +1226,7 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                     for (idx, data) in results {
                         // Update cache
                         cache.put(&namespace_obj, idx, data.clone()).await;
+                        found_any = true;
                         yield Ok((idx, data));
                     }
                 }
@@ -1162,10 +1234,26 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                 // Move to next batch
                 index = batch_end;
 
-                // If we didn't find anything in this batch and have no end bound,
-                // we might be at the end of the stream
-                if indices_to_fetch.is_empty() && end.is_none() {
+                // If we have an explicit end bound and have reached or passed it, we're done
+                if let Some(end_idx) = end && index >= end_idx.get() {
                     break;
+                }
+
+                // In follow mode (no end bound), wait for new entries if we didn't find any
+                if !found_any && end.is_none() {
+                    // Wait for notification of new entries
+                    match notifier_rx.recv().await {
+                        Ok(()) => {
+                            // New entries in our namespace, continue reading
+                        }
+                        Err(broadcast::error::RecvError::Lagged(_)) => {
+                            // We missed some notifications, but that's ok, just try reading again
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            // Channel closed, storage is shutting down
+                            return;
+                        }
+                    }
                 }
             }
         };

@@ -28,6 +28,9 @@ pub struct S3StorageConfig {
 
     /// Encryption configuration
     pub encryption: Option<EncryptionConfig>,
+
+    /// Append cache configuration
+    pub append_cache: AppendCacheConfig,
 }
 
 /// S3-specific configuration
@@ -122,6 +125,19 @@ pub struct EncryptionConfig {
     pub rotation_interval: Duration,
 }
 
+/// Append cache configuration for reducing S3 GET requests
+#[derive(Clone, Debug)]
+pub struct AppendCacheConfig {
+    /// Whether to enable append caching
+    pub enabled: bool,
+
+    /// Maximum number of entries per namespace
+    pub entries_per_namespace: usize,
+
+    /// Whether to also cache in pending_writes for extra safety
+    pub cache_in_pending: bool,
+}
+
 impl Default for WalConfig {
     fn default() -> Self {
         Self {
@@ -163,6 +179,11 @@ impl Default for S3StorageConfig {
             multipart_threshold: 10 * 1024 * 1024, // 10MB
             compression_threshold: 1024,           // 1KB
             encryption: None,
+            append_cache: AppendCacheConfig {
+                enabled: true,
+                entries_per_namespace: 1000, // Keep last 1000 entries per namespace
+                cache_in_pending: false,     // We already have pending_writes
+            },
         }
     }
 }

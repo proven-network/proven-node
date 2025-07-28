@@ -9,8 +9,7 @@ use crate::services::stream::PersistenceType;
 use crate::services::stream::commands::CreateStream;
 use crate::services::stream::internal::storage::StreamStorageImpl;
 use dashmap::DashMap;
-use proven_storage::{LogIndex, StorageAdaptor, StorageManager};
-use tokio::sync::watch;
+use proven_storage::{StorageAdaptor, StorageManager};
 
 /// Handler for CreateStream command
 pub struct CreateStreamHandler<S>
@@ -21,8 +20,6 @@ where
     streams: Arc<DashMap<StreamName, Arc<StreamStorageImpl<proven_storage::StreamStorage<S>>>>>,
     /// Stream configurations
     stream_configs: Arc<dashmap::DashMap<StreamName, StreamConfig>>,
-    /// Stream notifiers
-    stream_notifiers: Arc<dashmap::DashMap<StreamName, watch::Sender<LogIndex>>>,
     /// Storage manager
     storage_manager: Arc<StorageManager<S>>,
     /// Default persistence type
@@ -36,14 +33,12 @@ where
     pub fn new(
         streams: Arc<DashMap<StreamName, Arc<StreamStorageImpl<proven_storage::StreamStorage<S>>>>>,
         stream_configs: Arc<DashMap<StreamName, StreamConfig>>,
-        stream_notifiers: Arc<DashMap<StreamName, watch::Sender<LogIndex>>>,
         storage_manager: Arc<StorageManager<S>>,
         default_persistence: PersistenceType,
     ) -> Self {
         Self {
             streams,
             stream_configs,
-            stream_notifiers,
             storage_manager,
             default_persistence,
         }
@@ -67,10 +62,6 @@ where
 
         // Store configuration
         self.stream_configs.insert(name.clone(), config.clone());
-
-        // Create notifier for this stream
-        let (tx, _rx) = watch::channel(LogIndex::new(1).unwrap());
-        self.stream_notifiers.insert(name.clone(), tx);
 
         // Create storage instance based on config
         let persistence_type = config.persistence_type;

@@ -1,20 +1,21 @@
 //! Handler for StreamMessages command (streaming)
 
 use async_trait::async_trait;
-use std::sync::Arc;
-use tracing::{debug, error, info};
-
-use crate::foundation::events::{Error as EventError, EventMetadata, StreamHandler};
-use crate::foundation::{Message, RoutingTable, StreamName};
-use crate::services::stream::commands::StreamMessages;
-use crate::services::stream::internal::storage::{StreamStorageImpl, StreamStorageReader};
-use dashmap::DashMap;
 use proven_attestation::Attestor;
 use proven_network::NetworkManager;
 use proven_storage::{LogIndex, StorageAdaptor};
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
-use tokio::sync::watch;
+use std::sync::Arc;
+use tracing::{debug, error, info, warn};
+
+use crate::foundation::events::{Error as EventError, EventMetadata, StreamHandler};
+use crate::foundation::{Message, RoutingTable, StreamName};
+use crate::services::stream::commands::StreamMessages;
+use crate::services::stream::internal::registry::StreamRegistry;
+use crate::services::stream::internal::storage::StreamStorageReader;
+use proven_storage::{LogStorageStreaming, StorageNamespace};
+use tokio_stream::StreamExt;
 
 /// Handler for streaming messages from a stream
 pub struct StreamMessagesHandler<T, G, A, S>
@@ -26,10 +27,8 @@ where
 {
     /// Node ID
     node_id: NodeId,
-    /// Stream storage instances
-    streams: Arc<DashMap<StreamName, Arc<StreamStorageImpl<proven_storage::StreamStorage<S>>>>>,
-    /// Stream notifiers
-    stream_notifiers: Arc<DashMap<StreamName, watch::Sender<LogIndex>>>,
+    /// Stream registry for managing stream storage
+    stream_registry: Arc<StreamRegistry<S>>,
     /// Routing table
     routing_table: Arc<RoutingTable>,
     /// Network manager for remote requests
@@ -45,34 +44,16 @@ where
 {
     pub fn new(
         node_id: NodeId,
-        streams: Arc<DashMap<StreamName, Arc<StreamStorageImpl<proven_storage::StreamStorage<S>>>>>,
-        stream_notifiers: Arc<DashMap<StreamName, watch::Sender<LogIndex>>>,
+        stream_registry: Arc<StreamRegistry<S>>,
         routing_table: Arc<RoutingTable>,
         network_manager: Arc<NetworkManager<T, G, A>>,
     ) -> Self {
         Self {
             node_id,
-            streams,
-            stream_notifiers,
+            stream_registry,
             routing_table,
             network_manager,
         }
-    }
-
-    async fn get_stream(
-        &self,
-        stream_name: &StreamName,
-    ) -> Option<Arc<StreamStorageImpl<proven_storage::StreamStorage<S>>>> {
-        self.streams.get(stream_name).map(|entry| entry.clone())
-    }
-
-    async fn subscribe_to_stream(
-        &self,
-        stream_name: &StreamName,
-    ) -> Option<watch::Receiver<LogIndex>> {
-        self.stream_notifiers
-            .get(stream_name)
-            .map(|notifier| notifier.subscribe())
     }
 
     async fn can_serve_stream(
@@ -101,6 +82,110 @@ where
         }
         // If no routing info, assume we can't serve it
         Ok(false)
+    }
+
+    async fn handle_remote_stream(
+        &self,
+        request: StreamMessages,
+        sink: flume::Sender<(Message, u64, u64)>,
+    ) -> Result<(), EventError> {
+        use std::collections::HashMap;
+
+        let stream_name = StreamName::new(request.stream_name.clone());
+
+        // Get stream's route from routing table
+        let stream_route = self
+            .routing_table
+            .get_stream_route(stream_name.as_str())
+            .await
+            .map_err(|e| EventError::Internal(format!("Failed to get stream route: {e}")))?
+            .ok_or_else(|| {
+                EventError::Internal(format!("Stream route not found for {stream_name}"))
+            })?;
+
+        // Get the nodes in the group
+        let group_route = self
+            .routing_table
+            .get_group_route(stream_route.group_id)
+            .await
+            .map_err(|e| EventError::Internal(format!("Failed to get group route: {e}")))?
+            .ok_or_else(|| {
+                EventError::Internal(format!(
+                    "Group route not found for group {}",
+                    stream_route.group_id
+                ))
+            })?;
+
+        let nodes = group_route.members;
+
+        // Pick a node to stream from (preferably not ourselves)
+        let target_node = nodes
+            .iter()
+            .find(|&n| n != &self.node_id)
+            .or_else(|| nodes.first()) // Fallback to any node if all are us
+            .ok_or_else(|| EventError::Internal("No nodes available for streaming".to_string()))?
+            .clone();
+
+        if target_node == self.node_id {
+            return Err(EventError::Internal(
+                "Cannot proxy to self, but stream is not local".to_string(),
+            ));
+        }
+
+        info!(
+            "Proxying stream {} to remote node {}",
+            request.stream_name, target_node
+        );
+
+        // Prepare metadata for the stream
+        let mut metadata = HashMap::new();
+        metadata.insert("stream_name".to_string(), request.stream_name.clone());
+        metadata.insert(
+            "start_sequence".to_string(),
+            request.start_sequence.to_string(),
+        );
+        if let Some(end) = request.end_sequence {
+            metadata.insert("end_sequence".to_string(), end.to_string());
+        }
+
+        // Open stream to remote node
+        let remote_stream = self
+            .network_manager
+            .open_stream(target_node.clone(), "stream_messages", metadata)
+            .await
+            .map_err(|e| EventError::Internal(format!("Failed to open remote stream: {e}")))?;
+
+        // Spawn a task to handle the remote streaming
+        let stream_name = request.stream_name.clone();
+        let target_node_clone = target_node.clone();
+        tokio::spawn(async move {
+            // Forward messages from remote stream to local sink
+            while let Some(data) = remote_stream.recv().await {
+                match ciborium::from_reader::<(Message, u64, u64), _>(data.as_ref()) {
+                    Ok(entry) => {
+                        if sink.send_async(entry).await.is_err() {
+                            debug!(
+                                "Client disconnected while streaming from remote {}",
+                                stream_name
+                            );
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to deserialize remote message: {}", e);
+                        // Continue with next message rather than failing completely
+                    }
+                }
+            }
+
+            info!(
+                "Remote streaming completed for {} from node {}",
+                stream_name, target_node_clone
+            );
+        });
+
+        // Return immediately, allowing the handler to complete
+        Ok(())
     }
 }
 
@@ -131,10 +216,8 @@ where
                 // Local stream - proceed with streaming
             }
             Ok(false) => {
-                // Remote stream - we need to implement streaming proxy
-                return Err(EventError::Internal(
-                    "Remote stream streaming not yet implemented".to_string(),
-                ));
+                // Remote stream - proxy via network
+                return self.handle_remote_stream(request, sink).await;
             }
             Err(e) => {
                 return Err(EventError::Internal(format!(
@@ -143,99 +226,43 @@ where
             }
         }
 
-        // Get the stream storage
-        let stream = self
-            .get_stream(&stream_name)
-            .await
-            .ok_or_else(|| EventError::Internal(format!("Stream '{stream_name}' not found")))?;
+        // Check if stream exists
+        if !self.stream_registry.stream_exists(&stream_name) {
+            return Err(EventError::Internal(format!(
+                "Stream '{stream_name}' not found"
+            )));
+        }
 
         info!(
-            "Got stream storage for {}, spawning streaming task",
-            request.stream_name
+            "Starting streaming for {} from sequence {} to {:?}",
+            request.stream_name, request.start_sequence, request.end_sequence
         );
 
-        // Subscribe to stream notifications if we need to tail
-        let mut notifier = if request.end_sequence.is_none() {
-            self.subscribe_to_stream(&stream_name).await
-        } else {
-            None
-        };
+        // Get the storage manager and create namespace
+        let storage_manager = self.stream_registry.storage_manager.clone();
+        let namespace = StorageNamespace::new(format!("stream_{}", request.stream_name));
 
-        // Get the stream bounds to know when we've reached the end
-        let stream_bounds = stream.bounds().await.ok().flatten();
+        // Use the storage's streaming API directly
+        let storage = storage_manager.stream_storage();
+        let mut storage_stream = LogStorageStreaming::stream_range(
+            &storage,
+            &namespace,
+            request.start_sequence,
+            request.end_sequence,
+        )
+        .await
+        .map_err(|e| EventError::Internal(format!("Failed to create stream: {e}")))?;
 
-        // Spawn a task to stream messages
-        let stream_name_str = request.stream_name.clone();
+        // Spawn a task to handle the streaming
+        let stream_name = request.stream_name.clone();
         tokio::spawn(async move {
-            let mut current_sequence = request.start_sequence;
-
-            loop {
-                // Check if we've reached the end boundary
-                if let Some(end_seq) = request.end_sequence
-                    && current_sequence >= end_seq
-                {
-                    info!(
-                        "Reached end sequence {} for stream {}",
-                        end_seq, stream_name_str
-                    );
-                    break;
-                }
-
-                // Read messages in small batches for efficiency
-                let batch_size = 100u64;
-                let batch_end = if let Some(end_seq) = request.end_sequence {
-                    std::cmp::min(current_sequence.saturating_add(batch_size), end_seq)
-                } else {
-                    current_sequence.saturating_add(batch_size)
-                };
-
-                // Try to read a batch of messages with metadata
-                match stream
-                    .read_range_with_metadata(current_sequence, batch_end)
-                    .await
-                {
-                    Ok(messages) => {
-                        if messages.is_empty() {
-                            // No messages in this range yet
-                            // If we have a notifier (follow mode), wait for new messages
-                            if let Some(ref mut notify_rx) = notifier {
-                                tokio::select! {
-                                    // Wait for new messages
-                                    Ok(_) = notify_rx.changed() => {
-                                        // New messages available, continue the loop
-                                        debug!("Notified of new messages in stream {}", stream_name_str);
-                                        continue;
-                                    }
-                                    // Check if client disconnected periodically
-                                    _ = tokio::time::sleep(tokio::time::Duration::from_millis(100)) => {
-                                        if sink.is_disconnected() {
-                                            info!("Client disconnected while streaming {}", stream_name_str);
-                                            break;
-                                        }
-                                        continue;
-                                    }
-                                }
-                            } else {
-                                // No notifier (bounded query)
-                                // Check if we've read all available messages
-                                if let Some((_start, end)) = stream_bounds
-                                    && current_sequence > end
-                                {
-                                    info!(
-                                        "Reached end of available messages for bounded query on stream {}",
-                                        stream_name_str
-                                    );
-                                    break;
-                                }
-                                // For bounded queries, if we're still within bounds but no messages,
-                                // wait a bit and continue
-                                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                                continue;
-                            }
-                        } else {
-                            // Send all messages in the batch
-                            let message_count = messages.len() as u64;
-                            for (message, timestamp, sequence) in messages {
+            // Stream messages to the sink
+            while let Some(result) = storage_stream.next().await {
+                match result {
+                    Ok((_index, bytes)) => {
+                        // Deserialize the entry
+                        match crate::foundation::deserialize_entry(&bytes) {
+                            Ok((message, timestamp, sequence)) => {
                                 if sink
                                     .send_async((message, timestamp, sequence))
                                     .await
@@ -244,37 +271,32 @@ where
                                     // Client disconnected
                                     debug!(
                                         "Client disconnected while streaming from {}",
-                                        stream_name_str
+                                        stream_name
                                     );
-                                    return;
+                                    break;
                                 }
                             }
-                            // Update current sequence after sending all messages
-                            current_sequence = current_sequence.saturating_add(message_count);
+                            Err(e) => {
+                                error!(
+                                    "Failed to deserialize message from stream {}: {}",
+                                    stream_name, e
+                                );
+                                // Continue with next message
+                            }
                         }
                     }
                     Err(e) => {
-                        error!(
-                            "Error reading from stream {} at sequence {}: {}",
-                            stream_name_str, current_sequence, e
-                        );
-                        // On error, we'll stop streaming
+                        error!("Error reading from stream {}: {}", stream_name, e);
+                        // On storage error, stop streaming
                         break;
                     }
                 }
             }
 
-            debug!("Streaming task for {} completed", stream_name_str);
+            info!("Streaming completed for {}", stream_name);
         });
 
-        // Give the task a moment to start
-        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-
-        info!(
-            "Streaming session created successfully for stream {}",
-            request.stream_name
-        );
-
+        // Return immediately, allowing the handler to complete
         Ok(())
     }
 }

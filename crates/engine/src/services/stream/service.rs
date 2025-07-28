@@ -14,7 +14,7 @@ use proven_storage::{
 };
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
-use tokio::sync::{RwLock, oneshot, watch};
+use tokio::sync::{RwLock, oneshot};
 use tokio_stream::{Stream, StreamExt};
 use tracing::{info, warn};
 
@@ -23,6 +23,7 @@ use crate::foundation::events::EventBus;
 use crate::foundation::{
     Message, PersistenceType, RoutingTable, StreamConfig, StreamName, traits::ServiceLifecycle,
 };
+use crate::services::stream::internal::registry::StreamRegistry;
 use crate::services::stream::internal::storage::{StreamStorageImpl, StreamStorageReader};
 
 /// Type alias for stream storage map
@@ -60,10 +61,6 @@ where
 
     /// Stream configurations
     stream_configs: Arc<DashMap<StreamName, StreamConfig>>,
-
-    /// Stream append notifiers - watchers are notified when new messages are appended
-    /// The value is the latest sequence number in the stream
-    stream_notifiers: Arc<DashMap<StreamName, watch::Sender<LogIndex>>>,
 
     /// Storage manager for persistent streams
     storage_manager: Arc<StorageManager<S>>,
@@ -110,7 +107,6 @@ where
             config,
             streams: Arc::new(DashMap::new()),
             stream_configs: Arc::new(DashMap::new()),
-            stream_notifiers: Arc::new(DashMap::new()),
             storage_manager,
             event_bus,
             routing_table: Some(routing_table),
@@ -158,12 +154,6 @@ where
 
                         // Store it for future use
                         self.streams.insert(stream_name.clone(), storage.clone());
-
-                        // Also create a notifier if it doesn't exist
-                        if !self.stream_notifiers.contains_key(stream_name) {
-                            let (tx, _rx) = watch::channel(LogIndex::new(1).unwrap());
-                            self.stream_notifiers.insert(stream_name.clone(), tx);
-                        }
 
                         Some(storage)
                     }
@@ -411,7 +401,6 @@ where
             config: self.config.clone(),
             streams: self.streams.clone(),
             stream_configs: self.stream_configs.clone(),
-            stream_notifiers: self.stream_notifiers.clone(),
             storage_manager: self.storage_manager.clone(),
             event_bus: self.event_bus.clone(),
             network_manager: self.network_manager.clone(),
@@ -455,7 +444,6 @@ where
         let persist_handler = command_handlers::PersistMessagesHandler::new(
             self.streams.clone(),
             self.storage_manager.clone(),
-            self.stream_notifiers.clone(),
         );
         self.event_bus
             .handle_requests::<PersistMessages, _>(persist_handler)
@@ -465,7 +453,6 @@ where
         let create_handler = command_handlers::CreateStreamHandler::new(
             self.streams.clone(),
             self.stream_configs.clone(),
-            self.stream_notifiers.clone(),
             self.storage_manager.clone(),
             self.config.default_persistence,
         );
@@ -477,7 +464,6 @@ where
         let delete_handler = command_handlers::DeleteStreamHandler::new(
             self.streams.clone(),
             self.stream_configs.clone(),
-            self.stream_notifiers.clone(),
         );
         self.event_bus
             .handle_requests::<DeleteStream, _>(delete_handler)
@@ -489,19 +475,35 @@ where
             self.routing_table.clone(),
             self.network_manager.clone(),
         ) {
+            // Create a stream registry for the handler
+            let stream_registry = Arc::new(StreamRegistry::new(
+                self.streams.clone(),
+                self.stream_configs.clone(),
+                self.storage_manager.clone(),
+            ));
+
             let stream_handler = command_handlers::StreamMessagesHandler::new(
                 node_id,
-                self.streams.clone(),
-                self.stream_notifiers.clone(),
+                stream_registry.clone(),
                 routing_table,
-                network_manager,
+                network_manager.clone(),
             );
             self.event_bus
                 .handle_streams::<StreamMessages, _>(stream_handler)
                 .expect("Failed to register StreamMessages handler");
+
+            // Register the streaming service for handling incoming stream requests
+            let streaming_service =
+                crate::services::stream::streaming::StreamMessagesStreamingService::new(
+                    stream_registry,
+                );
+            network_manager
+                .register_streaming_service(streaming_service)
+                .await
+                .expect("Failed to register stream messages streaming service");
         }
 
-        info!("StreamService: Registered command handlers");
+        info!("StreamService: Registered command handlers and streaming service");
 
         // Register network message handlers
         self.register_message_handlers().await?;
@@ -528,6 +530,9 @@ where
         // Unregister from network service
         if let Some(network_manager) = &self.network_manager {
             let _ = network_manager.unregister_service("stream").await;
+            let _ = network_manager
+                .unregister_streaming_service("stream_messages")
+                .await;
         }
 
         // Unregister all event handlers to allow re-registration on restart
@@ -556,7 +561,6 @@ where
         // Clear all stream storage instances to release storage references
         self.streams.clear();
         self.stream_configs.clear();
-        self.stream_notifiers.clear();
 
         // Mark as not running
         *self.is_running.write().await = false;
