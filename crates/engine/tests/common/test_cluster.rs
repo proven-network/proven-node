@@ -685,68 +685,6 @@ impl TestCluster {
         false
     }
 
-    /// Wait for all nodes to have joined consensus groups
-    pub async fn wait_for_group_formation<T, G, A, S>(
-        &self,
-        engines: &[Engine<T, G, A, S>],
-        timeout: Duration,
-    ) -> Result<(), String>
-    where
-        T: proven_transport::Transport,
-        G: TopologyAdaptor,
-        A: proven_attestation::Attestor,
-        S: StorageAdaptor,
-    {
-        let start = Instant::now();
-
-        while start.elapsed() < timeout {
-            let mut all_have_groups = true;
-
-            for engine in engines {
-                // Check if node has any groups
-                match engine.client().node_groups().await {
-                    Ok(groups) => {
-                        if groups.is_empty() {
-                            all_have_groups = false;
-                            break;
-                        }
-                    }
-                    Err(_) => {
-                        all_have_groups = false;
-                        break;
-                    }
-                }
-            }
-
-            if all_have_groups {
-                info!("All {} nodes have joined consensus groups", engines.len());
-                return Ok(());
-            }
-
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-
-        // Log which nodes don't have groups
-        for (i, engine) in engines.iter().enumerate() {
-            match engine.client().node_groups().await {
-                Ok(groups) => {
-                    if groups.is_empty() {
-                        info!("Node {} has no groups", i);
-                    } else {
-                        info!("Node {} is in {} groups", i, groups.len());
-                    }
-                }
-                Err(e) => {
-                    info!("Node {} failed to get groups: {}", i, e);
-                }
-            }
-        }
-
-        Err(format!(
-            "Timeout after {timeout:?} waiting for group formation"
-        ))
-    }
-
     /// Wait for the default group (ID 1) to become routable
     /// This only requires at least 1 member (typically the coordinator)
     pub async fn wait_for_default_group_routable<T, G, A, S>(

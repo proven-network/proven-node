@@ -305,7 +305,7 @@ async fn test_single_node_to_cluster() {
 
     // Wait for 3-node cluster formation
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
         .await
         .expect("Failed to form 3-node cluster");
 

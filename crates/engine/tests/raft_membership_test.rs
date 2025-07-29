@@ -28,7 +28,7 @@ async fn test_raft_leader_election() {
 
     // Wait for cluster formation
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
         .await
         .expect("Failed to form groups");
 
@@ -137,7 +137,7 @@ async fn test_raft_membership_change() {
 
     // Wait for cluster formation
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
         .await
         .expect("Failed to form groups");
 
@@ -225,7 +225,7 @@ async fn test_split_brain_prevention() {
 
     // Wait for cluster formation
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
         .await
         .expect("Failed to form groups");
 
@@ -357,7 +357,7 @@ async fn test_deterministic_initialization() {
 
     // Wait for initialization
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
         .await
         .expect("Failed to form groups");
 

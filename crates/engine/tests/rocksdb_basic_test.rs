@@ -113,7 +113,7 @@ async fn test_rocksdb_multi_node() {
 
     // Wait for cluster formation
     cluster
-        .wait_for_group_formation(&engines, Duration::from_secs(30))
+        .wait_for_default_group_routable(&engines, Duration::from_secs(30))
         .await
         .expect("Failed to form groups");
 
