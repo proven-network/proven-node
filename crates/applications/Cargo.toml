@@ -11,6 +11,7 @@ proven-topology = { path = "../topology" }
 proven-storage = { path = "../storage" }
 
 # Core dependencies
+arc-swap = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 uuid = { workspace = true, features = ["v4", "serde"] }

@@ -165,14 +165,14 @@ impl CommandServiceHandler {
         origin: proven_util::Origin,
     ) -> Response {
         // Validate application exists
-        if !self.view.application_exists(&application_id).await {
+        if !self.view.application_exists(&application_id) {
             return Response::Error {
                 message: "Application not found".to_string(),
             };
         }
 
         // Check if origin is already allowed
-        if let Some(app) = self.view.get_application(&application_id).await
+        if let Some(app) = self.view.get_application(&application_id)
             && app.allowed_origins.contains(&origin)
         {
             return Response::Error {
@@ -193,7 +193,7 @@ impl CommandServiceHandler {
     }
 
     async fn handle_archive(&self, application_id: Uuid) -> Response {
-        if !self.view.application_exists(&application_id).await {
+        if !self.view.application_exists(&application_id) {
             return Response::Error {
                 message: "Application not found".to_string(),
             };
@@ -233,13 +233,13 @@ impl CommandServiceHandler {
         application_id: Uuid,
         http_domain: proven_util::Domain,
     ) -> Response {
-        if !self.view.application_exists(&application_id).await {
+        if !self.view.application_exists(&application_id) {
             return Response::Error {
                 message: "Application not found".to_string(),
             };
         }
 
-        if self.view.http_domain_linked(&http_domain).await {
+        if self.view.http_domain_linked(&http_domain) {
             return Response::Error {
                 message: "HTTP domain already linked".to_string(),
             };
@@ -262,13 +262,13 @@ impl CommandServiceHandler {
         application_id: Uuid,
         origin: proven_util::Origin,
     ) -> Response {
-        if !self.view.application_exists(&application_id).await {
+        if !self.view.application_exists(&application_id) {
             return Response::Error {
                 message: "Application not found".to_string(),
             };
         }
 
-        if let Some(app) = self.view.get_application(&application_id).await
+        if let Some(app) = self.view.get_application(&application_id)
             && !app.allowed_origins.contains(&origin)
         {
             return Response::Error {
@@ -293,7 +293,7 @@ impl CommandServiceHandler {
         application_id: Uuid,
         new_owner_id: Uuid,
     ) -> Response {
-        let old_owner_id = match self.view.get_application(&application_id).await {
+        let old_owner_id = match self.view.get_application(&application_id) {
             Some(app) => app.owner_id,
             None => {
                 return Response::Error {
@@ -320,17 +320,13 @@ impl CommandServiceHandler {
         application_id: Uuid,
         http_domain: proven_util::Domain,
     ) -> Response {
-        if !self.view.application_exists(&application_id).await {
+        if !self.view.application_exists(&application_id) {
             return Response::Error {
                 message: "Application not found".to_string(),
             };
         }
 
-        if let Some(app_id) = self
-            .view
-            .get_application_id_for_http_domain(&http_domain)
-            .await
-        {
+        if let Some(app_id) = self.view.get_application_id_for_http_domain(&http_domain) {
             if app_id != application_id {
                 return Response::Error {
                     message: "HTTP domain not linked to this application".to_string(),

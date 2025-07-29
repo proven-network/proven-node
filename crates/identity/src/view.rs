@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use arc_swap::ArcSwap;
 use bytes::Bytes;
-use tokio::sync::{Notify, RwLock};
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 use crate::{Event, Identity};
@@ -14,10 +15,10 @@ use crate::{Event, Identity};
 #[derive(Clone)]
 pub struct IdentityView {
     /// All identities indexed by ID.
-    identities: Arc<RwLock<HashMap<Uuid, Identity>>>,
+    identities: Arc<ArcSwap<HashMap<Uuid, Identity>>>,
 
     /// Mapping from PRF public key to identity ID.
-    prf_public_keys_to_identities: Arc<RwLock<HashMap<Bytes, Uuid>>>,
+    prf_public_keys_to_identities: Arc<ArcSwap<HashMap<Bytes, Uuid>>>,
 
     /// The last processed event sequence number.
     last_processed_seq: Arc<AtomicU64>,
@@ -31,21 +32,22 @@ impl IdentityView {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            identities: Arc::new(RwLock::new(HashMap::new())),
-            prf_public_keys_to_identities: Arc::new(RwLock::new(HashMap::new())),
+            identities: Arc::new(ArcSwap::from_pointee(HashMap::new())),
+            prf_public_keys_to_identities: Arc::new(ArcSwap::from_pointee(HashMap::new())),
             last_processed_seq: Arc::new(AtomicU64::new(0)),
             seq_notify: Arc::new(Notify::new()),
         }
     }
 
     /// Apply an event to update the view.
-    pub async fn apply_event(&self, event: Event) {
+    pub fn apply_event(&self, event: &Event) {
         match event {
             Event::Created { identity_id, .. } => {
-                let identity = Identity::new(identity_id);
-                let mut identities = self.identities.write().await;
-                identities.insert(identity_id, identity);
-                drop(identities);
+                let identity = Identity::new(*identity_id);
+                let current = self.identities.load();
+                let mut new_identities = (**current).clone();
+                new_identities.insert(*identity_id, identity);
+                self.identities.store(Arc::new(new_identities));
                 tracing::debug!("Applied Created event for identity {}", identity_id);
             }
             Event::PrfPublicKeyLinked {
@@ -53,9 +55,11 @@ impl IdentityView {
                 prf_public_key,
                 ..
             } => {
-                let mut mapping = self.prf_public_keys_to_identities.write().await;
-                mapping.insert(prf_public_key.clone(), identity_id);
-                drop(mapping);
+                let current = self.prf_public_keys_to_identities.load();
+                let mut new_mapping = (**current).clone();
+                new_mapping.insert(prf_public_key.clone(), *identity_id);
+                self.prf_public_keys_to_identities
+                    .store(Arc::new(new_mapping));
                 tracing::debug!(
                     "Applied PrfPublicKeyLinked event for identity {} with key {:?}",
                     identity_id,
@@ -89,50 +93,50 @@ impl IdentityView {
     }
 
     /// Get an identity by its ID.
-    pub async fn get_identity(&self, identity_id: &Uuid) -> Option<Identity> {
-        let identities = self.identities.read().await;
-        identities.get(identity_id).copied()
+    #[must_use]
+    pub fn get_identity(&self, identity_id: &Uuid) -> Option<Identity> {
+        self.identities.load().get(identity_id).copied()
     }
 
     /// Get an identity by PRF public key.
-    pub async fn get_identity_by_prf_public_key(&self, prf_public_key: &Bytes) -> Option<Identity> {
-        let mapping = self.prf_public_keys_to_identities.read().await;
-        if let Some(identity_id) = mapping.get(prf_public_key) {
-            let identities = self.identities.read().await;
-            identities.get(identity_id).copied()
-        } else {
-            None
-        }
+    #[must_use]
+    pub fn get_identity_by_prf_public_key(&self, prf_public_key: &Bytes) -> Option<Identity> {
+        let mapping = self.prf_public_keys_to_identities.load();
+        mapping
+            .get(prf_public_key)
+            .and_then(|identity_id| self.identities.load().get(identity_id).copied())
     }
 
     /// Check if an identity exists.
-    pub async fn identity_exists(&self, identity_id: &Uuid) -> bool {
-        let identities = self.identities.read().await;
-        identities.contains_key(identity_id)
+    #[must_use]
+    pub fn identity_exists(&self, identity_id: &Uuid) -> bool {
+        self.identities.load().contains_key(identity_id)
     }
 
     /// Check if a PRF public key exists.
-    pub async fn prf_public_key_exists(&self, prf_public_key: &Bytes) -> bool {
-        let mapping = self.prf_public_keys_to_identities.read().await;
-        mapping.contains_key(prf_public_key)
+    #[must_use]
+    pub fn prf_public_key_exists(&self, prf_public_key: &Bytes) -> bool {
+        self.prf_public_keys_to_identities
+            .load()
+            .contains_key(prf_public_key)
     }
 
     /// List all identities.
-    pub async fn list_all_identities(&self) -> Vec<Identity> {
-        let identities = self.identities.read().await;
-        identities.values().copied().collect()
+    #[must_use]
+    pub fn list_all_identities(&self) -> Vec<Identity> {
+        self.identities.load().values().copied().collect()
     }
 
     /// Get the count of identities.
-    pub async fn identity_count(&self) -> usize {
-        let identities = self.identities.read().await;
-        identities.len()
+    #[must_use]
+    pub fn identity_count(&self) -> usize {
+        self.identities.load().len()
     }
 
     /// Get the count of PRF public keys.
-    pub async fn prf_public_key_count(&self) -> usize {
-        let mapping = self.prf_public_keys_to_identities.read().await;
-        mapping.len()
+    #[must_use]
+    pub fn prf_public_key_count(&self) -> usize {
+        self.prf_public_keys_to_identities.load().len()
     }
 }
 

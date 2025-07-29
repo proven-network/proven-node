@@ -371,7 +371,7 @@ impl ApplicationManagement for ApplicationManager {
     }
 
     async fn application_exists(&self, application_id: &Uuid) -> Result<bool, Error> {
-        Ok(self.view.application_exists(application_id).await)
+        Ok(self.view.application_exists(application_id))
     }
 
     async fn archive_application(&self, application_id: &Uuid) -> Result<(), Error> {
@@ -417,12 +417,11 @@ impl ApplicationManagement for ApplicationManager {
         Ok(self
             .view
             .get_application(&application_id)
-            .await
             .ok_or(Error::UnexpectedResponse)?)
     }
 
     async fn get_application(&self, application_id: &Uuid) -> Result<Option<Application>, Error> {
-        Ok(self.view.get_application(application_id).await)
+        Ok(self.view.get_application(application_id))
     }
 
     async fn link_http_domain(
@@ -449,11 +448,11 @@ impl ApplicationManagement for ApplicationManager {
     }
 
     async fn list_all_applications(&self) -> Result<Vec<Application>, Error> {
-        Ok(self.view.list_all_applications().await)
+        Ok(self.view.list_all_applications())
     }
 
     async fn list_applications_by_owner(&self, owner_id: &Uuid) -> Result<Vec<Application>, Error> {
-        Ok(self.view.list_applications_by_owner(owner_id).await)
+        Ok(self.view.list_applications_by_owner(owner_id))
     }
 
     async fn remove_allowed_origin(

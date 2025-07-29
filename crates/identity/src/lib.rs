@@ -304,7 +304,7 @@ impl Clone for IdentityManager {
 impl IdentityManagement for IdentityManager {
     async fn get_identity(&self, identity_id: &Uuid) -> Result<Option<Identity>, Error> {
         // Query the view directly for fast performance
-        Ok(self.view.get_identity(identity_id).await)
+        Ok(self.view.get_identity(identity_id))
     }
 
     async fn get_or_create_identity_by_prf_public_key(
@@ -312,11 +312,7 @@ impl IdentityManagement for IdentityManager {
         prf_public_key: &Bytes,
     ) -> Result<Identity, Error> {
         // First, check if the identity already exists in the view
-        if let Some(identity) = self
-            .view
-            .get_identity_by_prf_public_key(prf_public_key)
-            .await
-        {
+        if let Some(identity) = self.view.get_identity_by_prf_public_key(prf_public_key) {
             return Ok(identity);
         }
 
@@ -342,10 +338,10 @@ impl IdentityManagement for IdentityManager {
     }
 
     async fn identity_exists(&self, identity_id: &Uuid) -> Result<bool, Error> {
-        Ok(self.view.identity_exists(identity_id).await)
+        Ok(self.view.identity_exists(identity_id))
     }
 
     async fn list_identities(&self) -> Result<Vec<Identity>, Error> {
-        Ok(self.view.list_all_identities().await)
+        Ok(self.view.list_all_identities())
     }
 }

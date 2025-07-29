@@ -156,7 +156,7 @@ impl CommandServiceHandler {
     /// Handle `CreateIdentityWithPrfPublicKey` command.
     async fn handle_create_identity_with_prf_public_key(&self, prf_public_key: Bytes) -> Response {
         // Check if identity already exists for this PRF public key
-        if self.view.prf_public_key_exists(&prf_public_key).await {
+        if self.view.prf_public_key_exists(&prf_public_key) {
             return Response::Error {
                 message: "PRF public key already associated with an identity".to_string(),
             };
@@ -196,14 +196,14 @@ impl CommandServiceHandler {
         prf_public_key: Bytes,
     ) -> Response {
         // Validate identity exists
-        if !self.view.identity_exists(&identity_id).await {
+        if !self.view.identity_exists(&identity_id) {
             return Response::Error {
                 message: "Identity not found".to_string(),
             };
         }
 
         // Check if PRF public key is already linked
-        if self.view.prf_public_key_exists(&prf_public_key).await {
+        if self.view.prf_public_key_exists(&prf_public_key) {
             return Response::Error {
                 message: "PRF public key already linked to an identity".to_string(),
             };

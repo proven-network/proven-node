@@ -166,8 +166,8 @@ async fn test_basic_identity_operations() {
     assert!(all_identities.iter().any(|i| i.id == identity2.id));
 
     // Test 7: Verify view counts
-    assert_eq!(identity_manager.view().identity_count().await, 2);
-    assert_eq!(identity_manager.view().prf_public_key_count().await, 2);
+    assert_eq!(identity_manager.view().identity_count(), 2);
+    assert_eq!(identity_manager.view().prf_public_key_count(), 2);
 
     // Shutdown
     engine.stop().await.expect("Failed to stop engine");
@@ -286,7 +286,7 @@ async fn test_concurrent_identity_creation() {
         .await
         .expect("Failed to list identities");
     assert_eq!(all_identities.len(), 5);
-    assert_eq!(identity_manager.view().prf_public_key_count().await, 5);
+    assert_eq!(identity_manager.view().prf_public_key_count(), 5);
 
     engine.stop().await.expect("Failed to stop engine");
 }
@@ -408,8 +408,8 @@ async fn test_duplicate_prf_key_handling() {
     assert_eq!(result2.id, identity1.id);
 
     // Verify still only one identity exists
-    assert_eq!(identity_manager.view().identity_count().await, 1);
-    assert_eq!(identity_manager.view().prf_public_key_count().await, 1);
+    assert_eq!(identity_manager.view().identity_count(), 1);
+    assert_eq!(identity_manager.view().prf_public_key_count(), 1);
 
     engine.stop().await.expect("Failed to stop engine");
 }

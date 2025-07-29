@@ -30,9 +30,9 @@ impl ApplicationViewConsumer {
     }
 
     /// Process an event and update the view.
-    pub async fn handle_event(&mut self, event: Event, sequence: u64) {
+    pub fn handle_event(&mut self, event: &Event, sequence: u64) {
         // Apply event to view
-        self.view.apply_event(event).await;
+        self.view.apply_event(event);
 
         // Update sequence tracking
         self.last_processed_seq = sequence;
@@ -111,7 +111,7 @@ async fn run_consumer_loop(
             .map_err(|e| Error::Deserialization(e.to_string()))?;
 
         // Process event
-        consumer.handle_event(event, sequence).await;
+        consumer.handle_event(&event, sequence);
 
         // Log progress periodically
         if sequence.is_multiple_of(100) {

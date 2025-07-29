@@ -10216,6 +10216,7 @@ dependencies = [
 name = "proven-applications"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "bytes",
  "chrono",
@@ -10641,6 +10642,7 @@ dependencies = [
 name = "proven-identity"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "bytes",
  "chrono",

@@ -1,22 +1,23 @@
 use crate::{Application, Event};
 
+use arc_swap::ArcSwap;
 use proven_util::{Domain, Origin};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::{Notify, RwLock};
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 // Moved DeserializeError and SerializeError to error.rs
 
 /// Shared in-memory view of applications built from events
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ApplicationView {
-    // Use RwLock for efficient concurrent reads
-    applications: Arc<RwLock<HashMap<Uuid, Application>>>,
+    // Use ArcSwap for lock-free concurrent reads
+    applications: Arc<ArcSwap<HashMap<Uuid, Application>>>,
 
     // Map from HTTP domain to application ID
-    http_domain_to_application: Arc<RwLock<HashMap<Domain, Uuid>>>,
+    http_domain_to_application: Arc<ArcSwap<HashMap<Domain, Uuid>>>,
 
     // Track the sequence number of the last processed event
     last_processed_seq: Arc<AtomicU64>,
@@ -30,50 +31,53 @@ impl ApplicationView {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            applications: Arc::new(RwLock::new(HashMap::new())),
-            http_domain_to_application: Arc::new(RwLock::new(HashMap::new())),
+            applications: Arc::new(ArcSwap::from_pointee(HashMap::new())),
+            http_domain_to_application: Arc::new(ArcSwap::from_pointee(HashMap::new())),
             last_processed_seq: Arc::new(AtomicU64::new(0)),
             seq_notifier: Arc::new(Notify::new()),
         }
     }
 
     /// Check if an application exists
-    pub async fn application_exists(&self, application_id: &Uuid) -> bool {
-        self.applications.read().await.contains_key(application_id)
+    #[must_use]
+    pub fn application_exists(&self, application_id: &Uuid) -> bool {
+        self.applications.load().contains_key(application_id)
     }
 
     /// Get a single application by ID
-    pub async fn get_application(&self, application_id: &Uuid) -> Option<Application> {
-        self.applications.read().await.get(application_id).cloned()
+    #[must_use]
+    pub fn get_application(&self, application_id: &Uuid) -> Option<Application> {
+        self.applications.load().get(application_id).cloned()
     }
 
     /// Get an application by HTTP domain
-    pub async fn get_application_id_for_http_domain(&self, http_domain: &Domain) -> Option<Uuid> {
+    #[must_use]
+    pub fn get_application_id_for_http_domain(&self, http_domain: &Domain) -> Option<Uuid> {
         self.http_domain_to_application
-            .read()
-            .await
+            .load()
             .get(http_domain)
             .copied()
     }
 
     /// Check if an HTTP domain is linked to an application
-    pub async fn http_domain_linked(&self, http_domain: &Domain) -> bool {
+    #[must_use]
+    pub fn http_domain_linked(&self, http_domain: &Domain) -> bool {
         self.http_domain_to_application
-            .read()
-            .await
+            .load()
             .contains_key(http_domain)
     }
 
     /// Get all applications (for admin/debugging purposes)
-    pub async fn list_all_applications(&self) -> Vec<Application> {
-        self.applications.read().await.values().cloned().collect()
+    #[must_use]
+    pub fn list_all_applications(&self) -> Vec<Application> {
+        self.applications.load().values().cloned().collect()
     }
 
     /// List all applications owned by a specific user
-    pub async fn list_applications_by_owner(&self, owner_id: &Uuid) -> Vec<Application> {
+    #[must_use]
+    pub fn list_applications_by_owner(&self, owner_id: &Uuid) -> Vec<Application> {
         self.applications
-            .read()
-            .await
+            .load()
             .values()
             .filter(|app| app.owner_id == *owner_id)
             .cloned()
@@ -81,8 +85,9 @@ impl ApplicationView {
     }
 
     /// Get the count of applications
-    pub async fn application_count(&self) -> usize {
-        self.applications.read().await.len()
+    #[must_use]
+    pub fn application_count(&self) -> usize {
+        self.applications.load().len()
     }
 
     /// Get the sequence number of the last processed event
@@ -121,26 +126,24 @@ impl ApplicationView {
 
     /// Apply an event to update the view state
     /// This is called by the consumer handler when processing events
-    pub async fn apply_event(&self, event: Event) {
-        match &event {
+    pub fn apply_event(&self, event: &Event) {
+        match event {
             Event::AllowedOriginAdded {
                 application_id,
                 origin,
                 ..
             } => {
-                self.apply_allowed_origin_added(*application_id, origin)
-                    .await;
+                self.apply_allowed_origin_added(*application_id, origin);
             }
             Event::AllowedOriginRemoved {
                 application_id,
                 origin,
                 ..
             } => {
-                self.apply_allowed_origin_removed(*application_id, origin)
-                    .await;
+                self.apply_allowed_origin_removed(*application_id, origin);
             }
             Event::Archived { application_id, .. } => {
-                self.apply_archived(*application_id).await;
+                self.apply_archived(*application_id);
             }
             Event::Created {
                 application_id,
@@ -148,77 +151,86 @@ impl ApplicationView {
                 owner_identity_id,
                 ..
             } => {
-                self.apply_created(*application_id, *created_at, *owner_identity_id)
-                    .await;
+                self.apply_created(*application_id, *created_at, *owner_identity_id);
             }
             Event::HttpDomainLinked {
                 application_id,
                 http_domain,
                 ..
             } => {
-                self.apply_http_domain_linked(*application_id, http_domain)
-                    .await;
+                self.apply_http_domain_linked(*application_id, http_domain);
             }
             Event::HttpDomainUnlinked {
                 application_id,
                 http_domain,
                 ..
             } => {
-                self.apply_http_domain_unlinked(*application_id, http_domain)
-                    .await;
+                self.apply_http_domain_unlinked(*application_id, http_domain);
             }
             Event::OwnershipTransferred {
                 application_id,
                 new_owner_id,
                 ..
             } => {
-                self.apply_ownership_transferred(*application_id, *new_owner_id)
-                    .await;
+                self.apply_ownership_transferred(*application_id, *new_owner_id);
             }
         }
     }
 
     /// Apply `AllowedOriginAdded` event
-    async fn apply_allowed_origin_added(&self, application_id: Uuid, origin: &Origin) {
-        let mut apps = self.applications.write().await;
-
-        if let Some(app) = apps.get_mut(&application_id) {
-            app.allowed_origins.push(origin.clone());
+    fn apply_allowed_origin_added(&self, application_id: Uuid, origin: &Origin) {
+        let current = self.applications.load();
+        if current.contains_key(&application_id) {
+            let mut new_apps = (**current).clone();
+            if let Some(app_mut) = new_apps.get_mut(&application_id) {
+                app_mut.allowed_origins.push(origin.clone());
+            }
+            self.applications.store(Arc::new(new_apps));
         }
     }
 
     /// Apply `AllowedOriginRemoved` event
-    async fn apply_allowed_origin_removed(&self, application_id: Uuid, origin: &Origin) {
-        let mut apps = self.applications.write().await;
-
-        if let Some(app) = apps.get_mut(&application_id) {
-            app.allowed_origins.retain(|o| o != origin);
+    fn apply_allowed_origin_removed(&self, application_id: Uuid, origin: &Origin) {
+        let current = self.applications.load();
+        if current.contains_key(&application_id) {
+            let mut new_apps = (**current).clone();
+            if let Some(app_mut) = new_apps.get_mut(&application_id) {
+                app_mut.allowed_origins.retain(|o| o != origin);
+            }
+            self.applications.store(Arc::new(new_apps));
         }
     }
 
     /// Apply `Archived` event
-    async fn apply_archived(&self, application_id: Uuid) {
-        let mut apps = self.applications.write().await;
+    fn apply_archived(&self, application_id: Uuid) {
+        // First update applications
+        let current_apps = self.applications.load();
+        if let Some(app) = current_apps.get(&application_id) {
+            // Clean up linked domains
+            let domains_to_remove = app.linked_http_domains.clone();
 
-        // Clean up linked domains for this application
-        if let Some(app) = apps.get(&application_id) {
-            let mut domain_map = self.http_domain_to_application.write().await;
-            for domain in &app.linked_http_domains {
-                domain_map.remove(domain);
+            // Remove from domain map
+            let current_domains = self.http_domain_to_application.load();
+            let mut new_domains = (**current_domains).clone();
+            for domain in &domains_to_remove {
+                new_domains.remove(domain);
             }
+            self.http_domain_to_application.store(Arc::new(new_domains));
+
+            // Remove from applications
+            let mut new_apps = (**current_apps).clone();
+            new_apps.remove(&application_id);
+            self.applications.store(Arc::new(new_apps));
         }
-        apps.remove(&application_id);
     }
 
     /// Apply `Created` event
-    async fn apply_created(
+    fn apply_created(
         &self,
         application_id: Uuid,
         created_at: chrono::DateTime<chrono::Utc>,
         owner_identity_id: Uuid,
     ) {
-        let mut apps = self.applications.write().await;
-
         let app = Application {
             created_at,
             id: application_id,
@@ -226,51 +238,56 @@ impl ApplicationView {
             allowed_origins: vec![],
             owner_id: owner_identity_id,
         };
-        apps.insert(application_id, app);
 
-        drop(apps);
+        let current = self.applications.load();
+        let mut new_apps = (**current).clone();
+        new_apps.insert(application_id, app);
+        self.applications.store(Arc::new(new_apps));
     }
 
     /// Apply `HttpDomainLinked` event
-    async fn apply_http_domain_linked(&self, application_id: Uuid, http_domain: &Domain) {
-        let mut apps = self.applications.write().await;
-
-        if let Some(app) = apps.get_mut(&application_id) {
+    fn apply_http_domain_linked(&self, application_id: Uuid, http_domain: &Domain) {
+        // Update applications
+        let current_apps = self.applications.load();
+        let mut new_apps = (**current_apps).clone();
+        if let Some(app) = new_apps.get_mut(&application_id) {
             app.linked_http_domains.push(http_domain.clone());
         }
+        self.applications.store(Arc::new(new_apps));
 
-        drop(apps);
-
-        self.http_domain_to_application
-            .write()
-            .await
-            .insert(http_domain.clone(), application_id);
+        // Update domain mapping
+        let current_domains = self.http_domain_to_application.load();
+        let mut new_domains = (**current_domains).clone();
+        new_domains.insert(http_domain.clone(), application_id);
+        self.http_domain_to_application.store(Arc::new(new_domains));
     }
 
     /// Apply `HttpDomainUnlinked` event
-    async fn apply_http_domain_unlinked(&self, application_id: Uuid, http_domain: &Domain) {
-        let mut apps = self.applications.write().await;
-
-        if let Some(app) = apps.get_mut(&application_id) {
+    fn apply_http_domain_unlinked(&self, application_id: Uuid, http_domain: &Domain) {
+        // Update applications
+        let current_apps = self.applications.load();
+        let mut new_apps = (**current_apps).clone();
+        if let Some(app) = new_apps.get_mut(&application_id) {
             app.linked_http_domains
                 .retain(|domain| domain != http_domain);
         }
+        self.applications.store(Arc::new(new_apps));
 
-        drop(apps);
-
-        self.http_domain_to_application
-            .write()
-            .await
-            .remove(http_domain);
+        // Update domain mapping
+        let current_domains = self.http_domain_to_application.load();
+        let mut new_domains = (**current_domains).clone();
+        new_domains.remove(http_domain);
+        self.http_domain_to_application.store(Arc::new(new_domains));
     }
 
     /// Apply `OwnershipTransferred` event
-    async fn apply_ownership_transferred(&self, application_id: Uuid, new_owner_id: Uuid) {
-        let mut apps = self.applications.write().await;
-
-        if let Some(app) = apps.get_mut(&application_id) {
+    fn apply_ownership_transferred(&self, application_id: Uuid, new_owner_id: Uuid) {
+        let current = self.applications.load();
+        let mut new_apps = (**current).clone();
+        if let Some(app) = new_apps.get_mut(&application_id) {
             app.owner_id = new_owner_id;
         }
+        self.applications.store(Arc::new(new_apps));
     }
 }
 
