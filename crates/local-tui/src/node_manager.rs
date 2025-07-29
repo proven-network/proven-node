@@ -288,8 +288,17 @@ impl NodeManager {
         name: &str,
         specializations: &HashSet<proven_topology::NodeSpecialization>,
     ) -> NodeConfig<MockTopologyAdaptor> {
-        // Create base config
-        let node_config = records::create_node_config(id, name, &self.governance, &self.session_id);
+        // First, determine if we'll get a rocksdb directory (without actually allocating it)
+        let rocksdb_dir_num = self.peek_persistent_directory("rocksdb");
+
+        // Create base config with the rocksdb directory number
+        let node_config = records::create_node_config(
+            id,
+            name,
+            &self.governance,
+            &self.session_id,
+            rocksdb_dir_num,
+        );
 
         // Handle persistent directories for specializations
         if !specializations.is_empty()
@@ -303,6 +312,59 @@ impl NodeManager {
         }
 
         node_config
+    }
+
+    /// Peek at what persistent directory number would be allocated next
+    /// This doesn't actually allocate the directory
+    fn peek_persistent_directory(&self, specialization_prefix: &str) -> Option<u32> {
+        let used_dirs = self.used_persistent_dirs.read();
+
+        // Get the set of currently used directory numbers for this specialization
+        let used_set = used_dirs.get(specialization_prefix);
+
+        // Find existing directories on disk
+        let home_dir = dirs::home_dir()?;
+        let proven_dir = home_dir.join(".proven");
+
+        if !proven_dir.exists() {
+            return Some(1);
+        }
+
+        // Find all existing directories with this prefix
+        let mut existing_dirs = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&proven_dir) {
+            for entry in entries.flatten() {
+                if let Some(dir_name) = entry.file_name().to_str()
+                    && dir_name.starts_with(&format!("{specialization_prefix}-"))
+                    && let Some(number_part) =
+                        dir_name.strip_prefix(&format!("{specialization_prefix}-"))
+                    && let Ok(num) = number_part.parse::<u32>()
+                {
+                    existing_dirs.push(num);
+                }
+            }
+        }
+
+        existing_dirs.sort_unstable();
+
+        // Try to find an existing directory that's not currently in use
+        if let Some(used_set) = used_set {
+            for &dir_num in &existing_dirs {
+                if !used_set.contains(&dir_num) {
+                    return Some(dir_num);
+                }
+            }
+        } else if !existing_dirs.is_empty() {
+            // No directories in use, return the first existing one
+            return Some(existing_dirs[0]);
+        }
+
+        // All existing directories are in use or no existing dirs, return next available
+        if existing_dirs.is_empty() {
+            Some(1)
+        } else {
+            Some(existing_dirs.iter().max().unwrap() + 1)
+        }
     }
 
     /// Create persistent symlinks with session tracking

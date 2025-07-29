@@ -443,14 +443,15 @@ pub fn create_node_config(
     name: &str,
     governance: &Arc<MockTopologyAdaptor>,
     session_id: &str,
+    rocksdb_dir_num: Option<u32>,
 ) -> proven_local::NodeConfig<proven_topology_mock::MockTopologyAdaptor> {
     let main_port = allocate_port().unwrap_or_else(|e| {
         error!("Failed to allocate port for node {}: {}", name, e);
         3000 // Fallback port
     });
 
-    // Generate deterministic signing key based on execution order only
-    let private_key = generate_deterministic_signing_key(id.execution_order);
+    // Load or generate signing key, using persisted key if available
+    let private_key = load_or_generate_signing_key(id.execution_order, rocksdb_dir_num);
 
     build_node_config(name, main_port, governance, private_key, session_id)
 }
@@ -566,6 +567,86 @@ pub fn build_node_config(
 
         rocksdb_store_dir: PathBuf::from(format!("/tmp/proven/{session_id}/data/{name}/rocksdb")),
     }
+}
+
+/// Load or generate a signing key for the given execution order
+/// If a rocksdb directory number is provided, it will try to load a persisted key
+fn load_or_generate_signing_key(execution_order: u8, rocksdb_dir_num: Option<u32>) -> SigningKey {
+    // If we have a rocksdb directory, try to load a persisted key
+    if let Some(dir_num) = rocksdb_dir_num {
+        if let Some(key) = load_persisted_signing_key(dir_num) {
+            info!("Loaded persisted signing key for rocksdb-{}", dir_num);
+            return key;
+        }
+    }
+
+    // Generate a new key
+    let key = generate_deterministic_signing_key(execution_order);
+
+    // If we have a rocksdb directory, save the key
+    if let Some(dir_num) = rocksdb_dir_num {
+        if let Err(e) = save_signing_key(dir_num, &key) {
+            error!("Failed to save signing key for rocksdb-{}: {}", dir_num, e);
+        } else {
+            info!("Saved signing key for rocksdb-{}", dir_num);
+        }
+    }
+
+    key
+}
+
+/// Load a persisted signing key from the rocksdb directory
+fn load_persisted_signing_key(rocksdb_dir_num: u32) -> Option<SigningKey> {
+    let home_dir = dirs::home_dir()?;
+    let key_path = home_dir
+        .join(".proven")
+        .join(format!("rocksdb-{}", rocksdb_dir_num))
+        .join("signing_key.pem");
+
+    if !key_path.exists() {
+        return None;
+    }
+
+    match std::fs::read(&key_path) {
+        Ok(key_bytes) => {
+            if key_bytes.len() == SECRET_KEY_LENGTH {
+                let mut key_array = [0u8; SECRET_KEY_LENGTH];
+                key_array.copy_from_slice(&key_bytes);
+                Some(SigningKey::from_bytes(&key_array))
+            } else {
+                error!(
+                    "Invalid key length in {:?}: expected {}, got {}",
+                    key_path,
+                    SECRET_KEY_LENGTH,
+                    key_bytes.len()
+                );
+                None
+            }
+        }
+        Err(e) => {
+            error!("Failed to read signing key from {:?}: {}", key_path, e);
+            None
+        }
+    }
+}
+
+/// Save a signing key to the rocksdb directory
+fn save_signing_key(rocksdb_dir_num: u32, key: &SigningKey) -> Result<(), std::io::Error> {
+    let home_dir = dirs::home_dir().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")
+    })?;
+
+    let rocksdb_dir = home_dir
+        .join(".proven")
+        .join(format!("rocksdb-{}", rocksdb_dir_num));
+
+    // Create the directory if it doesn't exist
+    std::fs::create_dir_all(&rocksdb_dir)?;
+
+    let key_path = rocksdb_dir.join("signing_key.pem");
+    std::fs::write(&key_path, key.to_bytes())?;
+
+    Ok(())
 }
 
 /// Generate a deterministic signing key based on execution order only
