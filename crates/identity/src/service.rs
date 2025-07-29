@@ -113,28 +113,41 @@ impl CommandServiceHandler {
 
     /// Publish events to the event stream.
     async fn publish_events(&self, events: Vec<Event>) -> Result<u64, String> {
-        // Publish events individually (engine doesn't support batch publishing yet)
-        for event in events {
+        if events.is_empty() {
+            return Err("No events to publish".to_string());
+        }
+
+        // Publish events individually and track actual sequences
+        let mut last_actual_seq = 0u64;
+
+        for event in &events {
             let mut payload = Vec::new();
             ciborium::ser::into_writer(&event, &mut payload)
                 .map_err(|e| format!("Failed to serialize event: {e}"))?;
 
             let message = proven_engine::Message::new(payload);
-            self.client
+
+            match self
+                .client
                 .publish_to_stream(self.event_stream.clone(), vec![message])
                 .await
-                .map_err(|e| format!("Failed to publish event: {e}"))?;
+            {
+                Ok(seq) => {
+                    last_actual_seq = seq.get();
+                }
+                Err(e) => {
+                    return Err(format!("Failed to publish event: {e}"));
+                }
+            }
         }
 
-        // Get stream state to return the last sequence number
-        match self.client.get_stream_state(&self.event_stream).await {
-            Ok(Some(state)) => state.last_sequence.map_or_else(
-                || Err("Stream has no messages after publish".to_string()),
-                |last_seq| Ok(last_seq.get()),
-            ),
-            Ok(None) => Err("Event stream state not found".to_string()),
-            Err(e) => Err(e.to_string()),
-        }
+        // All events published successfully
+        tracing::debug!(
+            "Published {} events, last sequence: {}",
+            events.len(),
+            last_actual_seq
+        );
+        Ok(last_actual_seq)
     }
 
     /// Handle `CreateIdentityWithPrfPublicKey` command.
