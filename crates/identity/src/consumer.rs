@@ -108,7 +108,7 @@ async fn run_consumer_loop(
         tokio_stream::StreamExt::next(&mut stream).await
     {
         // Deserialize event
-        let event: Event = ciborium::de::from_reader(&message.payload[..])
+        let event = Event::try_from(message.payload.clone())
             .map_err(|e| Error::Deserialization(e.to_string()))?;
 
         // Process event

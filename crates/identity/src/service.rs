@@ -4,6 +4,7 @@
 //! replacing the messaging service abstraction.
 
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -117,12 +118,14 @@ impl CommandServiceHandler {
             return Err("No events to publish".to_string());
         }
 
+        let event_count = events.len();
+
         // Publish events individually and track actual sequences
         let mut last_actual_seq = 0u64;
 
-        for event in &events {
-            let mut payload = Vec::new();
-            ciborium::ser::into_writer(&event, &mut payload)
+        for event in events {
+            let payload: Bytes = event
+                .try_into()
                 .map_err(|e| format!("Failed to serialize event: {e}"))?;
 
             let message = proven_engine::Message::new(payload);
@@ -144,7 +147,7 @@ impl CommandServiceHandler {
         // All events published successfully
         tracing::debug!(
             "Published {} events, last sequence: {}",
-            events.len(),
+            event_count,
             last_actual_seq
         );
         Ok(last_actual_seq)
