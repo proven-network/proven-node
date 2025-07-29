@@ -235,9 +235,21 @@ impl Bootable for ProxyService {
     }
 
     async fn wait(&self) {
-        if let Some(_handle) = &*self.handle.read().await {
-            // Don't await the handle, just check if it's still running
-            // The handle represents the running service task
+        loop {
+            // Check if handle exists and if task is finished
+            let is_finished = {
+                let handle_guard = self.handle.read().await;
+                handle_guard
+                    .as_ref()
+                    .is_none_or(tokio::task::JoinHandle::is_finished)
+            };
+
+            if is_finished {
+                return;
+            }
+
+            // Sleep briefly before checking again
+            tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 }
