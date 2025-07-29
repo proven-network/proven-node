@@ -9,10 +9,10 @@ use proven_storage::{LogStorage, StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
-use tracing::info;
 
-use super::{callbacks, config::GroupConsensusConfig};
-use crate::foundation::{GroupStateRead, StreamState, create_group_state_access};
+use super::config::GroupConsensusConfig;
+use super::types::{ConsensusLayers, States};
+use crate::foundation::GroupStateRead;
 use crate::{
     consensus::group::GroupConsensusLayer,
     error::{ConsensusResult, Error, ErrorKind},
@@ -20,13 +20,7 @@ use crate::{
     foundation::routing::RoutingTable,
     foundation::types::ConsensusGroupId,
     services::group_consensus::events::GroupConsensusEvent,
-    services::stream::StreamService,
 };
-
-use super::types::{ConsensusLayers, States};
-
-/// Type alias for stream service reference
-type StreamServiceRef<T, G, A, S> = Arc<RwLock<Option<Arc<StreamService<T, G, A, S>>>>>;
 
 /// Group consensus service
 pub struct GroupConsensusService<T, G, A, S>
@@ -51,9 +45,7 @@ where
     /// Event bus
     event_bus: Arc<EventBus>,
     /// Topology manager
-    topology_manager: Option<Arc<proven_topology::TopologyManager<G>>>,
-    /// Stream service for message persistence
-    stream_service: StreamServiceRef<T, G, A, S>,
+    topology_manager: Arc<proven_topology::TopologyManager<G>>,
     /// Routing table
     routing_table: Arc<RoutingTable>,
 }
@@ -73,6 +65,7 @@ where
         storage_manager: Arc<StorageManager<S>>,
         event_bus: Arc<EventBus>,
         routing_table: Arc<RoutingTable>,
+        topology_manager: Arc<proven_topology::TopologyManager<G>>,
     ) -> Self {
         Self {
             config,
@@ -82,27 +75,9 @@ where
             group_states: Arc::new(RwLock::new(std::collections::HashMap::new())),
             consensus_layers: Arc::new(RwLock::new(std::collections::HashMap::new())),
             event_bus,
-            topology_manager: None,
-            stream_service: Arc::new(RwLock::new(None)),
+            topology_manager,
             routing_table,
         }
-    }
-
-    /// Set topology manager
-    pub fn with_topology(mut self, topology: Arc<proven_topology::TopologyManager<G>>) -> Self {
-        self.topology_manager = Some(topology);
-        self
-    }
-
-    /// Set routing table
-    pub fn with_routing_table(mut self, routing_table: Arc<RoutingTable>) -> Self {
-        self.routing_table = routing_table;
-        self
-    }
-
-    /// Set stream service
-    pub async fn set_stream_service(&self, stream_service: Arc<StreamService<T, G, A, S>>) {
-        *self.stream_service.write().await = Some(stream_service);
     }
 
     /// Start the service
@@ -123,9 +98,7 @@ where
             self.group_states.clone(),
             self.network_manager.clone(),
             self.storage_manager.clone(),
-            self.topology_manager
-                .clone()
-                .expect("topology_manager is required"),
+            self.topology_manager.clone(),
             self.event_bus.clone(),
             self.routing_table.clone(),
         );
@@ -267,25 +240,6 @@ where
         Ok(())
     }
 
-    /// Create a new group (delegates to EnsureGroupConsensusInitialized command)
-    pub async fn create_group(
-        &self,
-        group_id: ConsensusGroupId,
-        members: Vec<NodeId>,
-    ) -> ConsensusResult<()> {
-        use crate::services::group_consensus::commands::EnsureGroupConsensusInitialized;
-
-        // Delegate to the idempotent command handler
-        let cmd = EnsureGroupConsensusInitialized { group_id, members };
-
-        self.event_bus.request(cmd).await.map_err(|e| {
-            Error::with_context(
-                ErrorKind::Internal,
-                format!("Failed to ensure group initialization: {e}"),
-            )
-        })
-    }
-
     /// Register message handlers
     async fn register_message_handlers(&self) -> ConsensusResult<()> {
         use super::handler::GroupConsensusHandler;
@@ -304,97 +258,6 @@ where
     /// Check if service is healthy
     pub async fn is_healthy(&self) -> bool {
         true
-    }
-
-    /// Submit a request to a specific group
-    pub async fn submit_to_group(
-        &self,
-        group_id: ConsensusGroupId,
-        request: crate::consensus::group::GroupRequest,
-    ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
-        // Check if we're a member of this group
-        let is_local = self
-            .routing_table
-            .is_group_local(group_id)
-            .await
-            .unwrap_or(false);
-
-        if is_local {
-            // We're a member - try to handle locally
-            let groups = self.consensus_layers.read().await;
-            if let Some(layer) = groups.get(&group_id) {
-                match layer.submit_request(request.clone()).await {
-                    Ok(response) => Ok(response),
-                    Err(e) if e.is_not_leader() => {
-                        // We're not the leader - forward to the leader
-                        if let Some(leader) = e.get_leader() {
-                            self.forward_to_node(group_id, leader.clone(), request)
-                                .await
-                        } else {
-                            // No leader info in error, return the error as-is
-                            Err(e)
-                        }
-                    }
-                    Err(e) => Err(e),
-                }
-            } else {
-                Err(Error::with_context(
-                    ErrorKind::NotFound,
-                    format!("Group {group_id} not found locally"),
-                ))
-            }
-        } else {
-            // Remote group - forward to any member
-            let route = self
-                .routing_table
-                .get_group_route(group_id)
-                .await?
-                .ok_or_else(|| {
-                    Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
-                })?;
-
-            if let Some(member) = route.members.first() {
-                self.forward_to_node(group_id, member.clone(), request)
-                    .await
-            } else {
-                Err(Error::with_context(
-                    ErrorKind::InvalidState,
-                    format!("Group {group_id} has no members"),
-                ))
-            }
-        }
-    }
-
-    /// Get stream state from a specific group
-    pub async fn get_stream_state(
-        &self,
-        group_id: ConsensusGroupId,
-        stream_name: &str,
-    ) -> ConsensusResult<Option<StreamState>> {
-        let groups = self.consensus_layers.read().await;
-        let _layer = groups.get(&group_id).ok_or_else(|| {
-            Error::with_context(ErrorKind::NotFound, format!("Group {group_id} not found"))
-        })?;
-
-        // Get the state from our own states map
-        let states = self.group_states.read().await;
-        let state = states.get(&group_id).ok_or_else(|| {
-            Error::with_context(
-                ErrorKind::NotFound,
-                format!("State for group {group_id} not found"),
-            )
-        })?;
-
-        let stream_name = crate::foundation::StreamName::new(stream_name);
-        Ok(state.get_stream(&stream_name).await)
-    }
-
-    /// Get all group IDs this node is a member of
-    pub async fn get_node_groups(&self) -> ConsensusResult<Vec<ConsensusGroupId>> {
-        let groups = self.consensus_layers.read().await;
-        // For now, return all groups that this node has joined
-        // TODO: Properly track membership through Raft state
-        Ok(groups.keys().cloned().collect())
     }
 
     /// Get group state information
@@ -457,40 +320,6 @@ where
         })
     }
 
-    /// Forward a request to a specific node
-    async fn forward_to_node(
-        &self,
-        group_id: ConsensusGroupId,
-        target_node: NodeId,
-        request: crate::consensus::group::GroupRequest,
-    ) -> ConsensusResult<crate::consensus::group::GroupResponse> {
-        use super::messages::{GroupConsensusMessage, GroupConsensusServiceResponse};
-
-        tracing::debug!(
-            "Forwarding group request to node {} for group {:?}",
-            target_node,
-            group_id
-        );
-
-        let message = GroupConsensusMessage::Consensus { group_id, request };
-
-        match self
-            .network_manager
-            .request_with_timeout(target_node, message, std::time::Duration::from_secs(30))
-            .await
-        {
-            Ok(GroupConsensusServiceResponse::Consensus { response, .. }) => Ok(response),
-            Ok(_) => Err(Error::with_context(
-                ErrorKind::Internal,
-                "Unexpected response type from group consensus",
-            )),
-            Err(e) => Err(Error::with_context(
-                ErrorKind::Network,
-                format!("Failed to forward request: {e}"),
-            )),
-        }
-    }
-
     /// Start monitoring a group consensus layer for events
     pub(crate) fn start_group_event_monitoring<L>(
         layer: Arc<GroupConsensusLayer<L>>,
@@ -535,7 +364,6 @@ where
             consensus_layers: self.consensus_layers.clone(),
             event_bus: self.event_bus.clone(),
             topology_manager: self.topology_manager.clone(),
-            stream_service: self.stream_service.clone(),
             routing_table: self.routing_table.clone(),
         }
     }

@@ -172,17 +172,15 @@ where
             snapshot_interval: config.consensus.group.snapshot_interval,
         };
 
-        let group_consensus_service = Arc::new(
-            GroupConsensusService::new(
-                group_consensus_config,
-                self.node_id.clone(),
-                network_manager.clone(),
-                storage_manager.clone(),
-                new_event_bus.clone(),
-                routing_table.clone(),
-            )
-            .with_topology(topology_manager.clone()),
-        );
+        let group_consensus_service = Arc::new(GroupConsensusService::new(
+            group_consensus_config,
+            self.node_id.clone(),
+            network_manager.clone(),
+            storage_manager.clone(),
+            new_event_bus.clone(),
+            routing_table.clone(),
+            topology_manager.clone(),
+        ));
 
         // ClusterService has been removed - functionality moved to GlobalConsensusService
 
@@ -256,11 +254,6 @@ where
             .await;
         coordinator
             .register("stream".to_string(), stream_wrapper)
-            .await;
-
-        // Wire up GroupConsensusService dependencies
-        group_consensus_service
-            .set_stream_service(stream_service.clone())
             .await;
 
         // Create PubSub service with network manager and new event bus
