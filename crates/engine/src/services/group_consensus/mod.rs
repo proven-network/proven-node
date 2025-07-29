@@ -9,7 +9,6 @@ pub mod events;
 mod handler;
 mod messages;
 mod service;
-pub mod subscribers;
 mod types;
 
 pub use config::GroupConsensusConfig;

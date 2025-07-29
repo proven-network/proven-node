@@ -116,8 +116,8 @@ where
 
         let service_arc = Arc::new(self.clone());
 
-        // Register CreateGroup handler
-        let create_handler = CreateGroupHandler::new(
+        // Register EnsureGroupConsensusInitialized handler
+        let ensure_group_handler = EnsureGroupConsensusInitializedHandler::new(
             self.node_id.clone(),
             self.consensus_layers.clone(),
             self.group_states.clone(),
@@ -127,10 +127,11 @@ where
                 .clone()
                 .expect("topology_manager is required"),
             self.event_bus.clone(),
+            self.routing_table.clone(),
         );
         self.event_bus
-            .handle_requests::<CreateGroup, _>(create_handler)
-            .expect("Failed to register CreateGroup handler");
+            .handle_requests::<EnsureGroupConsensusInitialized, _>(ensure_group_handler)
+            .expect("Failed to register EnsureGroupConsensusInitialized handler");
 
         // Register DissolveGroup handler
         let dissolve_handler = DissolveGroupHandler::new(self.consensus_layers.clone());
@@ -138,14 +139,15 @@ where
             .handle_requests::<DissolveGroup, _>(dissolve_handler)
             .expect("Failed to register DissolveGroup handler");
 
-        // Register InitializeStreamInGroup handler
-        let init_stream_handler = InitializeStreamInGroupHandler::new(
+        // Register EnsureStreamInitializedInGroup handler
+        let ensure_stream_handler = EnsureStreamInitializedInGroupHandler::new(
             self.node_id.clone(),
             self.consensus_layers.clone(),
+            self.event_bus.clone(),
         );
         self.event_bus
-            .handle_requests::<InitializeStreamInGroup, _>(init_stream_handler)
-            .expect("Failed to register InitializeStreamInGroup handler");
+            .handle_requests::<EnsureStreamInitializedInGroup, _>(ensure_stream_handler)
+            .expect("Failed to register EnsureStreamInitializedInGroup handler");
 
         // Register SubmitToGroup handler
         let submit_handler = SubmitToGroupHandler::new(
@@ -190,17 +192,6 @@ where
             .expect("Failed to register GetGroupState handler");
 
         tracing::info!("GroupConsensusService: Registered command handlers");
-
-        // Register event handlers
-        use crate::services::global_consensus::events::GlobalConsensusEvent;
-        use crate::services::group_consensus::subscribers::global::GlobalConsensusSubscriber;
-
-        // Subscribe to global consensus events
-        let global_subscriber = GlobalConsensusSubscriber::new(service_arc, self.node_id.clone());
-        self.event_bus
-            .subscribe::<GlobalConsensusEvent, _>(global_subscriber);
-
-        tracing::info!("GroupConsensusService: Registered event handlers");
 
         // Restore any existing groups from storage
         self.restore_persisted_groups().await?;
@@ -258,11 +249,13 @@ where
 
         // Unregister all event handlers to allow re-registration on restart
         use crate::services::group_consensus::commands::*;
-        let _ = self.event_bus.unregister_request_handler::<CreateGroup>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<EnsureGroupConsensusInitialized>();
         let _ = self.event_bus.unregister_request_handler::<DissolveGroup>();
         let _ = self
             .event_bus
-            .unregister_request_handler::<InitializeStreamInGroup>();
+            .unregister_request_handler::<EnsureStreamInitializedInGroup>();
         let _ = self.event_bus.unregister_request_handler::<SubmitToGroup>();
         let _ = self.event_bus.unregister_request_handler::<GetNodeGroups>();
         let _ = self.event_bus.unregister_request_handler::<GetGroupInfo>();
@@ -274,191 +267,23 @@ where
         Ok(())
     }
 
-    /// Create a new group
+    /// Create a new group (delegates to EnsureGroupConsensusInitialized command)
     pub async fn create_group(
         &self,
         group_id: ConsensusGroupId,
         members: Vec<NodeId>,
     ) -> ConsensusResult<()> {
-        // Check if this node is a member of the group
-        if !members.contains(&self.node_id) {
-            tracing::debug!(
-                "Node {} is not a member of group {:?}, skipping creation",
-                self.node_id,
-                group_id
-            );
-            return Ok(());
-        }
+        use crate::services::group_consensus::commands::EnsureGroupConsensusInitialized;
 
-        // Check if group already exists
-        {
-            let groups = self.consensus_layers.read().await;
-            if groups.contains_key(&group_id) {
-                tracing::debug!("Group {:?} already exists, skipping creation", group_id);
-                return Ok(());
-            }
-        }
+        // Delegate to the idempotent command handler
+        let cmd = EnsureGroupConsensusInitialized { group_id, members };
 
-        // Create the group consensus layer
-        use super::adaptor::GroupNetworkFactory;
-        use crate::consensus::group::GroupConsensusLayer;
-        use openraft::Config;
-
-        let raft_config = Config {
-            cluster_name: format!("group-{:?}-{}", group_id, self.node_id),
-            election_timeout_min: self.config.election_timeout_min.as_millis() as u64,
-            election_timeout_max: self.config.election_timeout_max.as_millis() as u64,
-            heartbeat_interval: self.config.heartbeat_interval.as_millis() as u64,
-            max_payload_entries: self.config.max_entries_per_append as u64,
-            // TODO: Think about snapshotting
-            snapshot_policy: openraft::SnapshotPolicy::Never,
-            ..Default::default()
-        };
-
-        let network_factory = GroupNetworkFactory::new(self.network_manager.clone(), group_id);
-
-        // Create callbacks for this group
-        let callbacks = Arc::new(callbacks::GroupConsensusCallbacksImpl::<S>::new(
-            group_id,
-            self.node_id.clone(),
-            Some(self.event_bus.clone()),
-        ));
-
-        let (state_reader, state_writer) = create_group_state_access();
-        self.group_states
-            .write()
-            .await
-            .insert(group_id, state_reader.clone());
-
-        let layer = Arc::new(
-            GroupConsensusLayer::new(
-                self.node_id.clone(),
-                group_id,
-                raft_config,
-                network_factory,
-                self.storage_manager.consensus_storage(),
-                callbacks,
-                state_writer,
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Internal,
+                format!("Failed to ensure group initialization: {e}"),
             )
-            .await?,
-        );
-
-        // Store the layer
-        self.consensus_layers
-            .write()
-            .await
-            .insert(group_id, layer.clone());
-
-        // Start event monitoring for this group
-        Self::start_group_event_monitoring(
-            layer.clone(),
-            self.event_bus.clone(),
-            self.node_id.clone(),
-            group_id,
-            self.routing_table.clone(),
-        );
-
-        // Initialize the group (we already checked that we're a member)
-        // Check if Raft is already initialized for this group
-        let is_initialized = layer.is_initialized().await;
-
-        info!("Group {group_id:?} initialization check - is_initialized: {is_initialized}");
-
-        if !is_initialized {
-            // Fresh start - only ONE node should initialize to avoid election storms
-            tracing::info!(
-                "No persisted state found for group {}, checking if we should initialize",
-                group_id
-            );
-
-            // Sort members by ID to ensure deterministic selection
-            let mut sorted_members = members.clone();
-            sorted_members.sort();
-
-            // Only the first member (lowest ID) initializes the cluster
-            if sorted_members.first() == Some(&self.node_id) {
-                tracing::info!(
-                    "This node ({}) has the lowest ID in group {}, initializing cluster",
-                    self.node_id,
-                    group_id
-                );
-
-                // Get member nodes from topology
-                let topology = match &self.topology_manager {
-                    Some(tm) => tm,
-                    None => {
-                        tracing::error!("No topology manager available for group {}", group_id);
-                        return Err(Error::with_context(
-                            ErrorKind::Configuration,
-                            format!("No topology manager available for group {group_id}"),
-                        ));
-                    }
-                };
-
-                let all_nodes = match topology.provider().get_topology().await {
-                    Ok(nodes) => nodes,
-                    Err(e) => {
-                        tracing::error!("Failed to get topology for group {}: {}", group_id, e);
-                        return Err(Error::with_context(
-                            ErrorKind::Network,
-                            format!("Failed to get topology: {e}"),
-                        ));
-                    }
-                };
-
-                let mut raft_members = std::collections::BTreeMap::new();
-                for member_id in &members {
-                    if let Some(node) = all_nodes.iter().find(|n| n.node_id == *member_id) {
-                        raft_members.insert(member_id.clone(), node.clone());
-                    } else {
-                        tracing::error!(
-                            "Member {} not found in topology for group {}",
-                            member_id,
-                            group_id
-                        );
-                        return Err(Error::with_context(
-                            ErrorKind::Configuration,
-                            format!(
-                                "Member {member_id} not found in topology for group {group_id}"
-                            ),
-                        ));
-                    }
-                }
-
-                tracing::info!(
-                    "Initializing group {} Raft cluster with {} members",
-                    group_id,
-                    raft_members.len()
-                );
-
-                // Initialize the Raft cluster
-                if let Err(e) = layer.raft().initialize(raft_members).await {
-                    tracing::error!(
-                        "Failed to initialize group {} Raft cluster: {}",
-                        group_id,
-                        e
-                    );
-                    return Err(Error::with_context(
-                        ErrorKind::Consensus,
-                        format!("Failed to initialize group Raft: {e}"),
-                    ));
-                }
-
-                tracing::info!("Successfully initialized group {} Raft cluster", group_id);
-            } else {
-                tracing::info!(
-                    "This node ({}) is not the initializer for group {}, waiting for leader contact",
-                    self.node_id,
-                    group_id
-                );
-                // Don't initialize - just start up and wait for the leader to contact us
-            }
-        } else {
-            // Already initialized
-            info!("Group {group_id} is already initialized - skipping initialization");
-        }
-
-        Ok(())
+        })
     }
 
     /// Register message handlers
@@ -667,7 +492,7 @@ where
     }
 
     /// Start monitoring a group consensus layer for events
-    fn start_group_event_monitoring<L>(
+    pub(crate) fn start_group_event_monitoring<L>(
         layer: Arc<GroupConsensusLayer<L>>,
         event_bus: Arc<EventBus>,
         _node_id: NodeId,

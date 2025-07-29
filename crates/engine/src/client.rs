@@ -92,24 +92,6 @@ impl Client {
         })
     }
 
-    /// Create a new consensus group
-    pub async fn create_group(
-        &self,
-        group_id: ConsensusGroupId,
-        members: Vec<NodeId>,
-    ) -> ConsensusResult<()> {
-        info!(
-            "Creating group {:?} with {} members",
-            group_id,
-            members.len()
-        );
-
-        let cmd = group_commands::CreateGroup { group_id, members };
-        self.event_bus.request(cmd).await.map_err(|e| {
-            Error::with_context(ErrorKind::Service, format!("Create group failed: {e}"))
-        })
-    }
-
     /// Join an existing consensus group
     pub async fn join_group(&self, group_id: ConsensusGroupId) -> ConsensusResult<()> {
         info!("Joining group {:?}", group_id);

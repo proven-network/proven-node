@@ -8,18 +8,18 @@ use crate::consensus::group::types::{GroupRequest, GroupResponse};
 use crate::foundation::events::Request;
 use crate::foundation::types::{ConsensusGroupId, StreamName};
 
-/// Create a new consensus group
+/// Ensure a consensus group is initialized (idempotent)
 #[derive(Debug, Clone)]
-pub struct CreateGroup {
+pub struct EnsureGroupConsensusInitialized {
     pub group_id: ConsensusGroupId,
     pub members: Vec<NodeId>,
 }
 
-impl Request for CreateGroup {
+impl Request for EnsureGroupConsensusInitialized {
     type Response = ();
 
     fn request_type() -> &'static str {
-        "CreateGroup"
+        "EnsureGroupConsensusInitialized"
     }
 
     fn default_timeout() -> Duration {
@@ -45,18 +45,18 @@ impl Request for DissolveGroup {
     }
 }
 
-/// Initialize a stream in a consensus group
+/// Ensure a stream is initialized in a consensus group (idempotent)
 #[derive(Debug, Clone)]
-pub struct InitializeStreamInGroup {
+pub struct EnsureStreamInitializedInGroup {
     pub group_id: ConsensusGroupId,
     pub stream_name: StreamName,
 }
 
-impl Request for InitializeStreamInGroup {
+impl Request for EnsureStreamInitializedInGroup {
     type Response = ();
 
     fn request_type() -> &'static str {
-        "InitializeStreamInGroup"
+        "EnsureStreamInitializedInGroup"
     }
 
     fn default_timeout() -> Duration {

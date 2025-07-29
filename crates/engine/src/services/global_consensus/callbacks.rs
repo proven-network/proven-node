@@ -76,6 +76,27 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         }
 
         if let Some(ref event_bus) = self.event_bus {
+            // Ensure all streams are initialized in their respective groups
+            use crate::services::group_consensus::commands::EnsureStreamInitializedInGroup;
+
+            for stream in &all_streams {
+                let ensure_cmd = EnsureStreamInitializedInGroup {
+                    group_id: stream.group_id,
+                    stream_name: stream.name.clone(),
+                };
+
+                // Use fire-and-forget since this is idempotent and we're in a callback
+                let event_bus_clone = event_bus.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = event_bus_clone.request(ensure_cmd).await {
+                        tracing::debug!(
+                            "Failed to ensure stream is initialized during state sync: {}",
+                            e
+                        );
+                    }
+                });
+            }
+
             // Still publish event for other subscribers
             let snapshot = GlobalStateSnapshot {
                 groups: all_groups
@@ -125,23 +146,23 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         }
 
         if let Some(ref event_bus) = self.event_bus {
-            // Send command to create the group in group consensus service
-            use crate::services::group_consensus::commands::CreateGroup;
-            let create_group_cmd = CreateGroup {
+            // Send command to ensure the group is initialized in group consensus service
+            use crate::services::group_consensus::commands::EnsureGroupConsensusInitialized;
+            let ensure_group_cmd = EnsureGroupConsensusInitialized {
                 group_id,
                 members: group_info.members.clone(),
             };
 
             tracing::info!(
-                "GlobalConsensusCallbacks: Sending CreateGroup command for group {:?}",
+                "GlobalConsensusCallbacks: Sending EnsureGroupConsensusInitialized command for group {:?}",
                 group_id
             );
 
             // Use fire-and-forget since this is a callback
             let event_bus_clone = event_bus.clone();
             tokio::spawn(async move {
-                if let Err(e) = event_bus_clone.request(create_group_cmd).await {
-                    tracing::error!("Failed to create group via command: {}", e);
+                if let Err(e) = event_bus_clone.request(ensure_group_cmd).await {
+                    tracing::error!("Failed to ensure group initialization via command: {}", e);
                 }
             });
 
@@ -201,6 +222,24 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
             if let Err(e) = event_bus.request(create_cmd).await {
                 tracing::error!(
                     "Failed to create stream {} in group {:?}: {}",
+                    stream_name,
+                    group_id,
+                    e
+                );
+            }
+
+            // Ensure the stream is initialized in the group consensus synchronously
+            use crate::services::group_consensus::commands::EnsureStreamInitializedInGroup;
+
+            let ensure_cmd = EnsureStreamInitializedInGroup {
+                group_id,
+                stream_name: stream_name.clone(),
+            };
+
+            // Ensure the stream is initialized in group consensus before continuing
+            if let Err(e) = event_bus.request(ensure_cmd).await {
+                tracing::error!(
+                    "Failed to ensure stream {} is initialized in group {:?}: {}",
                     stream_name,
                     group_id,
                     e
