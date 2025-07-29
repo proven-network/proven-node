@@ -14,6 +14,7 @@
     "@proven-network/handler": "file:../../../handler",
     "@proven-network/session": "file:../../../session",
     "@proven-network/sdk": "file:../../../sdk",
+    "@proven-network/kv": "file:../../../kv",
     "@preact/signals-core": "^1.11.0"
   },
   "devDependencies": {
