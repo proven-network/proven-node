@@ -688,8 +688,18 @@ export const ProvenSDK = (options: {
   // Initialize manifest system
   const initializeManifestSystem = async () => {
     try {
-      // Wait for core iframes to be ready before initializing manifests
-      await Promise.all([createBridgeIframe(), createRpcIframe(), createStateIframe()]);
+      // Initialize iframes in order of dependencies:
+      // 1. State iframe (no dependencies)
+      // 2. RPC iframe (no dependencies on other iframes)
+      // 3. Bridge iframe (depends on state iframe)
+      logger?.debug('SDK: Initializing state iframe...');
+      await createStateIframe();
+
+      logger?.debug('SDK: Initializing RPC iframe...');
+      await createRpcIframe();
+
+      logger?.debug('SDK: Initializing bridge iframe...');
+      await createBridgeIframe();
 
       // Process any pre-registered manifest
       const preRegisteredManifest = (window as any).__ProvenManifest__;

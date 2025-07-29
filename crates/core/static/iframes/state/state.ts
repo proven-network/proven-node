@@ -25,12 +25,13 @@ class StateClient {
     // Initialize broker synchronously - will throw if it fails
     this.broker = new MessageBroker(this.windowId, 'state');
 
-    this.initializeBroker();
-    this.initializeStateWorker();
+    // Initialize everything in sequence to ensure worker is ready before reporting ready
+    this.initialize();
   }
 
-  async initializeBroker() {
+  async initialize() {
     try {
+      // First, connect the broker
       await this.broker.connect();
 
       // Set up message handlers for generic state operations from bridge
@@ -82,7 +83,11 @@ class StateClient {
 
       console.debug('State: Broker initialized successfully');
 
-      // Notify parent that state iframe is ready
+      // Initialize state worker BEFORE reporting ready
+      await this.initializeStateWorker();
+      console.debug('State: State worker initialized successfully');
+
+      // Only notify parent that state iframe is ready after everything is initialized
       parent.postMessage(
         {
           type: 'iframe_ready',
@@ -90,8 +95,9 @@ class StateClient {
         },
         '*'
       );
+      console.debug('State: Sent iframe_ready message');
     } catch (error) {
-      console.error('State: Failed to initialize broker:', error);
+      console.error('State: Failed to initialize:', error);
 
       // Notify parent of initialization error
       parent.postMessage(
@@ -104,40 +110,100 @@ class StateClient {
       );
 
       throw new Error(
-        `State: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `State: Failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
 
-  async initializeStateWorker() {
-    try {
-      // Connect to state shared worker (no window ID - truly shared across tabs)
-      this.stateWorker = new SharedWorker(`../workers/state-worker.js`);
-      this.statePort = this.stateWorker.port;
+  async initializeStateWorker(retries = 3): Promise<void> {
+    let lastError: any;
 
-      // Set up message handling
-      this.statePort.onmessage = (event) => {
-        this.handleStateWorkerMessage(event.data);
-      };
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.debug(`State: Initializing state worker (attempt ${attempt}/${retries})...`);
 
-      this.statePort.onmessageerror = (error) => {
-        console.error('State: State worker connection error:', error);
+        // Connect to state shared worker (no window ID - truly shared across tabs)
+        console.debug('State: Creating SharedWorker for state-worker.js...');
+        this.stateWorker = new SharedWorker(`../workers/state-worker.js`);
+
+        // Add error handler for the worker itself
+        this.stateWorker.onerror = (error) => {
+          console.error('State: SharedWorker error:', error);
+        };
+
+        this.statePort = this.stateWorker.port;
+        console.debug('State: SharedWorker created, port:', this.statePort);
+
+        // Create a promise that resolves when worker confirms it's ready
+        const workerReadyPromise = new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('State worker initialization timeout'));
+          }, 5000); // 5 second timeout
+
+          const initHandler = (event: MessageEvent) => {
+            console.debug('State: Received worker message during init:', event.data);
+            if (event.data.type === 'init_confirmed') {
+              console.debug('State: Worker confirmed initialization');
+              clearTimeout(timeout);
+              this.statePort!.removeEventListener('message', initHandler);
+              resolve();
+            }
+          };
+
+          this.statePort!.addEventListener('message', initHandler);
+        });
+
+        // Set up permanent message handling AFTER we get the init confirmation
+        const permanentHandler = (event: MessageEvent) => {
+          this.handleStateWorkerMessage(event.data);
+        };
+
+        this.statePort.onmessageerror = (error) => {
+          console.error('State: State worker connection error:', error);
+          this.isStateWorkerReady = false;
+        };
+
+        // Start the port and send init message
+        this.statePort.start();
+        console.debug('State: Port started, sending init message...');
+        this.statePort.postMessage({
+          type: 'init',
+          tabId: this.tabId,
+        });
+        console.debug('State: Init message sent, waiting for confirmation...');
+
+        // Wait for worker to confirm it's ready
+        await workerReadyPromise;
+
+        // Now set up the permanent message handler
+        this.statePort.onmessage = permanentHandler;
+
+        this.isStateWorkerReady = true;
+        console.debug('State: State worker initialized and confirmed ready');
+        return; // Success!
+      } catch (error) {
+        lastError = error;
+        console.error(
+          `State: Failed to initialize state worker (attempt ${attempt}/${retries}):`,
+          error
+        );
+
+        // Clean up failed attempt
+        this.stateWorker = null;
+        this.statePort = null;
         this.isStateWorkerReady = false;
-      };
 
-      // Start the port and send init message
-      this.statePort.start();
-      this.statePort.postMessage({
-        type: 'init',
-        tabId: this.tabId,
-      });
-
-      this.isStateWorkerReady = true;
-      console.debug('State: State worker initialized successfully');
-    } catch (error) {
-      console.error('State: Failed to initialize state worker:', error);
-      throw error;
+        if (attempt < retries) {
+          // Wait before retrying with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.debug(`State: Retrying in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
     }
+
+    // All retries failed
+    throw lastError;
   }
 
   private handleStateWorkerMessage(message: any) {
@@ -245,9 +311,9 @@ class StateClient {
 }
 
 // Initialize when the page loads
-if (globalThis.addEventListener) {
+if (globalThis.document && globalThis.document.readyState === 'loading') {
   globalThis.addEventListener('DOMContentLoaded', StateClient.init);
 } else {
-  // Fallback for cases where DOMContentLoaded has already fired
+  // DOM is already loaded or we're in a non-browser environment
   StateClient.init();
 }

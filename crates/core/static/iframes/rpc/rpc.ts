@@ -38,8 +38,8 @@ class RpcClient {
     // Initialize broker synchronously - will throw if it fails
     this.broker = new MessageBroker(this.windowId, 'rpc');
 
-    // Initialize broker immediately but defer session initialization
-    this.initializeBroker();
+    // Initialize everything including session before reporting ready
+    this.initialize();
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -55,35 +55,50 @@ class RpcClient {
     return this.initializationPromise;
   }
 
-  private async initializeSession(): Promise<void> {
+  private async initializeSession(retries = 3): Promise<void> {
     const urlParams = new URLSearchParams(window.location.search);
     const applicationId = urlParams.get('app') || 'application_id';
 
-    try {
-      console.debug('RPC: Initializing session...');
+    let lastError: any;
 
-      let session = await getSession(applicationId);
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        console.debug(`RPC: Initializing session (attempt ${attempt}/${retries})...`);
 
-      if (!session) {
-        console.debug('RPC: Creating new session...');
-        session = await createSession(applicationId);
-        console.debug('RPC: Session created!', session);
+        let session = await getSession(applicationId);
+
+        if (!session) {
+          console.debug('RPC: Creating new session...');
+          session = await createSession(applicationId);
+          console.debug('RPC: Session created!', session);
+        }
+
+        this.session = session;
+        await this.setupCose();
+        await this.setupWorkerCommunication();
+
+        this.isInitialized = true;
+        console.debug('RPC: Client initialized successfully');
+
+        // Process any queued requests
+        await this.processQueuedRequests();
+        return; // Success!
+      } catch (error) {
+        lastError = error;
+        console.error(`RPC: Failed to initialize session (attempt ${attempt}/${retries}):`, error);
+
+        if (attempt < retries) {
+          // Wait before retrying with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          console.debug(`RPC: Retrying in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
       }
-
-      this.session = session;
-      await this.setupCose();
-      await this.setupWorkerCommunication();
-
-      this.isInitialized = true;
-      console.debug('RPC: Client initialized successfully');
-
-      // Process any queued requests
-      await this.processQueuedRequests();
-    } catch (error) {
-      console.error('RPC: Failed to initialize session:', error);
-      this.initializationPromise = null; // Allow retry
-      throw error;
     }
+
+    // All retries failed
+    this.initializationPromise = null; // Allow retry
+    throw lastError;
   }
 
   private async processQueuedRequests(): Promise<void> {
@@ -118,8 +133,9 @@ class RpcClient {
     };
   }
 
-  private async initializeBroker() {
+  private async initialize() {
     try {
+      // First, connect the broker
       await this.broker.connect();
 
       // Set up generic message handler for rpc_request requests
@@ -139,7 +155,18 @@ class RpcClient {
 
       console.debug('RPC: Broker initialized successfully');
 
-      // Notify parent that RPC iframe is ready
+      // Initialize session and worker BEFORE reporting ready
+      try {
+        await this.ensureInitialized();
+        console.debug('RPC: Session and worker initialized successfully');
+      } catch (error) {
+        console.error('RPC: Failed to initialize session/worker:', error);
+        // Even if session fails, we might want to report ready but with degraded functionality
+        // For now, we'll treat this as a fatal error
+        throw error;
+      }
+
+      // Only notify parent that RPC iframe is ready after everything is initialized
       parent.postMessage(
         {
           type: 'iframe_ready',
@@ -147,8 +174,9 @@ class RpcClient {
         },
         '*'
       );
+      console.debug('RPC: Sent iframe_ready message');
     } catch (error) {
-      console.error('RPC: Failed to initialize broker:', error);
+      console.error('RPC: Failed to initialize:', error);
 
       // Notify parent of initialization error
       parent.postMessage(
@@ -161,7 +189,7 @@ class RpcClient {
       );
 
       throw new Error(
-        `RPC: Failed to initialize broker: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `RPC: Failed to initialize: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     }
   }
@@ -289,9 +317,9 @@ class RpcClient {
 }
 
 // Initialize when the page loads
-if (globalThis.addEventListener) {
+if (globalThis.document && globalThis.document.readyState === 'loading') {
   globalThis.addEventListener('DOMContentLoaded', RpcClient.init);
 } else {
-  // Fallback for cases where DOMContentLoaded has already fired
+  // DOM is already loaded or we're in a non-browser environment
   RpcClient.init();
 }

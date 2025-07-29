@@ -307,9 +307,9 @@ class RegisterClient {
 }
 
 // Initialize when the page loads
-if (globalThis.addEventListener) {
+if (globalThis.document && globalThis.document.readyState === 'loading') {
   globalThis.addEventListener('DOMContentLoaded', RegisterClient.init);
 } else {
-  // Fallback for cases where DOMContentLoaded has already fired
+  // DOM is already loaded or we're in a non-browser environment
   RegisterClient.init();
 }

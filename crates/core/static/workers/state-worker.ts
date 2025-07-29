@@ -12,7 +12,7 @@ interface WorkerMessage {
 }
 
 interface WorkerResponse {
-  type: 'value' | 'set_complete' | 'error' | 'pong';
+  type: 'value' | 'set_complete' | 'error' | 'pong' | 'init_confirmed';
   key?: string;
   value?: any;
   exists?: boolean;
@@ -50,6 +50,17 @@ class StateWorker {
 
   private handleMessage(message: WorkerMessage, fromPort: MessagePort) {
     switch (message.type) {
+      case 'init':
+        // Send confirmation that worker is ready
+        if (message.tabId) {
+          const initResponse: WorkerResponse = {
+            type: 'init_confirmed',
+            tabId: message.tabId,
+          };
+          this.sendToPort(fromPort, initResponse);
+        }
+        break;
+
       case 'get':
         if (message.key) {
           this.handleGetValue(message.key, fromPort, message.tabId);
@@ -184,7 +195,16 @@ self.addEventListener('connect', (event: Event) => {
     const { type, tabId } = initEvent.data;
 
     if (type === 'init' && tabId) {
+      console.log('State Worker: Received init message from tab:', tabId);
       stateWorker.addPort(port);
+
+      // Send init confirmation immediately
+      const initResponse: WorkerResponse = {
+        type: 'init_confirmed',
+        tabId: tabId as string, // We already checked it exists above
+      };
+      port.postMessage(initResponse);
+      console.log('State Worker: Sent init_confirmed to tab:', tabId);
     } else {
       console.error('State Worker: Invalid init message:', initEvent.data);
       port.close();
