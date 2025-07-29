@@ -364,16 +364,22 @@ impl EventBus {
                     // Create a typed sender that converts R::Item to BoxedAny
                     let (typed_tx, typed_rx) = unbounded::<R::Item>();
 
+                    // Clone the sender for the handler
+                    let handler_tx = typed_tx.clone();
+
                     // Spawn a task to forward typed items to boxed channel
+                    // Keep typed_tx alive by moving it into the task
                     tokio::spawn(async move {
                         while let Ok(item) = typed_rx.recv_async().await {
                             if item_tx.send(Box::new(item)).is_err() {
                                 break;
                             }
                         }
+                        // typed_tx is dropped here when forwarding is done
+                        drop(typed_tx);
                     });
 
-                    match handler.handle(*request, metadata, typed_tx).await {
+                    match handler.handle(*request, metadata, handler_tx).await {
                         Ok(()) => guard.success(),
                         Err(_) => guard.error(),
                     }
