@@ -474,6 +474,17 @@ impl Client {
         })
     }
 
+    /// Get global consensus leader
+    pub async fn global_leader(&self) -> ConsensusResult<Option<NodeId>> {
+        let cmd = global_commands::GetGlobalLeader;
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Get global consensus leader failed: {e}"),
+            )
+        })
+    }
+
     // ===== Node Information Operations =====
 
     /// Get information about the current node

@@ -173,6 +173,22 @@ impl Request for GetGlobalConsensusMembers {
     }
 }
 
+/// Get current global consensus leader
+#[derive(Debug, Clone)]
+pub struct GetGlobalLeader;
+
+impl Request for GetGlobalLeader {
+    type Response = Option<NodeId>;
+
+    fn request_type() -> &'static str {
+        "GetGlobalLeader"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
+    }
+}
+
 /// Update global consensus membership (legacy - prefer AddNodeToConsensus/RemoveNodeFromConsensus)
 #[derive(Debug, Clone)]
 pub struct UpdateGlobalMembership {

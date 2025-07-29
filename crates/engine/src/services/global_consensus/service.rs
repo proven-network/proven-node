@@ -223,6 +223,9 @@ where
             .unregister_request_handler::<GetGlobalConsensusMembers>();
         let _ = self
             .event_bus
+            .unregister_request_handler::<GetGlobalLeader>();
+        let _ = self
+            .event_bus
             .unregister_request_handler::<UpdateGlobalMembership>();
         let _ = self.event_bus.unregister_request_handler::<CreateStream>();
         let _ = self
@@ -431,6 +434,12 @@ where
         event_bus
             .handle_requests::<GetGlobalConsensusMembers, _>(get_members_handler)
             .expect("Failed to register GetGlobalConsensusMembers handler");
+
+        // Register GetGlobalLeader handler
+        let get_leader_handler = GetGlobalLeaderHandler::new(consensus_layer.clone());
+        event_bus
+            .handle_requests::<GetGlobalLeader, _>(get_leader_handler)
+            .expect("Failed to register GetGlobalLeader handler");
 
         // Register UpdateGlobalMembership handler
         let update_membership_handler = UpdateGlobalMembershipHandler::new(consensus_layer.clone());

@@ -11,7 +11,7 @@ use proven_storage::{StorageAdaptor, StorageManager};
 use proven_topology::NodeId;
 use proven_topology::TopologyAdaptor;
 use proven_transport::Transport;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::RoutingTable;
@@ -181,21 +181,39 @@ where
         }
         info!("Global consensus will initialize via membership events");
 
-        // 3. Wait for this node to join global consensus
+        // 3. Wait for this node to join global consensus and for a leader to be elected
         info!("Waiting for node to join global consensus...");
         let start_time = std::time::Instant::now();
         let timeout = std::time::Duration::from_secs(30);
+        let mut joined_consensus = false;
 
         loop {
             // Check if we're in global consensus
             match self.client().global_consensus_members().await {
                 Ok(members) => {
-                    if members.contains(&self.node_id) {
+                    if members.contains(&self.node_id) && !joined_consensus {
                         info!(
                             "Node successfully joined global consensus with {} total members",
                             members.len()
                         );
-                        break;
+                        joined_consensus = true;
+                    }
+
+                    // If we've joined consensus, now check for leader
+                    if joined_consensus {
+                        match self.client().global_leader().await {
+                            Ok(Some(leader)) => {
+                                info!("Global consensus leader elected: {}", leader);
+                                break;
+                            }
+                            Ok(None) => {
+                                // No leader yet, continue waiting
+                            }
+                            Err(e) => {
+                                // Service might not be ready for leader query
+                                debug!("Failed to get leader: {}", e);
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -214,12 +232,14 @@ where
             }
 
             if start_time.elapsed() > timeout {
+                let error_msg = if joined_consensus {
+                    "Timeout waiting for global consensus leader election after 30s"
+                } else {
+                    "Timeout waiting to join global consensus after 30s"
+                };
                 return Err(Error::with_context(
                     ErrorKind::Timeout,
-                    format!(
-                        "Timeout waiting to join global consensus after {}s",
-                        timeout.as_secs()
-                    ),
+                    error_msg.to_string(),
                 ));
             }
 
