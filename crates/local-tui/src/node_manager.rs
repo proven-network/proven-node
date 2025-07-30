@@ -288,8 +288,8 @@ impl NodeManager {
         name: &str,
         specializations: &HashSet<proven_topology::NodeSpecialization>,
     ) -> NodeConfig<MockTopologyAdaptor> {
-        // First, determine if we'll get a rocksdb directory (without actually allocating it)
-        let rocksdb_dir_num = self.peek_persistent_directory("rocksdb");
+        // Always allocate a rocksdb directory - all nodes need it for consensus
+        let rocksdb_dir_num = self.get_persistent_directory("rocksdb");
 
         // Create base config with the rocksdb directory number
         let node_config = records::create_node_config(
@@ -300,11 +300,13 @@ impl NodeManager {
             rocksdb_dir_num,
         );
 
-        // Handle persistent directories for specializations
-        if !specializations.is_empty()
-            && let Err(e) =
-                self.create_persistent_symlinks_with_tracking(id, specializations, &node_config)
-        {
+        // Always create persistent symlinks (at minimum for rocksdb)
+        if let Err(e) = self.create_persistent_symlinks_with_tracking(
+            id,
+            specializations,
+            &node_config,
+            rocksdb_dir_num,
+        ) {
             error!(
                 "Failed to create persistent symlinks for node {} ({}): {}. Continuing with temporary storage.",
                 name, id, e
@@ -312,59 +314,6 @@ impl NodeManager {
         }
 
         node_config
-    }
-
-    /// Peek at what persistent directory number would be allocated next
-    /// This doesn't actually allocate the directory
-    fn peek_persistent_directory(&self, specialization_prefix: &str) -> Option<u32> {
-        let used_dirs = self.used_persistent_dirs.read();
-
-        // Get the set of currently used directory numbers for this specialization
-        let used_set = used_dirs.get(specialization_prefix);
-
-        // Find existing directories on disk
-        let home_dir = dirs::home_dir()?;
-        let proven_dir = home_dir.join(".proven");
-
-        if !proven_dir.exists() {
-            return Some(1);
-        }
-
-        // Find all existing directories with this prefix
-        let mut existing_dirs = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(&proven_dir) {
-            for entry in entries.flatten() {
-                if let Some(dir_name) = entry.file_name().to_str()
-                    && dir_name.starts_with(&format!("{specialization_prefix}-"))
-                    && let Some(number_part) =
-                        dir_name.strip_prefix(&format!("{specialization_prefix}-"))
-                    && let Ok(num) = number_part.parse::<u32>()
-                {
-                    existing_dirs.push(num);
-                }
-            }
-        }
-
-        existing_dirs.sort_unstable();
-
-        // Try to find an existing directory that's not currently in use
-        if let Some(used_set) = used_set {
-            for &dir_num in &existing_dirs {
-                if !used_set.contains(&dir_num) {
-                    return Some(dir_num);
-                }
-            }
-        } else if !existing_dirs.is_empty() {
-            // No directories in use, return the first existing one
-            return Some(existing_dirs[0]);
-        }
-
-        // All existing directories are in use or no existing dirs, return next available
-        if existing_dirs.is_empty() {
-            Some(1)
-        } else {
-            Some(existing_dirs.iter().max().unwrap() + 1)
-        }
     }
 
     /// Create persistent symlinks with session tracking
@@ -375,6 +324,7 @@ impl NodeManager {
         node_id: TuiNodeId,
         specializations: &HashSet<proven_topology::NodeSpecialization>,
         node_config: &NodeConfig<MockTopologyAdaptor>,
+        rocksdb_dir_num: Option<u32>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         use std::fs;
 
@@ -518,9 +468,8 @@ impl NodeManager {
             }
         }
 
-        // Always handle RocksDB storage directory regardless of specializations
-        // This ensures engine persistence across restarts
-        if let Some(dir_num) = self.get_persistent_directory("rocksdb") {
+        // Handle RocksDB storage directory using the pre-allocated directory number
+        if let Some(dir_num) = rocksdb_dir_num {
             let persistent_dir = proven_dir.join(format!("rocksdb-{dir_num}"));
             Self::create_symlink_and_update_config(
                 &persistent_dir,

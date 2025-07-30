@@ -571,13 +571,14 @@ pub fn build_node_config(
 
 /// Load or generate a signing key for the given execution order
 /// If a rocksdb directory number is provided, it will try to load a persisted key
+#[allow(clippy::cognitive_complexity)]
 fn load_or_generate_signing_key(execution_order: u8, rocksdb_dir_num: Option<u32>) -> SigningKey {
     // If we have a rocksdb directory, try to load a persisted key
-    if let Some(dir_num) = rocksdb_dir_num {
-        if let Some(key) = load_persisted_signing_key(dir_num) {
-            info!("Loaded persisted signing key for rocksdb-{}", dir_num);
-            return key;
-        }
+    if let Some(dir_num) = rocksdb_dir_num
+        && let Some(key) = load_persisted_signing_key(dir_num)
+    {
+        info!("Loaded persisted signing key for rocksdb-{}", dir_num);
+        return key;
     }
 
     // Generate a new key
@@ -600,7 +601,7 @@ fn load_persisted_signing_key(rocksdb_dir_num: u32) -> Option<SigningKey> {
     let home_dir = dirs::home_dir()?;
     let key_path = home_dir
         .join(".proven")
-        .join(format!("rocksdb-{}", rocksdb_dir_num))
+        .join(format!("rocksdb-{rocksdb_dir_num}"))
         .join("signing_key.pem");
 
     if !key_path.exists() {
@@ -638,7 +639,7 @@ fn save_signing_key(rocksdb_dir_num: u32, key: &SigningKey) -> Result<(), std::i
 
     let rocksdb_dir = home_dir
         .join(".proven")
-        .join(format!("rocksdb-{}", rocksdb_dir_num));
+        .join(format!("rocksdb-{rocksdb_dir_num}"));
 
     // Create the directory if it doesn't exist
     std::fs::create_dir_all(&rocksdb_dir)?;
