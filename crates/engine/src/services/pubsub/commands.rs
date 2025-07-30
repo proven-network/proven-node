@@ -66,3 +66,21 @@ pub enum SubscriptionControl {
     /// Unsubscribe and close the stream
     Unsubscribe,
 }
+
+/// Check if there are any responders for a subject
+#[derive(Debug, Clone)]
+pub struct HasResponders {
+    pub subject: Subject,
+}
+
+impl Request for HasResponders {
+    type Response = bool;
+
+    fn request_type() -> &'static str {
+        "PubSub.HasResponders"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(1)
+    }
+}

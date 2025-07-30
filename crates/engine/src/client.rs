@@ -7,10 +7,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use proven_storage::LogIndex;
 use proven_topology::NodeId;
+use tokio::time::timeout;
 use tracing::{debug, error, info};
+use uuid::Uuid;
 
 use crate::{
     consensus::{
@@ -27,7 +29,7 @@ use crate::{
     services::{
         global_consensus::commands as global_commands,
         group_consensus::commands as group_commands,
-        pubsub::{PublishMessage, Subscribe},
+        pubsub::{PublishMessage, Subscribe, commands::HasResponders, types::PubSubError},
         stream::commands as stream_commands,
     },
 };
@@ -420,6 +422,90 @@ impl Client {
         let stream = receiver.into_stream();
 
         Ok(stream)
+    }
+
+    /// Send a request and wait for a reply
+    pub async fn request(
+        &self,
+        subject: &str,
+        message: impl Into<Message>,
+        timeout_duration: Duration,
+    ) -> ConsensusResult<Message> {
+        debug!("Sending request to subject '{}'", subject);
+
+        // 1. Validate subject
+        let subject_obj = Subject::new(subject).map_err(|e| {
+            Error::with_context(ErrorKind::Validation, format!("Invalid subject: {e}"))
+        })?;
+
+        // 2. Generate unique correlation_id
+        let correlation_id = Uuid::new_v4().to_string();
+
+        // 3. Create inbox subject
+        let inbox = format!("_INBOX.{}.{}", self.node_id, correlation_id);
+
+        // 4. Subscribe to inbox BEFORE checking for responders
+        let mut inbox_sub = self.subscribe(&inbox, None).await?;
+
+        // 5. Check if anyone is listening (fail-fast)
+        let has_responders_cmd = HasResponders {
+            subject: subject_obj.clone(),
+        };
+        let has_responders = self
+            .event_bus
+            .request(has_responders_cmd)
+            .await
+            .map_err(|e| {
+                Error::with_context(
+                    ErrorKind::Service,
+                    format!("Failed to check responders: {e}"),
+                )
+            })?;
+
+        if !has_responders {
+            return Err(Error::with_context(
+                ErrorKind::Service,
+                format!("No responders for subject: {subject}"),
+            ));
+        }
+
+        // 6. Prepare message with headers
+        let message = message
+            .into()
+            .with_header(
+                crate::foundation::messages::headers::CORRELATION_ID_STR,
+                &correlation_id,
+            )
+            .with_header(crate::foundation::messages::headers::REPLY_TO_STR, &inbox)
+            .with_subject(subject);
+
+        // 7. Publish request
+        self.publish(subject, vec![message]).await?;
+
+        // 8. Wait for response with timeout
+        match timeout(timeout_duration, inbox_sub.next()).await {
+            Ok(Some(response)) => {
+                // Verify correlation_id matches
+                if response.get_header(crate::foundation::messages::headers::CORRELATION_ID_STR)
+                    == Some(&correlation_id)
+                {
+                    Ok(response)
+                } else {
+                    Err(Error::with_context(
+                        ErrorKind::InvalidState,
+                        "Correlation ID mismatch in response",
+                    ))
+                }
+            }
+            Ok(None) => Err(Error::with_context(
+                ErrorKind::InvalidState,
+                "Inbox subscription closed",
+            )),
+            Err(_) => Err(Error::with_context(
+                ErrorKind::Timeout,
+                format!("Request timed out after {timeout_duration:?}"),
+            )),
+        }
     }
 
     // ===== Query Operations =====

@@ -34,6 +34,10 @@ pub enum PubSubError {
     /// Internal error
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// No responders for the given subject
+    #[error("No responders for subject: {0}")]
+    NoResponders(String),
 }
 
 /// Subscription configuration

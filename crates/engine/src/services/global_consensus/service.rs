@@ -161,7 +161,12 @@ where
 
         *state = ServiceState::Running;
 
+        // Reconcile membership with topology on startup FIRST
+        // This ensures the default group is created with correct members
+        self.reconcile_membership_on_startup().await;
+
         // Start background task to ensure default group exists
+        // This will now use the reconciled membership
         self.start_default_group_monitor();
 
         Ok(())
@@ -294,6 +299,81 @@ where
         Ok(())
     }
 
+    /// Reconcile Raft membership with current topology on startup
+    async fn reconcile_membership_on_startup(&self) {
+        let consensus_layer = self.consensus_layer.clone();
+        let topology_manager = self.topology_manager.clone();
+        let node_id = self.node_id.clone();
+
+        tokio::spawn(async move {
+            // Wait for consensus to be fully initialized and leadership established
+            // This needs to happen BEFORE default group creation
+            tokio::time::sleep(Duration::from_millis(200)).await;
+
+            // Get consensus layer
+            let consensus_guard = consensus_layer.read().await;
+            if let Some(consensus) = consensus_guard.as_ref() {
+                // Check if we're initialized
+                if !consensus.is_initialized().await {
+                    debug!("Global consensus not initialized, skipping membership reconciliation");
+                    return;
+                }
+
+                // Get current Raft members
+                let raft_members = consensus.get_members();
+                debug!("Current Raft members: {:?}", raft_members);
+
+                // Get current topology nodes
+                let topology_nodes: Vec<NodeId> = match topology_manager.get_cached_nodes().await {
+                    Ok(nodes) => nodes.into_iter().map(|n| n.node_id).collect(),
+                    Err(e) => {
+                        warn!("Failed to get topology nodes: {}", e);
+                        Vec::new()
+                    }
+                };
+                debug!("Current topology nodes: {:?}", topology_nodes);
+
+                // Find members that are in Raft but not in topology
+                let missing_members: Vec<NodeId> = raft_members
+                    .into_iter()
+                    .filter(|member| !topology_nodes.contains(member))
+                    .collect();
+
+                if !missing_members.is_empty() {
+                    info!(
+                        "Found {} Raft members not in topology, will reconcile membership",
+                        missing_members.len()
+                    );
+
+                    // Only proceed if we're the leader
+                    if consensus.get_leader() == Some(node_id.clone()) {
+                        info!("We are the leader, removing missing members from Raft");
+
+                        for missing_member in missing_members {
+                            info!(
+                                "Removing missing member {} from Raft consensus",
+                                missing_member
+                            );
+                            if let Err(e) = consensus.remove_node(missing_member.clone()).await {
+                                warn!(
+                                    "Failed to remove member {} from Raft: {}",
+                                    missing_member, e
+                                );
+                            }
+                        }
+                    } else {
+                        info!(
+                            "Not the leader (leader: {:?}), skipping membership reconciliation",
+                            consensus.get_leader()
+                        );
+                    }
+                } else {
+                    debug!("All Raft members are present in topology, no reconciliation needed");
+                }
+            }
+        });
+    }
+
     /// Start background task to ensure default group exists
     fn start_default_group_monitor(&self) {
         let consensus_layer = self.consensus_layer.clone();
@@ -302,7 +382,10 @@ where
         tokio::spawn(async move {
             info!("Starting default group monitor task");
 
-            // Wait for leadership to be established first
+            // Wait a bit to allow membership reconciliation to happen first
+            tokio::time::sleep(Duration::from_millis(1000)).await;
+
+            // Wait for leadership to be established
             let mut leadership_check_interval = tokio::time::interval(Duration::from_millis(100));
             loop {
                 leadership_check_interval.tick().await;

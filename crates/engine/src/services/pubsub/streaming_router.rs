@@ -322,4 +322,24 @@ impl StreamingMessageRouter {
         self.exact_subject_subs.write().await.clear();
         self.queue_group_counters.write().await.clear();
     }
+
+    /// Check if there are any subscribers for a subject
+    pub async fn has_subscribers(&self, subject: &str) -> bool {
+        // Check exact matches first
+        let exact_subs = self.exact_subject_subs.read().await;
+        if exact_subs.contains_key(subject) {
+            return true;
+        }
+        drop(exact_subs);
+
+        // Check pattern matches
+        let pattern_subs = self.pattern_subs.read().await;
+        for pattern in pattern_subs.keys() {
+            if subject_matches_pattern(subject, pattern) {
+                return true;
+            }
+        }
+
+        false
+    }
 }

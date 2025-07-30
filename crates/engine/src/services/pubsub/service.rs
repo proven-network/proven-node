@@ -174,7 +174,7 @@ where
             .map_err(|e| format!("Failed to register streaming service: {e}"))?;
 
         // Setup event handlers
-        use super::command_handlers::{PublishHandler, SubscribeHandler};
+        use super::command_handlers::{HasRespondersHandler, PublishHandler, SubscribeHandler};
         use super::event_handlers::MembershipEventSubscriber;
 
         // Register command handlers for client service requests
@@ -200,6 +200,13 @@ where
         self.event_bus
             .handle_streams(subscribe_handler)
             .expect("Failed to register subscribe handler");
+
+        // Register has_responders handler
+        let has_responders_handler =
+            HasRespondersHandler::new(self.interest_tracker.clone(), self.message_router.clone());
+        self.event_bus
+            .handle_requests(has_responders_handler)
+            .expect("Failed to register has_responders handler");
 
         // Subscribe to membership events
         let membership_subscriber = MembershipEventSubscriber::new(
