@@ -10,25 +10,13 @@
 use proven_engine::EngineState;
 use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
 use std::time::Duration;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
 
 mod common;
 use common::test_cluster::{TestCluster, TransportType};
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_late_node_join_stream_creation() {
-    // Initialize logging with reduced OpenRaft verbosity
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("proven_engine::services::routing=trace".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
-
     // Create a single node test cluster
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (mut engines, node_infos) = cluster.add_nodes(1).await;
@@ -86,9 +74,9 @@ async fn test_late_node_join_stream_creation() {
         println!("Published message {i} with sequence {seq:?}");
     }
 
-    // Wait a bit (simulating the delay before adding a new node)
-    println!("Waiting 5 seconds before adding new node...");
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    // Wait before adding a new node
+    println!("Waiting before adding new node...");
+    tokio::time::sleep(Duration::from_secs(2)).await;
 
     // Now try to add a new node
     println!("Adding a second node to the cluster...");
@@ -130,8 +118,7 @@ async fn test_late_node_join_stream_creation() {
         .await
         .expect("Failed to wait for topology size");
 
-    // Give a very short time for any errors to manifest
-    println!("Waiting briefly for potential errors to manifest...");
+    // Give time for any errors to manifest
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Check if both nodes are healthy

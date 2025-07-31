@@ -6,21 +6,11 @@ use common::test_cluster::TestCluster;
 use proven_engine::foundation::types::ConsensusGroupId;
 use proven_storage::LogIndex;
 use std::time::Duration;
-use tracing::{Level, info};
-use tracing_subscriber::EnvFilter;
+use tracing::info;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_cluster_persistence_across_restarts() {
-    // Initialize logging with reduced OpenRaft verbosity
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
-
     let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
     info!("=== Phase 1: Starting initial cluster ===");
@@ -42,7 +32,7 @@ async fn test_cluster_persistence_across_restarts() {
 
     // Give time for default group creation to complete
     info!("Waiting for default group to be fully established");
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     // Create a stream on the first node
     info!("Creating test stream");
@@ -55,9 +45,8 @@ async fn test_cluster_persistence_across_restarts() {
         .await
         .expect("Failed to create stream");
 
-    // Give time for stream initialization to propagate through group consensus
-    info!("Waiting for stream to be initialized in group consensus");
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Give time for stream initialization to propagate
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // Append some messages to the stream
     info!("Appending messages to stream");
@@ -102,7 +91,7 @@ async fn test_cluster_persistence_across_restarts() {
     info!("All engines shut down successfully");
 
     // Give time for all resources to be released
-    tokio::time::sleep(Duration::from_secs(3)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     // Phase 2: Restart cluster with same storage and verify data persistence
     info!("=== Phase 2: Restarting cluster with persisted data ===");
@@ -203,18 +192,9 @@ async fn test_cluster_persistence_across_restarts() {
     info!("=== Persistence test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_single_node_persistence() {
-    // Initialize logging with reduced OpenRaft verbosity
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
-
     let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
 
     info!("=== Phase 1: Starting single node ===");
@@ -224,8 +204,8 @@ async fn test_single_node_persistence() {
     let node_id = node_infos[0].node_id.clone();
     info!("Created node: {}", node_id);
 
-    // Wait for the node to initialize
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    // Wait for initialization
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     // Create streams and write data
     let stream_name = "single_node_stream";
@@ -255,7 +235,7 @@ async fn test_single_node_persistence() {
     engines[0].stop().await.expect("Failed to stop engine");
 
     // Give time for all resources to be released
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(1)).await;
 
     // Phase 2: Restart and verify
     info!("=== Phase 2: Restarting single node ===");
@@ -302,8 +282,8 @@ async fn test_single_node_persistence() {
 
     let client = engines[0].client();
 
-    // Give the stream service a moment to fully sync
-    tokio::time::sleep(Duration::from_millis(500)).await;
+    // Give the stream service a moment to sync
+    tokio::time::sleep(Duration::from_millis(200)).await;
 
     // First check if the stream exists and has the right state
     match client.get_stream_state(stream_name).await {

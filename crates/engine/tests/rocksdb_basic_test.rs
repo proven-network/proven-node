@@ -1,33 +1,25 @@
 //! Basic test to verify RocksDB storage integration works
 
 mod common;
-
-use common::test_cluster::TestCluster;
+use common::test_cluster::{TestCluster, TransportType};
 use std::time::Duration;
-use tracing::{Level, info};
-use tracing_subscriber::EnvFilter;
+use tracing::info;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_rocksdb_storage_basic() {
-    // Initialize logging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap()),
-        )
-        .try_init();
-
-    info!("=== Starting node with RocksDB storage ===");
-    let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
-
+    info!("Starting node with RocksDB storage");
+    let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, node_infos) = cluster.add_nodes_with_rocksdb(1).await;
 
     let node_id = node_infos[0].node_id.clone();
     info!("Created node: {}", node_id);
 
-    // Wait for the node to initialize
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    // Wait for initialization using cluster helper
+    cluster
+        .wait_for_default_group_routable(&engines, Duration::from_secs(10))
+        .await
+        .expect("Failed to wait for node initialization");
 
     // Create a stream
     let stream_name = "test_rocksdb_stream";
@@ -90,19 +82,11 @@ async fn test_rocksdb_storage_basic() {
     info!("Test completed successfully - RocksDB storage is working");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_rocksdb_multi_node() {
-    // Initialize logging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap()),
-        )
-        .try_init();
-
-    info!("=== Starting 3-node cluster with RocksDB storage ===");
-    let mut cluster = TestCluster::new(common::test_cluster::TransportType::Tcp);
+    info!("Starting 3-node cluster with RocksDB storage");
+    let mut cluster = TestCluster::new(TransportType::Tcp);
 
     let (engines, node_infos) = cluster.add_nodes_with_rocksdb(3).await;
 

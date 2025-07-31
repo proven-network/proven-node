@@ -5,22 +5,10 @@ mod common;
 use common::test_cluster::{TestCluster, TransportType};
 use proven_engine::foundation::types::ConsensusGroupId;
 use std::time::Duration;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_global_consensus_expansion() {
-    // Initialize logging with reduced OpenRaft verbosity
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap())
-                .add_directive("proven_topology=error".parse().unwrap()),
-        )
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
     tracing::info!("=== Phase 1: Starting 3-node cluster ===");
@@ -209,19 +197,9 @@ async fn test_global_consensus_expansion() {
     tracing::info!("=== Global consensus expansion test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_single_node_to_cluster() {
-    // Initialize logging
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap())
-                .add_directive("proven_topology=error".parse().unwrap()),
-        )
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
     tracing::info!("=== Phase 1: Starting single node ===");
@@ -342,18 +320,10 @@ async fn test_single_node_to_cluster() {
     tracing::info!("=== Single node to cluster expansion test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_rolling_node_addition() {
     // Test adding multiple nodes one at a time
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap())
-                .add_directive("proven_topology=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let mut engines = Vec::new();
@@ -390,7 +360,7 @@ async fn test_rolling_node_addition() {
             .unwrap_or_else(|_| panic!("Failed to wait for {node_num} nodes in topology"));
 
         // Give additional time for learner to catch up and membership updates
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
         // Verify cluster state after each addition by checking global consensus membership
         let mut active_nodes = 0;

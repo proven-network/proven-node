@@ -5,20 +5,11 @@ mod common;
 use common::test_cluster::{TestCluster, TransportType};
 use proven_engine::foundation::types::ConsensusGroupId;
 use std::time::Duration;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_node_restart_rejoin() {
     // Test that a node can restart and rejoin the cluster
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -124,17 +115,10 @@ async fn test_node_restart_rejoin() {
     tracing::info!("=== Node restart/rejoin test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_concurrent_operations() {
     // Test that the cluster handles concurrent operations correctly
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -252,17 +236,10 @@ async fn test_concurrent_operations() {
     tracing::info!("=== Concurrent operations test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_large_cluster_formation() {
     // Test formation of a larger cluster
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=info".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -342,20 +319,12 @@ async fn test_large_cluster_formation() {
     tracing::info!("=== Large cluster formation test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_network_delays() {
     // Test cluster behavior with simulated network delays
     // Note: This test doesn't actually simulate network delays but tests
     // the cluster's ability to handle timing variations
-
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 

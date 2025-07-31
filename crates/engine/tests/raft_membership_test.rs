@@ -5,20 +5,11 @@ mod common;
 use common::test_cluster::{TestCluster, TransportType};
 use proven_engine::foundation::types::ConsensusGroupId;
 use std::time::Duration;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_raft_leader_election() {
     // Test that Raft properly elects leaders and handles leader changes
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -74,7 +65,7 @@ async fn test_raft_leader_election() {
     tracing::info!("Leader stopped, waiting for new election...");
 
     // Wait for new leader election
-    tokio::time::sleep(Duration::from_secs(5)).await;
+    tokio::time::sleep(Duration::from_secs(3)).await;
 
     // Verify a new leader was elected
     let mut new_leaders = std::collections::HashSet::new();
@@ -117,17 +108,10 @@ async fn test_raft_leader_election() {
     tracing::info!("=== Leader election test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_raft_membership_change() {
     // Test Raft membership changes through the proper Raft protocol
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -171,7 +155,7 @@ async fn test_raft_membership_change() {
     // to global consensus membership through the topology manager
 
     // Wait for membership propagation
-    tokio::time::sleep(Duration::from_secs(10)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Verify membership state
     for (i, engine) in engines.iter().enumerate() {
@@ -205,17 +189,10 @@ async fn test_raft_membership_change() {
     tracing::info!("=== Membership change test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_split_brain_prevention() {
     // Test that Raft prevents split-brain scenarios
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=warn".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 
@@ -269,7 +246,7 @@ async fn test_split_brain_prevention() {
     tracing::info!("Created partition: 2 nodes stopped, 3 nodes running");
 
     // Wait for the majority partition to elect a new leader if needed
-    tokio::time::sleep(Duration::from_secs(8)).await;
+    tokio::time::sleep(Duration::from_secs(5)).await;
 
     // Verify the majority partition (3 nodes) can still operate
     let mut majority_leaders = std::collections::HashSet::new();
@@ -329,17 +306,10 @@ async fn test_split_brain_prevention() {
     tracing::info!("=== Split-brain prevention test completed successfully ===");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tracing_test::traced_test]
+#[tokio::test]
 async fn test_deterministic_initialization() {
     // Test that only the node with lowest ID initializes the cluster
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
 
     let mut cluster = TestCluster::new(TransportType::Tcp);
 

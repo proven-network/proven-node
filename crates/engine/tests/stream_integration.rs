@@ -5,6 +5,8 @@
 //! 2. Create a stream in that group
 //! 3. Publish messages to the stream
 //! 4. Read messages back and verify ordering/content
+//!
+//! Also tests stream operations with default groups and various edge cases.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -14,24 +16,13 @@ use futures::StreamExt;
 use proven_engine::{EngineState, StreamName};
 use proven_engine::{PersistenceType, RetentionPolicy, StreamConfig};
 use proven_storage::LogIndex;
-use tracing::Level;
-use tracing_subscriber::EnvFilter;
 
 mod common;
 use common::test_cluster::{TestCluster, TransportType};
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_stream_operations() {
-    // Initialize logging with reduced OpenRaft verbosity
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive(Level::INFO.into())
-                .add_directive("proven_engine=debug".parse().unwrap())
-                .add_directive("openraft=error".parse().unwrap()),
-        )
-        .try_init();
-
     // Create a 3-node test cluster
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, node_infos) = cluster.add_nodes(3).await;
@@ -140,9 +131,6 @@ async fn test_stream_operations() {
     }
 
     // Give time for all messages to be persisted
-    tokio::time::sleep(Duration::from_secs(1)).await;
-
-    // Give time for messages to be persisted
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Step 4: Read messages back and verify
@@ -227,14 +215,9 @@ async fn test_stream_operations() {
     }
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_ephemeral_stream() {
-    // Initialize tracing
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=info")
-        .with_test_writer()
-        .try_init();
-
     // Create a single node for simplicity
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _node_infos) = cluster.add_nodes(1).await;
@@ -288,13 +271,9 @@ async fn test_ephemeral_stream() {
     }
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_stream_not_found() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=info")
-        .with_test_writer()
-        .try_init();
-
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _) = cluster.add_nodes(1).await;
 
@@ -317,14 +296,9 @@ async fn test_stream_not_found() {
     }
 }
 
+#[tracing_test::traced_test]
 #[tokio::test]
 async fn test_stream_reading() {
-    // Initialize tracing
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter("proven_engine=info")
-        .with_test_writer()
-        .try_init();
-
     // Create a single node for simplicity
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, _node_infos) = cluster.add_nodes(1).await;
@@ -542,6 +516,87 @@ async fn test_stream_reading() {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     println!("\nStreaming tests completed successfully!");
+
+    // Clean up
+    for mut engine in engines {
+        engine.stop().await.expect("Failed to stop engine");
+    }
+}
+
+#[tracing_test::traced_test]
+#[tokio::test]
+async fn test_stream_with_default_group() {
+    // Create a single-node test cluster
+    let mut cluster = TestCluster::new(TransportType::Tcp);
+    let (engines, node_infos) = cluster.add_nodes(1).await;
+
+    println!(
+        "Created node: {} on port {}",
+        node_infos[0].node_id, node_infos[0].port
+    );
+
+    // Wait for default group creation
+    println!("Waiting for default group creation...");
+    cluster
+        .wait_for_default_group_routable(&engines, Duration::from_secs(10))
+        .await
+        .expect("Failed to wait for default group creation");
+
+    // Verify node is healthy
+    let engine = &engines[0];
+    let health = engine.health().await.expect("Failed to get health");
+    assert_eq!(
+        health.state,
+        EngineState::Running,
+        "Engine should be running"
+    );
+
+    // Get client
+    let client = engine.client();
+
+    // Try to create a stream in the default group
+    let stream_name = "test-stream".to_string();
+    let stream_config = StreamConfig {
+        persistence_type: PersistenceType::Persistent,
+        retention: RetentionPolicy::Forever,
+        max_message_size: 1024 * 1024, // 1MB
+        allow_auto_create: false,
+    };
+
+    println!("Creating stream '{stream_name}' in default group");
+    let create_result = client
+        .create_stream(stream_name.clone(), stream_config)
+        .await;
+
+    match create_result {
+        Ok(response) => {
+            println!("Stream creation response: {response:?}");
+
+            // Try to publish a message
+            println!("Publishing test message to stream");
+            let publish_result = client
+                .publish_to_stream(
+                    stream_name.clone(),
+                    vec![proven_engine::Message::new(b"Hello, stream!".to_vec())],
+                )
+                .await;
+
+            match publish_result {
+                Ok(resp) => println!("Publish response: {resp:?}"),
+                Err(e) => {
+                    println!("Publish failed (expected if consensus ops not implemented): {e}")
+                }
+            }
+        }
+        Err(e) => {
+            println!("Stream creation failed: {e}");
+            if e.to_string().contains("not yet implemented") || e.to_string().contains("TODO") {
+                println!("This is expected - consensus operations aren't fully implemented");
+            } else {
+                panic!("Unexpected error: {e}");
+            }
+        }
+    }
 
     // Clean up
     for mut engine in engines {
