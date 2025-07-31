@@ -26,7 +26,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use proven_engine::{Client, StreamConfig};
+use proven_engine::{Client, Message, StreamConfig};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -43,7 +43,7 @@ pub struct CreateApplicationOptions {
 /// Configuration for the `ApplicationManager`
 #[derive(Clone)]
 pub struct ApplicationManagerConfig {
-    /// Prefix for stream names (e.g., "apps" results in "apps-commands", "apps-events", etc.)
+    /// Prefix for stream names and subjects (e.g., "apps" results in "apps.commands", "apps-events", etc.)
     pub stream_prefix: String,
     /// Leadership lease duration (how long a leader holds leadership)
     pub leadership_lease_duration: Duration,
@@ -157,8 +157,9 @@ pub struct ApplicationManager {
     /// View of application state
     view: ApplicationView,
 
+    /// Subject for commands
+    command_subject: String,
     /// Stream names
-    command_stream: String,
     event_stream: String,
     leadership_stream: String,
 }
@@ -172,18 +173,14 @@ impl ApplicationManager {
     /// - Failed to create any of the required streams
     /// - Failed to start the event consumer
     pub async fn new(client: Arc<Client>, config: ApplicationManagerConfig) -> Result<Self, Error> {
+        // Create subject name for commands
+        let command_subject = format!("{}.commands", config.stream_prefix);
         // Create stream names
-        let command_stream = format!("{}-commands", config.stream_prefix);
         let event_stream = format!("{}-events", config.stream_prefix);
         let leadership_stream = format!("{}-leadership", config.stream_prefix);
 
-        // Create streams if they don't exist
+        // Create streams if they don't exist (only event and leadership streams needed)
         let stream_config = StreamConfig::default();
-        client
-            .create_stream(command_stream.clone(), stream_config.clone())
-            .await
-            .map_err(|e| Error::Stream(e.to_string()))?;
-
         client
             .create_stream(event_stream.clone(), stream_config.clone())
             .await
@@ -229,7 +226,7 @@ impl ApplicationManager {
             leadership,
             event_consumer,
             view,
-            command_stream,
+            command_subject,
             event_stream,
             leadership_stream,
         };
@@ -256,7 +253,7 @@ impl ApplicationManager {
         let leadership = Arc::clone(&self.leadership);
         let command_service = Arc::clone(&self.command_service);
         let client = Arc::clone(&self.client);
-        let command_stream = self.command_stream.clone();
+        let command_subject = self.command_subject.clone();
         let service_handler = Arc::clone(&self.service_handler);
 
         tokio::spawn(async move {
@@ -279,7 +276,7 @@ impl ApplicationManager {
 
                     let service = CommandService::new(
                         client.clone(),
-                        command_stream.clone(),
+                        command_subject.clone(),
                         service_handler.clone(),
                     );
                     let mut guard = command_service.lock().await;
@@ -306,7 +303,7 @@ impl ApplicationManager {
         });
     }
 
-    /// Execute a command (direct execution if leader, otherwise via stream).
+    /// Execute a command (direct execution if leader, otherwise via pubsub request-reply).
     async fn execute_command(&self, command: Command) -> Result<Response, Error> {
         // If we're the leader, execute directly
         let is_leader = self.is_leader().await;
@@ -316,15 +313,30 @@ impl ApplicationManager {
             return Ok(self.service_handler.handle_command(command).await);
         }
 
-        // Otherwise, publish to command stream and wait for response
-        tracing::debug!("Not leader, sending command via stream");
-        service::execute_command_via_stream(
-            &self.client,
-            &self.command_stream,
-            command,
-            self.config.command_timeout,
-        )
-        .await
+        // Otherwise, use pubsub request-reply
+        tracing::debug!("Not leader, sending command via pubsub request-reply");
+
+        // Serialize command
+        let mut payload = Vec::new();
+        ciborium::ser::into_writer(&command, &mut payload)?;
+        let message = Message::new(payload);
+
+        // Send request and wait for response
+        let response_msg = self
+            .client
+            .request(&self.command_subject, message, self.config.command_timeout)
+            .await
+            .map_err(|e| {
+                if e.to_string().contains("No responders") {
+                    Error::Service("No command service available".to_string())
+                } else {
+                    Error::Service(e.to_string())
+                }
+            })?;
+
+        // Deserialize response
+        let response: Response = ciborium::de::from_reader(response_msg.payload.as_ref())?;
+        Ok(response)
     }
 }
 
@@ -338,7 +350,7 @@ impl Clone for ApplicationManager {
             leadership: Arc::clone(&self.leadership),
             event_consumer: Arc::clone(&self.event_consumer),
             view: self.view.clone(),
-            command_stream: self.command_stream.clone(),
+            command_subject: self.command_subject.clone(),
             event_stream: self.event_stream.clone(),
             leadership_stream: self.leadership_stream.clone(),
         }
