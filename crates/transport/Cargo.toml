@@ -14,7 +14,6 @@ ed25519-dalek.workspace = true
 futures.workspace = true
 proven-attestation.workspace = true
 proven-topology.workspace = true
-proven-verification.workspace = true
 rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true

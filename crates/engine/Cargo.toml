@@ -61,7 +61,6 @@ proven-bootable.workspace = true
 proven-network.workspace = true
 proven-topology.workspace = true
 proven-transport.workspace = true
-proven-verification.workspace = true
 sha2.workspace = true
 chrono.workspace = true
 

@@ -13,7 +13,6 @@ hex.workspace = true
 proven-attestation.workspace = true
 proven-topology.workspace = true
 proven-transport.workspace = true
-proven-verification.workspace = true
 tokio = { workspace = true, features = ["net", "rt", "sync"] }
 tokio-util.workspace = true
 tracing.workspace = true

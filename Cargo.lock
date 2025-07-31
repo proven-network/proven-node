@@ -10443,7 +10443,6 @@ dependencies = [
  "proven-transport",
  "proven-transport-tcp",
  "proven-util",
- "proven-verification",
  "rand 0.8.5",
  "rocksdb",
  "serde",
@@ -10790,7 +10789,6 @@ dependencies = [
  "proven-transport",
  "proven-transport-ws",
  "proven-util",
- "proven-verification",
  "radix-common 1.3.0",
  "reqwest",
  "serde",
@@ -11434,7 +11432,6 @@ dependencies = [
  "proven-attestation-mock",
  "proven-topology",
  "proven-topology-mock",
- "proven-verification",
  "rand 0.8.5",
  "serde",
  "thiserror 2.0.12",
@@ -11480,7 +11477,6 @@ dependencies = [
  "proven-topology-mock",
  "proven-transport",
  "proven-util",
- "proven-verification",
  "tokio",
  "tokio-test",
  "tokio-util",
@@ -11522,27 +11518,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.12",
  "url",
-]
-
-[[package]]
-name = "proven-verification"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "ciborium",
- "coset",
- "ed25519-dalek",
- "hex",
- "proven-attestation",
- "proven-topology",
- "rand 0.8.5",
- "serde",
- "thiserror 2.0.12",
- "tokio",
- "tokio-test",
- "tracing",
- "uuid",
 ]
 
 [[package]]

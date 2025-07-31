@@ -45,7 +45,6 @@ proven-topology.workspace = true
 proven-transport.workspace = true
 proven-transport-ws.workspace = true
 proven-util.workspace = true
-proven-verification.workspace = true
 radix-common.workspace = true
 reqwest.workspace = true
 serde.workspace = true

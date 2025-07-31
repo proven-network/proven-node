@@ -74,7 +74,6 @@ members = [
     "crates/transport-tcp",
     "crates/transport-ws",
     "crates/util",
-    "crates/verification",
     "crates/vsock-cac",
     "crates/vsock-fuse",
     "crates/vsock-proxy",
@@ -147,7 +146,6 @@ default-members = [
     "crates/transport-tcp",
     "crates/transport-ws",
     "crates/util",
-    "crates/verification",
     "crates/vsock-cac",
     "crates/vsock-fuse",
     "crates/vsock-proxy",
@@ -496,7 +494,6 @@ proven-transport-memory = { path = "crates/transport-memory" }
 proven-transport-tcp = { path = "crates/transport-tcp" }
 proven-transport-ws = { path = "crates/transport-ws" }
 proven-util = { path = "crates/util" }
-proven-verification = { path = "crates/verification" }
 proven-vsock-cac = { path = "crates/vsock-cac" }
 proven-vsock-fuse = { path = "crates/vsock-fuse" }
 proven-vsock-proxy = { path = "crates/vsock-proxy" }
