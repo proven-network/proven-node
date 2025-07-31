@@ -257,11 +257,12 @@ where
             .await;
 
         // Unregister all event handlers to allow re-registration on restart
-        use crate::services::pubsub::commands::{PublishMessage, Subscribe};
+        use crate::services::pubsub::commands::{HasResponders, PublishMessage, Subscribe};
         let _ = self
             .event_bus
             .unregister_request_handler::<PublishMessage>();
         let _ = self.event_bus.unregister_stream_handler::<Subscribe>();
+        let _ = self.event_bus.unregister_request_handler::<HasResponders>();
 
         // Clear all subscriptions
         self.message_router.clear().await;
