@@ -265,7 +265,7 @@ async fn test_http_proxy_integration() {
 }
 
 #[tokio::test]
-async fn test_http_proxy_timeout() {
+async fn test_http_proxy_no_service() {
     // Initialize logging
     let _ = tracing_subscriber::fmt().with_test_writer().try_init();
 
@@ -353,8 +353,8 @@ async fn test_http_proxy_timeout() {
         .await
         .expect("Failed to send request");
 
-    // Should get gateway timeout
-    assert_eq!(response.status(), StatusCode::GATEWAY_TIMEOUT);
+    // Should get service unavailable (no responders)
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
 
     // Cleanup
     proxy_client
