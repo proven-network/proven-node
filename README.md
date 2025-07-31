@@ -97,6 +97,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [core](crates/core): Core logic for the Proven node and the entrypoint for all user interactions.
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.
 - [enclave](crates/enclave): Main entrypoint for enclave images. Bootstraps all other components before handing off to core.
+- [engine](crates/engine): Distributed consensus and coordination engine for managing global and group-level state across the network.
 - [ethereum-lighthouse](crates/ethereum-lighthouse): Configures and runs a local Lighthouse consensus client.
 - [ethereum-reth](crates/ethereum-reth): Configures and runs a local Reth execution client.
 - [external-fs](crates/external-fs): Mounts external filesystems into the enclave via NFS, intermediated by a layer of FUSE-based AES-GCM disk-encryption based on enclave-internal cryptographic keys.
@@ -116,6 +117,8 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [kms](crates/kms): Manages encryption/decryption of plain/cipher text using AWS KMS keys which are scoped to the EIF PCRs.
 - [libsql](crates/libsql): Wrapper around [libsql](https://github.com/tursodatabase/libsql) which provides additional functionality like migration management.
 - [local](crates/local): Binary to bootstrap other components locally. Similar to [enclave](crates/enclave) but for local development.
+- [local-cli](crates/local-cli): Command-line interface tool for local development and testing.
+- [local-tui](crates/local-tui): Terminal UI application for managing and monitoring local node clusters interactively.
 - [locks](crates/locks): Abstract interface for managing system-global distributed locks.
 - [locks-memory](crates/locks-memory): In-memory (single node) implementation of locks for local development.
 - [messaging](crates/messaging): Abstract interface for pub/sub messaging across subjects.
@@ -136,13 +139,27 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [sessions](crates/sessions): Manages RPC sessions and associated data.
 - [sql](crates/sql): Abstract interface for managing SQL storage.
 - [sql-direct](crates/sql-direct): Implementation of SQL storage using files on disk, for local development.
-- [sql-streamed](crates/sql-streamed): Implementation of SQL storage using a streams as an append-only log.
+- [sql-engine](crates/sql-engine): SQL database engine service that handles query execution and transaction management.
+- [storage](crates/storage): Abstract storage interface providing unified API for different storage backends.
+- [storage-memory](crates/storage-memory): In-memory storage backend implementation for development and testing.
+- [storage-rocksdb](crates/storage-rocksdb): RocksDB-based persistent storage backend for high-performance key-value operations.
+- [storage-s3](crates/storage-s3): AWS S3-based storage backend with batching, caching, and write-ahead logging.
 - [store](crates/store): Abstract interface for managing key-value storage.
 - [store-asm](crates/store-asm): Implementation of key-value storage using AWS Secrets Manager. Values typically double-encrypted using KMS with enclave-specific keys.
+- [store-engine](crates/store-engine): Distributed key-value store engine built on top of the consensus engine.
 - [store-fs](crates/store-fs): Implementation of key-value storage using files on disk, for local development.
 - [store-memory](crates/store-memory): In-memory (single node) implementation of key-value storage for local development.
 - [store-s3](crates/store-s3): Implementation of key-value storage using AWS S3. Values encrypted using AES-256 via SSE-C.
+- [topology](crates/topology): Network topology management for tracking node membership, versions, and specializations.
+- [topology-governance](crates/topology-governance): Governance-based topology provider that reads network state from blockchain.
+- [topology-mock](crates/topology-mock): Mock topology implementation for testing without blockchain dependencies.
+- [transport](crates/transport): Abstract network transport layer for node-to-node communication.
+- [transport-memory](crates/transport-memory): In-memory transport for single-process testing and development.
+- [transport-tcp](crates/transport-tcp): TCP-based network transport for production node communication.
+- [transport-ws](crates/transport-ws): WebSocket-based transport implementation for browser and HTTP-friendly environments.
 - [util](crates/util): Misc common utilities and value types.
+- [vsock-cac](crates/vsock-cac): VSock-based command and control protocol for host-enclave communication.
+- [vsock-fuse](crates/vsock-fuse): FUSE filesystem over VSock for secure encrypted file access between host and enclave.
 - [vsock-proxy](crates/vsock-proxy): High performance layer-3 proxy for enabling enclave networking over virtio sockets.
-- [vsock-rpc](crates/vsock-rpc): Manages RPC between host and enclave over virtio sockets. Defines commands like initialize, shutdown, add peer, etc.
+- [vsock-rpc](crates/vsock-rpc): Manages RPC between host and enclave over virtio sockets.
 - [vsock-tracing](crates/vsock-tracing): Provides a tracing subscriber to allow logs to be sent from enclave to host for processing.
