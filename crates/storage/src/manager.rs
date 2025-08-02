@@ -363,16 +363,15 @@ where
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: LogIndex,
-        end: Option<LogIndex>,
+        start: Option<LogIndex>,
     ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
         let prefixed = self.prefixed_namespace(namespace);
         debug!(
-            "StreamStorage: streaming range from {} in namespace {}",
+            "StreamStorage: streaming range from {:?} in namespace {}",
             start, prefixed
         );
-        LogStorageStreaming::stream_range(&*self.adaptor, &prefixed, start, end).await
+        LogStorageStreaming::stream_range(&*self.adaptor, &prefixed, start).await
     }
 }
 
@@ -555,16 +554,16 @@ mod tests {
         async fn stream_range(
             &self,
             namespace: &StorageNamespace,
-            start: LogIndex,
-            end: Option<LogIndex>,
+            start: Option<LogIndex>,
         ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
         {
             let data = self.data.read().await;
             if let Some(entries) = data.get(namespace.as_str()) {
-                // Filter entries based on the range [start, end)
+                // Filter entries based on the start
+                let start_idx = start.unwrap_or_else(|| LogIndex::new(1).unwrap());
                 let mut filtered: Vec<_> = entries
                     .iter()
-                    .filter(|(idx, _)| *idx >= start && (end.is_none() || *idx < end.unwrap()))
+                    .filter(|(idx, _)| *idx >= start_idx)
                     .map(|(idx, data)| (*idx, data.clone()))
                     .collect();
 
@@ -713,24 +712,22 @@ mod tests {
             .await
             .unwrap();
 
-        // Test streaming with both start and end
+        // Test streaming from a specific start
         let stream_iter = stream
-            .stream_range(
-                &namespace,
-                LogIndex::new(2).unwrap(),
-                Some(LogIndex::new(4).unwrap()),
-            )
+            .stream_range(&namespace, Some(LogIndex::new(2).unwrap()))
             .await
             .unwrap();
         let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;
 
+        // We asked for items from index 2+, but we're in a streaming test
+        // so we need to limit the results
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].as_ref().unwrap().0, LogIndex::new(2).unwrap());
         assert_eq!(results[1].as_ref().unwrap().0, LogIndex::new(3).unwrap());
 
-        // Test streaming with no end (should stream to the end)
+        // Test streaming from index 3
         let stream_iter = stream
-            .stream_range(&namespace, LogIndex::new(3).unwrap(), None)
+            .stream_range(&namespace, Some(LogIndex::new(3).unwrap()))
             .await
             .unwrap();
         let results: Vec<_> = stream_iter.collect::<Vec<_>>().await;

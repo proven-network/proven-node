@@ -103,7 +103,7 @@ async fn test_default_group_creation() {
     let stream_config = StreamConfig::default();
 
     let create_result = client
-        .create_stream("test-stream".to_string(), stream_config)
+        .create_group_stream("test-stream".to_string(), stream_config)
         .await;
 
     match create_result {

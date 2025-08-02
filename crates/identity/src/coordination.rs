@@ -178,7 +178,7 @@ impl LeadershipCoordinator {
         let start_seq = LogIndex::new(1).unwrap();
 
         let stream = client
-            .stream_messages(stream_name.clone(), start_seq, None)
+            .stream_messages(stream_name.clone(), Some(start_seq))
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 

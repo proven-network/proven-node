@@ -1029,8 +1029,7 @@ impl proven_storage::LogStorageStreaming for S3Storage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: LogIndex,
-        end: Option<LogIndex>,
+        start: Option<LogIndex>,
     ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
         // Clone what we need for the stream
@@ -1058,23 +1057,15 @@ impl proven_storage::LogStorageStreaming for S3Storage {
 
         // Create a batched streaming implementation
         let stream = async_stream::stream! {
-            let mut index = start.get();
+            // Default to LogIndex(1) if no start is provided
+            let start_idx = start.unwrap_or_else(|| LogIndex::new(1).unwrap());
+            let mut index = start_idx.get();
             let batch_size = 100; // Read ahead in batches
             let namespace_obj = StorageNamespace::new(&namespace_str);
 
             loop {
-                // Check if we've reached the end bound
-                if let Some(end_idx) = end
-                    && index >= end_idx.get() {
-                        break;
-                    }
-
-                // Determine batch range
-                let batch_end = if let Some(end_idx) = end {
-                    std::cmp::min(index + batch_size, end_idx.get())
-                } else {
-                    index + batch_size
-                };
+                // Determine batch range - always read in batches
+                let batch_end = index + batch_size;
 
                 // Collect indices that need fetching from S3
                 let mut indices_to_fetch = Vec::new();
@@ -1234,14 +1225,8 @@ impl proven_storage::LogStorageStreaming for S3Storage {
                 // Move to next batch
                 index = batch_end;
 
-                // If we have an explicit end bound and have reached or passed it, we're done
-                if let Some(end_idx) = end && index >= end_idx.get() {
-                    break;
-                }
-
-                // In follow mode (no end bound), wait for new entries if we didn't find any
-                if !found_any && end.is_none() {
-                    // Wait for notification of new entries
+                // Wait for new entries if we didn't find any
+                if !found_any {
                     match notifier_rx.recv().await {
                         Ok(()) => {
                             // New entries in our namespace, continue reading

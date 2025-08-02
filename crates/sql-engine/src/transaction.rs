@@ -108,7 +108,7 @@ impl Transaction {
         // Start streaming messages
         let stream = self
             .client
-            .stream_messages(self.command_stream.clone(), start_seq, None)
+            .stream_messages(self.command_stream.clone(), Some(start_seq))
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 
@@ -203,7 +203,7 @@ impl Transaction {
         // Start streaming messages
         let stream = self
             .client
-            .stream_messages(self.command_stream.clone(), start_seq, None)
+            .stream_messages(self.command_stream.clone(), Some(start_seq))
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 

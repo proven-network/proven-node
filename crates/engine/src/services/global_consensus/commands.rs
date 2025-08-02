@@ -5,9 +5,9 @@ use std::time::Duration;
 
 use proven_topology::{Node, NodeId};
 
-use crate::foundation::StreamConfig;
 use crate::foundation::events::Request;
 use crate::foundation::types::{ConsensusGroupId, StreamName};
+use crate::foundation::{GlobalStateReader, StreamConfig, StreamInfo};
 
 /// Initialize the global consensus cluster
 #[derive(Debug, Clone)]
@@ -64,19 +64,39 @@ impl Request for DissolveGroup {
     }
 }
 
-/// Create a new stream
+/// Create a new stream in a specific consensus group
 #[derive(Debug, Clone)]
-pub struct CreateStream {
+pub struct CreateGroupStream {
     pub stream_name: StreamName,
     pub config: StreamConfig,
+    /// Target group ID. If None, the least loaded group will be selected
     pub target_group: Option<ConsensusGroupId>,
 }
 
-impl Request for CreateStream {
+impl Request for CreateGroupStream {
     type Response = ConsensusGroupId; // Returns the group ID where stream was created
 
     fn request_type() -> &'static str {
-        "CreateStream"
+        "CreateGroupStream"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(30)
+    }
+}
+
+/// Create a new global stream (remains in global consensus)
+#[derive(Debug, Clone)]
+pub struct CreateGlobalStream {
+    pub stream_name: StreamName,
+    pub config: StreamConfig,
+}
+
+impl Request for CreateGlobalStream {
+    type Response = StreamInfo; // Returns full stream info
+
+    fn request_type() -> &'static str {
+        "CreateGlobalStream"
     }
 
     fn default_timeout() -> Duration {
@@ -213,7 +233,7 @@ impl Request for UpdateGlobalMembership {
 pub struct GetGlobalState;
 
 impl Request for GetGlobalState {
-    type Response = GlobalStateSnapshot;
+    type Response = GlobalStateReader;
 
     fn request_type() -> &'static str {
         "GetGlobalState"
@@ -222,30 +242,6 @@ impl Request for GetGlobalState {
     fn default_timeout() -> Duration {
         Duration::from_secs(10)
     }
-}
-
-/// Snapshot of global consensus state
-#[derive(Debug, Clone)]
-pub struct GlobalStateSnapshot {
-    /// All consensus groups
-    pub groups: Vec<GroupSnapshot>,
-    /// All streams
-    pub streams: Vec<StreamSnapshot>,
-}
-
-/// Snapshot of a consensus group
-#[derive(Debug, Clone)]
-pub struct GroupSnapshot {
-    pub group_id: ConsensusGroupId,
-    pub members: Vec<NodeId>,
-}
-
-/// Snapshot of a stream
-#[derive(Debug, Clone)]
-pub struct StreamSnapshot {
-    pub stream_name: StreamName,
-    pub config: StreamConfig,
-    pub group_id: ConsensusGroupId,
 }
 
 /// Submit a request to global consensus

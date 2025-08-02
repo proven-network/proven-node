@@ -207,111 +207,42 @@ where
     /// Stream messages from a stream
     ///
     /// Returns a stream of messages starting from the given sequence.
-    /// If end_sequence is None, streams until the last available message.
+    /// The stream continues indefinitely, waiting for new messages.
     pub async fn stream_messages(
         &self,
         stream_name: &str,
-        start_sequence: LogIndex,
-        end_sequence: Option<LogIndex>,
+        start_sequence: Option<LogIndex>,
     ) -> ConsensusResult<Pin<Box<dyn Stream<Item = ConsensusResult<(Message, u64, u64)>> + Send>>>
     {
         let stream_name_str = stream_name.to_string();
-        let stream_name = StreamName::new(stream_name);
 
-        // Check if the stream exists and get its config
-        let stream_config = self.get_stream_config(&stream_name).await;
+        // Use proven_storage::LogStorageStreaming directly
+        let namespace = StorageNamespace::new(format!("stream_{stream_name_str}"));
+        let stream_storage = self.storage_manager.stream_storage();
 
-        // Default to persistent if we don't have config (for restored streams)
-        let persistence_type = stream_config
-            .map(|c| c.persistence_type)
-            .unwrap_or(PersistenceType::Persistent);
+        let storage_stream = proven_storage::LogStorageStreaming::stream_range(
+            &stream_storage,
+            &namespace,
+            start_sequence,
+        )
+        .await
+        .map_err(|e| {
+            Error::with_context(ErrorKind::Storage, format!("Failed to create stream: {e}"))
+        })?;
 
-        // For persistent streams, use storage streaming
-        if persistence_type == PersistenceType::Persistent {
-            // Use proven_storage::LogStorageStreaming if available
-            let namespace = StorageNamespace::new(format!("stream_{stream_name_str}"));
-            let stream_storage = self.storage_manager.stream_storage();
-
-            // Check if the storage supports streaming
-            if let Ok(storage_stream) = proven_storage::LogStorageStreaming::stream_range(
-                &stream_storage,
-                &namespace,
-                start_sequence,
-                end_sequence,
-            )
-            .await
-            {
-                // Convert storage stream to (Message, timestamp, sequence) stream
-                let mapped_stream = storage_stream.map(move |result| {
-                    result
-                        .and_then(|(_seq, bytes)| {
-                            match crate::foundation::deserialize_entry(&bytes) {
-                                Ok((message, timestamp, sequence)) => {
-                                    Ok((message, timestamp, sequence))
-                                }
-                                Err(e) => {
-                                    Err(proven_storage::StorageError::InvalidValue(e.to_string()))
-                                }
-                            }
-                        })
-                        .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))
-                });
-
-                return Ok(Box::pin(mapped_stream));
-            }
-        }
-
-        // Fallback to batch reading for ephemeral streams or if streaming not supported
-        let storage = match self.get_stream(&stream_name).await {
-            Some(s) => s,
-            None => {
-                return Err(Error::with_context(
-                    ErrorKind::NotFound,
-                    format!("Stream {stream_name} not found"),
-                ));
-            }
-        };
-
-        // Create a stream that reads in batches
-        let batch_size = 100;
-        let stream = async_stream::stream! {
-            let mut current_seq = start_sequence;
-
-            loop {
-                let batch_end = match end_sequence {
-                    Some(end) => {
-                        let next = LogIndex::new(current_seq.get().saturating_add(batch_size)).unwrap_or(current_seq);
-                        if next.get() > end.get() { end } else { next }
+        // Convert storage stream to (Message, timestamp, sequence) stream
+        let mapped_stream = storage_stream.map(move |result| {
+            result
+                .and_then(
+                    |(_seq, bytes)| match crate::foundation::deserialize_entry(&bytes) {
+                        Ok((message, timestamp, sequence)) => Ok((message, timestamp, sequence)),
+                        Err(e) => Err(proven_storage::StorageError::InvalidValue(e.to_string())),
                     },
-                    None => LogIndex::new(current_seq.get().saturating_add(batch_size)).unwrap_or(current_seq),
-                };
+                )
+                .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))
+        });
 
-                match storage.read_range_with_metadata(current_seq, batch_end).await {
-                    Ok(messages) => {
-                        if messages.is_empty() {
-                            // No more messages
-                            break;
-                        }
-
-                        for (msg, timestamp, sequence) in messages {
-                            current_seq = LogIndex::new(current_seq.get().saturating_add(1)).unwrap_or(current_seq);
-                            yield Ok((msg, timestamp, sequence));
-                        }
-
-                        // If we've reached the end sequence, stop
-                        if let Some(end) = end_sequence && current_seq >= end {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        yield Err(Error::with_context(ErrorKind::Storage, e.to_string()));
-                        break;
-                    }
-                }
-            }
-        };
-
-        Ok(Box::pin(stream))
+        Ok(Box::pin(mapped_stream))
     }
 
     /// Read messages in a range
@@ -336,9 +267,9 @@ where
         stream_name: &StreamName,
         start: LogIndex,
     ) -> ConsensusResult<Pin<Box<dyn Stream<Item = (Message, u64, u64)> + Send>>> {
-        // Use stream_messages with no end sequence
+        // Use stream_messages
         let stream = self
-            .stream_messages(stream_name.as_str(), start, None)
+            .stream_messages(stream_name.as_str(), Some(start))
             .await?;
         let mapped_stream =
             futures::StreamExt::filter_map(stream, |result| futures::future::ready(result.ok()));
@@ -373,15 +304,20 @@ where
                 routing_table.get_stream_route(stream_name.as_str()).await
         {
             // Check if we're in that group
-            return routing_table
-                .is_group_local(stream_route.group_id)
-                .await
-                .map_err(|e| {
-                    Error::with_context(
-                        ErrorKind::Internal,
-                        format!("Failed to check group location: {e}"),
-                    )
-                });
+            match stream_route.placement {
+                crate::foundation::models::stream::StreamPlacement::Group(group_id) => {
+                    return routing_table.is_group_local(group_id).await.map_err(|e| {
+                        Error::with_context(
+                            ErrorKind::Internal,
+                            format!("Failed to check group location: {e}"),
+                        )
+                    });
+                }
+                crate::foundation::models::stream::StreamPlacement::Global => {
+                    // Global streams exist on all nodes, so we can always serve them locally
+                    return Ok(true);
+                }
+            }
         }
         // If no routing info, assume we can't serve it
         Ok(false)
@@ -468,6 +404,13 @@ where
         self.event_bus
             .handle_requests::<DeleteStream, _>(delete_handler)
             .expect("Failed to register DeleteStream handler");
+
+        // Register RegisterStream handler
+        let register_handler =
+            command_handlers::RegisterStreamHandler::new(self.stream_configs.clone());
+        self.event_bus
+            .handle_requests::<RegisterStream, _>(register_handler)
+            .expect("Failed to register RegisterStream handler");
 
         // Register StreamMessages streaming handler (needs network dependencies)
         if let (Some(node_id), Some(routing_table), Some(network_manager)) = (

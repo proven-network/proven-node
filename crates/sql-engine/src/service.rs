@@ -154,7 +154,7 @@ impl SqlService {
         // Use streaming API instead of polling
         let start_seq = LogIndex::new(1).unwrap();
         let stream = client
-            .stream_messages(command_stream.clone(), start_seq, None)
+            .stream_messages(command_stream.clone(), Some(start_seq))
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 

@@ -1,10 +1,11 @@
 //! Callbacks for global consensus state changes
 
 use async_trait::async_trait;
+use std::sync::Arc;
 
 use crate::{
     error::ConsensusResult,
-    foundation::{GroupInfo, StreamName, types::ConsensusGroupId},
+    foundation::{GroupInfo, StreamName, models::stream::StreamPlacement, types::ConsensusGroupId},
 };
 use proven_topology::NodeId;
 
@@ -33,11 +34,26 @@ pub trait GlobalConsensusCallbacks: Send + Sync {
         &self,
         stream_name: &StreamName,
         config: &crate::foundation::StreamConfig,
-        group_id: ConsensusGroupId,
+        placement: &StreamPlacement,
     ) -> ConsensusResult<()>;
 
     /// Called when a stream is deleted (not during replay)
     async fn on_stream_deleted(&self, stream_name: &StreamName) -> ConsensusResult<()>;
+
+    /// Called when a stream is reassigned to different placement (not during replay)
+    async fn on_stream_reassigned(
+        &self,
+        stream_name: &StreamName,
+        old_placement: &StreamPlacement,
+        new_placement: &StreamPlacement,
+    ) -> ConsensusResult<()>;
+
+    /// Called when messages are appended to a global stream (not during replay)
+    async fn on_global_stream_appended(
+        &self,
+        stream_name: &StreamName,
+        entries: Arc<Vec<bytes::Bytes>>,
+    ) -> ConsensusResult<()>;
 
     /// Called when global consensus membership changes (not during replay)
     async fn on_membership_changed(

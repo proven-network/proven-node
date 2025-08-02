@@ -225,7 +225,7 @@ where
             // Create the stream
             let config = StreamConfig::default();
             self.client
-                .create_stream(stream_name.clone(), config)
+                .create_group_stream(stream_name.clone(), config)
                 .await
                 .map_err(|e| Error::Engine(e.to_string()))?;
             info!("Created store stream: {}", stream_name);
@@ -276,7 +276,7 @@ where
         if !key_index_exists {
             let config = StreamConfig::default();
             self.client
-                .create_stream(key_index.clone(), config)
+                .create_group_stream(key_index.clone(), config)
                 .await
                 .map_err(|e| Error::Engine(e.to_string()))?;
             info!("Created key index stream: {}", key_index);
@@ -391,27 +391,10 @@ where
         let start = LogIndex::new(last_sequence + 1)
             .ok_or_else(|| Error::Engine("Start sequence must be greater than 0".to_string()))?;
 
-        // Get the current end of the stream to do a bounded read
-        let stream_state = self
-            .client
-            .get_stream_state(&stream_name)
-            .await
-            .map_err(|e| Error::Engine(e.to_string()))?;
-
-        let end_sequence = match stream_state {
-            Some(state) => match state.last_sequence {
-                Some(last_seq) if last_seq.get() > last_sequence => {
-                    Some(LogIndex::new(last_seq.get() + 1).unwrap())
-                }
-                _ => return Ok(()), // No new messages
-            },
-            None => return Ok(()), // Stream doesn't exist or has no messages
-        };
-
         // Use streaming API for bounded read
         let stream = self
             .client
-            .stream_messages(stream_name.clone(), start, end_sequence)
+            .stream_messages(stream_name.clone(), Some(start))
             .await
             .map_err(|e| Error::Engine(e.to_string()))?;
 

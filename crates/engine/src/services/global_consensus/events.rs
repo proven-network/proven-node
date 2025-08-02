@@ -27,7 +27,7 @@ pub struct GroupSnapshot {
 pub struct StreamSnapshot {
     pub stream_name: StreamName,
     pub config: StreamConfig,
-    pub group_id: ConsensusGroupId,
+    pub placement: crate::foundation::models::stream::StreamPlacement,
 }
 
 /// Events emitted by the global consensus service
@@ -46,11 +46,11 @@ pub enum GlobalConsensusEvent {
     /// Consensus group dissolved
     GroupDissolved { group_id: ConsensusGroupId },
 
-    /// Stream created and assigned to a group
+    /// Stream created with specified placement
     StreamCreated {
         stream_name: StreamName,
         config: StreamConfig,
-        group_id: ConsensusGroupId,
+        placement: crate::foundation::models::stream::StreamPlacement,
     },
 
     /// Stream deleted

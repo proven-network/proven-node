@@ -17,21 +17,21 @@ pub trait GroupConsensusCallbacks: Send + Sync {
     // Real-time operation callbacks (only called for new operations, not replay)
 
     /// Called when a new stream is created in the group (not during replay)
-    async fn on_stream_created(
+    async fn on_group_stream_created(
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
     ) -> ConsensusResult<()>;
 
     /// Called when a stream is removed from the group (not during replay)
-    async fn on_stream_removed(
+    async fn on_group_stream_removed(
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
     ) -> ConsensusResult<()>;
 
     /// Called when messages are appended to a stream (not during replay)
-    async fn on_messages_appended(
+    async fn on_group_stream_appended(
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,

@@ -137,12 +137,12 @@ impl IdentityManager {
         // Create streams if they don't exist (only event and leadership streams needed)
         let stream_config = StreamConfig::default();
         client
-            .create_stream(event_stream.clone(), stream_config.clone())
+            .create_group_stream(event_stream.clone(), stream_config.clone())
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 
         client
-            .create_stream(leadership_stream.clone(), stream_config)
+            .create_group_stream(leadership_stream.clone(), stream_config)
             .await
             .map_err(|e| Error::Stream(e.to_string()))?;
 

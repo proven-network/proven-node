@@ -20,10 +20,10 @@ use crate::{
         group::{GroupRequest, GroupResponse},
     },
     error::{ConsensusResult, Error, ErrorKind},
-    foundation::StreamName,
     foundation::{
-        GroupStateInfo, Message, StreamConfig,
+        GlobalStateRead, GlobalStateReader, GroupStateInfo, Message, StreamConfig, StreamName,
         events::EventBus,
+        models::stream::StreamPlacement,
         types::{ConsensusGroupId, Subject, SubjectPattern},
     },
     services::{
@@ -69,7 +69,7 @@ impl Client {
     }
 
     /// Get global consensus state information
-    pub async fn get_global_state(&self) -> ConsensusResult<global_commands::GlobalStateSnapshot> {
+    pub async fn get_global_state(&self) -> ConsensusResult<GlobalStateReader> {
         debug!("Getting global consensus state");
 
         let cmd = global_commands::GetGlobalState {};
@@ -148,21 +148,41 @@ impl Client {
 
     // ===== Stream Operations =====
 
-    /// Create a new stream (automatically selects the best group)
-    pub async fn create_stream(
+    /// Create a new stream in a consensus group (automatically selects the best group)
+    pub async fn create_group_stream(
         &self,
         name: String,
         config: StreamConfig,
     ) -> ConsensusResult<ConsensusGroupId> {
         info!("Creating stream '{}'", name);
 
-        let cmd = global_commands::CreateStream {
+        let cmd = global_commands::CreateGroupStream {
             stream_name: name.into(),
             config,
             target_group: None, // Let global consensus choose the best group
         };
         self.event_bus.request(cmd).await.map_err(|e| {
             Error::with_context(ErrorKind::Service, format!("Create stream failed: {e}"))
+        })
+    }
+
+    /// Create a new global stream (remains in global consensus for maximum redundancy)
+    pub async fn create_global_stream(
+        &self,
+        name: String,
+        config: StreamConfig,
+    ) -> ConsensusResult<crate::foundation::models::StreamInfo> {
+        info!("Creating global stream '{}'", name);
+
+        let cmd = global_commands::CreateGlobalStream {
+            stream_name: name.into(),
+            config,
+        };
+        self.event_bus.request(cmd).await.map_err(|e| {
+            Error::with_context(
+                ErrorKind::Service,
+                format!("Create global stream failed: {e}"),
+            )
         })
     }
 
@@ -209,24 +229,40 @@ impl Client {
             .unwrap()
             .as_millis() as u64;
 
-        let request =
-            GroupRequest::Stream(crate::consensus::group::types::StreamOperation::Append {
-                stream: stream_name.clone().into(),
+        if let StreamPlacement::Group(group_id) = stream_info.placement {
+            let group_request =
+                GroupRequest::Stream(crate::consensus::group::types::StreamOperation::Append {
+                    stream_name: stream_name.clone().into(),
+                    messages,
+                    timestamp,
+                });
+
+            // Submit the append request to the owning group
+            let response = self.submit_group_request(group_id, group_request).await?;
+
+            match response {
+                GroupResponse::Appended { sequence, .. } => Ok(sequence),
+                _ => Err(Error::with_context(
+                    ErrorKind::InvalidState,
+                    "Expected stream response from group consensus",
+                )),
+            }
+        } else {
+            let global_request = GlobalRequest::AppendToGlobalStream {
+                stream_name: stream_name.into(),
                 messages,
                 timestamp,
-            });
+            };
 
-        // Submit the append request to the owning group
-        let response = self
-            .submit_group_request(stream_info.group_id, request)
-            .await?;
+            let response = self.submit_global_request(global_request).await?;
 
-        match response {
-            GroupResponse::Appended { sequence, .. } => Ok(sequence),
-            _ => Err(Error::with_context(
-                ErrorKind::InvalidState,
-                "Expected stream response from group consensus",
-            )),
+            match response {
+                GlobalResponse::Appended { sequence, .. } => Ok(sequence),
+                _ => Err(Error::with_context(
+                    ErrorKind::InvalidState,
+                    "Expected stream response from global consensus",
+                )),
+            }
         }
     }
 
@@ -234,18 +270,16 @@ impl Client {
     pub async fn stream_messages(
         &self,
         stream_name: String,
-        start_sequence: LogIndex,
-        end_sequence: Option<LogIndex>,
+        start_sequence: Option<LogIndex>,
     ) -> ConsensusResult<impl Stream<Item = (Message, u64, u64)>> {
         debug!(
-            "Creating stream for '{}' from {:?} to {:?}",
-            stream_name, start_sequence, end_sequence
+            "Creating stream for '{}' from {:?}",
+            stream_name, start_sequence
         );
 
         let cmd = stream_commands::StreamMessages {
             stream_name,
             start_sequence,
-            end_sequence,
         };
 
         let receiver = self.event_bus.stream(cmd).await.map_err(|e| {
@@ -276,15 +310,10 @@ impl Client {
 
         // Find the stream in the snapshot
         Ok(global_state
-            .streams
+            .get_all_streams()
+            .await
             .into_iter()
-            .find(|s| s.stream_name.as_str() == stream_name)
-            .map(|s| crate::foundation::models::StreamInfo {
-                name: s.stream_name,
-                config: s.config,
-                group_id: s.group_id,
-                created_at: 0, // TODO: Add created_at to StreamSnapshot
-            }))
+            .find(|s| s.stream_name.as_str() == stream_name))
     }
 
     /// Get detailed stream state from group consensus
@@ -305,15 +334,19 @@ impl Client {
             )
         })?;
 
-        // Query the group consensus for stream state
-        let cmd = group_commands::GetStreamState {
-            group_id: stream_info.group_id,
-            stream_name: StreamName::from(stream_name),
-        };
+        if let StreamPlacement::Group(group_id) = stream_info.placement {
+            // Query the group consensus for stream state
+            let cmd = group_commands::GetStreamState {
+                group_id,
+                stream_name: StreamName::from(stream_name),
+            };
 
-        self.event_bus.request(cmd).await.map_err(|e| {
-            Error::with_context(ErrorKind::Service, format!("Get stream state failed: {e}"))
-        })
+            self.event_bus.request(cmd).await.map_err(|e| {
+                Error::with_context(ErrorKind::Service, format!("Get stream state failed: {e}"))
+            })
+        } else {
+            todo!("Need to add global stream states")
+        }
     }
 
     /// Delete a specific message from a stream
@@ -335,16 +368,19 @@ impl Client {
             )
         })?;
 
-        // Create the delete request
-        let request =
-            GroupRequest::Stream(crate::consensus::group::types::StreamOperation::Delete {
-                stream: stream_name.into(),
-                sequence,
-            });
+        if let StreamPlacement::Group(group_id) = stream_info.placement {
+            // Create the delete request
+            let request =
+                GroupRequest::Stream(crate::consensus::group::types::StreamOperation::Delete {
+                    stream_name: stream_name.into(),
+                    sequence,
+                });
 
-        // Submit the delete request to the owning group
-        self.submit_group_request(stream_info.group_id, request)
-            .await
+            // Submit the delete request to the owning group
+            self.submit_group_request(group_id, request).await
+        } else {
+            todo!("Need to add global stream deletion")
+        }
     }
 
     // ===== PubSub Operations =====

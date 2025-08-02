@@ -1,4 +1,4 @@
-//! State access wrappers for enforcing read/write permissions at compile time
+//! Global state access wrappers for enforcing read/write permissions at compile time
 
 use std::sync::Arc;
 
@@ -6,17 +6,17 @@ use proven_storage::LogIndex;
 use proven_topology::NodeId;
 
 use super::global_state::GlobalState;
-use super::group_state::GroupState;
 use crate::error::ConsensusResult;
-use crate::foundation::Message;
-use crate::foundation::models::{GroupInfo, NodeInfo, StreamConfig, StreamInfo, StreamState};
+use crate::foundation::models::stream::StreamPlacement;
+use crate::foundation::models::{GroupInfo, NodeInfo, StreamConfig, StreamInfo};
 use crate::foundation::types::{ConsensusGroupId, StreamName};
+use crate::foundation::{Message, models::StreamState};
 
 /// Trait for read-only operations on GlobalState
 #[async_trait::async_trait]
 pub trait GlobalStateRead {
     /// Get stream information
-    async fn get_stream(&self, name: &StreamName) -> Option<StreamInfo>;
+    async fn get_stream(&self, stream_name: &StreamName) -> Option<StreamInfo>;
 
     /// Get all streams
     async fn get_all_streams(&self) -> Vec<StreamInfo>;
@@ -38,6 +38,9 @@ pub trait GlobalStateRead {
 
     /// Count streams in a group
     async fn count_streams_in_group(&self, group_id: ConsensusGroupId) -> usize;
+
+    /// Get global stream state
+    async fn get_global_stream_state(&self, stream_name: &StreamName) -> Option<StreamState>;
 }
 
 /// Trait for write operations on GlobalState (includes read operations)
@@ -47,13 +50,17 @@ pub trait GlobalStateWrite: GlobalStateRead {
     async fn add_stream(&self, info: StreamInfo) -> ConsensusResult<()>;
 
     /// Remove a stream
-    async fn remove_stream(&self, name: &StreamName) -> Option<StreamInfo>;
+    async fn remove_stream(&self, stream_name: &StreamName) -> Option<StreamInfo>;
 
     /// Update stream configuration
-    async fn update_stream_config(&self, name: &StreamName, config: StreamConfig) -> bool;
+    async fn update_stream_config(&self, stream_name: &StreamName, config: StreamConfig) -> bool;
 
-    /// Reassign a stream to a different group
-    async fn reassign_stream(&self, name: &StreamName, to_group: ConsensusGroupId) -> bool;
+    /// Reassign a stream to a different placement
+    async fn reassign_stream(
+        &self,
+        stream_name: &StreamName,
+        new_placement: StreamPlacement,
+    ) -> bool;
 
     /// Add a group
     async fn add_group(&self, info: GroupInfo) -> ConsensusResult<()>;
@@ -69,40 +76,28 @@ pub trait GlobalStateWrite: GlobalStateRead {
 
     /// Clear all state
     async fn clear(&self);
-}
 
-/// Trait for read-only operations on GroupState
-#[async_trait::async_trait]
-pub trait GroupStateRead {
-    /// Get stream state
-    async fn get_stream(&self, name: &StreamName) -> Option<StreamState>;
-
-    /// List all streams
-    async fn list_streams(&self) -> Vec<StreamName>;
-}
-
-/// Trait for write operations on GroupState (includes read operations)
-#[async_trait::async_trait]
-pub trait GroupStateWrite: GroupStateRead {
-    /// Initialize a new stream
-    async fn initialize_stream(&self, name: StreamName) -> bool;
-
-    /// Remove a stream
-    async fn remove_stream(&self, name: &StreamName) -> bool;
-
-    /// Append messages to a stream
-    async fn append_messages(
+    /// Append messages to a global stream
+    async fn append_to_global_stream(
         &self,
-        stream: &StreamName,
+        stream_name: &StreamName,
         messages: Vec<Message>,
         timestamp: u64,
-    ) -> Arc<Vec<bytes::Bytes>>;
+    ) -> (Arc<Vec<bytes::Bytes>>, Option<LogIndex>);
 
-    /// Trim a stream
-    async fn trim_stream(&self, name: &StreamName, up_to_seq: LogIndex) -> Option<LogIndex>;
+    /// Trim a global stream
+    async fn trim_global_stream(
+        &self,
+        stream_name: &StreamName,
+        up_to_seq: LogIndex,
+    ) -> Option<LogIndex>;
 
-    /// Delete a message
-    async fn delete_message(&self, name: &StreamName, sequence: LogIndex) -> Option<LogIndex>;
+    /// Delete a message from a global stream
+    async fn delete_from_global_stream(
+        &self,
+        stream_name: &StreamName,
+        sequence: LogIndex,
+    ) -> Option<LogIndex>;
 }
 
 /// Read-only access to GlobalState
@@ -118,7 +113,7 @@ pub struct GlobalStateWriter {
 }
 
 /// Create a reader/writer pair for GlobalState
-pub fn create_state_access() -> (GlobalStateReader, GlobalStateWriter) {
+pub fn create_global_state_access() -> (GlobalStateReader, GlobalStateWriter) {
     let state = Arc::new(GlobalState::new());
 
     let reader = GlobalStateReader {
@@ -132,8 +127,8 @@ pub fn create_state_access() -> (GlobalStateReader, GlobalStateWriter) {
 // Implement GlobalStateRead for GlobalStateReader
 #[async_trait::async_trait]
 impl GlobalStateRead for GlobalStateReader {
-    async fn get_stream(&self, name: &StreamName) -> Option<StreamInfo> {
-        self.inner.get_stream(name).await
+    async fn get_stream(&self, stream_name: &StreamName) -> Option<StreamInfo> {
+        self.inner.get_stream(stream_name).await
     }
 
     async fn get_all_streams(&self) -> Vec<StreamInfo> {
@@ -162,14 +157,18 @@ impl GlobalStateRead for GlobalStateReader {
 
     async fn count_streams_in_group(&self, group_id: ConsensusGroupId) -> usize {
         self.inner.count_streams_in_group(group_id).await
+    }
+
+    async fn get_global_stream_state(&self, stream_name: &StreamName) -> Option<StreamState> {
+        self.inner.get_global_stream_state(stream_name).await
     }
 }
 
 // Implement GlobalStateRead for GlobalStateWriter
 #[async_trait::async_trait]
 impl GlobalStateRead for GlobalStateWriter {
-    async fn get_stream(&self, name: &StreamName) -> Option<StreamInfo> {
-        self.inner.get_stream(name).await
+    async fn get_stream(&self, stream_name: &StreamName) -> Option<StreamInfo> {
+        self.inner.get_stream(stream_name).await
     }
 
     async fn get_all_streams(&self) -> Vec<StreamInfo> {
@@ -198,6 +197,10 @@ impl GlobalStateRead for GlobalStateWriter {
 
     async fn count_streams_in_group(&self, group_id: ConsensusGroupId) -> usize {
         self.inner.count_streams_in_group(group_id).await
+    }
+
+    async fn get_global_stream_state(&self, stream_name: &StreamName) -> Option<StreamState> {
+        self.inner.get_global_stream_state(stream_name).await
     }
 }
 
@@ -208,16 +211,20 @@ impl GlobalStateWrite for GlobalStateWriter {
         self.inner.add_stream(info).await
     }
 
-    async fn remove_stream(&self, name: &StreamName) -> Option<StreamInfo> {
-        self.inner.remove_stream(name).await
+    async fn remove_stream(&self, stream_name: &StreamName) -> Option<StreamInfo> {
+        self.inner.remove_stream(stream_name).await
     }
 
-    async fn update_stream_config(&self, name: &StreamName, config: StreamConfig) -> bool {
-        self.inner.update_stream_config(name, config).await
+    async fn update_stream_config(&self, stream_name: &StreamName, config: StreamConfig) -> bool {
+        self.inner.update_stream_config(stream_name, config).await
     }
 
-    async fn reassign_stream(&self, name: &StreamName, to_group: ConsensusGroupId) -> bool {
-        self.inner.reassign_stream(name, to_group).await
+    async fn reassign_stream(
+        &self,
+        stream_name: &StreamName,
+        new_placement: StreamPlacement,
+    ) -> bool {
+        self.inner.reassign_stream(stream_name, new_placement).await
     }
 
     async fn add_group(&self, info: GroupInfo) -> ConsensusResult<()> {
@@ -239,84 +246,34 @@ impl GlobalStateWrite for GlobalStateWriter {
     async fn clear(&self) {
         self.inner.clear().await
     }
-}
 
-/// Read-only access to GroupState
-#[derive(Clone)]
-pub struct GroupStateReader {
-    inner: Arc<GroupState>,
-}
-
-/// Read-write access to GroupState
-#[derive(Clone)]
-pub struct GroupStateWriter {
-    inner: Arc<GroupState>,
-}
-
-/// Create a reader/writer pair for GroupState
-pub fn create_group_state_access() -> (GroupStateReader, GroupStateWriter) {
-    let state = Arc::new(GroupState::new());
-
-    let reader = GroupStateReader {
-        inner: state.clone(),
-    };
-    let writer = GroupStateWriter { inner: state };
-
-    (reader, writer)
-}
-
-// Implement GroupStateRead for GroupStateReader
-#[async_trait::async_trait]
-impl GroupStateRead for GroupStateReader {
-    async fn get_stream(&self, name: &StreamName) -> Option<StreamState> {
-        self.inner.get_stream(name).await
-    }
-
-    async fn list_streams(&self) -> Vec<StreamName> {
-        self.inner.list_streams().await
-    }
-}
-
-// Implement GroupStateRead for GroupStateWriter
-#[async_trait::async_trait]
-impl GroupStateRead for GroupStateWriter {
-    async fn get_stream(&self, name: &StreamName) -> Option<StreamState> {
-        self.inner.get_stream(name).await
-    }
-
-    async fn list_streams(&self) -> Vec<StreamName> {
-        self.inner.list_streams().await
-    }
-}
-
-// Implement GroupStateWrite for GroupStateWriter
-#[async_trait::async_trait]
-impl GroupStateWrite for GroupStateWriter {
-    async fn initialize_stream(&self, name: StreamName) -> bool {
-        self.inner.initialize_stream(name).await
-    }
-
-    async fn remove_stream(&self, name: &StreamName) -> bool {
-        self.inner.remove_stream(name).await
-    }
-
-    async fn append_messages(
+    async fn append_to_global_stream(
         &self,
-        stream: &StreamName,
+        stream_name: &StreamName,
         messages: Vec<Message>,
         timestamp: u64,
-    ) -> Arc<Vec<bytes::Bytes>> {
+    ) -> (Arc<Vec<bytes::Bytes>>, Option<LogIndex>) {
         self.inner
-            .append_messages(stream, messages, timestamp)
+            .append_to_global_stream(stream_name, messages, timestamp)
             .await
     }
 
-    async fn trim_stream(&self, name: &StreamName, up_to_seq: LogIndex) -> Option<LogIndex> {
-        self.inner.trim_stream(name, up_to_seq).await
+    async fn trim_global_stream(
+        &self,
+        stream_name: &StreamName,
+        up_to_seq: LogIndex,
+    ) -> Option<LogIndex> {
+        self.inner.trim_global_stream(stream_name, up_to_seq).await
     }
 
-    async fn delete_message(&self, name: &StreamName, sequence: LogIndex) -> Option<LogIndex> {
-        self.inner.delete_message(name, sequence).await
+    async fn delete_from_global_stream(
+        &self,
+        stream_name: &StreamName,
+        sequence: LogIndex,
+    ) -> Option<LogIndex> {
+        self.inner
+            .delete_from_global_stream(stream_name, sequence)
+            .await
     }
 }
 
@@ -326,7 +283,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_reader_cannot_write() {
-        let (reader, _writer) = create_state_access();
+        let (reader, _writer) = create_global_state_access();
 
         // Reader can only access read methods through the trait
         use GlobalStateRead;
@@ -338,7 +295,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_writer_can_read_and_write() {
-        let (_reader, writer) = create_state_access();
+        let (_reader, writer) = create_global_state_access();
 
         // Writer can access both read and write methods
         use {GlobalStateRead, GlobalStateWrite};
@@ -356,7 +313,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_shared_state() {
-        let (reader, writer) = create_state_access();
+        let (reader, writer) = create_global_state_access();
 
         // Writer modifies state
         let group_info = GroupInfo {

@@ -9,8 +9,8 @@ use crate::{
     error::ConsensusResult,
     foundation::events::EventBus,
     foundation::{
-        GlobalStateRead, GlobalStateReader, GroupInfo, StreamName, routing::RoutingTable,
-        types::ConsensusGroupId,
+        GlobalStateRead, GlobalStateReader, GroupInfo, StreamName, models::stream::StreamPlacement,
+        routing::RoutingTable, types::ConsensusGroupId,
     },
     services::global_consensus::events::{
         GlobalConsensusEvent, GlobalStateSnapshot, GroupSnapshot, StreamSnapshot,
@@ -54,47 +54,29 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         let all_groups = self.global_state.get_all_groups().await;
         let all_streams = self.global_state.get_all_streams().await;
 
-        // Update routing table directly
-        for group in &all_groups {
-            if let Err(e) = self
-                .routing_table
-                .update_group_route(group.id, group.members.clone())
-                .await
-            {
-                tracing::error!("Failed to update routing for group {:?}: {}", group.id, e);
-            }
-        }
-
-        for stream in &all_streams {
-            if let Err(e) = self
-                .routing_table
-                .update_stream_route(stream.name.to_string(), stream.group_id)
-                .await
-            {
-                tracing::error!("Failed to update routing for stream {}: {}", stream.name, e);
-            }
-        }
-
         if let Some(ref event_bus) = self.event_bus {
             // Ensure all streams are initialized in their respective groups
             use crate::services::group_consensus::commands::EnsureStreamInitializedInGroup;
 
             for stream in &all_streams {
-                let ensure_cmd = EnsureStreamInitializedInGroup {
-                    group_id: stream.group_id,
-                    stream_name: stream.name.clone(),
-                };
+                // Only ensure initialization for group streams
+                if let StreamPlacement::Group(group_id) = stream.placement {
+                    let ensure_cmd = EnsureStreamInitializedInGroup {
+                        group_id,
+                        stream_name: stream.stream_name.clone(),
+                    };
 
-                // Use fire-and-forget since this is idempotent and we're in a callback
-                let event_bus_clone = event_bus.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = event_bus_clone.request(ensure_cmd).await {
-                        tracing::debug!(
-                            "Failed to ensure stream is initialized during state sync: {}",
-                            e
-                        );
-                    }
-                });
+                    // Use fire-and-forget since this is idempotent and we're in a callback
+                    let event_bus_clone = event_bus.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = event_bus_clone.request(ensure_cmd).await {
+                            tracing::debug!(
+                                "Failed to ensure stream is initialized during state sync: {}",
+                                e
+                            );
+                        }
+                    });
+                }
             }
 
             // Still publish event for other subscribers
@@ -109,9 +91,9 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
                 streams: all_streams
                     .into_iter()
                     .map(|s| StreamSnapshot {
-                        stream_name: s.name,
+                        stream_name: s.stream_name,
                         config: s.config,
-                        group_id: s.group_id,
+                        placement: s.placement,
                     })
                     .collect(),
             };
@@ -135,15 +117,6 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
             group_id,
             group_info.members.len()
         );
-
-        // Update routing table directly
-        if let Err(e) = self
-            .routing_table
-            .update_group_route(group_id, group_info.members.clone())
-            .await
-        {
-            tracing::error!("Failed to update routing for group {:?}: {}", group_id, e);
-        }
 
         if let Some(ref event_bus) = self.event_bus {
             // Send command to ensure the group is initialized in group consensus service
@@ -198,59 +171,59 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         &self,
         stream_name: &StreamName,
         config: &crate::foundation::StreamConfig,
-        group_id: ConsensusGroupId,
+        placement: &StreamPlacement,
     ) -> ConsensusResult<()> {
-        // Update routing table directly
-        if let Err(e) = self
-            .routing_table
-            .update_stream_route(stream_name.to_string(), group_id)
-            .await
-        {
-            tracing::error!("Failed to update routing for stream {}: {}", stream_name, e);
-        }
-
         if let Some(ref event_bus) = self.event_bus {
-            // Create the stream through command handler
-            use crate::services::stream::commands::CreateStream;
-            let create_cmd = CreateStream {
-                name: stream_name.clone(),
+            // Register the stream in the stream service
+            // This works for both the originating node and other nodes learning about it
+            use crate::services::stream::commands::RegisterStream;
+            let register_cmd = RegisterStream {
+                stream_name: stream_name.clone(),
                 config: config.clone(),
-                group_id,
+                placement: *placement,
             };
 
-            // This will create the stream synchronously before we continue
-            if let Err(e) = event_bus.request(create_cmd).await {
+            if let Err(e) = event_bus.request(register_cmd).await {
                 tracing::error!(
-                    "Failed to create stream {} in group {:?}: {}",
+                    "Failed to register stream {} with placement {:?}: {}",
                     stream_name,
-                    group_id,
+                    placement,
                     e
                 );
             }
 
-            // Ensure the stream is initialized in the group consensus synchronously
-            use crate::services::group_consensus::commands::EnsureStreamInitializedInGroup;
+            match placement {
+                StreamPlacement::Group(group_id) => {
+                    // Ensure the stream is initialized in the group consensus synchronously
+                    use crate::services::group_consensus::commands::EnsureStreamInitializedInGroup;
 
-            let ensure_cmd = EnsureStreamInitializedInGroup {
-                group_id,
-                stream_name: stream_name.clone(),
-            };
+                    let ensure_cmd = EnsureStreamInitializedInGroup {
+                        group_id: *group_id,
+                        stream_name: stream_name.clone(),
+                    };
 
-            // Ensure the stream is initialized in group consensus before continuing
-            if let Err(e) = event_bus.request(ensure_cmd).await {
-                tracing::error!(
-                    "Failed to ensure stream {} is initialized in group {:?}: {}",
-                    stream_name,
-                    group_id,
-                    e
-                );
+                    // Ensure the stream is initialized in group consensus before continuing
+                    if let Err(e) = event_bus.request(ensure_cmd).await {
+                        tracing::error!(
+                            "Failed to ensure stream {} is initialized in group {:?}: {}",
+                            stream_name,
+                            group_id,
+                            e
+                        );
+                    }
+                }
+                StreamPlacement::Global => {
+                    // Global streams don't need to be created in a specific group
+                    // They are managed by global consensus itself
+                    tracing::info!("Global stream {} created", stream_name);
+                }
             }
 
             // Still emit event for other subscribers
             let event = GlobalConsensusEvent::StreamCreated {
                 stream_name: stream_name.clone(),
                 config: config.clone(),
-                group_id,
+                placement: *placement,
             };
             event_bus.emit(event);
         }
@@ -259,15 +232,6 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
     }
 
     async fn on_stream_deleted(&self, stream_name: &StreamName) -> ConsensusResult<()> {
-        // Update routing table directly
-        if let Err(e) = self
-            .routing_table
-            .remove_stream_route(&stream_name.to_string())
-            .await
-        {
-            tracing::error!("Failed to remove routing for stream {}: {}", stream_name, e);
-        }
-
         // Use command pattern to delete stream synchronously
         if let Some(ref event_bus) = self.event_bus {
             use crate::services::stream::commands::DeleteStream;
@@ -337,6 +301,107 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
             };
             event_bus.emit(event);
         }
+
+        Ok(())
+    }
+
+    async fn on_stream_reassigned(
+        &self,
+        stream_name: &StreamName,
+        old_placement: &StreamPlacement,
+        new_placement: &StreamPlacement,
+    ) -> ConsensusResult<()> {
+        tracing::info!(
+            "Stream {} reassigned from {:?} to {:?}",
+            stream_name,
+            old_placement,
+            new_placement
+        );
+
+        if let Some(ref event_bus) = self.event_bus {
+            // Handle the reassignment based on placement types
+            match (old_placement, new_placement) {
+                (StreamPlacement::Group(_old_group), StreamPlacement::Group(new_group)) => {
+                    // Moving between groups - ensure it's removed from old and added to new
+                    use crate::services::group_consensus::commands::EnsureStreamInitializedInGroup;
+
+                    // Initialize in new group
+                    let ensure_cmd = EnsureStreamInitializedInGroup {
+                        group_id: *new_group,
+                        stream_name: stream_name.clone(),
+                    };
+
+                    if let Err(e) = event_bus.request(ensure_cmd).await {
+                        tracing::error!(
+                            "Failed to ensure stream {} is initialized in new group {:?}: {}",
+                            stream_name,
+                            new_group,
+                            e
+                        );
+                    }
+                }
+                (StreamPlacement::Group(_), StreamPlacement::Global) => {
+                    // Moving from group to global - stream stays in group storage but routing changes
+                    tracing::info!("Stream {} promoted to global placement", stream_name);
+                }
+                (StreamPlacement::Global, StreamPlacement::Group(group_id)) => {
+                    // Moving from global to group - ensure it's initialized in the group
+                    use crate::services::group_consensus::commands::EnsureStreamInitializedInGroup;
+
+                    let ensure_cmd = EnsureStreamInitializedInGroup {
+                        group_id: *group_id,
+                        stream_name: stream_name.clone(),
+                    };
+
+                    if let Err(e) = event_bus.request(ensure_cmd).await {
+                        tracing::error!(
+                            "Failed to ensure stream {} is initialized in group {:?}: {}",
+                            stream_name,
+                            group_id,
+                            e
+                        );
+                    }
+                }
+                (StreamPlacement::Global, StreamPlacement::Global) => {
+                    // No-op, shouldn't happen
+                    tracing::warn!("Stream {} reassigned from global to global?", stream_name);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn on_global_stream_appended(
+        &self,
+        stream_name: &StreamName,
+        entries: Arc<Vec<bytes::Bytes>>,
+    ) -> ConsensusResult<()> {
+        tracing::debug!(
+            "Global stream {} appended with {} entries",
+            stream_name,
+            entries.len()
+        );
+
+        // Persist the messages for global streams
+        if let Some(ref event_bus) = self.event_bus {
+            use crate::services::stream::commands::PersistMessages;
+
+            let command = PersistMessages {
+                stream_name: stream_name.clone(),
+                entries: entries.clone(),
+            };
+
+            if let Err(e) = event_bus.request(command).await {
+                tracing::error!(
+                    "Failed to persist messages for global stream {}: {}",
+                    stream_name,
+                    e
+                );
+            }
+        }
+
+        // Note: We could emit an event here if other services need to know about global stream appends
 
         Ok(())
     }

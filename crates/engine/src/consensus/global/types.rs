@@ -1,10 +1,13 @@
 //! Types for global consensus layer
 
+use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use crate::foundation::models::stream::StreamPlacement;
 use crate::foundation::types::{ConsensusGroupId, StreamName};
-use crate::foundation::{GroupInfo, StreamConfig};
+use crate::foundation::{GroupInfo, Message, StreamConfig};
 use proven_topology::NodeId;
 
 /// Global consensus request
@@ -13,21 +16,30 @@ pub enum GlobalRequest {
     /// Create a new stream
     CreateStream {
         /// Stream name
-        name: StreamName,
+        stream_name: StreamName,
         /// Stream configuration
         config: StreamConfig,
-        /// Target group
-        group_id: ConsensusGroupId,
+        /// Placement
+        placement: StreamPlacement,
+    },
+    /// Append messages to a global stream
+    AppendToGlobalStream {
+        /// Stream name
+        stream_name: StreamName,
+        /// Messages to append
+        messages: Vec<Message>,
+        /// Timestamp
+        timestamp: u64,
     },
     /// Delete a stream
     DeleteStream {
         /// Stream name
-        name: StreamName,
+        stream_name: StreamName,
     },
     /// Update stream configuration
     UpdateStreamConfig {
         /// Stream name
-        name: StreamName,
+        stream_name: StreamName,
         /// New configuration
         config: StreamConfig,
     },
@@ -53,12 +65,26 @@ pub enum GlobalRequest {
         /// Node ID
         node_id: NodeId,
     },
-    /// Reassign stream to different group
+    /// Reassign stream to different placement
     ReassignStream {
         /// Stream name
-        name: StreamName,
-        /// New group
-        to_group: ConsensusGroupId,
+        stream_name: StreamName,
+        /// New placement
+        new_placement: StreamPlacement,
+    },
+    /// Trim a global stream
+    TrimGlobalStream {
+        /// Stream name
+        stream_name: StreamName,
+        /// Trim up to this sequence
+        up_to_seq: LogIndex,
+    },
+    /// Delete a message from a global stream
+    DeleteFromGlobalStream {
+        /// Stream name
+        stream_name: StreamName,
+        /// Sequence number to delete
+        sequence: LogIndex,
     },
 }
 
@@ -70,14 +96,14 @@ pub enum GlobalResponse {
     /// Stream created
     StreamCreated {
         /// Stream name
-        name: StreamName,
-        /// Assigned group
-        group_id: ConsensusGroupId,
+        stream_name: StreamName,
+        /// Placement
+        placement: StreamPlacement,
     },
     /// Stream deleted
     StreamDeleted {
         /// Stream name
-        name: StreamName,
+        stream_name: StreamName,
     },
     /// Group created
     GroupCreated {
@@ -109,9 +135,42 @@ pub enum GlobalResponse {
     /// Stream already exists
     StreamAlreadyExists {
         /// Stream name
-        name: StreamName,
-        /// Current group assignment
-        group_id: ConsensusGroupId,
+        stream_name: StreamName,
+        /// Current placement
+        placement: StreamPlacement,
+    },
+    /// Messaged appended to global stream
+    Appended {
+        /// Stream name
+        stream_name: StreamName,
+        /// Assigned sequence number
+        sequence: LogIndex,
+        /// Pre-serialized entries (not serialized, only for in-memory passing)
+        #[serde(skip)]
+        entries: Option<Arc<Vec<bytes::Bytes>>>,
+    },
+    /// Stream reassigned to different placement
+    StreamReassigned {
+        /// Stream name
+        stream_name: StreamName,
+        /// Previous placement
+        old_placement: StreamPlacement,
+        /// New placement
+        new_placement: StreamPlacement,
+    },
+    /// Global stream trimmed
+    GlobalStreamTrimmed {
+        /// Stream name
+        stream_name: StreamName,
+        /// New start sequence
+        new_start_seq: LogIndex,
+    },
+    /// Message deleted from global stream
+    GlobalStreamMessageDeleted {
+        /// Stream name
+        stream_name: StreamName,
+        /// Deleted sequence number
+        sequence: LogIndex,
     },
 }
 

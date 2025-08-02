@@ -175,7 +175,7 @@ async fn test_raft_membership_change() {
 
     let client = engines[0].client();
     client
-        .create_stream(stream_name.to_string(), stream_config)
+        .create_group_stream(stream_name.to_string(), stream_config)
         .await
         .expect("Failed to create stream after membership change");
 
@@ -282,7 +282,7 @@ async fn test_split_brain_prevention() {
     if !engines_vec.is_empty() {
         let client = engines_vec[0].client();
         let result = client
-            .create_stream(
+            .create_group_stream(
                 "split_brain_test".to_string(),
                 proven_engine::StreamConfig::default(),
             )

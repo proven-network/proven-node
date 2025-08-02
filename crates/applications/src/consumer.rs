@@ -95,7 +95,7 @@ async fn run_consumer_loop(
 
     // Use streaming API with follow mode for continuous consumption
     let stream = client
-        .stream_messages(event_stream.clone(), start_seq, None)
+        .stream_messages(event_stream.clone(), Some(start_seq))
         .await
         .map_err(|e| Error::Stream(e.to_string()))?;
 

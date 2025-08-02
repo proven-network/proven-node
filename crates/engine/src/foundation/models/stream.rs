@@ -43,10 +43,18 @@ pub enum RetentionPolicy {
 
 impl Default for RetentionPolicy {
     fn default() -> Self {
-        Self::Time {
-            seconds: 7 * 24 * 60 * 60, // 7 days
-        }
+        Self::Forever
     }
+}
+
+/// Actual stream placement after assignment
+/// This represents where the stream is actually placed
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StreamPlacement {
+    /// Stream is in global consensus
+    Global,
+    /// Stream is assigned to a specific group
+    Group(ConsensusGroupId),
 }
 
 /// Stream configuration
@@ -77,11 +85,11 @@ impl Default for StreamConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamInfo {
     /// Stream name
-    pub name: StreamName,
+    pub stream_name: StreamName,
     /// Stream configuration
     pub config: StreamConfig,
-    /// Assigned consensus group
-    pub group_id: ConsensusGroupId,
+    /// Assigned placement
+    pub placement: StreamPlacement,
     /// Creation timestamp
     pub created_at: u64,
 }
@@ -90,7 +98,7 @@ pub struct StreamInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamState {
     /// Stream name
-    pub name: StreamName,
+    pub stream_name: StreamName,
     /// Last sequence number (None if no messages)
     pub last_sequence: Option<LogIndex>,
     /// First sequence (for trimmed streams)

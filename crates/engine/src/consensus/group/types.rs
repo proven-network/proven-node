@@ -22,7 +22,7 @@ pub enum StreamOperation {
     /// Append messages to stream
     Append {
         /// Stream name
-        stream: StreamName,
+        stream_name: StreamName,
         /// Messages to append
         messages: Vec<Message>,
         /// Timestamp assigned by the leader (milliseconds since epoch)
@@ -31,14 +31,14 @@ pub enum StreamOperation {
     /// Trim stream
     Trim {
         /// Stream name
-        stream: StreamName,
+        stream_name: StreamName,
         /// Trim up to this sequence
         up_to_seq: LogIndex,
     },
     /// Delete a specific message from stream
     Delete {
         /// Stream name
-        stream: StreamName,
+        stream_name: StreamName,
         /// Sequence number to delete
         sequence: LogIndex,
     },
@@ -50,12 +50,12 @@ pub enum AdminOperation {
     /// Initialize stream in this group
     InitializeStream {
         /// Stream name
-        stream: StreamName,
+        stream_name: StreamName,
     },
     /// Remove stream from this group
     RemoveStream {
         /// Stream name
-        stream: StreamName,
+        stream_name: StreamName,
     },
     /// Compact storage
     Compact,
@@ -70,7 +70,7 @@ pub enum GroupResponse {
     /// Message appended
     Appended {
         /// Stream name
-        stream: StreamName,
+        stream_name: StreamName,
         /// Assigned sequence number
         sequence: LogIndex,
         /// Pre-serialized entries (not serialized, only for in-memory passing)
@@ -80,14 +80,14 @@ pub enum GroupResponse {
     /// Stream trimmed
     Trimmed {
         /// Stream name
-        stream: StreamName,
+        stream_name: StreamName,
         /// New start sequence
         new_start_seq: LogIndex,
     },
     /// Message deleted
     Deleted {
         /// Stream name
-        stream: StreamName,
+        stream_name: StreamName,
         /// Deleted sequence number
         sequence: LogIndex,
     },

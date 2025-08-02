@@ -27,7 +27,7 @@ async fn test_rocksdb_storage_basic() {
 
     let client = engines[0].client();
     client
-        .create_stream(stream_name.to_string(), stream_config)
+        .create_group_stream(stream_name.to_string(), stream_config)
         .await
         .expect("Failed to create stream");
 
@@ -109,7 +109,7 @@ async fn test_rocksdb_multi_node() {
 
     let client = engines[0].client();
     client
-        .create_stream(stream_name.to_string(), stream_config)
+        .create_group_stream(stream_name.to_string(), stream_config)
         .await
         .expect("Failed to create stream");
 

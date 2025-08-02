@@ -60,23 +60,23 @@ impl GlobalCallbackDispatcher {
         match (request, response) {
             (
                 GlobalRequest::CreateStream {
-                    name,
+                    stream_name,
                     config,
-                    group_id,
+                    placement,
                 },
                 GlobalResponse::StreamCreated { .. },
             ) => {
                 if let Err(e) = self
                     .callbacks
-                    .on_stream_created(name, config, *group_id)
+                    .on_stream_created(stream_name, config, placement)
                     .await
                 {
                     tracing::error!("Stream creation callback failed: {}", e);
                 }
             }
 
-            (GlobalRequest::DeleteStream { name }, GlobalResponse::StreamDeleted { .. }) => {
-                if let Err(e) = self.callbacks.on_stream_deleted(name).await {
+            (GlobalRequest::DeleteStream { stream_name }, GlobalResponse::StreamDeleted { .. }) => {
+                if let Err(e) = self.callbacks.on_stream_deleted(stream_name).await {
                     tracing::error!("Stream deletion callback failed: {}", e);
                 }
             }
@@ -102,8 +102,39 @@ impl GlobalCallbackDispatcher {
                 }
             }
 
+            (
+                GlobalRequest::ReassignStream { stream_name, .. },
+                GlobalResponse::StreamReassigned {
+                    old_placement,
+                    new_placement,
+                    ..
+                },
+            ) => {
+                if let Err(e) = self
+                    .callbacks
+                    .on_stream_reassigned(stream_name, old_placement, new_placement)
+                    .await
+                {
+                    tracing::error!("Stream reassignment callback failed: {}", e);
+                }
+            }
+
+            (
+                GlobalRequest::AppendToGlobalStream { stream_name, .. },
+                GlobalResponse::Appended { entries, .. },
+            ) => {
+                if let Some(entries) = entries
+                    && let Err(e) = self
+                        .callbacks
+                        .on_global_stream_appended(stream_name, entries.clone())
+                        .await
+                {
+                    tracing::error!("Global stream append callback failed: {}", e);
+                }
+            }
+
             _ => {
-                // Other operations don't have callbacks
+                // Other operations don't have callbacks yet
             }
         }
     }

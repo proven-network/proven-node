@@ -57,7 +57,7 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         Ok(())
     }
 
-    async fn on_stream_created(
+    async fn on_group_stream_created(
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
@@ -69,13 +69,13 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
             self.node_id
         );
 
-        // Group consensus doesn't publish stream creation events
-        // That's handled by global consensus
+        // Stream registration is handled by the global consensus callback
+        // which has access to the full stream config and placement info
 
         Ok(())
     }
 
-    async fn on_stream_removed(
+    async fn on_group_stream_removed(
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,
@@ -93,7 +93,7 @@ impl<S: StorageAdaptor + 'static> GroupConsensusCallbacks for GroupConsensusCall
         Ok(())
     }
 
-    async fn on_messages_appended(
+    async fn on_group_stream_appended(
         &self,
         group_id: ConsensusGroupId,
         stream_name: &str,

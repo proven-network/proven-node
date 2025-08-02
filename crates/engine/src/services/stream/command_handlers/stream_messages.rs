@@ -14,8 +14,8 @@ use crate::foundation::{Message, RoutingTable, StreamName};
 use crate::services::stream::commands::StreamMessages;
 use crate::services::stream::internal::registry::StreamRegistry;
 use crate::services::stream::internal::storage::StreamStorageReader;
-use proven_storage::{LogStorageStreaming, StorageNamespace};
-use tokio_stream::StreamExt;
+use proven_storage::{LogStorage, LogStorageStreaming, StorageNamespace};
+use tokio_stream::{Stream, StreamExt};
 
 /// Handler for streaming messages from a stream
 pub struct StreamMessagesHandler<T, G, A, S>
@@ -69,16 +69,24 @@ where
             .await?
         {
             // Check if we're in that group
-            return self
-                .routing_table
-                .is_group_local(stream_route.group_id)
-                .await
-                .map_err(|e| {
-                    Error::with_context(
-                        ErrorKind::Internal,
-                        format!("Failed to check group location: {e}"),
-                    )
-                });
+            match stream_route.placement {
+                crate::foundation::models::stream::StreamPlacement::Group(group_id) => {
+                    return self
+                        .routing_table
+                        .is_group_local(group_id)
+                        .await
+                        .map_err(|e| {
+                            Error::with_context(
+                                ErrorKind::Internal,
+                                format!("Failed to check group location: {e}"),
+                            )
+                        });
+                }
+                crate::foundation::models::stream::StreamPlacement::Global => {
+                    // Global streams exist on all nodes, so we can always serve them locally
+                    return Ok(true);
+                }
+            }
         }
         // If no routing info, assume we can't serve it
         Ok(false)
@@ -104,16 +112,22 @@ where
             })?;
 
         // Get the nodes in the group
+        let group_id = match stream_route.placement {
+            crate::foundation::models::stream::StreamPlacement::Group(group_id) => group_id,
+            crate::foundation::models::stream::StreamPlacement::Global => {
+                return Err(EventError::Internal(
+                    "Cannot proxy global streams through stream service".to_string(),
+                ));
+            }
+        };
+
         let group_route = self
             .routing_table
-            .get_group_route(stream_route.group_id)
+            .get_group_route(group_id)
             .await
             .map_err(|e| EventError::Internal(format!("Failed to get group route: {e}")))?
             .ok_or_else(|| {
-                EventError::Internal(format!(
-                    "Group route not found for group {}",
-                    stream_route.group_id
-                ))
+                EventError::Internal(format!("Group route not found for group {group_id}"))
             })?;
 
         let nodes = group_route.members;
@@ -140,12 +154,8 @@ where
         // Prepare metadata for the stream
         let mut metadata = HashMap::new();
         metadata.insert("stream_name".to_string(), request.stream_name.clone());
-        metadata.insert(
-            "start_sequence".to_string(),
-            request.start_sequence.to_string(),
-        );
-        if let Some(end) = request.end_sequence {
-            metadata.insert("end_sequence".to_string(), end.to_string());
+        if let Some(start) = request.start_sequence {
+            metadata.insert("start_sequence".to_string(), start.to_string());
         }
 
         // Open stream to remote node
@@ -204,8 +214,8 @@ where
         sink: flume::Sender<(Message, u64, u64)>,
     ) -> Result<(), EventError> {
         info!(
-            "Creating streaming session for stream: {} (start: {}, end: {:?})",
-            request.stream_name, request.start_sequence, request.end_sequence
+            "Creating streaming session for stream: {} (start: {:?})",
+            request.stream_name, request.start_sequence
         );
 
         let stream_name = StreamName::new(request.stream_name.clone());
@@ -234,8 +244,8 @@ where
         }
 
         info!(
-            "Starting streaming for {} from sequence {} to {:?}",
-            request.stream_name, request.start_sequence, request.end_sequence
+            "Starting streaming for {} from sequence {:?}",
+            request.stream_name, request.start_sequence
         );
 
         // Get the storage manager and create namespace
@@ -244,18 +254,20 @@ where
 
         // Use the storage's streaming API directly
         let storage = storage_manager.stream_storage();
-        let mut storage_stream = LogStorageStreaming::stream_range(
-            &storage,
-            &namespace,
-            request.start_sequence,
-            request.end_sequence,
-        )
-        .await
-        .map_err(|e| EventError::Internal(format!("Failed to create stream: {e}")))?;
+        let mut storage_stream =
+            LogStorageStreaming::stream_range(&storage, &namespace, request.start_sequence)
+                .await
+                .map_err(|e| EventError::Internal(format!("Failed to create stream: {e}")))?;
 
         // Spawn a task to handle the streaming
         let stream_name = request.stream_name.clone();
+        let start_seq = request.start_sequence;
         tokio::spawn(async move {
+            info!(
+                "Streaming task started for {} from {:?}",
+                stream_name, start_seq
+            );
+            let mut streamed_count = 0;
             // Stream messages to the sink
             while let Some(result) = storage_stream.next().await {
                 match result {
@@ -263,6 +275,11 @@ where
                         // Deserialize the entry
                         match crate::foundation::deserialize_entry(&bytes) {
                             Ok((message, timestamp, sequence)) => {
+                                streamed_count += 1;
+                                debug!(
+                                    "Streaming message {} from stream {} (seq {})",
+                                    streamed_count, stream_name, sequence
+                                );
                                 if sink
                                     .send_async((message, timestamp, sequence))
                                     .await
@@ -270,8 +287,8 @@ where
                                 {
                                     // Client disconnected
                                     debug!(
-                                        "Client disconnected while streaming from {}",
-                                        stream_name
+                                        "Client disconnected while streaming from {} after {} messages",
+                                        stream_name, streamed_count
                                     );
                                     break;
                                 }
@@ -293,7 +310,10 @@ where
                 }
             }
 
-            info!("Streaming completed for {}", stream_name);
+            info!(
+                "Streaming completed for {} - streamed {} messages",
+                stream_name, streamed_count
+            );
         });
 
         // Return immediately, allowing the handler to complete

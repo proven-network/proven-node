@@ -28,8 +28,8 @@ use super::{
     config::{GlobalConsensusConfig, ServiceState},
 };
 use crate::foundation::routing::RoutingTable;
-use crate::foundation::state::access::GlobalStateRead;
-use crate::foundation::{GlobalStateReader, GlobalStateWriter, create_state_access};
+use crate::foundation::state::global_access::GlobalStateRead;
+use crate::foundation::{GlobalStateReader, GlobalStateWriter, create_global_state_access};
 use crate::{
     consensus::global::{GlobalConsensusCallbacks, GlobalConsensusLayer},
     error::{ConsensusResult, Error, ErrorKind},
@@ -116,8 +116,13 @@ where
             }
         }
 
-        let (state_reader, state_writer) = create_state_access();
+        let (state_reader, state_writer) = create_global_state_access();
         *self.global_state.write().await = Some(state_reader.clone());
+
+        // Set global state in routing table
+        self.routing_table
+            .set_global_state(state_reader.clone())
+            .await;
 
         // Create consensus layer early to handle messages
         if self.consensus_layer.read().await.is_none() {
@@ -232,7 +237,12 @@ where
         let _ = self
             .event_bus
             .unregister_request_handler::<UpdateGlobalMembership>();
-        let _ = self.event_bus.unregister_request_handler::<CreateStream>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<CreateGroupStream>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<CreateGlobalStream>();
         let _ = self
             .event_bus
             .unregister_request_handler::<GetGlobalState>();
@@ -530,12 +540,22 @@ where
             .handle_requests::<UpdateGlobalMembership, _>(update_membership_handler)
             .expect("Failed to register UpdateGlobalMembership handler");
 
-        // Register CreateStream handler
-        let create_stream_handler =
-            CreateStreamHandler::new(consensus_layer.clone(), routing_table, event_bus.clone());
+        // Register CreateGroupStream handler
+        let create_group_stream_handler = CreateGroupStreamHandler::new(
+            consensus_layer.clone(),
+            routing_table,
+            event_bus.clone(),
+        );
         event_bus
-            .handle_requests::<CreateStream, _>(create_stream_handler)
-            .expect("Failed to register CreateStream handler");
+            .handle_requests::<CreateGroupStream, _>(create_group_stream_handler)
+            .expect("Failed to register CreateGroupStream handler");
+
+        // Register CreateGlobalStream handler
+        let create_global_stream_handler =
+            CreateGlobalStreamHandler::new(consensus_layer.clone(), event_bus.clone());
+        event_bus
+            .handle_requests::<CreateGlobalStream, _>(create_global_stream_handler)
+            .expect("Failed to register CreateGlobalStream handler");
 
         // Register GetGlobalState handler
         let get_state_handler = GetGlobalStateHandler::new(self.global_state.clone());

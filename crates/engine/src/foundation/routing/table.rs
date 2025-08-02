@@ -1,22 +1,20 @@
 //! Main routing table implementation
 
-use crate::foundation::ConsensusGroupId;
-use dashmap::DashMap;
+use crate::foundation::models::stream::StreamPlacement;
+use crate::foundation::{ConsensusGroupId, GlobalStateRead, GlobalStateReader};
 use proven_topology::NodeId;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use super::types::{GroupLocation, GroupRoute, RoutingDecision, RoutingError, StreamRoute};
 
-/// Thread-safe routing table for managing stream and group routes
+/// Thread-safe routing table that queries GlobalStateReader for all routing decisions
 pub struct RoutingTable {
     /// Local node ID for determining local vs remote
     local_node_id: NodeId,
 
-    /// Stream routes: stream_name -> route info
-    stream_routes: Arc<DashMap<String, StreamRoute>>,
-
-    /// Group routes: group_id -> route info
-    group_routes: Arc<DashMap<ConsensusGroupId, GroupRoute>>,
+    /// Global state reader (late-bound)
+    global_state: Arc<RwLock<Option<GlobalStateReader>>>,
 }
 
 impl RoutingTable {
@@ -24,42 +22,23 @@ impl RoutingTable {
     pub fn new(local_node_id: NodeId) -> Self {
         Self {
             local_node_id,
-            stream_routes: Arc::new(DashMap::new()),
-            group_routes: Arc::new(DashMap::new()),
+            global_state: Arc::new(RwLock::new(None)),
         }
     }
 
-    // Stream route management
-
-    /// Update or insert a stream route
-    pub async fn update_stream_route(
-        &self,
-        stream_name: String,
-        group_id: ConsensusGroupId,
-    ) -> Result<(), RoutingError> {
-        let route = StreamRoute {
-            stream_name: stream_name.clone(),
-            group_id,
-            assigned_at: std::time::SystemTime::now(),
-            is_active: true,
-        };
-
-        self.stream_routes.insert(stream_name, route);
-
-        // Increment stream count for the group
-        self.increment_group_stream_count(group_id).await?;
-
-        Ok(())
+    /// Set the global state reader (called when GlobalConsensusService starts)
+    pub async fn set_global_state(&self, global_state: GlobalStateReader) {
+        *self.global_state.write().await = Some(global_state);
     }
 
-    /// Remove a stream route
-    pub async fn remove_stream_route(&self, stream_name: &str) -> Result<(), RoutingError> {
-        if let Some((_, route)) = self.stream_routes.remove(stream_name) {
-            // Decrement stream count for the group
-            self.decrement_group_stream_count(route.group_id).await?;
-        }
-
-        Ok(())
+    /// Get the global state reader or return error if not initialized
+    async fn require_global_state(&self) -> Result<GlobalStateReader, RoutingError> {
+        self.global_state
+            .read()
+            .await
+            .as_ref()
+            .cloned()
+            .ok_or(RoutingError::NotInitialized)
     }
 
     /// Get a stream route
@@ -67,52 +46,19 @@ impl RoutingTable {
         &self,
         stream_name: &str,
     ) -> Result<Option<StreamRoute>, RoutingError> {
-        Ok(self
-            .stream_routes
-            .get(stream_name)
-            .map(|entry| entry.clone()))
-    }
+        let global_state = self.require_global_state().await?;
+        let stream_name_obj = crate::foundation::StreamName::from(stream_name);
 
-    /// Get all stream routes
-    pub async fn get_all_stream_routes(
-        &self,
-    ) -> Result<std::collections::HashMap<String, StreamRoute>, RoutingError> {
-        let mut routes = std::collections::HashMap::new();
-        for entry in self.stream_routes.iter() {
-            routes.insert(entry.key().clone(), entry.value().clone());
-        }
-        Ok(routes)
-    }
-
-    // Group route management
-
-    /// Update or insert a group route
-    pub async fn update_group_route(
-        &self,
-        group_id: ConsensusGroupId,
-        members: Vec<NodeId>,
-    ) -> Result<(), RoutingError> {
-        // Get existing stream count or default to 0
-        let stream_count = self
-            .group_routes
-            .get(&group_id)
-            .map(|r| r.stream_count)
-            .unwrap_or(0);
-
-        let route = GroupRoute {
-            group_id,
-            members,
-            stream_count,
-        };
-
-        self.group_routes.insert(group_id, route);
-        Ok(())
-    }
-
-    /// Remove a group route
-    pub async fn remove_group_route(&self, group_id: ConsensusGroupId) -> Result<(), RoutingError> {
-        self.group_routes.remove(&group_id);
-        Ok(())
+        Ok(global_state
+            .get_stream(&stream_name_obj)
+            .await
+            .map(|stream_info| StreamRoute {
+                stream_name: stream_name.to_string(),
+                placement: stream_info.placement,
+                assigned_at: std::time::UNIX_EPOCH
+                    + std::time::Duration::from_secs(stream_info.created_at),
+                is_active: true,
+            }))
     }
 
     /// Get a group route
@@ -120,27 +66,36 @@ impl RoutingTable {
         &self,
         group_id: ConsensusGroupId,
     ) -> Result<Option<GroupRoute>, RoutingError> {
-        Ok(self.group_routes.get(&group_id).map(|entry| entry.clone()))
-    }
+        let global_state = self.require_global_state().await?;
 
-    /// Get all group routes
-    pub async fn get_all_group_routes(
-        &self,
-    ) -> Result<std::collections::HashMap<ConsensusGroupId, GroupRoute>, RoutingError> {
-        let mut routes = std::collections::HashMap::new();
-        for entry in self.group_routes.iter() {
-            routes.insert(*entry.key(), entry.value().clone());
+        if let Some(group_info) = global_state.get_group(&group_id).await {
+            // Count streams in this group
+            let all_streams = global_state.get_all_streams().await;
+            let stream_count = all_streams
+                .iter()
+                .filter(|s| matches!(s.placement, StreamPlacement::Group(id) if id == group_id))
+                .count();
+
+            Ok(Some(GroupRoute {
+                group_id,
+                members: group_info.members,
+                stream_count,
+            }))
+        } else {
+            Ok(None)
         }
-        Ok(routes)
     }
 
     // Query methods
 
     /// Check if a group is local to this node
     pub async fn is_group_local(&self, group_id: ConsensusGroupId) -> Result<bool, RoutingError> {
-        self.group_routes
-            .get(&group_id)
-            .map(|route| route.members.contains(&self.local_node_id))
+        let global_state = self.require_global_state().await?;
+
+        global_state
+            .get_group(&group_id)
+            .await
+            .map(|group_info| group_info.members.contains(&self.local_node_id))
             .ok_or(RoutingError::GroupNotFound(group_id))
     }
 
@@ -149,10 +104,13 @@ impl RoutingTable {
         &self,
         group_id: ConsensusGroupId,
     ) -> Result<GroupLocation, RoutingError> {
-        self.group_routes
-            .get(&group_id)
-            .map(|route| {
-                if route.members.contains(&self.local_node_id) {
+        let global_state = self.require_global_state().await?;
+
+        global_state
+            .get_group(&group_id)
+            .await
+            .map(|group_info| {
+                if group_info.members.contains(&self.local_node_id) {
                     GroupLocation::Local
                 } else {
                     GroupLocation::Remote
@@ -163,45 +121,73 @@ impl RoutingTable {
 
     /// Find the least loaded group (local groups preferred)
     pub async fn find_least_loaded_group(&self) -> Option<ConsensusGroupId> {
-        // First try to find a local group with capacity
-        let local_group = self
-            .group_routes
-            .iter()
-            .filter(|entry| entry.value().members.contains(&self.local_node_id))
-            .min_by_key(|entry| entry.value().stream_count)
-            .map(|entry| *entry.key());
+        let global_state = self.require_global_state().await.ok()?;
 
-        if local_group.is_some() {
-            return local_group;
+        let all_groups = global_state.get_all_groups().await;
+        let all_streams = global_state.get_all_streams().await;
+
+        let mut group_stream_counts = Vec::new();
+
+        // Count streams for each group
+        for group in all_groups {
+            let stream_count = all_streams
+                .iter()
+                .filter(|s| matches!(s.placement, StreamPlacement::Group(id) if id == group.id))
+                .count();
+            let is_local = group.members.contains(&self.local_node_id);
+            group_stream_counts.push((group.id, stream_count, is_local));
         }
 
-        // Otherwise find any group with least load
-        self.group_routes
-            .iter()
-            .min_by_key(|entry| entry.value().stream_count)
-            .map(|entry| *entry.key())
+        // Sort by: local first, then by stream count
+        group_stream_counts.sort_by(|a, b| match (a.2, b.2) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.1.cmp(&b.1),
+        });
+
+        group_stream_counts.first().map(|(id, _, _)| *id)
     }
 
     /// Get all streams assigned to a group
     pub async fn get_streams_by_group(&self, group_id: ConsensusGroupId) -> Vec<String> {
-        self.stream_routes
-            .iter()
-            .filter(|entry| entry.value().group_id == group_id)
-            .map(|entry| entry.key().clone())
+        let global_state = match self.require_global_state().await {
+            Ok(state) => state,
+            Err(_) => return Vec::new(),
+        };
+
+        global_state
+            .get_all_streams()
+            .await
+            .into_iter()
+            .filter(
+                |stream| matches!(stream.placement, StreamPlacement::Group(id) if id == group_id),
+            )
+            .map(|stream| stream.stream_name.to_string())
             .collect()
     }
 
-    /// Count streams per group
-    pub async fn count_streams_per_group(
+    /// Get routing decision for a stream
+    pub async fn get_stream_routing(
         &self,
-    ) -> std::collections::HashMap<ConsensusGroupId, usize> {
-        let mut counts = std::collections::HashMap::new();
+        stream_name: &str,
+    ) -> Result<RoutingDecision, RoutingError> {
+        let global_state = self.require_global_state().await?;
+        let stream_name_obj = crate::foundation::StreamName::from(stream_name);
 
-        for entry in self.stream_routes.iter() {
-            *counts.entry(entry.value().group_id).or_insert(0) += 1;
+        if let Some(stream_info) = global_state.get_stream(&stream_name_obj).await {
+            match stream_info.placement {
+                StreamPlacement::Global => Ok(RoutingDecision::Global),
+                StreamPlacement::Group(group_id) => {
+                    // Check if the group is local
+                    match self.get_group_location(group_id).await? {
+                        GroupLocation::Local => Ok(RoutingDecision::Local),
+                        GroupLocation::Remote => Ok(RoutingDecision::Group(group_id)),
+                    }
+                }
+            }
+        } else {
+            Err(RoutingError::StreamNotFound(stream_name.to_string()))
         }
-
-        counts
     }
 
     /// Get routing decision for a stream
@@ -209,99 +195,20 @@ impl RoutingTable {
         &self,
         stream_name: &str,
     ) -> Result<RoutingDecision, RoutingError> {
-        // Check if stream has an assigned route
-        if let Some(route) = self.get_stream_route(stream_name).await?
-            && route.is_active
-        {
-            return Ok(RoutingDecision::Group(route.group_id));
+        // Use the new get_stream_routing method which handles both global and group streams
+        match self.get_stream_routing(stream_name).await {
+            Ok(decision) => Ok(decision),
+            Err(RoutingError::StreamNotFound(_)) => {
+                // Stream doesn't exist yet, find best group for new stream
+                if let Some(group_id) = self.find_least_loaded_group().await {
+                    Ok(RoutingDecision::Group(group_id))
+                } else {
+                    Ok(RoutingDecision::Reject {
+                        reason: "No available groups".to_string(),
+                    })
+                }
+            }
+            Err(e) => Err(e),
         }
-
-        // Find best group for new stream
-        if let Some(group_id) = self.find_least_loaded_group().await {
-            Ok(RoutingDecision::Group(group_id))
-        } else {
-            Ok(RoutingDecision::Reject {
-                reason: "No available groups".to_string(),
-            })
-        }
-    }
-
-    // Private helper methods
-
-    async fn increment_group_stream_count(
-        &self,
-        group_id: ConsensusGroupId,
-    ) -> Result<(), RoutingError> {
-        if let Some(mut route) = self.group_routes.get_mut(&group_id) {
-            route.stream_count += 1;
-        }
-
-        Ok(())
-    }
-
-    async fn decrement_group_stream_count(
-        &self,
-        group_id: ConsensusGroupId,
-    ) -> Result<(), RoutingError> {
-        if let Some(mut route) = self.group_routes.get_mut(&group_id)
-            && route.stream_count > 0
-        {
-            route.stream_count -= 1;
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_group_location() {
-        let local_node = NodeId::from_seed(1);
-        let remote_node = NodeId::from_seed(2);
-        let table = RoutingTable::new(local_node.clone());
-
-        // Add local group
-        table
-            .update_group_route(ConsensusGroupId::new(1), vec![local_node.clone()])
-            .await
-            .unwrap();
-
-        // Add remote group
-        table
-            .update_group_route(ConsensusGroupId::new(2), vec![remote_node.clone()])
-            .await
-            .unwrap();
-
-        // Check locations
-        assert!(
-            table
-                .is_group_local(ConsensusGroupId::new(1))
-                .await
-                .unwrap()
-        );
-        assert!(
-            !table
-                .is_group_local(ConsensusGroupId::new(2))
-                .await
-                .unwrap()
-        );
-
-        assert_eq!(
-            table
-                .get_group_location(ConsensusGroupId::new(1))
-                .await
-                .unwrap(),
-            GroupLocation::Local
-        );
-        assert_eq!(
-            table
-                .get_group_location(ConsensusGroupId::new(2))
-                .await
-                .unwrap(),
-            GroupLocation::Remote
-        );
     }
 }

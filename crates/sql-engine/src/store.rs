@@ -104,7 +104,7 @@ impl SqlStore for SqlEngineStore {
         if !command_stream_exists {
             info!("Creating SQL command stream: {}", command_stream);
             self.client
-                .create_stream(command_stream.clone(), StreamConfig::default())
+                .create_group_stream(command_stream.clone(), StreamConfig::default())
                 .await
                 .map_err(|e| Error::Stream(e.to_string()))?;
         }
@@ -117,7 +117,7 @@ impl SqlStore for SqlEngineStore {
         if !leadership_stream_exists {
             info!("Creating SQL leadership stream: {}", leadership_stream);
             self.client
-                .create_stream(leadership_stream.clone(), StreamConfig::default())
+                .create_group_stream(leadership_stream.clone(), StreamConfig::default())
                 .await
                 .map_err(|e| Error::Stream(e.to_string()))?;
         }

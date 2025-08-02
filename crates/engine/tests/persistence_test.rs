@@ -41,7 +41,7 @@ async fn test_cluster_persistence_across_restarts() {
 
     let client = engines[0].client();
     client
-        .create_stream(stream_name.to_string(), stream_config)
+        .create_group_stream(stream_name.to_string(), stream_config)
         .await
         .expect("Failed to create stream");
 
@@ -178,7 +178,7 @@ async fn test_cluster_persistence_across_restarts() {
 
     let client = engines[0].client();
     client
-        .create_stream(new_stream.to_string(), stream_config)
+        .create_group_stream(new_stream.to_string(), stream_config)
         .await
         .expect("Failed to create new stream after restart");
 
@@ -213,7 +213,7 @@ async fn test_single_node_persistence() {
 
     let client = engines[0].client();
     client
-        .create_stream(stream_name.to_string(), stream_config)
+        .create_group_stream(stream_name.to_string(), stream_config)
         .await
         .expect("Failed to create stream");
 
@@ -309,14 +309,7 @@ async fn test_single_node_persistence() {
     // Now try to read the messages
     use futures::StreamExt;
     use tokio::pin;
-    match client
-        .stream_messages(
-            stream_name.to_string(),
-            LogIndex::new(1).unwrap(),
-            Some(LogIndex::new(21).unwrap()),
-        )
-        .await
-    {
+    match client.stream_messages(stream_name.to_string(), None).await {
         Ok(stream) => {
             pin!(stream);
             let mut messages = Vec::new();

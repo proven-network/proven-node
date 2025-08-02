@@ -150,7 +150,7 @@ async fn test_concurrent_operations() {
 
         let handle = tokio::spawn(async move {
             let config = proven_engine::StreamConfig::default();
-            client.create_stream(stream_name_clone, config).await
+            client.create_group_stream(stream_name_clone, config).await
         });
 
         handles.push((i, stream_name, handle));
@@ -300,7 +300,7 @@ async fn test_large_cluster_formation() {
     // Test that the cluster is functional
     let client = engines[0].client();
     let result = client
-        .create_stream(
+        .create_group_stream(
             "large_cluster_test".to_string(),
             proven_engine::StreamConfig::default(),
         )

@@ -280,20 +280,23 @@ pub trait LogStorageWithDelete: LogStorage {
 /// This trait is optional and allows storage backends to provide optimized streaming
 #[async_trait]
 pub trait LogStorageStreaming: LogStorage {
-    /// Stream entries from a range [start, end)
+    /// Stream entries starting from the given index (or beginning if None)
     ///
     /// Returns a stream of (index, data) pairs. The stream may yield errors inline.
-    /// If end is None, streams until the last available entry.
+    /// The stream continues indefinitely, waiting for new entries when caught up.
+    ///
+    /// If start is None, streaming begins from LogIndex(1).
+    /// For bounded reads, use stream combinators like `.take(n)`.
     ///
     /// Implementations should:
     /// - Use backend-specific optimizations (e.g., RocksDB iterators)
-    /// - Handle concurrent modifications gracefully
+    /// - Handle concurrent modifications gracefully  
     /// - Yield entries in index order
+    /// - Wait for new entries when caught up with the log
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: LogIndex,
-        end: Option<LogIndex>,
+        start: Option<LogIndex>,
     ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>;
 }
 
@@ -384,10 +387,9 @@ impl<T: LogStorageStreaming> LogStorageStreaming for std::sync::Arc<T> {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: LogIndex,
-        end: Option<LogIndex>,
+        start: Option<LogIndex>,
     ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
-        (**self).stream_range(namespace, start, end).await
+        (**self).stream_range(namespace, start).await
     }
 }

@@ -15,10 +15,10 @@ use crate::foundation::models::{GroupMetadata, StreamState, StreamStats};
 /// Group consensus state
 #[derive(Clone)]
 pub struct GroupState {
-    /// Stream states
-    streams: Arc<DashMap<StreamName, StreamState>>,
+    /// Group stream states
+    group_stream_states: Arc<DashMap<StreamName, StreamState>>,
 
-    /// Group metadata - using atomics for lock-free access
+    /// Metadata for group streams - using atomics for lock-free access
     created_at: Arc<AtomicU64>,
     stream_count: Arc<AtomicUsize>,
     total_messages: Arc<AtomicU64>,
@@ -29,7 +29,7 @@ impl GroupState {
     /// Create new group state
     pub fn new() -> Self {
         Self {
-            streams: Arc::new(DashMap::new()),
+            group_stream_states: Arc::new(DashMap::new()),
             created_at: Arc::new(AtomicU64::new(
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -46,14 +46,14 @@ impl GroupState {
 
     /// Initialize a stream
     pub async fn initialize_stream(&self, name: StreamName) -> bool {
-        if self.streams.contains_key(&name) {
+        if self.group_stream_states.contains_key(&name) {
             return false;
         }
 
-        self.streams.insert(
+        self.group_stream_states.insert(
             name.clone(),
             StreamState {
-                name,
+                stream_name: name,
                 last_sequence: None, // No messages yet
                 first_sequence: LogIndex::new(1).unwrap(),
                 stats: StreamStats::default(),
@@ -62,17 +62,17 @@ impl GroupState {
 
         // Update metadata
         self.stream_count
-            .store(self.streams.len(), Ordering::Relaxed);
+            .store(self.group_stream_states.len(), Ordering::Relaxed);
 
         true
     }
 
     /// Remove a stream
     pub async fn remove_stream(&self, name: &StreamName) -> bool {
-        if let Some((_, state)) = self.streams.remove(name) {
+        if let Some((_, state)) = self.group_stream_states.remove(name) {
             // Update metadata
             self.stream_count
-                .store(self.streams.len(), Ordering::Relaxed);
+                .store(self.group_stream_states.len(), Ordering::Relaxed);
             self.total_messages
                 .fetch_sub(state.stats.message_count, Ordering::Relaxed);
             self.total_bytes
@@ -85,7 +85,7 @@ impl GroupState {
     }
 
     /// Append messages to stream and return pre-serialized entries
-    pub async fn append_messages(
+    pub async fn append_to_group_stream(
         &self,
         stream: &StreamName,
         messages: Vec<Message>,
@@ -95,7 +95,7 @@ impl GroupState {
             return Arc::new(vec![]);
         }
 
-        if let Some(mut state) = self.streams.get_mut(stream) {
+        if let Some(mut state) = self.group_stream_states.get_mut(stream) {
             let mut entries = Vec::with_capacity(messages.len());
             // Calculate start sequence - if last_sequence is None (no messages), start at 1
             let start_sequence = match state.last_sequence {
@@ -149,7 +149,7 @@ impl GroupState {
 
     /// Trim stream up to sequence
     pub async fn trim_stream(&self, stream: &StreamName, up_to_seq: LogIndex) -> Option<LogIndex> {
-        if let Some(mut state) = self.streams.get_mut(stream) {
+        if let Some(mut state) = self.group_stream_states.get_mut(stream) {
             // Can only trim if up_to_seq is valid
             if up_to_seq >= state.first_sequence
                 && state.last_sequence.is_some_and(|last| up_to_seq <= last)
@@ -179,7 +179,7 @@ impl GroupState {
         stream: &StreamName,
         sequence: LogIndex,
     ) -> Option<LogIndex> {
-        if let Some(state) = self.streams.get(stream) {
+        if let Some(state) = self.group_stream_states.get(stream) {
             // Validate sequence is valid
             if state.last_sequence.is_none_or(|last| sequence > last) {
                 return None;
@@ -197,12 +197,14 @@ impl GroupState {
 
     /// Get stream state
     pub async fn get_stream(&self, name: &StreamName) -> Option<StreamState> {
-        self.streams.get(name).map(|entry| entry.clone())
+        self.group_stream_states
+            .get(name)
+            .map(|entry| entry.clone())
     }
 
     /// List all streams
     pub async fn list_streams(&self) -> Vec<StreamName> {
-        self.streams
+        self.group_stream_states
             .iter()
             .map(|entry| entry.key().clone())
             .collect()
@@ -220,7 +222,7 @@ impl GroupState {
 
     /// Get stream count
     pub async fn stream_count(&self) -> usize {
-        self.streams.len()
+        self.group_stream_states.len()
     }
 
     /// Get total message count

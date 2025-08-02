@@ -1,6 +1,7 @@
 //! Core types for the routing table
 
 use crate::foundation::ConsensusGroupId;
+use crate::foundation::models::stream::StreamPlacement;
 use proven_topology::NodeId;
 use serde::{Deserialize, Serialize};
 
@@ -25,8 +26,8 @@ pub enum RoutingDecision {
 pub struct StreamRoute {
     /// Stream name
     pub stream_name: String,
-    /// Assigned group
-    pub group_id: ConsensusGroupId,
+    /// Stream placement
+    pub placement: StreamPlacement,
     /// Assignment timestamp
     pub assigned_at: std::time::SystemTime,
     /// Is route active
@@ -56,6 +57,10 @@ pub enum GroupLocation {
 /// Routing errors
 #[derive(Debug, thiserror::Error)]
 pub enum RoutingError {
+    /// Global state not initialized
+    #[error("Global state not initialized - GlobalConsensusService may not be started")]
+    NotInitialized,
+
     /// Group not found
     #[error("Group not found: {0:?}")]
     GroupNotFound(ConsensusGroupId),

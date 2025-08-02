@@ -1,4 +1,4 @@
-//! Handler for CreateStream command
+//! Handler for CreateGroupStream command
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -8,14 +8,15 @@ use tracing::{debug, info};
 use crate::consensus::global::{GlobalConsensusLayer, GlobalRequest, GlobalResponse};
 use crate::foundation::{
     events::{Error as EventError, EventBus, EventMetadata, RequestHandler},
+    models::stream::StreamPlacement,
     routing::RoutingTable,
     types::ConsensusGroupId,
 };
-use crate::services::global_consensus::commands::{CreateStream, SubmitGlobalRequest};
+use crate::services::global_consensus::commands::{CreateGroupStream, SubmitGlobalRequest};
 use proven_storage::LogStorage;
 
-/// Handler for CreateStream command
-pub struct CreateStreamHandler<L>
+/// Handler for CreateGroupStream command
+pub struct CreateGroupStreamHandler<L>
 where
     L: LogStorage,
 {
@@ -24,7 +25,7 @@ where
     event_bus: Arc<EventBus>,
 }
 
-impl<L> CreateStreamHandler<L>
+impl<L> CreateGroupStreamHandler<L>
 where
     L: LogStorage,
 {
@@ -42,17 +43,17 @@ where
 }
 
 #[async_trait]
-impl<L> RequestHandler<CreateStream> for CreateStreamHandler<L>
+impl<L> RequestHandler<CreateGroupStream> for CreateGroupStreamHandler<L>
 where
     L: LogStorage + 'static,
 {
     async fn handle(
         &self,
-        request: CreateStream,
+        request: CreateGroupStream,
         _metadata: EventMetadata,
     ) -> Result<ConsensusGroupId, EventError> {
         info!(
-            "CreateStreamHandler: Creating stream '{}'",
+            "CreateGroupStreamHandler: Creating stream '{}' in group",
             request.stream_name
         );
 
@@ -85,11 +86,11 @@ where
             }
         }
 
-        // Submit the request to global consensus
+        // Submit the request to global consensus with group placement
         let global_request = GlobalRequest::CreateStream {
-            name: request.stream_name.clone(),
+            stream_name: request.stream_name.clone(),
             config: request.config,
-            group_id,
+            placement: StreamPlacement::Group(group_id),
         };
 
         // Use SubmitGlobalRequest which handles leader forwarding
@@ -98,20 +99,41 @@ where
         };
 
         match self.event_bus.request(submit_request).await {
-            Ok(GlobalResponse::StreamCreated { name: _, group_id }) => {
-                info!(
-                    "Stream '{}' created successfully in group {:?}",
-                    request.stream_name, group_id
-                );
-                Ok(group_id)
+            Ok(GlobalResponse::StreamCreated {
+                stream_name: _,
+                placement,
+            }) => {
+                match placement {
+                    StreamPlacement::Group(actual_group_id) => {
+                        info!(
+                            "Stream '{}' created successfully in group {:?}",
+                            request.stream_name, actual_group_id
+                        );
+                        Ok(actual_group_id)
+                    }
+                    StreamPlacement::Global => {
+                        // This shouldn't happen for CreateGroupStream
+                        Err(EventError::Internal(
+                            "Stream was created as global instead of in a group".to_string(),
+                        ))
+                    }
+                }
             }
-            Ok(GlobalResponse::StreamAlreadyExists { name: _, group_id }) => {
-                info!(
-                    "Stream '{}' already exists in group {:?}",
-                    request.stream_name, group_id
-                );
-                Ok(group_id)
-            }
+            Ok(GlobalResponse::StreamAlreadyExists {
+                stream_name: _,
+                placement,
+            }) => match placement {
+                StreamPlacement::Group(existing_group_id) => {
+                    info!(
+                        "Stream '{}' already exists in group {:?}",
+                        request.stream_name, existing_group_id
+                    );
+                    Ok(existing_group_id)
+                }
+                StreamPlacement::Global => Err(EventError::Internal(
+                    "Stream already exists as a global stream".to_string(),
+                )),
+            },
             Ok(GlobalResponse::Error { message }) => Err(EventError::Internal(format!(
                 "Failed to create stream: {message}"
             ))),

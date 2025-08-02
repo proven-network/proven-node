@@ -9,9 +9,7 @@ use crate::foundation::{
     GlobalStateRead, GlobalStateReader,
     events::{Error as EventError, EventMetadata, RequestHandler},
 };
-use crate::services::global_consensus::commands::{
-    GetGlobalState, GlobalStateSnapshot, GroupSnapshot, StreamSnapshot,
-};
+use crate::services::global_consensus::commands::GetGlobalState;
 
 /// Handler for GetGlobalState command
 pub struct GetGlobalStateHandler {
@@ -30,7 +28,7 @@ impl RequestHandler<GetGlobalState> for GetGlobalStateHandler {
         &self,
         _request: GetGlobalState,
         _metadata: EventMetadata,
-    ) -> Result<GlobalStateSnapshot, EventError> {
+    ) -> Result<GlobalStateReader, EventError> {
         debug!("GetGlobalStateHandler: Getting global state");
 
         // Check if global state is initialized
@@ -39,30 +37,6 @@ impl RequestHandler<GetGlobalState> for GetGlobalStateHandler {
             .as_ref()
             .ok_or_else(|| EventError::Internal("Global state not initialized".to_string()))?;
 
-        // Get all groups
-        let groups = state.get_all_groups().await;
-        let group_snapshots: Vec<GroupSnapshot> = groups
-            .into_iter()
-            .map(|info| GroupSnapshot {
-                group_id: info.id,
-                members: info.members,
-            })
-            .collect();
-
-        // Get all streams
-        let streams = state.get_all_streams().await;
-        let stream_snapshots: Vec<StreamSnapshot> = streams
-            .into_iter()
-            .map(|info| StreamSnapshot {
-                stream_name: info.name,
-                config: info.config,
-                group_id: info.group_id,
-            })
-            .collect();
-
-        Ok(GlobalStateSnapshot {
-            groups: group_snapshots,
-            streams: stream_snapshots,
-        })
+        Ok(state.clone())
     }
 }

@@ -2,7 +2,8 @@
 
 pub mod add_node_to_consensus;
 pub mod add_node_to_group;
-pub mod create_stream;
+pub mod create_global_stream;
+pub mod create_group_stream;
 pub mod get_global_consensus_members;
 pub mod get_global_leader;
 pub mod get_global_state;
@@ -13,7 +14,8 @@ pub mod update_global_membership;
 
 pub use add_node_to_consensus::AddNodeToConsensusHandler;
 pub use add_node_to_group::AddNodeToGroupHandler;
-pub use create_stream::CreateStreamHandler;
+pub use create_global_stream::CreateGlobalStreamHandler;
+pub use create_group_stream::CreateGroupStreamHandler;
 pub use get_global_consensus_members::GetGlobalConsensusMembersHandler;
 pub use get_global_leader::GetGlobalLeaderHandler;
 pub use get_global_state::GetGlobalStateHandler;

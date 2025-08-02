@@ -168,7 +168,7 @@ async fn test_global_consensus_expansion() {
 
     let client = engines[0].client();
     client
-        .create_stream(stream_name.to_string(), stream_config)
+        .create_group_stream(stream_name.to_string(), stream_config)
         .await
         .expect("Failed to create stream");
 

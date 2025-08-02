@@ -73,7 +73,7 @@ impl GroupCallbackDispatcher {
         // Dispatch based on request type and response
         match (request, response) {
             (
-                GroupRequest::Stream(StreamOperation::Append { stream, .. }),
+                GroupRequest::Stream(StreamOperation::Append { stream_name, .. }),
                 GroupResponse::Appended { entries, .. },
             ) => {
                 let entries = entries
@@ -83,12 +83,12 @@ impl GroupCallbackDispatcher {
                 tracing::info!(
                     "Dispatching on_messages_appended callback for {} entries to stream {}",
                     entries.len(),
-                    stream,
+                    stream_name,
                 );
 
                 if let Err(e) = self
                     .callbacks
-                    .on_messages_appended(group_id, stream.as_str(), entries.clone())
+                    .on_group_stream_appended(group_id, stream_name.as_str(), entries.clone())
                     .await
                 {
                     tracing::error!("Messages append callback failed: {}", e);
@@ -96,12 +96,12 @@ impl GroupCallbackDispatcher {
             }
 
             (
-                GroupRequest::Admin(AdminOperation::InitializeStream { stream }),
+                GroupRequest::Admin(AdminOperation::InitializeStream { stream_name }),
                 GroupResponse::Success,
             ) => {
                 if let Err(e) = self
                     .callbacks
-                    .on_stream_created(group_id, stream.as_str())
+                    .on_group_stream_created(group_id, stream_name.as_str())
                     .await
                 {
                     tracing::error!("Stream creation callback failed: {}", e);
@@ -109,12 +109,12 @@ impl GroupCallbackDispatcher {
             }
 
             (
-                GroupRequest::Admin(AdminOperation::RemoveStream { stream }),
+                GroupRequest::Admin(AdminOperation::RemoveStream { stream_name }),
                 GroupResponse::Success,
             ) => {
                 if let Err(e) = self
                     .callbacks
-                    .on_stream_removed(group_id, stream.as_str())
+                    .on_group_stream_removed(group_id, stream_name.as_str())
                     .await
                 {
                     tracing::error!("Stream removal callback failed: {}", e);

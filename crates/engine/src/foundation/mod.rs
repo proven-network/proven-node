@@ -30,7 +30,7 @@ pub use routing::{GroupLocation, GroupRoute, RoutingDecision, RoutingTable, Stre
 pub use state::{
     GlobalState, GlobalStateRead, GlobalStateReader, GlobalStateWrite, GlobalStateWriter,
     GroupState, GroupStateRead, GroupStateReader, GroupStateWrite, GroupStateWriter,
-    create_group_state_access, create_state_access,
+    create_global_state_access, create_group_state_access,
 };
 
 // From traits

@@ -125,14 +125,18 @@ impl GroupOperationHandler {
     ) -> ConsensusResult<GroupResponse> {
         match operation {
             StreamOperation::Append {
-                stream,
+                stream_name,
                 messages,
                 timestamp,
             } => {
                 // Check if stream exists and get its current state
-                let initial_last_seq = match self.state.get_stream(&stream).await {
+                let initial_last_seq = match self.state.get_stream(&stream_name).await {
                     Some(state) => state.last_sequence,
-                    None => return Ok(GroupResponse::error(format!("Stream {stream} not found"))),
+                    _ => {
+                        return Ok(GroupResponse::error(format!(
+                            "Stream {stream_name} not found"
+                        )));
+                    }
                 };
 
                 let message_count = messages.len() as u64;
@@ -140,7 +144,7 @@ impl GroupOperationHandler {
                 // Append messages - returns pre-serialized entries
                 let entries = self
                     .state
-                    .append_messages(&stream, messages, timestamp)
+                    .append_to_group_stream(&stream_name, messages, timestamp)
                     .await;
 
                 // Calculate the last sequence number after appending
@@ -151,38 +155,48 @@ impl GroupOperationHandler {
                 };
 
                 Ok(GroupResponse::Appended {
-                    stream,
+                    stream_name,
                     sequence: last_seq,
                     entries: Some(entries),
                 })
             }
 
-            StreamOperation::Trim { stream, up_to_seq } => {
-                if let Some(new_start_seq) = self.state.trim_stream(&stream, up_to_seq).await {
+            StreamOperation::Trim {
+                stream_name,
+                up_to_seq,
+            } => {
+                if let Some(new_start_seq) = self.state.trim_stream(&stream_name, up_to_seq).await {
                     Ok(GroupResponse::Trimmed {
-                        stream,
+                        stream_name,
                         new_start_seq,
                     })
                 } else {
-                    Ok(GroupResponse::error(format!("Stream {stream} not found")))
+                    Ok(GroupResponse::error(format!(
+                        "Stream {stream_name} not found"
+                    )))
                 }
             }
 
-            StreamOperation::Delete { stream, sequence } => {
+            StreamOperation::Delete {
+                stream_name,
+                sequence,
+            } => {
                 // Check if stream exists
-                if self.state.get_stream(&stream).await.is_none() {
-                    return Ok(GroupResponse::error(format!("Stream {stream} not found")));
+                if self.state.get_stream(&stream_name).await.is_none() {
+                    return Ok(GroupResponse::error(format!(
+                        "Stream {stream_name} not found"
+                    )));
                 }
 
                 // Delete the message
-                if let Some(deleted_seq) = self.state.delete_message(&stream, sequence).await {
+                if let Some(deleted_seq) = self.state.delete_message(&stream_name, sequence).await {
                     Ok(GroupResponse::Deleted {
-                        stream,
+                        stream_name,
                         sequence: deleted_seq,
                     })
                 } else {
                     Ok(GroupResponse::error(format!(
-                        "Failed to delete message at sequence {sequence} from stream {stream}"
+                        "Failed to delete message at sequence {sequence} from stream {stream_name}"
                     )))
                 }
             }
@@ -196,21 +210,23 @@ impl GroupOperationHandler {
         _is_replay: bool,
     ) -> ConsensusResult<GroupResponse> {
         match operation {
-            AdminOperation::InitializeStream { stream } => {
-                if self.state.initialize_stream(stream.clone()).await {
+            AdminOperation::InitializeStream { stream_name } => {
+                if self.state.initialize_stream(stream_name.clone()).await {
                     Ok(GroupResponse::success())
                 } else {
                     Ok(GroupResponse::error(format!(
-                        "Stream {stream} already exists"
+                        "Stream {stream_name} already exists"
                     )))
                 }
             }
 
-            AdminOperation::RemoveStream { stream } => {
-                if self.state.remove_stream(&stream).await {
+            AdminOperation::RemoveStream { stream_name } => {
+                if self.state.remove_stream(&stream_name).await {
                     Ok(GroupResponse::success())
                 } else {
-                    Ok(GroupResponse::error(format!("Stream {stream} not found")))
+                    Ok(GroupResponse::error(format!(
+                        "Stream {stream_name} not found"
+                    )))
                 }
             }
 

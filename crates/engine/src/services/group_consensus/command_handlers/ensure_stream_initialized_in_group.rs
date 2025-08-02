@@ -87,7 +87,7 @@ where
 
         // Create the group request to initialize the stream
         let group_request = GroupRequest::Admin(AdminOperation::InitializeStream {
-            stream: request.stream_name.clone(),
+            stream_name: request.stream_name.clone(),
         });
 
         // Use SubmitToGroup which handles leader forwarding properly

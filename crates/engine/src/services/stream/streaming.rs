@@ -62,22 +62,15 @@ where
             })?
             .clone();
 
+        // If no start_sequence provided, start from beginning
         let start_sequence = metadata
             .get("start_sequence")
-            .and_then(|s| s.parse::<u64>().ok())
-            .and_then(LogIndex::new)
-            .ok_or_else(|| {
-                proven_network::NetworkError::InvalidMessage("Invalid start_sequence".to_string())
-            })?;
-
-        let end_sequence = metadata
-            .get("end_sequence")
             .and_then(|s| s.parse::<u64>().ok())
             .and_then(LogIndex::new);
 
         debug!(
-            "Creating local stream for {} from {} to {:?}",
-            stream_name, start_sequence, end_sequence
+            "Creating local stream for {} from {:?}",
+            stream_name, start_sequence
         );
 
         // Check if stream exists
@@ -97,7 +90,6 @@ where
             &storage,
             &namespace,
             start_sequence,
-            end_sequence,
         )
         .await
         {

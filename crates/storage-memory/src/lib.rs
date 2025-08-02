@@ -342,8 +342,7 @@ impl proven_storage::LogStorageStreaming for MemoryStorage {
     async fn stream_range(
         &self,
         namespace: &StorageNamespace,
-        start: LogIndex,
-        end: Option<LogIndex>,
+        start: Option<LogIndex>,
     ) -> StorageResult<Box<dyn Stream<Item = StorageResult<(LogIndex, Bytes)>> + Send + Unpin>>
     {
         let logs = self.logs.clone();
@@ -363,7 +362,8 @@ impl proven_storage::LogStorageStreaming for MemoryStorage {
 
         // Create the stream using async_stream
         let stream = async_stream::stream! {
-            let mut current_start = start;
+            // Default to LogIndex(1) if no start is provided
+            let mut current_start = start.unwrap_or_else(|| LogIndex::new(1).unwrap());
 
             loop {
                 // Read current entries
@@ -371,29 +371,12 @@ impl proven_storage::LogStorageStreaming for MemoryStorage {
                 let mut found_any = false;
 
                 if let Some(btree) = logs_guard.get(&namespace_clone) {
-                    let range: Vec<(LogIndex, Bytes)> = match end {
-                        Some(end_idx) => {
-                            tracing::debug!("Reading bounded range [{:?}, {:?}) from namespace {:?}",
-                                         current_start, end_idx, namespace_clone);
-                            btree
-                                .range(current_start..end_idx)
-                                .map(|(&idx, data)| (idx, data.clone()))
-                                .collect()
-                        },
-                        None => btree
-                            .range(current_start..)
-                            .map(|(&idx, data)| (idx, data.clone()))
-                            .collect(),
-                    };
+                    let range: Vec<(LogIndex, Bytes)> = btree
+                        .range(current_start..)
+                        .map(|(&idx, data)| (idx, data.clone()))
+                        .collect();
 
                     for (index, data) in range {
-                        // Check if we've reached the end bound
-                        if let Some(end_idx) = end
-                            && index >= end_idx {
-                                // We've reached the explicit end bound, stop streaming
-                                return;
-                            }
-
                         found_any = true;
                         current_start = index.next(); // Update for next iteration
                         yield Ok((index, data));
@@ -401,17 +384,8 @@ impl proven_storage::LogStorageStreaming for MemoryStorage {
                 }
                 drop(logs_guard);
 
-                // If we have an explicit end bound, we're done after reading all entries
-                if end.is_some() {
-                    // Debug: log when we exit due to end bound
-                    tracing::debug!("Exiting stream_range for namespace {:?} with end bound {:?} at current_start {:?}",
-                                   namespace_clone, end, current_start);
-                    return;
-                }
-
-                // In follow mode (no end bound), wait for new entries if we haven't found any
+                // Wait for new entries if we haven't found any
                 if !found_any {
-                    // Wait for notification of new entries
                     match notifier_rx.recv().await {
                         Ok(()) => {
                             // New entries in our namespace, continue reading
@@ -614,23 +588,8 @@ mod tests {
         ]);
         storage.append(&namespace, entries).await.unwrap();
 
-        // Test streaming with end bound
-        let mut stream = storage
-            .stream_range(&namespace, nz(2), Some(nz(4)))
-            .await
-            .unwrap();
-
-        let mut results = Vec::new();
-        while let Some(item) = stream.next().await {
-            results.push(item.unwrap());
-        }
-
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0], (nz(2), Bytes::from("data 2")));
-        assert_eq!(results[1], (nz(3), Bytes::from("data 3")));
-
         // Test streaming without end bound - use take() since stream stays open
-        let mut stream = storage.stream_range(&namespace, nz(3), None).await.unwrap();
+        let mut stream = storage.stream_range(&namespace, Some(nz(3))).await.unwrap();
 
         let mut results = Vec::new();
         // Take exactly 3 items since we know there are 3 entries from index 3 onwards
@@ -649,7 +608,7 @@ mod tests {
 
         // Test streaming empty namespace with timeout
         let empty_ns = StorageNamespace::new("empty");
-        let mut stream = storage.stream_range(&empty_ns, nz(1), None).await.unwrap();
+        let mut stream = storage.stream_range(&empty_ns, Some(nz(1))).await.unwrap();
 
         // Use timeout since empty stream will wait forever
         let result =

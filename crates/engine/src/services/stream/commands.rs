@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use crate::foundation::events::{Request, StreamRequest};
 use crate::foundation::types::{ConsensusGroupId, StreamName};
-use crate::foundation::{Message, StreamConfig};
+use crate::foundation::{Message, StreamConfig, StreamInfo};
 
 /// Persist messages to a stream (from group consensus)
 #[derive(Debug, Clone)]
@@ -74,8 +74,7 @@ impl Request for DeleteStream {
 #[derive(Debug, Clone)]
 pub struct StreamMessages {
     pub stream_name: String,
-    pub start_sequence: LogIndex,
-    pub end_sequence: Option<LogIndex>,
+    pub start_sequence: Option<LogIndex>, // None = start from beginning
 }
 
 impl StreamRequest for StreamMessages {
@@ -87,5 +86,26 @@ impl StreamRequest for StreamMessages {
 
     fn default_timeout() -> Duration {
         Duration::from_secs(300) // 5 minutes for long streams
+    }
+}
+
+/// Register a stream that was created through consensus
+/// This is used when other nodes learn about a stream through consensus callbacks
+#[derive(Debug, Clone)]
+pub struct RegisterStream {
+    pub stream_name: StreamName,
+    pub config: StreamConfig,
+    pub placement: crate::foundation::models::stream::StreamPlacement,
+}
+
+impl Request for RegisterStream {
+    type Response = ();
+
+    fn request_type() -> &'static str {
+        "RegisterStream"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(5)
     }
 }
