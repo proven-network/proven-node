@@ -246,6 +246,9 @@ where
         let _ = self
             .event_bus
             .unregister_request_handler::<GetGlobalState>();
+        let _ = self
+            .event_bus
+            .unregister_request_handler::<GetGlobalStreamState>();
 
         tracing::debug!("GlobalConsensusService stop completed");
         Ok(())
@@ -562,5 +565,12 @@ where
         event_bus
             .handle_requests::<GetGlobalState, _>(get_state_handler)
             .expect("Failed to register GetGlobalState handler");
+
+        // Register GetGlobalStreamState handler
+        let get_global_stream_state_handler =
+            GetGlobalStreamStateHandler::new(self.global_state.clone());
+        event_bus
+            .handle_requests::<GetGlobalStreamState, _>(get_global_stream_state_handler)
+            .expect("Failed to register GetGlobalStreamState handler");
     }
 }

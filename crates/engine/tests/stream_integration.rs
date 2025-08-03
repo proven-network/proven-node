@@ -985,6 +985,23 @@ async fn test_global_stream() {
     );
     println!("Verified total of {final_count} messages in global stream");
 
+    // Test getting stream state
+    println!("\nTesting stream state retrieval for global stream");
+    let stream_state = client
+        .get_stream_state(&stream_name)
+        .await
+        .expect("Failed to get stream state")
+        .expect("Stream state should exist");
+
+    println!("Stream state: {stream_state:?}");
+    assert_eq!(stream_state.stream_name.as_str(), &stream_name);
+    assert_eq!(
+        stream_state.last_sequence,
+        Some(LogIndex::new(total_messages).unwrap())
+    );
+    assert_eq!(stream_state.stats.message_count, total_messages);
+    assert!(stream_state.stats.total_bytes > 0);
+
     // Clean up
     println!("Global stream test completed successfully!");
     for mut engine in engines {

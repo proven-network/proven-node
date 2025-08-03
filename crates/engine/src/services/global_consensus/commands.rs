@@ -261,3 +261,21 @@ impl Request for SubmitGlobalRequest {
         Duration::from_secs(30)
     }
 }
+
+/// Get stream state for a global stream
+#[derive(Debug, Clone)]
+pub struct GetGlobalStreamState {
+    pub stream_name: StreamName,
+}
+
+impl Request for GetGlobalStreamState {
+    type Response = Option<crate::foundation::models::stream::StreamState>;
+
+    fn request_type() -> &'static str {
+        "GetGlobalStreamState"
+    }
+
+    fn default_timeout() -> Duration {
+        Duration::from_secs(10)
+    }
+}

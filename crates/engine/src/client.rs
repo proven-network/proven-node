@@ -334,18 +334,31 @@ impl Client {
             )
         })?;
 
-        if let StreamPlacement::Group(group_id) = stream_info.placement {
-            // Query the group consensus for stream state
-            let cmd = group_commands::GetStreamState {
-                group_id,
-                stream_name: StreamName::from(stream_name),
-            };
+        match stream_info.placement {
+            StreamPlacement::Group(group_id) => {
+                // Query the group consensus for stream state
+                let cmd = group_commands::GetStreamState {
+                    group_id,
+                    stream_name: StreamName::from(stream_name),
+                };
 
-            self.event_bus.request(cmd).await.map_err(|e| {
-                Error::with_context(ErrorKind::Service, format!("Get stream state failed: {e}"))
-            })
-        } else {
-            todo!("Need to add global stream states")
+                self.event_bus.request(cmd).await.map_err(|e| {
+                    Error::with_context(ErrorKind::Service, format!("Get stream state failed: {e}"))
+                })
+            }
+            StreamPlacement::Global => {
+                // Query the global consensus for stream state
+                let cmd = global_commands::GetGlobalStreamState {
+                    stream_name: StreamName::from(stream_name),
+                };
+
+                self.event_bus.request(cmd).await.map_err(|e| {
+                    Error::with_context(
+                        ErrorKind::Service,
+                        format!("Get global stream state failed: {e}"),
+                    )
+                })
+            }
         }
     }
 
