@@ -39,7 +39,6 @@ pub struct EventBusBuilder {
     per_type_configs: HashMap<TypeId, ChannelConfig>,
     worker_threads: usize,
     enable_metrics: bool,
-    enable_persistence: bool,
     shutdown_timeout: Duration,
 }
 
@@ -50,7 +49,6 @@ impl Default for EventBusBuilder {
             per_type_configs: HashMap::new(),
             worker_threads: num_cpus::get(),
             enable_metrics: true,
-            enable_persistence: false,
             shutdown_timeout: Duration::from_secs(30),
         }
     }

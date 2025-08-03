@@ -3,28 +3,24 @@
 //! This service manages stream storage and provides stream operations following
 //! the established service patterns in the consensus engine.
 
-use std::pin::Pin;
 use std::sync::Arc;
 
 use dashmap::DashMap;
 use proven_attestation::Attestor;
 use proven_network::NetworkManager;
-use proven_storage::{
-    LogIndex, LogStorage, StorageAdaptor, StorageManager, StorageNamespace, StreamStorage,
-};
+use proven_storage::{StorageAdaptor, StorageManager};
 use proven_topology::{NodeId, TopologyAdaptor};
 use proven_transport::Transport;
 use tokio::sync::{RwLock, oneshot};
-use tokio_stream::{Stream, StreamExt};
 use tracing::{info, warn};
 
 use crate::error::{ConsensusResult, Error, ErrorKind};
 use crate::foundation::events::EventBus;
 use crate::foundation::{
-    Message, PersistenceType, RoutingTable, StreamConfig, StreamName, traits::ServiceLifecycle,
+    PersistenceType, RoutingTable, StreamConfig, StreamName, traits::ServiceLifecycle,
 };
 use crate::services::stream::internal::registry::StreamRegistry;
-use crate::services::stream::internal::storage::{StreamStorageImpl, StreamStorageReader};
+use crate::services::stream::internal::storage::StreamStorageImpl;
 
 /// Type alias for stream storage map
 type StreamStorageMap<S> =
@@ -118,170 +114,26 @@ where
         }
     }
 
-    /// Get stream storage for reading
-    pub async fn get_stream(
-        &self,
-        stream_name: &StreamName,
-    ) -> Option<Arc<StreamStorageImpl<StreamStorage<S>>>> {
-        // First check if we have it in memory
-        if let Some(storage) = self.streams.get(stream_name) {
-            return Some(storage.clone());
-        }
-
-        // Get stream config to determine persistence type
-        let persistence_type = self
-            .stream_configs
-            .get(stream_name)
-            .map(|entry| entry.persistence_type);
-
-        // For persistent streams (or if we don't know the type), try to create storage on demand
-        match persistence_type {
-            Some(PersistenceType::Persistent) | None => {
-                // Try to access the storage - if the stream exists in storage, we can read from it
-                let namespace =
-                    proven_storage::StorageNamespace::new(format!("stream_{stream_name}"));
-
-                // Check if there's any data in this namespace
-                let stream_storage = self.storage_manager.stream_storage();
-                match stream_storage.bounds(&namespace).await {
-                    Ok(Some(_)) => {
-                        // Stream exists in storage, create the storage wrapper
-                        let storage = Arc::new(StreamStorageImpl::persistent(
-                            stream_name.clone(),
-                            self.storage_manager.stream_storage(),
-                            namespace,
-                        ));
-
-                        // Store it for future use
-                        self.streams.insert(stream_name.clone(), storage.clone());
-
-                        Some(storage)
-                    }
-                    _ => {
-                        // No data found in storage
-                        None
-                    }
-                }
-            }
-            Some(PersistenceType::Ephemeral) => {
-                // Ephemeral streams don't persist, so return None if not in memory
-                None
-            }
-        }
-    }
-
-    /// Get stream configuration
-    pub async fn get_stream_config(&self, stream_name: &StreamName) -> Option<StreamConfig> {
-        self.stream_configs
-            .get(stream_name)
-            .map(|entry| entry.clone())
-    }
-
-    /// Read messages from a stream
-    pub async fn read_messages(
-        &self,
-        stream_name: &str,
-        start_sequence: LogIndex,
-        count: LogIndex,
-    ) -> ConsensusResult<Vec<Message>> {
-        let stream_name = StreamName::new(stream_name);
-
-        // Try to get the stream storage (which will check persistent storage)
-        if let Some(stream_storage) = self.get_stream(&stream_name).await {
-            // Read the requested range
-            let end_sequence = LogIndex::new(start_sequence.get().saturating_add(count.get()))
-                .unwrap_or(start_sequence);
-            return stream_storage
-                .read_range(start_sequence, end_sequence)
-                .await
-                .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()));
-        }
-
-        // If get_stream returned None, the stream doesn't exist
-        Err(Error::with_context(
-            ErrorKind::NotFound,
-            format!("Stream {stream_name} not found"),
-        ))
-    }
-
-    /// Stream messages from a stream
-    ///
-    /// Returns a stream of messages starting from the given sequence.
-    /// The stream continues indefinitely, waiting for new messages.
-    pub async fn stream_messages(
-        &self,
-        stream_name: &str,
-        start_sequence: Option<LogIndex>,
-    ) -> ConsensusResult<Pin<Box<dyn Stream<Item = ConsensusResult<(Message, u64, u64)>> + Send>>>
-    {
-        let stream_name_str = stream_name.to_string();
-
-        // Use proven_storage::LogStorageStreaming directly
-        let namespace = StorageNamespace::new(format!("stream_{stream_name_str}"));
-        let stream_storage = self.storage_manager.stream_storage();
-
-        let storage_stream = proven_storage::LogStorageStreaming::stream_range(
-            &stream_storage,
-            &namespace,
-            start_sequence,
-        )
-        .await
-        .map_err(|e| {
-            Error::with_context(ErrorKind::Storage, format!("Failed to create stream: {e}"))
-        })?;
-
-        // Convert storage stream to (Message, timestamp, sequence) stream
-        let mapped_stream = storage_stream.map(move |result| {
-            result
-                .and_then(
-                    |(_seq, bytes)| match crate::foundation::deserialize_entry(&bytes) {
-                        Ok((message, timestamp, sequence)) => Ok((message, timestamp, sequence)),
-                        Err(e) => Err(proven_storage::StorageError::InvalidValue(e.to_string())),
-                    },
-                )
-                .map_err(|e| Error::with_context(ErrorKind::Storage, e.to_string()))
-        });
-
-        Ok(Box::pin(mapped_stream))
-    }
-
-    /// Read messages in a range
-    pub async fn read_range(
-        &self,
-        stream_name: &StreamName,
-        start: LogIndex,
-        end: LogIndex,
-    ) -> ConsensusResult<Vec<Message>> {
-        // Read messages and convert to MessageData
-        let count = LogIndex::new(end.get().saturating_sub(start.get()))
-            .unwrap_or(LogIndex::new(1).unwrap());
-        let messages = self
-            .read_messages(stream_name.as_str(), start, count)
-            .await?;
-        Ok(messages)
-    }
-
-    /// Read messages from a start sequence as a stream
-    pub async fn read_from(
-        &self,
-        stream_name: &StreamName,
-        start: LogIndex,
-    ) -> ConsensusResult<Pin<Box<dyn Stream<Item = (Message, u64, u64)> + Send>>> {
-        // Use stream_messages
-        let stream = self
-            .stream_messages(stream_name.as_str(), Some(start))
-            .await?;
-        let mapped_stream =
-            futures::StreamExt::filter_map(stream, |result| futures::future::ready(result.ok()));
-        Ok(Box::pin(mapped_stream))
-    }
-
     /// Register message handlers for network communication
     async fn register_message_handlers(&self) -> ConsensusResult<()> {
         if let Some(network_manager) = &self.network_manager {
             use super::handler::StreamHandler;
+            use super::internal::registry::StreamRegistry;
 
-            let handler = StreamHandler::new(Arc::new(self.clone()));
+            // Create a stream registry for the handler
+            let stream_registry = Arc::new(StreamRegistry::new(
+                self.streams.clone(),
+                self.stream_configs.clone(),
+                self.storage_manager.clone(),
+            ));
+
+            // Create handler with specific dependencies
+            let handler = StreamHandler::new(
+                stream_registry,
+                self.routing_table.as_ref().unwrap().clone(),
+                self.storage_manager.clone(),
+            );
+
             network_manager
                 .register_service(handler)
                 .await
@@ -294,33 +146,6 @@ where
         }
 
         Ok(())
-    }
-
-    /// Check if a stream can be served locally (we're in the group that owns it)
-    pub async fn can_serve_stream(&self, stream_name: &StreamName) -> ConsensusResult<bool> {
-        // Get stream's group from routing table
-        if let Some(routing_table) = &self.routing_table
-            && let Ok(Some(stream_route)) =
-                routing_table.get_stream_route(stream_name.as_str()).await
-        {
-            // Check if we're in that group
-            match stream_route.placement {
-                crate::foundation::models::stream::StreamPlacement::Group(group_id) => {
-                    return routing_table.is_group_local(group_id).await.map_err(|e| {
-                        Error::with_context(
-                            ErrorKind::Internal,
-                            format!("Failed to check group location: {e}"),
-                        )
-                    });
-                }
-                crate::foundation::models::stream::StreamPlacement::Global => {
-                    // Global streams exist on all nodes, so we can always serve them locally
-                    return Ok(true);
-                }
-            }
-        }
-        // If no routing info, assume we can't serve it
-        Ok(false)
     }
 }
 

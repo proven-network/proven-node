@@ -8,13 +8,12 @@ use bytes::Bytes;
 use proven_network::{NetworkResult, Stream, StreamingService};
 use proven_storage::{LogIndex, StorageAdaptor};
 use proven_topology::NodeId;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
 use tracing::{debug, error, info};
 
-use crate::foundation::{Message, StreamName};
+use crate::foundation::StreamName;
 use crate::services::stream::internal::registry::StreamRegistry;
 
 /// Stream messages streaming service for handling remote stream requests

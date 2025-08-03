@@ -29,7 +29,7 @@ use crate::{
     services::{
         global_consensus::commands as global_commands,
         group_consensus::commands as group_commands,
-        pubsub::{PublishMessage, Subscribe, commands::HasResponders, types::PubSubError},
+        pubsub::{PublishMessage, Subscribe, commands::HasResponders},
         stream::commands as stream_commands,
     },
 };

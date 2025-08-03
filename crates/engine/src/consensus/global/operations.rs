@@ -4,7 +4,6 @@
 //! and their handlers.
 
 use async_trait::async_trait;
-use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ConsensusResult;

@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use crate::foundation::events::{Request, StreamRequest};
 use crate::foundation::types::{ConsensusGroupId, StreamName};
-use crate::foundation::{Message, StreamConfig, StreamInfo};
+use crate::foundation::{Message, StreamConfig};
 
 /// Persist messages to a stream (from group consensus)
 #[derive(Debug, Clone)]
