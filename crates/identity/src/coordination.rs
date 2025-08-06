@@ -115,6 +115,15 @@ impl LeadershipCoordinator {
         state.is_leader
     }
 
+    /// Check if there is currently a valid leader in the cluster.
+    pub async fn has_leader(&self) -> bool {
+        let state = self.state.read().await;
+        state
+            .current_lease
+            .as_ref()
+            .is_some_and(LeadershipLease::is_valid)
+    }
+
     /// Start background tasks for leadership management.
     fn start_background_tasks(&self) {
         // Task 1: Watch for leadership changes

@@ -189,6 +189,26 @@ impl IdentityManager {
         // Start leadership monitoring
         manager.start_leadership_monitor();
 
+        // Wait for initial leadership determination and service startup
+        let ready_timeout = Duration::from_secs(30);
+        let start = std::time::Instant::now();
+
+        loop {
+            if manager.is_service_ready().await {
+                break;
+            }
+
+            if start.elapsed() > ready_timeout {
+                return Err(Error::Service(
+                    "Identity service failed to become ready within 30 seconds".to_string(),
+                ));
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        tracing::info!("Identity manager initialized and ready");
+
         Ok(manager)
     }
 
@@ -201,6 +221,21 @@ impl IdentityManager {
     /// Check if this node is currently the leader.
     pub async fn is_leader(&self) -> bool {
         self.leadership.is_leader().await
+    }
+
+    /// Check if the service is ready to handle commands.
+    async fn is_service_ready(&self) -> bool {
+        // Check if we're the leader
+        let is_leader = self.leadership.is_leader().await;
+
+        if is_leader {
+            // If we're the leader, check if our command service is running
+            self.command_service.lock().await.is_some()
+        } else {
+            // If we're not the leader, check if there IS a leader in the cluster
+            // by trying to determine who the current leader is
+            self.leadership.has_leader().await
+        }
     }
 
     /// Start the leadership monitoring task.
