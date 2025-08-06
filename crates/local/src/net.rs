@@ -4,7 +4,7 @@ use tracing::info;
 
 /// Fetches the external IP address using myip.com API
 pub async fn fetch_external_ip() -> Result<std::net::IpAddr, Error> {
-    let response = reqwest::get("https://api.myip.com")
+    let response = reqwest::get("https://api.ipify.org?format=json")
         .await
         .map_err(|e| Error::Io(format!("Failed to fetch external IP: {e}")))?;
 
