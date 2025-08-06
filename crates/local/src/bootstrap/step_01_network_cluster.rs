@@ -4,7 +4,7 @@
 //! - Private key parsing and validation
 //! - Governance setup (single node or multi-node)
 //! - Network creation and peer discovery
-//! - Light core HTTP server setup
+//! - Gateway HTTP server setup
 //! - Hostname resolution validation
 
 use super::Bootstrap;
@@ -20,7 +20,6 @@ use axum::routing::any;
 use http::StatusCode;
 use proven_attestation::Attestor;
 use proven_bootable::Bootable;
-use proven_core::{Core, CoreOptions};
 use proven_engine::{
     EngineBuilder, EngineConfig,
     config::{
@@ -28,6 +27,7 @@ use proven_engine::{
         NetworkConfig as ConsensusNetworkConfig, ServiceConfig, StorageConfig,
     },
 };
+use proven_gateway::{Gateway, GatewayOptions};
 use proven_http_insecure::InsecureHttpServer;
 use proven_network::NetworkManager;
 use proven_network::connection_pool::ConnectionPoolConfig;
@@ -161,7 +161,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
             .layer(CorsLayer::very_permissive()),
     );
 
-    let core = Core::new(CoreOptions {
+    let gateway = Gateway::new(GatewayOptions {
         attestor: bootstrap.attestor.clone(),
         engine_router,
         governance: bootstrap.config.governance.clone(),
@@ -169,8 +169,8 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         origin: origin.to_string(),
     });
 
-    // Start the Core first to ensure HTTP server with WebSocket routes is ready
-    core.start().await.map_err(Error::Bootable)?;
+    // Start the gateway first to ensure HTTP server with WebSocket routes is ready
+    gateway.start().await.map_err(Error::Bootable)?;
 
     // Give the HTTP server time to fully start and bind
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -195,7 +195,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
 
     // TODO: Add components to bootable vec
 
-    bootstrap.bootstrapping_core = Some(core);
+    bootstrap.bootstrapping_gateway = Some(gateway);
 
     // TODO: Do better cluster formation check
     // Sleep to let cluster initialize

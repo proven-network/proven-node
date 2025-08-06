@@ -25,7 +25,7 @@ fn read_file_content(compile_time_content: &'static str, runtime_path: &str) -> 
     {
         // In debug builds, try to read from disk for hot reload
         let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let file_path = current_dir.join("crates/core").join(runtime_path);
+        let file_path = current_dir.join("crates/gateway").join(runtime_path);
 
         match fs::read_to_string(&file_path) {
             Ok(content) => content,

@@ -26,24 +26,24 @@ serde_json.workspace = true
 bincode.workspace = true
 
 # Error handling
-thiserror = { workspace = true }
-anyhow = { workspace = true }
+thiserror.workspace = true
+anyhow.workspace = true
 
 # Data structures
-bytes = { workspace = true }
+bytes.workspace = true
 dashmap.workspace = true
 lru.workspace = true
 parking_lot.workspace = true
 
 # Logging and tracing
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing.workspace = true
+tracing-subscriber.workspace = true
 
 # Configuration
-toml = { workspace = true }
+toml.workspace = true
 
 # Time handling
-chrono = { workspace = true }
+chrono.workspace = true
 humantime-serde = "1"
 
 # Path handling
@@ -56,7 +56,7 @@ async-trait.workspace = true
 pin-project = "1"
 
 # Metrics
-prometheus = { workspace = true }
+prometheus.workspace = true
 
 # AWS SDK for S3
 aws-config = { workspace = true, optional = true }
@@ -69,7 +69,7 @@ zstd = { version = "0.13", optional = true }
 mockall = { version = "0.12", optional = true }
 
 [dev-dependencies]
-criterion = { workspace = true }
+criterion.workspace = true
 tempfile = "3"
 test-case = "3"
 proptest = "1"
@@ -83,7 +83,7 @@ host = ["aws-config", "aws-sdk-s3", "zstd"]
 testing = ["mockall"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
-tokio-vsock = { workspace = true }
+tokio-vsock.workspace = true
 
 [[bench]]
 name = "throughput"

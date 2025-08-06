@@ -68,17 +68,17 @@ impl RpcOperations {
 
             // Handle the enum response
             match response {
-                proven_core::WhoAmIResponse::Anonymous { session_id, .. } => {
+                proven_gateway::WhoAmIResponse::Anonymous { session_id, .. } => {
                     Ok(format!("Session: {session_id}\nIdentified: No"))
                 }
-                proven_core::WhoAmIResponse::Identified {
+                proven_gateway::WhoAmIResponse::Identified {
                     session_id,
                     identity,
                     ..
                 } => Ok(format!(
                     "Session: {session_id}\nIdentified: Yes\nIdentity: {identity:?}"
                 )),
-                proven_core::WhoAmIResponse::Failure(err) => {
+                proven_gateway::WhoAmIResponse::Failure(err) => {
                     Err(anyhow::anyhow!("WhoAmI failed: {}", err))
                 }
             }

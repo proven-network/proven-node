@@ -27,13 +27,13 @@ pub enum Error {
     #[error(transparent)]
     Bootable(Box<dyn std::error::Error + Send + Sync>),
 
-    /// Core error
-    #[error(transparent)]
-    Core(#[from] proven_core::Error),
-
     /// Ethereum Reth error
     #[error(transparent)]
     EthereumReth(#[from] proven_ethereum_reth::Error),
+
+    /// Gateway error
+    #[error(transparent)]
+    Gateway(#[from] proven_gateway::Error),
 
     /// Governance error
     #[error("governance error: {0}")]

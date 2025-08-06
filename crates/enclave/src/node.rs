@@ -5,9 +5,9 @@ use std::convert::Infallible;
 
 use bytes::Bytes;
 use proven_attestation_nsm::NsmAttestor;
-use proven_core::Core;
 use proven_dnscrypt_proxy::DnscryptProxy;
 use proven_external_fs::ExternalFs;
+use proven_gateway::Gateway;
 use proven_http_letsencrypt::LetsEncryptHttpServer;
 use proven_imds::IdentityDocument;
 use proven_instance_details::Instance;
@@ -24,7 +24,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::info;
 
-pub type EnclaveNodeCore = Core<
+pub type EnclaveNodeGateway = Gateway<
     NsmAttestor,
     MockTopologyAdaptor,
     LetsEncryptHttpServer<S3Store<Bytes, Infallible, Infallible>>,
@@ -39,7 +39,7 @@ pub struct Services {
     pub postgres: Arc<Mutex<Postgres>>,
     pub radix_aggregator: Arc<Mutex<RadixAggregator>>,
     pub radix_gateway: Arc<Mutex<RadixGateway>>,
-    pub core: Arc<Mutex<EnclaveNodeCore>>,
+    pub gateway: Arc<Mutex<EnclaveNodeGateway>>,
 }
 
 pub struct EnclaveNode {

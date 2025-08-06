@@ -1,6 +1,6 @@
-//! Core state management types and transitions
+//! Gateway state management types and transitions
 //!
-//! This module contains the types and logic for managing the core state transitions
+//! This module contains the types and logic for managing the gateway state transitions
 //! between bootstrapping and bootstrapped modes.
 
 use axum::Router;
@@ -13,17 +13,17 @@ use proven_runtime::RuntimePoolManagement;
 use proven_sessions::SessionManagement;
 use proven_topology::TopologyAdaptor;
 
-/// Core mode state
+/// Gateway mode state
 #[derive(Debug, Clone, Copy)]
-pub enum CoreMode {
+pub enum GatewayMode {
     /// Bootstrapping mode with minimal functionality
     Bootstrapping,
     /// Bootstrapped mode with all features enabled
     Bootstrapped,
 }
 
-/// Options for creating a new unified core (starts in Bootstrapping mode)
-pub struct CoreOptions<A, G, H>
+/// Options for creating a new gateway (starts in Bootstrapping mode)
+pub struct GatewayOptions<A, G, H>
 where
     A: Attestor,
     G: TopologyAdaptor,

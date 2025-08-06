@@ -1,6 +1,6 @@
-//! Bootstrap Step 11: Core Initialization
+//! Bootstrap Step 11: Gateway Bootstrapping
 //!
-//! This step handles the initialization of the core services, including:
+//! This step handles the bootstrapping of the gateway services, including:
 //! - Lock manager setup
 //! - Identity manager configuration
 //! - Passkey manager setup
@@ -8,14 +8,14 @@
 //! - Application manager setup
 //! - Runtime pool manager configuration
 //! - Various store and SQL store configurations
-//! - Full core startup and light core shutdown
+//! - Full gateway bootstrapping
 
 use super::Bootstrap;
 use crate::error::Error;
 
 use proven_applications::{ApplicationManagement, ApplicationManager, ApplicationManagerConfig};
 
-use proven_core::BootstrapUpgrade;
+use proven_gateway::BootstrapUpgrade;
 use proven_identity::{IdentityManager, IdentityManagerConfig};
 use proven_passkeys::{PasskeyManagement, PasskeyManager, PasskeyManagerOptions};
 use proven_radix_nft_verifier_gateway::GatewayRadixNftVerifier;
@@ -105,7 +105,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     })
     .await;
 
-    let core = bootstrap.bootstrapping_core.take().unwrap();
+    let core = bootstrap.bootstrapping_gateway.take().unwrap();
 
     // Bootstrap the core (this modifies the core in-place)
     core.bootstrap(BootstrapUpgrade {

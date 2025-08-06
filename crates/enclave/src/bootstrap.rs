@@ -2,7 +2,7 @@
 
 use super::error::{Error, Result};
 use super::net::{bring_up_loopback, setup_default_gateway, write_dns_resolv};
-use super::node::{EnclaveNode, EnclaveNodeCore, Services};
+use super::node::{EnclaveNode, EnclaveNodeGateway, Services};
 use super::speedtest::SpeedTest;
 
 use std::convert::TryInto;
@@ -21,7 +21,6 @@ use proven_attestation::Attestor;
 use proven_attestation_nsm::NsmAttestor;
 use proven_bootable::Bootable;
 use proven_cert_store::CertStore;
-use proven_core::{BootstrapUpgrade, Core, CoreOptions};
 use proven_dnscrypt_proxy::{DnscryptProxy, DnscryptProxyOptions};
 use proven_engine::config::{
     ConsensusConfig, GlobalConsensusConfig, GroupConsensusConfig, NetworkConfig, ServiceConfig,
@@ -29,6 +28,7 @@ use proven_engine::config::{
 };
 use proven_engine::{EngineBuilder, EngineConfig};
 use proven_external_fs::{ExternalFs, ExternalFsOptions};
+use proven_gateway::{BootstrapUpgrade, Gateway, GatewayOptions};
 use proven_http_letsencrypt::{LetsEncryptHttpServer, LetsEncryptHttpServerOptions};
 use proven_identity::{IdentityManager, IdentityManagerConfig};
 use proven_imds::{IdentityDocument, Imds};
@@ -119,11 +119,9 @@ pub struct Bootstrap {
     postgres: Option<Postgres>,
 
     radix_aggregator: Option<RadixAggregator>,
-
     radix_gateway: Option<RadixGateway>,
 
-    // Memory-based messaging - no longer need NATS server/client
-    core: Option<EnclaveNodeCore>,
+    gateway: Option<EnclaveNodeGateway>,
 
     // state
     started: bool,
@@ -165,7 +163,7 @@ impl Bootstrap {
 
             radix_gateway: None,
 
-            core: None,
+            gateway: None,
 
             started: false,
             shutdown_token: CancellationToken::new(),
@@ -279,8 +277,8 @@ impl Bootstrap {
             return Err(e);
         }
 
-        if let Err(e) = self.start_core().await {
-            error!("failed to start core: {:?}", e);
+        if let Err(e) = self.start_gateway().await {
+            error!("failed to start gateway: {:?}", e);
             self.unwind_services().await;
             return Err(e);
         }
@@ -298,7 +296,7 @@ impl Bootstrap {
         let postgres = Arc::new(Mutex::new(self.postgres.take().unwrap()));
         let radix_aggregator = Arc::new(Mutex::new(self.radix_aggregator.take().unwrap()));
         let radix_gateway = Arc::new(Mutex::new(self.radix_gateway.take().unwrap()));
-        let core = Arc::new(Mutex::new(self.core.take().unwrap()));
+        let gateway = Arc::new(Mutex::new(self.gateway.take().unwrap()));
 
         let node_services = Services {
             proxy: proxy.clone(),
@@ -309,7 +307,7 @@ impl Bootstrap {
             postgres: postgres.clone(),
             radix_aggregator: radix_aggregator.clone(),
             radix_gateway: radix_gateway.clone(),
-            core: core.clone(),
+            gateway: gateway.clone(),
         };
 
         let shutdown_token = self.shutdown_token.clone();
@@ -319,7 +317,7 @@ impl Bootstrap {
                 let radix_aggregator = radix_aggregator.clone();
                 let radix_gateway = radix_gateway.clone();
                 let postgres = postgres.clone();
-                let core = core.clone();
+                let gateway = gateway.clone();
 
                 // Tasks that must be running for the enclave to function
                 tokio::spawn(async move {
@@ -335,8 +333,8 @@ impl Bootstrap {
                     let postgres = postgres.clone();
                     let postgres_guard = postgres.lock().await;
 
-                    let core = core.clone();
-                    let core_guard = core.lock().await;
+                    let gateway = gateway.clone();
+                    let gateway_guard = gateway.lock().await;
 
                     tokio::select! {
                         Ok(Err(e)) = proxy_handle => {
@@ -363,8 +361,8 @@ impl Bootstrap {
                         () = radix_gateway_guard.wait() => {
                             error!("radix_gateway exited");
                         }
-                        () = core_guard.wait() => {
-                            error!("core exited");
+                        () = gateway_guard.wait() => {
+                            error!("gateway exited");
                         }
                         else => {
                             info!("enclave shutdown cleanly. goodbye.");
@@ -378,7 +376,7 @@ impl Bootstrap {
                 _ = critical_tasks => error!("critical task failed - exiting")
             }
 
-            let _ = core.lock().await.shutdown().await;
+            let _ = gateway.lock().await.shutdown().await;
             let _ = radix_gateway.lock().await.shutdown().await;
             let _ = radix_aggregator.lock().await.shutdown().await;
             let _ = radix_node.lock().await.shutdown().await;
@@ -406,8 +404,8 @@ impl Bootstrap {
     async fn unwind_services(self) {
         // shutdown in reverse order
 
-        if let Some(core) = self.core {
-            let _ = core.shutdown().await;
+        if let Some(gateway) = self.gateway {
+            let _ = gateway.shutdown().await;
         }
 
         if let Some(radix_gateway) = self.radix_gateway {
@@ -764,13 +762,13 @@ impl Bootstrap {
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::large_stack_frames)]
     #[allow(clippy::cognitive_complexity)]
-    async fn start_core(&mut self) -> Result<()> {
+    async fn start_gateway(&mut self) -> Result<()> {
         let id = self.imds_identity.as_ref().unwrap_or_else(|| {
-            panic!("imds identity not fetched before core");
+            panic!("imds identity not fetched before gateway");
         });
 
         let _network = self.network.as_ref().unwrap_or_else(|| {
-            panic!("network not set before core");
+            panic!("network not set before gateway");
         });
 
         let passkey_manager = PasskeyManager::new(PasskeyManagerOptions {
@@ -907,7 +905,7 @@ impl Bootstrap {
         .await;
 
         let governance = self.governance.as_ref().unwrap_or_else(|| {
-            panic!("governance not set before core");
+            panic!("governance not set before gateway");
         });
 
         let _attestor = self.attestor.clone();
@@ -993,7 +991,7 @@ impl Bootstrap {
             .await
             .map_err(|e| Error::Consensus(format!("Failed to start engine: {e}")))?;
 
-        // Get the client for Core to use
+        // Get the client for Gateway to use
         let _consensus = Arc::new(engine.client());
 
         // Create ApplicationManager with engine client
@@ -1030,7 +1028,7 @@ impl Bootstrap {
             .create_router_integration()
             .map_err(|e| Error::Consensus(format!("Failed to create router integration: {e}")))?;
 
-        let core = Core::new(CoreOptions {
+        let gateway = Gateway::new(GatewayOptions {
             attestor: self.attestor.clone(),
             engine_router,
             governance: governance.clone(),
@@ -1041,20 +1039,21 @@ impl Bootstrap {
             ),
         });
 
-        core.bootstrap(BootstrapUpgrade {
-            application_manager,
-            runtime_pool_manager,
-            identity_manager,
-            passkey_manager,
-            sessions_manager,
-        })
-        .await?;
+        gateway
+            .bootstrap(BootstrapUpgrade {
+                application_manager,
+                runtime_pool_manager,
+                identity_manager,
+                passkey_manager,
+                sessions_manager,
+            })
+            .await?;
 
-        core.start().await.map_err(Error::Bootable)?;
+        gateway.start().await.map_err(Error::Bootable)?;
 
-        self.core = Some(core);
+        self.gateway = Some(gateway);
 
-        info!("core started");
+        info!("gateway started");
 
         Ok(())
     }

@@ -1,7 +1,7 @@
 //! Router building and installation logic
 //!
 //! This module contains the logic for building and installing HTTP routers
-//! for the core system in different modes.
+//! for the gateway system in different modes.
 
 use crate::Error;
 use crate::handlers::{

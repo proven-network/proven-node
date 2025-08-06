@@ -32,7 +32,7 @@ proven-transport.workspace = true
 proven-attestation = { path = "../attestation" }
 
 # Crypto
-ed25519-dalek = { workspace = true }
+ed25519-dalek.workspace = true
 coset = "0.3"
 rand = "0.8"
 
@@ -44,4 +44,4 @@ proven-topology-mock = { path = "../topology-mock" }
 proven-transport-tcp.workspace = true
 proven-bootable = { path = "../bootable" }
 proven-util = { path = "../util" }
-ed25519-dalek = { workspace = true }
+ed25519-dalek.workspace = true

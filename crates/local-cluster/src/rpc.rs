@@ -9,7 +9,7 @@ use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use proven_applications::Application;
 use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
-use proven_core::{
+use proven_gateway::{
     AddAllowedOriginCommand, AddAllowedOriginResponse, AnonymizeCommand, AnonymizeResponse,
     Command, CreateApplicationCommand, CreateApplicationResponse, IdentifyCommand,
     IdentifyResponse, ListApplicationsByOwnerCommand, ListApplicationsByOwnerResponse, Response,

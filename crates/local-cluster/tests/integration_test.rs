@@ -106,11 +106,11 @@ async fn test_multi_user_rpc() {
     // Sessions should be different based on the enum variant
     match (&alice_session, &bob_session) {
         (
-            proven_core::WhoAmIResponse::Anonymous {
+            proven_gateway::WhoAmIResponse::Anonymous {
                 session_id: alice_id,
                 ..
             },
-            proven_core::WhoAmIResponse::Anonymous {
+            proven_gateway::WhoAmIResponse::Anonymous {
                 session_id: bob_id, ..
             },
         ) => {
@@ -304,7 +304,7 @@ async fn test_anonymous_rpc_client() {
     // Anonymous client can check session
     let session = anon_client.who_am_i().await.unwrap();
     match session {
-        proven_core::WhoAmIResponse::Anonymous { session_id, .. } => {
+        proven_gateway::WhoAmIResponse::Anonymous { session_id, .. } => {
             assert!(!session_id.is_empty());
         }
         _ => panic!("Expected anonymous session"),

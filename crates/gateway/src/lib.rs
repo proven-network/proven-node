@@ -1,5 +1,4 @@
-//! Core logic for the Proven node and the entrypoint for all user
-//! interactions.
+//! Gateway for the Proven node and the entry-point for all RPC interactions.
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
 
@@ -14,7 +13,7 @@ mod utils;
 pub use error::Error;
 use proven_attestation::Attestor;
 pub use router::routes;
-pub use state::{BootstrapUpgrade, CoreMode, CoreOptions, FullContext};
+pub use state::{BootstrapUpgrade, FullContext, GatewayMode, GatewayOptions};
 
 use application::ApplicationRouter;
 // Handlers are imported by the router module
@@ -48,8 +47,8 @@ pub use rpc::{
     WhoAmICommand, WhoAmIResponse,
 };
 
-/// Unified core that can operate in Bootstrapping or Bootstrapped mode
-pub struct Core<A, G, H>
+/// RPC gateway that can operate in Bootstrapping or Bootstrapped mode
+pub struct Gateway<A, G, H>
 where
     A: Attestor,
     G: TopologyAdaptor,
@@ -62,28 +61,28 @@ where
     engine_router: Router,
     governance: G,
     http_server: H,
-    mode: Arc<RwLock<CoreMode>>,
+    mode: Arc<RwLock<GatewayMode>>,
     origin: String,
     router_installed: Arc<RwLock<bool>>,
     shutdown_token: CancellationToken,
     task_tracker: TaskTracker,
 }
 
-impl<A, G, H> Core<A, G, H>
+impl<A, G, H> Gateway<A, G, H>
 where
     A: Attestor,
     G: TopologyAdaptor,
     H: HttpServer,
 {
-    /// Create new unified core in Bootstrapping mode
+    /// Create new gateway in Bootstrapping mode
     pub fn new(
-        CoreOptions {
+        GatewayOptions {
             attestor,
             governance,
             engine_router,
             http_server,
             origin,
-        }: CoreOptions<A, G, H>,
+        }: GatewayOptions<A, G, H>,
     ) -> Self {
         Self {
             application_test_router: Arc::new(RwLock::new(None)),
@@ -93,7 +92,7 @@ where
             engine_router,
             governance,
             http_server,
-            mode: Arc::new(RwLock::new(CoreMode::Bootstrapping)),
+            mode: Arc::new(RwLock::new(GatewayMode::Bootstrapping)),
             origin,
             router_installed: Arc::new(RwLock::new(false)),
             shutdown_token: CancellationToken::new(),
@@ -102,7 +101,7 @@ where
     }
 
     /// Get the current mode
-    pub async fn mode(&self) -> CoreMode {
+    pub async fn mode(&self) -> GatewayMode {
         *self.mode.read().await
     }
 
@@ -110,7 +109,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns an error if the core is already in bootstrapped mode or if
+    /// Returns an error if the gateway is already in bootstrapped mode or if
     /// router installation fails.
     pub async fn bootstrap<AM, RM, IM, PM, SM>(
         &self,
@@ -124,7 +123,7 @@ where
         SM: SessionManagement + Clone + 'static,
     {
         let mut mode = self.mode.write().await;
-        if matches!(*mode, CoreMode::Bootstrapped) {
+        if matches!(*mode, GatewayMode::Bootstrapped) {
             return Err(Error::AlreadyStarted);
         }
 
@@ -152,7 +151,7 @@ where
         *self.application_test_router.write().await = Some(test_router);
 
         // Update the mode
-        *mode = CoreMode::Bootstrapped;
+        *mode = GatewayMode::Bootstrapped;
 
         // Store the bootstrapped state
         *self.bootstrapped_state.write().await = Some(Box::new(bootstrapped_state));
@@ -175,11 +174,11 @@ where
     ///
     /// # Errors
     ///
-    /// Returns an error if the core is already in bootstrapping mode or if
+    /// Returns an error if the gateway is already in bootstrapping mode or if
     /// router installation fails.
     pub async fn reset_to_bootstrapping(&self) -> Result<(), Error> {
         let mut mode = self.mode.write().await;
-        if matches!(*mode, CoreMode::Bootstrapping) {
+        if matches!(*mode, GatewayMode::Bootstrapping) {
             return Err(Error::AlreadyStarted); // Already in bootstrapping mode
         }
 
@@ -187,14 +186,14 @@ where
         *self.bootstrapped_state.write().await = None;
         *self.bootstrapped_router_builder.write().await = None;
         *self.application_test_router.write().await = None;
-        *mode = CoreMode::Bootstrapping;
+        *mode = GatewayMode::Bootstrapping;
 
         // Rebuild and install the complete router if we're already running
         if *self.router_installed.read().await {
             self.build_and_install_main_router().await?;
         }
 
-        info!("Core reset from Bootstrapped to Bootstrapping mode");
+        info!("Gateway reset from Bootstrapped to Bootstrapping mode");
         Ok(())
     }
 
@@ -206,7 +205,7 @@ where
         let router = RouterBuilder::create_base_router(self.engine_router.clone());
 
         // Add bootstrapped routes if in bootstrapped mode
-        let router = if let CoreMode::Bootstrapped = mode {
+        let router = if let GatewayMode::Bootstrapped = mode {
             info!("Adding bootstrapped routes to router");
             self.add_bootstrapped_routes_to_router(router)
         } else {
@@ -278,14 +277,14 @@ where
 }
 
 #[async_trait]
-impl<A, G, H> Bootable for Core<A, G, H>
+impl<A, G, H> Bootable for Gateway<A, G, H>
 where
     A: Attestor,
     G: TopologyAdaptor,
     H: HttpServer,
 {
     fn bootable_name(&self) -> &'static str {
-        "core"
+        "gateway"
     }
 
     async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -300,7 +299,7 @@ where
         self.install_webauthn_routes().await?;
 
         // Install application test router if in bootstrapped mode (separate hostname)
-        if let CoreMode::Bootstrapped = *self.mode.read().await {
+        if let GatewayMode::Bootstrapped = *self.mode.read().await {
             self.install_application_test_router_if_available().await?;
         }
 
@@ -329,18 +328,18 @@ where
         });
 
         self.task_tracker.close();
-        info!("Unified core started in {:?} mode", *self.mode.read().await);
+        info!("Gateway started in {:?} mode", *self.mode.read().await);
 
         Ok(())
     }
 
     async fn shutdown(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        info!("unified core shutting down...");
+        info!("Gateway shutting down...");
 
         self.shutdown_token.cancel();
         self.task_tracker.wait().await;
 
-        info!("unified core shutdown");
+        info!("Gateway shutdown");
         Ok(())
     }
 

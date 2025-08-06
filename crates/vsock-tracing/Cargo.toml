@@ -15,20 +15,20 @@ tokio = { workspace = true, features = ["sync", "time", "rt", "macros"] }
 
 # Serialization
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-bincode = { workspace = true }
-bytes = { workspace = true }
+serde_json.workspace = true
+bincode.workspace = true
+bytes.workspace = true
 
 # Error handling
-thiserror = { workspace = true }
+thiserror.workspace = true
 
 # Async trait for server
-async-trait = { workspace = true }
+async-trait.workspace = true
 
 # Tracing
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-chrono = { workspace = true }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

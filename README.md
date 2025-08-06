@@ -94,13 +94,13 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [bootable](crates/bootable): Abstract interface for bootable services.
 - [cert-store](crates/cert-store): Shared cert store for both HTTPS and NATS.
 - [code-package](crates/code-package): Tools for creating and working with code packages runnable in the Proven runtime.
-- [core](crates/core): Core logic for the Proven node and the entrypoint for all user interactions.
 - [dnscrypt-proxy](crates/dnscrypt-proxy): Configures and runs a DNSCrypt proxy to ensure all DNS runs over tamper-proof HTTPS.
-- [enclave](crates/enclave): Main entrypoint for enclave images. Bootstraps all other components before handing off to core.
+- [enclave](crates/enclave): Main entrypoint for enclave images. Bootstraps all other components.
 - [engine](crates/engine): Distributed consensus and coordination engine for managing global and group-level state across the network.
 - [ethereum-lighthouse](crates/ethereum-lighthouse): Configures and runs a local Lighthouse consensus client.
 - [ethereum-reth](crates/ethereum-reth): Configures and runs a local Reth execution client.
 - [external-fs](crates/external-fs): Mounts external filesystems into the enclave via NFS, intermediated by a layer of FUSE-based AES-GCM disk-encryption based on enclave-internal cryptographic keys.
+- [gateway](crates/gateway): Gateway for the Proven node and the entry-point for RPC.
 - [governance](crates/governance): Abstract interface for getting active version information, network topology, etc. from a governance mechanism.
 - [governance-helios](crates/governance-helios): Helios light-client based implementation of the governance interface.
 - [governance-mock](crates/governance-mock): Mock implementation of the governance interface for testing.
@@ -118,6 +118,7 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [libsql](crates/libsql): Wrapper around [libsql](https://github.com/tursodatabase/libsql) which provides additional functionality like migration management.
 - [local](crates/local): Binary to bootstrap other components locally. Similar to [enclave](crates/enclave) but for local development.
 - [local-cli](crates/local-cli): Command-line interface tool for local development and testing.
+- [local-cluster](crates/local-cluster): Local cluster management for testing and TUI.
 - [local-tui](crates/local-tui): Terminal UI application for managing and monitoring local node clusters interactively.
 - [locks](crates/locks): Abstract interface for managing system-global distributed locks.
 - [locks-memory](crates/locks-memory): In-memory (single node) implementation of locks for local development.

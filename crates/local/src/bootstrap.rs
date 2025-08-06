@@ -12,7 +12,7 @@ pub mod step_06_ethereum_holesky_node;
 pub mod step_07_ethereum_sepolia_node;
 pub mod step_08_radix_mainnet_node;
 pub mod step_09_radix_stokenet_node;
-pub mod step_10_upgrade_core;
+pub mod step_10_upgrade_gateway;
 
 use super::error::Error;
 use crate::NodeConfig;
@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use proven_attestation_mock::MockAttestor;
 use proven_bootable::Bootable;
-use proven_core::Core;
+use proven_gateway::Gateway;
 use proven_http_insecure::InsecureHttpServer;
 use proven_topology::Node;
 use proven_topology::TopologyAdaptor;
@@ -49,7 +49,7 @@ pub struct Bootstrap<G: TopologyAdaptor> {
     postgres_ip_address: Option<IpAddr>,
     postgres_port: Option<u16>,
 
-    // RPC endpoints that steps create and core needs
+    // RPC endpoints that steps create and gateway needs
     bitcoin_mainnet_node_rpc_endpoint: Url,
     bitcoin_testnet_node_rpc_endpoint: Url,
     ethereum_mainnet_rpc_endpoint: Url,
@@ -59,7 +59,7 @@ pub struct Bootstrap<G: TopologyAdaptor> {
     radix_stokenet_rpc_endpoint: Url,
 
     // Special case - gets upgraded at end of bootstrap
-    bootstrapping_core: Option<Core<MockAttestor, G, InsecureHttpServer>>,
+    bootstrapping_gateway: Option<Gateway<MockAttestor, G, InsecureHttpServer>>,
 
     // Engine client for use in store creation
     engine_client: Option<Arc<proven_engine::Client>>,
@@ -96,11 +96,11 @@ impl<G: TopologyAdaptor> Bootstrap<G> {
             }
         }
 
-        // Special case: shutdown light_core if it exists
-        if let Some(light_core) = self.bootstrapping_core.take()
-            && let Err(e) = light_core.shutdown().await
+        // Special case: shutdown bootstrapping gateway if it exists
+        if let Some(gateway) = self.bootstrapping_gateway.take()
+            && let Err(e) = gateway.shutdown().await
         {
-            error!("Error shutting down light_core during cleanup: {:?}", e);
+            error!("Error shutting down gateway during cleanup: {:?}", e);
         }
 
         info!("Cleanup complete");
@@ -135,7 +135,7 @@ impl<G: TopologyAdaptor> Bootstrap<G> {
             radix_mainnet_rpc_endpoint: config.radix_mainnet_fallback_rpc_endpoint.clone(),
             radix_stokenet_rpc_endpoint: config.radix_stokenet_fallback_rpc_endpoint.clone(),
 
-            bootstrapping_core: None,
+            bootstrapping_gateway: None,
             engine_client: None,
 
             bootables: Vec::new(),
@@ -214,7 +214,7 @@ impl<G: TopologyAdaptor> Bootstrap<G> {
         );
         execute_step!("radix mainnet node", step_08_radix_mainnet_node::execute);
         execute_step!("radix stokenet node", step_09_radix_stokenet_node::execute);
-        execute_step!("core", step_10_upgrade_core::execute);
+        execute_step!("gateway", step_10_upgrade_gateway::execute);
 
         info!(
             "All bootstrap steps completed successfully. Started {} bootable services.",

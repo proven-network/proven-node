@@ -1,5 +1,5 @@
 //! Main entrypoint for enclave images. Bootstraps all other components before
-//! handing off to core.
+//! handing off to gateway.
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]

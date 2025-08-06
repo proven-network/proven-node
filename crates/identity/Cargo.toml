@@ -4,29 +4,29 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-arc-swap = { workspace = true }
-async-trait = { workspace = true }
-bytes = { workspace = true }
-chrono = { workspace = true }
-ciborium = { workspace = true }
+arc-swap.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+ciborium.workspace = true
 proven-engine = { path = "../engine" }
 proven-storage = { path = "../storage" }
 proven-topology = { path = "../topology" }
 proven-transport = { path = "../transport" }
 proven-util = { path = "../util" }
-serde = { workspace = true }
-tokio = { workspace = true }
-tokio-stream = { workspace = true }
-tracing = { workspace = true }
-uuid = { workspace = true }
+serde.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
-futures = { workspace = true }
+futures.workspace = true
 proven-network = { path = "../network" }
 proven-storage-memory = { path = "../storage-memory" }
 proven-topology-mock = { path = "../topology-mock" }
 proven-transport-memory = { path = "../transport-memory" }
 proven-attestation-mock = { path = "../attestation-mock" }
-ed25519-dalek = { workspace = true }
+ed25519-dalek.workspace = true
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
-tracing-subscriber = { workspace = true }
+tracing-subscriber.workspace = true

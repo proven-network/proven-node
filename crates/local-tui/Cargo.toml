@@ -13,13 +13,13 @@ proven-local-cluster = { path = "../local-cluster" }
 
 # Core dependencies
 proven-local.workspace = true
-proven-core.workspace = true
 proven-applications.workspace = true
+proven-attestation.workspace = true
+proven-attestation-mock.workspace = true
+proven-gateway.workspace = true
 proven-util.workspace = true
 proven-topology.workspace = true
 proven-topology-mock.workspace = true
-proven-attestation.workspace = true
-proven-attestation-mock.workspace = true
 
 # Async and messaging
 tokio.workspace = true

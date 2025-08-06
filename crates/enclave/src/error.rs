@@ -48,10 +48,6 @@ pub enum Error {
     #[error("Consensus error: {0}")]
     Consensus(String),
 
-    /// `Core` error.
-    #[error(transparent)]
-    Core(#[from] proven_core::Error),
-
     /// DNS proxy error.
     #[error(transparent)]
     DnscryptProxy(#[from] proven_dnscrypt_proxy::Error),
@@ -59,6 +55,10 @@ pub enum Error {
     /// External file system error.
     #[error(transparent)]
     ExternalFs(#[from] proven_external_fs::Error),
+
+    /// `Gateway` error.
+    #[error(transparent)]
+    Gateway(#[from] proven_gateway::Error),
 
     /// Identity manager error.
     #[error(transparent)]

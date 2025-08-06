@@ -1,5 +1,5 @@
 [package]
-name = "proven-core"
+name = "proven-gateway"
 version.workspace = true
 edition = "2024"
 build = "build.rs"
