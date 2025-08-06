@@ -5,7 +5,6 @@
 //! shutdown, and other control operations.
 
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::module_name_repetitions)]

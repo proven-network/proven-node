@@ -1,6 +1,5 @@
 //! Helios light-client based implementation of the topology adaptor interface.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

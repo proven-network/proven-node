@@ -1,7 +1,6 @@
 //! Main entrypoint for enclave images. Bootstraps all other components before
 //! handing off to core.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::redundant_pub_crate)]

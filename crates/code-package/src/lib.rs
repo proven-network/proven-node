@@ -98,7 +98,6 @@
 //! - **Efficient Bundling**: Uses Deno's proven `ESZip` format for optimal size and performance
 //! - **Memory Management**: Shared references and careful memory usage patterns
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

@@ -1,6 +1,5 @@
 //! Implementation of attestation using the Nitro Security Module.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

@@ -1,6 +1,5 @@
 //! Abstract interface for bootable services.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

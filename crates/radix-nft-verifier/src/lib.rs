@@ -1,5 +1,4 @@
 //! Abstract interface for verifying Radix NFT ownership.
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

@@ -1,7 +1,6 @@
 //! In-memory (single node) implementation of key-value storage for local
 //! development.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::type_complexity)]

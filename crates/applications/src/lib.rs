@@ -1,6 +1,5 @@
 //! Event-driven applications manager using engine streams directly.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

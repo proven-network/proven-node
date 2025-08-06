@@ -7,7 +7,6 @@
 //! - Single builder pattern for initialization
 
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![allow(clippy::result_large_err)]
 // TODO: Remove this soon
 #![allow(dead_code)]

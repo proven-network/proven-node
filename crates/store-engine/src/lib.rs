@@ -5,7 +5,6 @@
 //! view of the data that is continuously updated from the engine's streams.
 
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::module_name_repetitions)]

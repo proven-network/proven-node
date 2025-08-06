@@ -1,7 +1,6 @@
 //! Helper crate to interact with the Instance Metadata Service. Verifies all
 //! recieved data via embedded public certificates.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

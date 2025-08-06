@@ -1,6 +1,5 @@
 //! Implementation of simple non-secure HTTP for local development.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::redundant_pub_crate)]

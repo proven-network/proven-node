@@ -1,6 +1,5 @@
 //! Routes local HTTP requests from loopback to target services over engine streams.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

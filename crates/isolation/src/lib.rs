@@ -1,6 +1,5 @@
 //! Isolation primitives for spawning untrusted processes in a secure manner.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::redundant_pub_crate)]

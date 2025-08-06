@@ -1,6 +1,5 @@
 //! Abstract interface for managing SQL storage.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

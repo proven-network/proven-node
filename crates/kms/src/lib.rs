@@ -1,7 +1,6 @@
 //! Manages encryption/decryption of plain/cipher text using AWS KMS keys which
 //! are scoped to the EIF PCRs.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::result_large_err)]

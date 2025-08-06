@@ -1,7 +1,6 @@
 //! Helper crate to interact with the EC2 APIs and securely retrieve info about
 //! runtime environment.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

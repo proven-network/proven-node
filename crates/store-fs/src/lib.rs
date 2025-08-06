@@ -1,7 +1,6 @@
 //! Implementation of key-value storage using files on disk, for local
 //! development.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::too_many_lines)]

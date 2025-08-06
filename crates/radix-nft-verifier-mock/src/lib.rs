@@ -1,6 +1,5 @@
 //! A mock implementation of the Radix NFT verifier.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

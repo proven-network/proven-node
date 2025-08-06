@@ -1,6 +1,5 @@
 //! Rust port of the Radix ROLA example code.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::result_large_err)]

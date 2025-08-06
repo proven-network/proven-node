@@ -1,6 +1,5 @@
 //! Manages user sessions (created via ROLA).
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

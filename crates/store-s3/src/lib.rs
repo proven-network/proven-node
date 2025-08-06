@@ -1,7 +1,6 @@
 //! Implementation of key-value storage using AWS S3. Values encrypted using
 //! AES-256 via SS-C.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

@@ -4,7 +4,6 @@
 //! streaming infrastructure, replacing the messaging-based approach.
 
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

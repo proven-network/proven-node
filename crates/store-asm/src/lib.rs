@@ -1,7 +1,6 @@
 //! Implementation of key-value storage using AWS Secrets Manager. Values
 //! typically double-encrypted using KMS with enclave-specific keys.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::too_many_lines)]

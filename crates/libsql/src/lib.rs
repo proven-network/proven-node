@@ -1,7 +1,6 @@
 //! Wrapper around [libsql](https://github.com/tursodatabase/libsql) which
 //! provides additional functionality like migrations and backup.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

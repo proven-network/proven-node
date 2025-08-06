@@ -1,6 +1,5 @@
 //! Manages a pool of V8 isolates for running proven application code.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![allow(clippy::result_large_err)]

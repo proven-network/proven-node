@@ -1,6 +1,5 @@
 //! Abstract interface for managing remote attestation and interacting with hardware-based security modules.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

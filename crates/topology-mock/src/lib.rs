@@ -1,6 +1,5 @@
 //! Mock implementation of the topology adaptor interface for testing purposes.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 

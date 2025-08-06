@@ -1,6 +1,5 @@
 //! An implementation of the NFT verifier which uses the Radix Gateway.
 #![warn(missing_docs)]
-#![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
