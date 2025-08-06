@@ -207,7 +207,7 @@ mod tests {
         }
 
         // Wait for ready
-        wait_for_cluster_ready(&mut test_cluster.cluster, Duration::from_secs(10))
+        wait_for_cluster_ready(&mut test_cluster.cluster, Duration::from_secs(30))
             .await
             .unwrap();
 

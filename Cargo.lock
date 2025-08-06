@@ -9012,25 +9012,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "objc2-core-foundation"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c10c2894a6fed806ade6027bcd50662746363a9589d3ec9d9bef30a4e4bc166"
-dependencies = [
- "bitflags 2.9.1",
-]
-
-[[package]]
-name = "objc2-io-kit"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71c1c64d6120e51cd86033f67176b1cb66780c2efe34dec55176f77befd93c0a"
-dependencies = [
- "libc",
- "objc2-core-foundation",
-]
-
-[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10876,12 +10857,7 @@ name = "proven-local-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bytes",
  "chrono",
- "ciborium",
- "clap",
- "coset",
- "crossbeam-channel",
  "crossterm 0.29.0",
  "dirs 6.0.0",
  "ed25519-dalek",
@@ -10894,28 +10870,23 @@ dependencies = [
  "proven-attestation-mock",
  "proven-core",
  "proven-local",
+ "proven-local-cluster",
  "proven-topology",
  "proven-topology-mock",
  "proven-util",
  "rand 0.8.5",
  "ratatui",
- "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
  "serial_test",
- "sha2 0.10.9",
  "signal-hook",
- "sysinfo",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",
- "toml 0.9.2",
  "tracing",
- "tracing-appender",
  "tracing-subscriber 0.3.19",
- "url",
  "uuid",
 ]
 
@@ -14612,20 +14583,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sysinfo"
-version = "0.35.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c3ffa3e4ff2b324a57f7aeb3c349656c7b127c3c189520251a648102a92496e"
-dependencies = [
- "libc",
- "memchr",
- "ntapi",
- "objc2-core-foundation",
- "objc2-io-kit",
- "windows 0.61.3",
-]
-
-[[package]]
 name = "systemctl"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15357,18 +15314,6 @@ dependencies = [
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
-]
-
-[[package]]
-name = "tracing-appender"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3566e8ce28cc0a3fe42519fc80e6b4c943cc4c8cef275620eb8dac2d3d4e06cf"
-dependencies = [
- "crossbeam-channel",
- "thiserror 1.0.69",
- "time",
- "tracing-subscriber 0.3.19",
 ]
 
 [[package]]

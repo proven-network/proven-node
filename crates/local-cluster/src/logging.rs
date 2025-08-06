@@ -165,7 +165,8 @@ impl AsyncLogWriter {
 
                     if batch.len() >= max_batch_size {
                         if let Err(e) = self.flush_batch(&mut batch) {
-                            eprintln!("Failed to flush batch: {e}");
+                            // Log to file instead of stderr to avoid interfering with TUI
+                            tracing::error!("Failed to flush batch: {e}");
                         }
                         last_flush = std::time::Instant::now();
                     }
@@ -175,7 +176,8 @@ impl AsyncLogWriter {
                         && (last_flush.elapsed() >= batch_interval || batch.len() >= 50)
                     {
                         if let Err(e) = self.flush_batch(&mut batch) {
-                            eprintln!("Failed to flush batch: {e}");
+                            // Log to file instead of stderr to avoid interfering with TUI
+                            tracing::error!("Failed to flush batch: {e}");
                         }
                         last_flush = std::time::Instant::now();
                     }
@@ -184,7 +186,8 @@ impl AsyncLogWriter {
                     // Channel closed, flush remaining and exit
                     if !batch.is_empty()
                         && let Err(e) = self.flush_batch(&mut batch) {
-                            eprintln!("Failed to flush final batch: {e}");
+                            // Log to file instead of stderr to avoid interfering with TUI
+                            tracing::error!("Failed to flush final batch: {e}");
                         }
                     break;
                 }
@@ -312,10 +315,14 @@ impl LogWriter {
     /// # Errors
     ///
     /// Returns an error if creating the database connection fails
-    pub fn with_stdout(_base_dir: &std::path::Path, print_to_stdout: bool) -> Result<Self> {
-        // Create shared in-memory database connection
+    pub fn with_stdout(base_dir: &std::path::Path, print_to_stdout: bool) -> Result<Self> {
+        // Ensure log directory exists
+        std::fs::create_dir_all(base_dir).context("Failed to create log directory")?;
+
+        // Create file-based database connection
+        let db_path = base_dir.join("logs.db");
         let connection =
-            Connection::open_in_memory().context("Failed to create in-memory database")?;
+            Connection::open(&db_path).context("Failed to create database connection")?;
 
         // Create tables
         connection

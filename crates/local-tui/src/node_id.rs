@@ -107,6 +107,11 @@ impl TuiNodeId {
         }
     }
 
+    /// Get a short ID string for the node
+    pub fn short_id(self) -> String {
+        format!("{}-{}", self.execution_order, self.pokemon_name())
+    }
+
     /// Reset the global state (useful for testing)
     #[cfg(test)]
     pub fn reset_global_state() {

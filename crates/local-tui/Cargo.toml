@@ -8,61 +8,49 @@ edition = "2024"
 ratatui = "0.29.0"
 crossterm = "0.29.0"
 
-# Async and messaging
+# Local cluster backend
+proven-local-cluster = { path = "../local-cluster" }
+
+# Core dependencies
 proven-local.workspace = true
 proven-core.workspace = true
 proven-applications.workspace = true
 proven-util.workspace = true
-tokio.workspace = true
-tokio-util.workspace = true
-crossbeam-channel = "0.5"
-futures.workspace = true
-
-# Cryptography and attestation
-ed25519-dalek.workspace = true
-rand.workspace = true
-hex.workspace = true
-sha2.workspace = true
-proven-attestation.workspace = true
-proven-attestation-mock.workspace = true
 proven-topology.workspace = true
 proven-topology-mock.workspace = true
+proven-attestation.workspace = true
+proven-attestation-mock.workspace = true
 
-# Logging
+# Async and messaging
+tokio.workspace = true
+tokio-util.workspace = true
+futures.workspace = true
 parking_lot.workspace = true
+
+# Logging and tracing
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
-tracing-appender = "0.2"
 
 # Data handling
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-toml.workspace = true
-uuid.workspace = true
 rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+uuid.workspace = true
 
 # Error handling
 anyhow.workspace = true
 thiserror.workspace = true
 
-# System monitoring (for future use)
-sysinfo = "0.35.2"
-
-# Utilities
-clap.workspace = true
-dirs = "6.0.0"
+# TUI-specific utilities
 pokemon-rs = "1.6.6"
 signal-hook = "0.3"
-url.workspace = true
+dirs = "6.0.0"
 
-# HTTP client for RPC communication
-reqwest.workspace = true
-
-# CBOR and COSE for attestation document parsing
-ciborium.workspace = true
-coset.workspace = true
-bytes.workspace = true
+# Cryptography (for RPC)
+ed25519-dalek.workspace = true
+rand.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 serial_test = "3.2.0"

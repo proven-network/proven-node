@@ -1,61 +1,34 @@
-//! TUI interface components
+//! TUI interface components - adapted from old ui.rs to work with new backend
 
-use crate::{logs_viewer::LogReader, messages::TuiNodeId};
-
+use crate::node_id::TuiNodeId;
 use proven_applications::Application;
+use proven_local::NodeStatus;
+use proven_local_cluster::{LogEntry, LogLevel};
+use proven_topology::NodeSpecialization;
 use std::collections::{HashMap, HashSet};
 
-use proven_local::NodeStatus;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        Block, Borders, Clear, List, ListItem, Padding, Paragraph, Scrollbar, ScrollbarOrientation,
         ScrollbarState,
     },
 };
-use std::time::Instant;
-
-/// Mouse state for dynamic capture switching
-#[derive(Debug)]
-pub struct MouseState {
-    /// Whether mouse button is currently pressed
-    pub is_down: bool,
-    /// When the mouse button was pressed
-    pub down_time: Option<Instant>,
-    /// Whether mouse capture is currently enabled
-    pub capture_enabled: bool,
-}
-
-impl MouseState {
-    /// Create a new mouse state
-    pub const fn new() -> Self {
-        Self {
-            is_down: false,
-            down_time: None,
-            capture_enabled: true, // Start with capture enabled
-        }
-    }
-}
-
-impl Default for MouseState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// UI state management
 #[derive(Debug)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct UiState {
-    /// Current scroll position (maintained by background thread, used for scrollbar display only)
+    /// Current scroll position (0 = top, increases downward)
     pub log_scroll: usize,
     /// Current viewport logs for display
-    pub viewport_logs: Vec<crate::messages::LogEntry>,
+    pub viewport_logs: Vec<LogEntry>,
     /// Total number of lines in the current log file
     pub total_log_lines: usize,
+    /// Whether auto-scroll is enabled (automatically scroll to bottom for new logs)
+    pub auto_scroll_enabled: bool,
     /// Viewport height for logs (set during render)
     pub log_viewport_height: usize,
     /// Scrollbar state for logs
@@ -68,166 +41,423 @@ pub struct UiState {
     pub logs_sidebar_nodes: Vec<TuiNodeId>,
     /// Whether to show help overlay
     pub show_help: bool,
-    /// Whether to show log level selection modal
-    pub show_log_level_modal: bool,
-    /// Selected index in log level modal (0-4 for Error, Warn, Info, Debug, Trace)
-    pub log_level_modal_selected: usize,
-    /// Whether to show RPC modal
-    pub show_rpc_modal: bool,
-    /// Selected tab in RPC modal (0 = Management, 1 = Application)
-    pub rpc_modal_tab_selected: usize,
-    /// Selected command in RPC modal
-    pub rpc_modal_command_selected: usize,
-    /// Result of last RPC command execution
-    pub rpc_modal_result: Option<String>,
-    /// Last applied node filter to prevent redundant calls
-    last_applied_node_filter: Option<TuiNodeId>,
     /// Whether to show node type selection modal
     pub show_node_type_modal: bool,
-    /// Selected specializations for new node,
+    /// Whether to show log level modal
+    pub show_log_level_modal: bool,
+    /// Selected log level in modal (0=Error, 1=Warn, 2=Info, 3=Debug, 4=Trace)
+    pub log_level_modal_selected: usize,
+    /// Current log level filter
+    pub log_level_filter: LogLevel,
+    /// Selected specializations for new node
     pub node_specializations_selected: Vec<bool>,
     /// Currently highlighted index in the specializations modal
     pub node_modal_selected_index: usize,
-    /// Whether to show application manager modal
-    pub show_application_manager_modal: bool,
-    /// Current view in application manager (0 = list, 1 = details, 2 = add origin, 3 = create app)
+    /// Whether to show application modal
+    pub application_modal_active: bool,
+    /// Application modal view (0=list, 1=details, 2=add_origin, 3=create)
     pub app_manager_view: usize,
-    /// Selected application index in the list
+    /// Selected application index in list
     pub app_manager_selected_index: usize,
-    /// List of applications owned by the user
+    /// List of applications
     pub app_manager_applications: Vec<Application>,
-    /// Currently selected application for details/operations
+    /// Currently selected application for details view
     pub app_manager_selected_application: Option<Application>,
-    /// Input text for adding new origins
+    /// Origin input for adding to application
     pub app_manager_origin_input: String,
-    /// Result message for application operations
+    /// Result message from last operation
     pub app_manager_result: Option<String>,
-    /// Sidebar area for mouse click detection
-    pub sidebar_area: ratatui::layout::Rect,
-    /// Main sidebar list area (for Overview and nodes)
-    pub sidebar_main_area: ratatui::layout::Rect,
-    /// Debug area at bottom of sidebar  
-    pub sidebar_debug_area: ratatui::layout::Rect,
-    /// Logs area for mouse scroll detection
-    pub logs_area: ratatui::layout::Rect,
-    /// Mouse state for dynamic capture switching
-    pub mouse_state: MouseState,
+    /// Application name input (for create view)
+    pub app_name: String,
+    /// Application origin input (for create view)
+    pub app_origin: String,
+    /// Modal field index
+    pub modal_field_index: usize,
+    /// Nodes from cluster
+    pub nodes: HashMap<TuiNodeId, (String, NodeStatus, HashSet<NodeSpecialization>)>,
+    /// Selected node
+    pub selected_node: Option<TuiNodeId>,
+    /// Areas for mouse handling
+    pub logs_area: Rect,
+    pub sidebar_area: Rect,
+    pub sidebar_main_area: Rect,
+    pub sidebar_debug_area: Rect,
+    /// Message to display
+    pub message: Option<String>,
+    /// Whether shutting down
+    pub is_shutting_down: bool,
 }
 
 impl UiState {
     /// Create a new UI state
-    #[must_use]
     pub fn new() -> Self {
         Self {
             log_scroll: 0,
             viewport_logs: Vec::new(),
             total_log_lines: 0,
+            auto_scroll_enabled: true,
             log_viewport_height: 0,
             log_scrollbar_state: ScrollbarState::default(),
             logs_sidebar_selected: 0,
             logs_sidebar_debug_selected: false,
             logs_sidebar_nodes: Vec::new(),
             show_help: false,
-            show_log_level_modal: false,
-            log_level_modal_selected: 2, // Default to Info (index 2)
-            show_rpc_modal: false,
-            rpc_modal_tab_selected: 0,
-            rpc_modal_command_selected: 0,
-            rpc_modal_result: None,
-            last_applied_node_filter: None,
             show_node_type_modal: false,
+            show_log_level_modal: false,
+            log_level_modal_selected: 2, // Default to Info
+            log_level_filter: LogLevel::Info,
             node_specializations_selected: vec![false; 7],
             node_modal_selected_index: 0,
-            show_application_manager_modal: false,
+            application_modal_active: false,
             app_manager_view: 0,
             app_manager_selected_index: 0,
             app_manager_applications: Vec::new(),
             app_manager_selected_application: None,
             app_manager_origin_input: String::new(),
             app_manager_result: None,
-            sidebar_area: ratatui::layout::Rect::default(),
-            sidebar_main_area: ratatui::layout::Rect::default(),
-            sidebar_debug_area: ratatui::layout::Rect::default(),
-            logs_area: ratatui::layout::Rect::default(),
-            mouse_state: MouseState::new(),
+            app_name: String::new(),
+            app_origin: "http://localhost:3000".to_string(),
+            modal_field_index: 0,
+            nodes: HashMap::new(),
+            selected_node: None,
+            logs_area: Rect::default(),
+            sidebar_area: Rect::default(),
+            sidebar_main_area: Rect::default(),
+            sidebar_debug_area: Rect::default(),
+            message: None,
+            is_shutting_down: false,
         }
     }
 
-    /// Update scrollbar state based on current scroll position from background thread
-    pub const fn update_scrollbar_state(&mut self) {
-        let total_logs = self.total_log_lines;
-        let viewport_height = self.log_viewport_height;
+    /// Update viewport logs from new logs
+    pub fn update_logs(&mut self, new_logs: Vec<LogEntry>) {
+        let had_logs = !self.viewport_logs.is_empty();
 
-        if total_logs <= viewport_height {
-            // All content fits in viewport, no scrolling needed
-            self.log_scrollbar_state = self
-                .log_scrollbar_state
-                .content_length(total_logs)
-                .viewport_content_length(viewport_height)
-                .position(0);
-        } else {
-            // Content requires scrolling
-            // For ratatui scrollbar: position 0 = top, position max = bottom
-            // For our logs: log_scroll 0 = bottom (newest), log_scroll max = top (oldest)
-            //
-            // The scrollbar should represent which part of the logs we're viewing:
-            // - When first log is visible (log_scroll = max_scroll), scrollbar should be at top (0)
-            // - When last log is at bottom (log_scroll = 0), scrollbar should be at bottom
-            //
-            // We need to set content_length to total_logs and viewport_content_length to viewport_height
-            // Then position represents the first visible log index (from the top)
+        // Append new logs (already filtered by SQL query)
+        self.viewport_logs.extend(new_logs);
 
-            // log_scroll represents how many logs are below our viewport
-            // So the first visible log index from the top is: total_logs - viewport_height - log_scroll
-            let max_scroll = total_logs.saturating_sub(viewport_height);
-            let first_visible_log_from_top = total_logs
-                .saturating_sub(viewport_height)
-                .saturating_sub(self.log_scroll);
-
-            // ROBUST CHECK: If we're at or very close to the top, force scrollbar to position 0
-            let position = if self.log_scroll >= max_scroll || first_visible_log_from_top == 0 {
-                0 // Force to top when first log is visible
+        // Keep log size reasonable (but much larger than before)
+        // This matches the old implementation's limit
+        if self.viewport_logs.len() > 50000 {
+            // Remove oldest logs
+            let removed_count = 25000;
+            self.viewport_logs.drain(0..removed_count);
+            // Adjust scroll position if we removed logs before current position
+            if self.log_scroll >= removed_count {
+                self.log_scroll -= removed_count;
             } else {
-                first_visible_log_from_top
-            };
-
-            self.log_scrollbar_state = self
-                .log_scrollbar_state
-                .content_length(total_logs)
-                .viewport_content_length(viewport_height)
-                .position(position);
+                self.log_scroll = 0;
+            }
         }
-    }
 
-    /// Update viewport logs and scroll state from background thread response
-    pub fn update_viewport_logs(
-        &mut self,
-        logs: Vec<crate::messages::LogEntry>,
-        total_lines: usize,
-        scroll_position: usize,
-    ) {
-        // Only update logs if we received actual log content
-        // Empty logs mean this is just a metadata update (scrollbar position)
-        if !logs.is_empty() {
-            self.viewport_logs = logs;
+        self.total_log_lines = self.viewport_logs.len();
+
+        // Auto-scroll to bottom if enabled and we have logs
+        if self.auto_scroll_enabled && had_logs && self.total_log_lines > self.log_viewport_height {
+            self.log_scroll = self
+                .total_log_lines
+                .saturating_sub(self.log_viewport_height);
         }
-        self.total_log_lines = total_lines;
-        self.log_scroll = scroll_position;
 
-        // Update scrollbar state based on new scroll position
         self.update_scrollbar_state();
     }
 
-    /// Update node filter only if it has changed (prevents redundant calls that cause auto-scroll jumping)
-    pub fn update_node_filter_if_changed(
-        &mut self,
-        new_filter: Option<TuiNodeId>,
-        log_reader: &LogReader,
-    ) {
-        if self.last_applied_node_filter != new_filter {
-            self.last_applied_node_filter = new_filter;
-            log_reader.set_node_filter(new_filter);
+    /// Update scrollbar state
+    pub fn update_scrollbar_state(&mut self) {
+        // The scrollbar needs to understand the viewport size
+        // content_length is the total number of items
+        // position is the index of the first visible item
+        // viewport_content_length is how many items are visible at once
+
+        // When we have fewer logs than viewport, no scrollbar needed
+        if self.total_log_lines <= self.log_viewport_height {
+            self.log_scrollbar_state = ScrollbarState::default();
+        } else {
+            // The key insight: the scrollbar should represent the SCROLLABLE range,
+            // not the total content. The scrollable range is (total - viewport + 1)
+            // because when we're at the last position, we still see viewport lines.
+            let scrollable_range = self
+                .total_log_lines
+                .saturating_sub(self.log_viewport_height)
+                + 1;
+
+            self.log_scrollbar_state = ScrollbarState::default()
+                .content_length(scrollable_range)
+                .position(self.log_scroll);
+            // Not setting viewport_content_length - it seems to confuse things
         }
+    }
+
+    /// Update nodes from cluster
+    pub fn update_nodes(
+        &mut self,
+        nodes: HashMap<TuiNodeId, (String, NodeStatus, HashSet<NodeSpecialization>)>,
+    ) {
+        self.nodes = nodes;
+
+        // Update nodes list for sidebar
+        let mut nodes_with_logs: Vec<TuiNodeId> = self
+            .nodes
+            .keys()
+            .filter(|&&node_id| node_id != crate::node_id::MAIN_THREAD_NODE_ID)
+            .copied()
+            .collect();
+
+        // Sort by execution order
+        nodes_with_logs.sort_by_key(|node_id| node_id.execution_order());
+        self.logs_sidebar_nodes = nodes_with_logs;
+    }
+
+    /// Navigate sidebar selection
+    pub fn select_next_sidebar(&mut self) {
+        let max_index = self.logs_sidebar_nodes.len() + 1; // +1 for "All" item
+        if self.logs_sidebar_debug_selected {
+            self.logs_sidebar_debug_selected = false;
+            self.logs_sidebar_selected = 0;
+        } else if self.logs_sidebar_selected < max_index - 1 {
+            self.logs_sidebar_selected += 1;
+        } else {
+            self.logs_sidebar_debug_selected = true;
+        }
+        // Reset scroll when switching tabs
+        self.reset_scroll_to_autoscroll();
+    }
+
+    pub fn select_previous_sidebar(&mut self) {
+        if self.logs_sidebar_debug_selected {
+            self.logs_sidebar_debug_selected = false;
+            self.logs_sidebar_selected = self.logs_sidebar_nodes.len();
+        } else if self.logs_sidebar_selected > 0 {
+            self.logs_sidebar_selected -= 1;
+        } else {
+            self.logs_sidebar_debug_selected = true;
+        }
+        // Reset scroll when switching tabs
+        self.reset_scroll_to_autoscroll();
+    }
+
+    /// Toggle help overlay
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+    }
+
+    /// Clear logs
+    pub fn clear_logs(&mut self) {
+        self.viewport_logs.clear();
+        self.log_scroll = 0;
+        self.total_log_lines = 0;
+    }
+
+    /// Log scrolling
+    pub fn scroll_logs_up(&mut self) {
+        if self.log_scroll > 0 {
+            self.log_scroll -= 1;
+            // Disable auto-scroll when user scrolls manually
+            self.auto_scroll_enabled = false;
+        }
+    }
+
+    pub fn scroll_logs_down(&mut self) {
+        let max_scroll = self
+            .total_log_lines
+            .saturating_sub(self.log_viewport_height);
+        if self.log_scroll < max_scroll {
+            self.log_scroll += 1;
+            // Re-enable auto-scroll if we reached the bottom
+            if self.log_scroll >= max_scroll {
+                self.auto_scroll_enabled = true;
+            }
+        }
+    }
+
+    pub fn scroll_logs_page_up(&mut self) {
+        self.log_scroll = self.log_scroll.saturating_sub(20);
+        // Disable auto-scroll when user scrolls manually
+        if self.log_scroll
+            < self
+                .total_log_lines
+                .saturating_sub(self.log_viewport_height)
+        {
+            self.auto_scroll_enabled = false;
+        }
+    }
+
+    pub fn scroll_logs_page_down(&mut self) {
+        let max_scroll = self
+            .total_log_lines
+            .saturating_sub(self.log_viewport_height);
+        self.log_scroll = (self.log_scroll + 20).min(max_scroll);
+        // Re-enable auto-scroll if we reached the bottom
+        if self.log_scroll >= max_scroll {
+            self.auto_scroll_enabled = true;
+        }
+    }
+
+    pub fn scroll_logs_home(&mut self) {
+        self.log_scroll = 0;
+        // Disable auto-scroll when user explicitly scrolls to top
+        self.auto_scroll_enabled = false;
+    }
+
+    pub fn scroll_logs_end(&mut self) {
+        self.log_scroll = self
+            .total_log_lines
+            .saturating_sub(self.log_viewport_height)
+            .max(0);
+        // Enable auto-scroll when user explicitly scrolls to bottom
+        self.auto_scroll_enabled = true;
+    }
+
+    /// Reset scroll to autoscroll position (called when switching tabs)
+    pub fn reset_scroll_to_autoscroll(&mut self) {
+        // When switching tabs, we should start fresh
+        // The actual logs will be filtered in render_logs()
+        self.log_scroll = 0;
+        self.auto_scroll_enabled = true;
+        // Note: total_log_lines will be recalculated in render_logs() based on the filtered logs
+    }
+
+    /// Modal management
+    pub fn open_new_node_modal(&mut self) {
+        self.show_node_type_modal = true;
+        self.node_modal_selected_index = 0;
+        self.node_specializations_selected = vec![false; 7];
+    }
+
+    pub fn open_application_modal(&mut self) {
+        self.application_modal_active = true;
+        self.app_name.clear();
+        self.app_origin = "http://localhost:3000".to_string();
+        self.modal_field_index = 0;
+    }
+
+    pub fn close_modal(&mut self) {
+        self.show_node_type_modal = false;
+        self.application_modal_active = false;
+        self.show_log_level_modal = false;
+    }
+
+    pub fn has_active_modal(&self) -> bool {
+        self.show_node_type_modal || self.application_modal_active || self.show_log_level_modal
+    }
+
+    pub fn next_modal_field(&mut self) {
+        self.modal_field_index = (self.modal_field_index + 1) % 2;
+    }
+
+    pub fn previous_modal_field(&mut self) {
+        if self.modal_field_index == 0 {
+            self.modal_field_index = 1;
+        } else {
+            self.modal_field_index = 0;
+        }
+    }
+
+    pub fn handle_modal_input(&mut self, key: crossterm::event::KeyEvent) {
+        use crossterm::event::KeyCode;
+        if self.application_modal_active {
+            match key.code {
+                KeyCode::Char(c) => {
+                    if self.modal_field_index == 0 {
+                        self.app_name.push(c);
+                    } else {
+                        self.app_origin.push(c);
+                    }
+                }
+                KeyCode::Backspace => {
+                    if self.modal_field_index == 0 {
+                        self.app_name.pop();
+                    } else {
+                        self.app_origin.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Get selected specializations
+    pub fn get_selected_specializations(&self) -> HashSet<NodeSpecialization> {
+        let mut specs = HashSet::new();
+        let all_specs = [
+            NodeSpecialization::BitcoinMainnet,
+            NodeSpecialization::BitcoinTestnet,
+            NodeSpecialization::EthereumMainnet,
+            NodeSpecialization::EthereumHolesky,
+            NodeSpecialization::EthereumSepolia,
+            NodeSpecialization::RadixMainnet,
+            NodeSpecialization::RadixStokenet,
+        ];
+
+        for (i, selected) in self.node_specializations_selected.iter().enumerate() {
+            if *selected && i < all_specs.len() {
+                specs.insert(all_specs[i].clone());
+            }
+        }
+
+        specs
+    }
+
+    pub fn get_application_data(&self) -> Option<(String, String)> {
+        if !self.app_name.is_empty() && !self.app_origin.is_empty() {
+            Some((self.app_name.clone(), self.app_origin.clone()))
+        } else {
+            None
+        }
+    }
+
+    /// Handle click events
+    pub fn handle_click(&mut self, x: u16, y: u16) {
+        // Check if click is in sidebar
+        if x >= self.sidebar_area.x
+            && x < self.sidebar_area.x + self.sidebar_area.width
+            && y >= self.sidebar_area.y
+            && y < self.sidebar_area.y + self.sidebar_area.height
+        {
+            // Check if in main area or debug area
+            if y >= self.sidebar_debug_area.y {
+                // Debug area clicked
+                self.logs_sidebar_debug_selected = true;
+                self.logs_sidebar_selected = 0;
+                self.reset_scroll_to_autoscroll();
+            } else if y >= self.sidebar_main_area.y {
+                // Calculate which item was clicked
+                let relative_y = y - self.sidebar_main_area.y;
+                if relative_y == 1 {
+                    // "All" clicked
+                    self.logs_sidebar_selected = 0;
+                    self.logs_sidebar_debug_selected = false;
+                    self.reset_scroll_to_autoscroll();
+                } else if relative_y >= 3 {
+                    // Node item clicked
+                    let node_index = (relative_y - 3) as usize;
+                    if node_index < self.logs_sidebar_nodes.len() {
+                        self.logs_sidebar_selected = node_index + 1;
+                        self.logs_sidebar_debug_selected = false;
+                        self.reset_scroll_to_autoscroll();
+                    }
+                }
+            }
+        }
+    }
+
+    /// Show error message
+    pub fn show_error(&mut self, msg: String) {
+        self.message = Some(format!("❌ {msg}"));
+    }
+
+    /// Show shutdown message
+    pub fn show_shutdown_message(&mut self) {
+        self.is_shutting_down = true;
+        self.message = Some("🛑 Shutting down all nodes...".to_string());
+    }
+
+    pub fn open_search_modal(&mut self) {
+        // TODO: Implement search modal
+    }
+
+    pub fn open_filter_modal(&mut self) {
+        // TODO: Implement filter modal
     }
 }
 
@@ -240,11 +470,11 @@ impl Default for UiState {
 /// Get status icon for a node
 const fn get_status_icon(status: &NodeStatus) -> &'static str {
     match status {
-        NodeStatus::NotStarted => "○", // Empty circle for not started
-        NodeStatus::Running => "●",    // Filled circle for running
-        NodeStatus::Starting => "◐",   // Half-filled circle for starting
-        NodeStatus::Stopped | NodeStatus::Stopping => "◯", // Empty circle for stopping/stopped
-        NodeStatus::Failed(_) => "✗",  // X for failed
+        NodeStatus::NotStarted => "○",
+        NodeStatus::Running => "●",
+        NodeStatus::Starting => "◐",
+        NodeStatus::Stopped | NodeStatus::Stopping => "◯",
+        NodeStatus::Failed(_) => "✗",
     }
 }
 
@@ -260,329 +490,19 @@ fn get_node_color(node_id: TuiNodeId) -> Color {
             Color::Indexed(5),   // Dark magenta
             Color::Indexed(3),   // Dark yellow
             Color::Indexed(1),   // Dark red
-            Color::Indexed(94),  // Bright blue (256-color)
-            Color::Indexed(130), // Dark orange (256-color)
-            Color::Indexed(97),  // Bright cyan (256-color)
-            Color::Indexed(133), // Bright magenta (256-color)
-            Color::Indexed(100), // Bright green (256-color)
-            Color::Indexed(124), // Bright red (256-color)
+            Color::Indexed(94),  // Bright blue
+            Color::Indexed(130), // Dark orange
+            Color::Indexed(97),  // Bright cyan
+            Color::Indexed(133), // Bright magenta
+            Color::Indexed(100), // Bright green
+            Color::Indexed(124), // Bright red
         ];
         node_colors[(node_id.execution_order() - 1) as usize % node_colors.len()]
     }
 }
 
-/// Strip ANSI escape sequences from a string
-fn strip_ansi_sequences(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch == '\x1b' {
-            // Check if this is an ANSI escape sequence
-            if chars.peek() == Some(&'[') {
-                chars.next(); // consume '['
-
-                // Skip until we find the end of the sequence (a letter)
-                for next_ch in chars.by_ref() {
-                    if next_ch.is_ascii_alphabetic() {
-                        break;
-                    }
-                }
-            } else {
-                // Not an ANSI sequence, keep the character
-                result.push(ch);
-            }
-        } else {
-            result.push(ch);
-        }
-    }
-
-    result
-}
-
-/// Wrap text to fit within a specified width, breaking at word boundaries when possible
-fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
-    if max_width == 0 {
-        return vec![text.to_string()];
-    }
-
-    let mut lines = Vec::new();
-    let mut current_line = String::new();
-
-    for word in text.split_whitespace() {
-        // If adding this word would exceed the width
-        if !current_line.is_empty() && current_line.len() + 1 + word.len() > max_width {
-            lines.push(current_line.clone());
-            current_line.clear();
-        }
-
-        // If the word itself is longer than max_width, we need to break it
-        if word.len() > max_width {
-            // If we have content in current_line, push it first
-            if !current_line.is_empty() {
-                lines.push(current_line.clone());
-                current_line.clear();
-            }
-
-            // Break the long word into chunks
-            let mut remaining_word = word;
-            while remaining_word.len() > max_width {
-                let (chunk, rest) = remaining_word.split_at(max_width);
-                lines.push(chunk.to_string());
-                remaining_word = rest;
-            }
-
-            // Add the remaining part of the word
-            if !remaining_word.is_empty() {
-                current_line = remaining_word.to_string();
-            }
-        } else {
-            // Add the word to current line
-            if !current_line.is_empty() {
-                current_line.push(' ');
-            }
-            current_line.push_str(word);
-        }
-    }
-
-    // Add the last line if it's not empty
-    if !current_line.is_empty() {
-        lines.push(current_line);
-    }
-
-    // If we have no lines, return the original text (edge case)
-    if lines.is_empty() {
-        lines.push(text.to_string());
-    }
-
-    lines
-}
-
-/// Create colored spans for a log entry with proper alignment and wrapping
-#[allow(clippy::too_many_lines)]
-pub fn create_colored_log_lines(
-    entry: &'_ crate::messages::LogEntry,
-    show_node_name: bool,
-    max_width: u16,
-) -> Vec<Line<'_>> {
-    let timestamp = format!("{}", entry.timestamp.format("%H:%M:%S%.3f"));
-    let node_name = entry.node_id.pokemon_name();
-
-    // Get consistent node color
-    let node_color = get_node_color(entry.node_id);
-
-    // Use tracing crate default colors
-    let level_color = match entry.level {
-        crate::messages::LogLevel::Error => Color::LightRed,
-        crate::messages::LogLevel::Warn => Color::LightYellow,
-        crate::messages::LogLevel::Info => Color::LightGreen,
-        crate::messages::LogLevel::Debug => Color::LightBlue,
-        crate::messages::LogLevel::Trace => Color::LightMagenta,
-    };
-
-    // Fixed-width formatting for perfect alignment
-    let level_str = match entry.level {
-        crate::messages::LogLevel::Error => "ERRO",
-        crate::messages::LogLevel::Warn => "WARN",
-        crate::messages::LogLevel::Info => "INFO",
-        crate::messages::LogLevel::Debug => "DEBG",
-        crate::messages::LogLevel::Trace => "TRAC",
-    };
-
-    // Calculate the prefix length to determine how much space is left for the message
-    let prefix_length = entry.target.as_ref().map_or_else(
-        || {
-            if show_node_name {
-                // "HH:MM:SS.mmm [ERRO] [node_name]: "
-                timestamp.len() + 1 + 1 + level_str.len() + 1 + 1 + 1 + node_name.len() + 2
-            } else {
-                // "HH:MM:SS.mmm [ERRO]: "
-                timestamp.len() + 1 + 1 + level_str.len() + 2
-            }
-        },
-        |target| {
-            if show_node_name {
-                // "HH:MM:SS.mmm [ERRO] [node_name] target: "
-                timestamp.len()
-                    + 1
-                    + 1
-                    + level_str.len()
-                    + 1
-                    + 1
-                    + 1
-                    + node_name.len()
-                    + 1
-                    + 1
-                    + target.len()
-                    + 2
-            } else {
-                // "HH:MM:SS.mmm [ERRO] target: "
-                timestamp.len() + 1 + 1 + level_str.len() + 1 + 1 + target.len() + 2
-            }
-        },
-    );
-
-    // Clean the message
-    let clean_message = strip_ansi_sequences(&entry.message);
-
-    // Calculate available width for the message (accounting for borders and padding)
-    #[allow(clippy::cast_possible_truncation)]
-    let available_width = max_width
-        .saturating_sub(prefix_length as u16)
-        .saturating_sub(4); // Extra margin for safety
-
-    // Split the message into lines that fit within the available width
-    let wrapped_lines = wrap_text(&clean_message, available_width as usize);
-
-    let mut result_lines = Vec::new();
-
-    for (line_idx, wrapped_line) in wrapped_lines.iter().enumerate() {
-        if line_idx == 0 {
-            // First line includes the full prefix
-            if let Some(target) = &entry.target {
-                if show_node_name {
-                    result_lines.push(Line::from(vec![
-                        Span::styled(timestamp.clone(), Style::default().fg(Color::DarkGray)),
-                        Span::raw(" "),
-                        Span::styled(
-                            "[",
-                            Style::default()
-                                .fg(level_color)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            level_str,
-                            Style::default()
-                                .fg(level_color)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            "]",
-                            Style::default()
-                                .fg(level_color)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::raw(" "),
-                        Span::styled("[", Style::default().fg(node_color)),
-                        Span::styled(node_name.clone(), Style::default().fg(node_color)),
-                        Span::styled("]", Style::default().fg(node_color)),
-                        Span::raw(" "),
-                        Span::styled(target.clone(), Style::default().fg(Color::DarkGray)),
-                        Span::raw(": "),
-                        Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
-                    ]));
-                } else {
-                    result_lines.push(Line::from(vec![
-                        Span::styled(timestamp.clone(), Style::default().fg(Color::DarkGray)),
-                        Span::raw(" "),
-                        Span::styled(
-                            "[",
-                            Style::default()
-                                .fg(level_color)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            level_str,
-                            Style::default()
-                                .fg(level_color)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(
-                            "]",
-                            Style::default()
-                                .fg(level_color)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::raw(" "),
-                        Span::styled(target.clone(), Style::default().fg(Color::DarkGray)),
-                        Span::raw(": "),
-                        Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
-                    ]));
-                }
-            } else if show_node_name {
-                result_lines.push(Line::from(vec![
-                    Span::styled(timestamp.clone(), Style::default().fg(Color::DarkGray)),
-                    Span::raw(" "),
-                    Span::styled(
-                        "[",
-                        Style::default()
-                            .fg(level_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(
-                        level_str,
-                        Style::default()
-                            .fg(level_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(
-                        "]",
-                        Style::default()
-                            .fg(level_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::raw(" "),
-                    Span::styled("[", Style::default().fg(node_color)),
-                    Span::styled(node_name.clone(), Style::default().fg(node_color)),
-                    Span::styled("]", Style::default().fg(node_color)),
-                    Span::raw(": "),
-                    Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
-                ]));
-            } else {
-                result_lines.push(Line::from(vec![
-                    Span::styled(timestamp.clone(), Style::default().fg(Color::DarkGray)),
-                    Span::raw(" "),
-                    Span::styled(
-                        "[",
-                        Style::default()
-                            .fg(level_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(
-                        level_str,
-                        Style::default()
-                            .fg(level_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(
-                        "]",
-                        Style::default()
-                            .fg(level_color)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::raw(": "),
-                    Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
-                ]));
-            }
-        } else {
-            // Continuation lines are indented to align with the message
-            let indent = " ".repeat(prefix_length);
-            result_lines.push(Line::from(vec![
-                Span::styled(indent, Style::default().fg(Color::DarkGray)),
-                Span::styled(wrapped_line.clone(), Style::default().fg(Color::White)),
-            ]));
-        }
-    }
-
-    result_lines
-}
-
 /// Main UI rendering function
-pub fn render_ui<S: std::hash::BuildHasher>(
-    frame: &mut Frame,
-    ui_state: &mut UiState,
-    nodes: &HashMap<
-        TuiNodeId,
-        (
-            String,
-            NodeStatus,
-            HashSet<proven_topology::NodeSpecialization>,
-        ),
-        S,
-    >,
-    log_reader: &LogReader,
-    shutting_down: bool,
-) {
+pub fn render_ui(frame: &mut Frame, ui_state: &mut UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -595,25 +515,15 @@ pub fn render_ui<S: std::hash::BuildHasher>(
     // Render header at the top
     render_header(frame, chunks[0]);
 
-    // Render logs in the main area
-    render_logs(frame, chunks[1], log_reader, ui_state, nodes);
+    // Render logs in the main area with sidebar
+    render_logs(frame, chunks[1], ui_state);
 
     // Render footer at the bottom
-    render_footer(frame, chunks[2], shutting_down, ui_state, nodes);
+    render_footer(frame, chunks[2], ui_state.is_shutting_down, ui_state);
 
     // Render help overlay if requested
     if ui_state.show_help {
         render_help_overlay(frame, frame.area());
-    }
-
-    // Render log level modal if requested
-    if ui_state.show_log_level_modal {
-        render_log_level_modal(frame, frame.area(), ui_state, log_reader);
-    }
-
-    // Render RPC modal if requested
-    if ui_state.show_rpc_modal {
-        render_rpc_modal(frame, frame.area(), ui_state);
     }
 
     // Render node type selection modal if requested
@@ -621,14 +531,19 @@ pub fn render_ui<S: std::hash::BuildHasher>(
         render_node_type_modal(frame, frame.area(), ui_state);
     }
 
-    // Render application manager modal if requested
-    if ui_state.show_application_manager_modal {
-        render_application_manager_modal(frame, frame.area(), ui_state);
+    // Render application modal if requested
+    if ui_state.application_modal_active {
+        render_application_modal(frame, frame.area(), ui_state);
+    }
+
+    // Render log level modal if requested
+    if ui_state.show_log_level_modal {
+        render_log_level_modal(frame, frame.area(), ui_state);
     }
 }
 
 /// Render the header with title
-fn render_header(frame: &mut Frame, area: ratatui::layout::Rect) {
+fn render_header(frame: &mut Frame, area: Rect) {
     let header_text = Line::from(vec![Span::styled(
         "Proven Network - Local Debugger",
         Style::default()
@@ -638,39 +553,13 @@ fn render_header(frame: &mut Frame, area: ratatui::layout::Rect) {
 
     let paragraph = Paragraph::new(header_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
 
     frame.render_widget(paragraph, area);
 }
 
-/// Render logs view
-#[allow(clippy::too_many_lines)]
-fn render_logs<S: std::hash::BuildHasher>(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    log_reader: &LogReader,
-    ui_state: &mut UiState,
-    nodes: &HashMap<
-        TuiNodeId,
-        (
-            String,
-            NodeStatus,
-            HashSet<proven_topology::NodeSpecialization>,
-        ),
-        S,
-    >,
-) {
-    // Update nodes with logs for sidebar - use NodeManager data instead of scanning log files
-    let mut nodes_with_logs: Vec<TuiNodeId> = nodes
-        .keys()
-        .filter(|&&node_id| node_id != crate::messages::MAIN_THREAD_NODE_ID)
-        .copied()
-        .collect();
-
-    // Sort by execution order to match overview screen
-    nodes_with_logs.sort_by_key(|node_id| node_id.execution_order());
-    ui_state.logs_sidebar_nodes = nodes_with_logs;
-
+/// Render logs view with sidebar
+fn render_logs(frame: &mut Frame, area: Rect, ui_state: &mut UiState) {
     // Use fixed sidebar width
     let sidebar_width = 25;
 
@@ -684,7 +573,7 @@ fn render_logs<S: std::hash::BuildHasher>(
         .split(area);
 
     // Render sidebar
-    render_logs_sidebar(frame, horizontal_chunks[0], ui_state, log_reader, nodes);
+    render_logs_sidebar(frame, horizontal_chunks[0], ui_state);
 
     // Render logs in the remaining space
     let logs_area = horizontal_chunks[1];
@@ -692,113 +581,126 @@ fn render_logs<S: std::hash::BuildHasher>(
     // Store logs area for mouse scroll detection
     ui_state.logs_area = logs_area;
 
-    // Determine what the node filter should be based on current UI state
-    let desired_node_filter = if ui_state.logs_sidebar_debug_selected {
-        // Show only debug (main thread) logs
-        Some(crate::messages::MAIN_THREAD_NODE_ID)
+    // Filter logs based on sidebar selection (log level already filtered by SQL)
+    let filtered_logs: Vec<&LogEntry> = if ui_state.logs_sidebar_debug_selected {
+        // Show only main thread (debug) logs
+        ui_state
+            .viewport_logs
+            .iter()
+            .filter(|log| log.node_id == "main")
+            .collect()
     } else if ui_state.logs_sidebar_selected == 0 {
         // Show all logs
-        None
+        ui_state.viewport_logs.iter().collect()
     } else if let Some(&selected_node_id) = ui_state
         .logs_sidebar_nodes
         .get(ui_state.logs_sidebar_selected - 1)
     {
         // Show logs from specific node
-        Some(selected_node_id)
+        // Cluster stores node_id as "node-session-execution_order-short_id"
+        // We need to match by execution_order which is in the middle
+        let target_execution_order = selected_node_id.execution_order();
+        ui_state
+            .viewport_logs
+            .iter()
+            .filter(|log| {
+                // Parse thread name format: "node-session-execution_order-short_id"
+                if let Some(node_part) = log.node_id.strip_prefix("node-") {
+                    let parts: Vec<&str> = node_part.split('-').collect();
+                    if parts.len() >= 3 {
+                        // execution_order is the second-to-last part
+                        if let Ok(exec_order) = parts[parts.len() - 2].parse::<u8>() {
+                            return exec_order == target_execution_order;
+                        }
+                    }
+                }
+                false
+            })
+            .collect()
     } else {
-        // Invalid selection, show all logs
-        None
+        // Invalid selection, show all
+        ui_state.viewport_logs.iter().collect()
     };
 
-    // Update node filter only if it has changed (prevents redundant calls that cause jumping)
-    ui_state.update_node_filter_if_changed(desired_node_filter, log_reader);
-
-    // Process any responses from the background thread
-    while let Some(response) = log_reader.try_get_response() {
-        use crate::logs_viewer::LogResponse;
-        match response {
-            LogResponse::ViewportUpdate {
-                logs,
-                total_filtered_lines,
-                scroll_position,
-            } => {
-                // Update logs and scroll position from background thread (single source of truth)
-                ui_state.update_viewport_logs(logs, total_filtered_lines, scroll_position);
-            }
-            LogResponse::Error { message } => {
-                // Log error but continue rendering
-                tracing::debug!("Log reader error: {}", message);
-            }
-        }
-    }
-
-    // Update viewport height for scrolling calculations
+    // Update total log lines and viewport
+    ui_state.total_log_lines = filtered_logs.len();
     let content_height = logs_area.height.saturating_sub(2); // Account for borders
-    let new_viewport_height = content_height as usize;
+    ui_state.log_viewport_height = content_height as usize;
 
-    // If viewport size changed, update the background thread
-    if ui_state.log_viewport_height != new_viewport_height {
-        ui_state.log_viewport_height = new_viewport_height;
-        log_reader.update_viewport_size(ui_state.log_viewport_height);
-    }
-
-    // If we don't have any logs yet, request initial data
-    if ui_state.viewport_logs.is_empty() && ui_state.total_log_lines == 0 {
-        log_reader.request_initial_data();
+    // Fix scroll position if it's invalid for the current filtered logs
+    // This happens when switching tabs or when logs are fewer than viewport
+    if ui_state.auto_scroll_enabled {
+        if ui_state.total_log_lines > ui_state.log_viewport_height {
+            // More logs than viewport - scroll to show latest
+            ui_state.log_scroll = ui_state
+                .total_log_lines
+                .saturating_sub(ui_state.log_viewport_height);
+        } else {
+            // Fewer logs than viewport - no scrolling needed
+            ui_state.log_scroll = 0;
+        }
+    } else {
+        // Ensure scroll position is valid even when not auto-scrolling
+        if ui_state.log_scroll >= ui_state.total_log_lines {
+            ui_state.log_scroll = ui_state.total_log_lines.saturating_sub(1).max(0);
+        }
     }
 
     // Determine whether to show node names in logs
     let show_node_names =
         ui_state.logs_sidebar_selected == 0 && !ui_state.logs_sidebar_debug_selected;
 
-    // Update scrollbar state based on current scroll position
-    ui_state.update_scrollbar_state();
-
-    // Convert viewport logs to Lines for display with wrapping support
-    let display_lines: Vec<Line> = ui_state
-        .viewport_logs
+    // Convert logs to display lines
+    let display_lines: Vec<Line> = filtered_logs
         .iter()
-        .flat_map(|entry| create_colored_log_lines(entry, show_node_names, logs_area.width))
+        .skip(ui_state.log_scroll)
+        .take(ui_state.log_viewport_height)
+        .map(|entry| create_colored_log_line(entry, show_node_names, &ui_state.nodes))
         .collect();
 
-    // Get current log level for title
-    let current_level = log_reader.get_level_filter();
-    let level_text = match current_level {
-        crate::messages::LogLevel::Error => "ERROR",
-        crate::messages::LogLevel::Warn => "WARN",
-        crate::messages::LogLevel::Info => "INFO",
-        crate::messages::LogLevel::Debug => "DEBUG",
-        crate::messages::LogLevel::Trace => "TRACE",
-    };
-
     // Create dynamic title based on selection
-    let (title_text, title_style) = if ui_state.logs_sidebar_debug_selected {
-        (
-            format!(" Logs - Debug [{level_text}] "),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )
+    let base_title = if ui_state.logs_sidebar_debug_selected {
+        " Logs - Debug".to_string()
     } else if ui_state.logs_sidebar_selected == 0 {
-        (
-            format!(" Logs - All [{level_text}] "),
-            Style::default().add_modifier(Modifier::BOLD),
-        )
+        " Logs - All".to_string()
     } else if let Some(&selected_node_id) = ui_state
         .logs_sidebar_nodes
         .get(ui_state.logs_sidebar_selected - 1)
     {
         let pokemon_name = selected_node_id.full_pokemon_name();
-        let node_color = get_node_color(selected_node_id);
-        (
-            format!(" Logs - {pokemon_name} [{level_text}] "),
-            Style::default().fg(node_color).add_modifier(Modifier::BOLD),
+        format!(" Logs - {pokemon_name}")
+    } else {
+        " Logs".to_string()
+    };
+
+    // Add auto-scroll indicator and debug info
+    let title_text = if ui_state.auto_scroll_enabled {
+        // Debug: show scroll position info
+        format!(
+            "{base_title} [AUTO] [S:{}/{} V:{}] ",
+            ui_state.log_scroll, ui_state.total_log_lines, ui_state.log_viewport_height
         )
     } else {
-        (
-            format!(" Logs [{level_text}] "),
-            Style::default().add_modifier(Modifier::BOLD),
+        format!(
+            "{base_title} [S:{}/{} V:{}] ",
+            ui_state.log_scroll, ui_state.total_log_lines, ui_state.log_viewport_height
         )
+    };
+
+    let title_style = if ui_state.logs_sidebar_debug_selected {
+        Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if ui_state.logs_sidebar_selected == 0 {
+        Style::default().add_modifier(Modifier::BOLD)
+    } else if let Some(&selected_node_id) = ui_state
+        .logs_sidebar_nodes
+        .get(ui_state.logs_sidebar_selected - 1)
+    {
+        let node_color = get_node_color(selected_node_id);
+        Style::default().fg(node_color).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().add_modifier(Modifier::BOLD)
     };
 
     // Create the logs widget
@@ -815,12 +717,14 @@ fn render_logs<S: std::hash::BuildHasher>(
 
     // Render scrollbar if needed
     if ui_state.total_log_lines > ui_state.log_viewport_height {
-        let scrollbar_area = ratatui::layout::Rect {
+        let scrollbar_area = Rect {
             x: logs_area.x + logs_area.width.saturating_sub(1),
             y: logs_area.y + 1,
             width: 1,
             height: logs_area.height.saturating_sub(2),
         };
+
+        ui_state.update_scrollbar_state();
 
         frame.render_stateful_widget(
             Scrollbar::new(ScrollbarOrientation::VerticalRight),
@@ -830,39 +734,122 @@ fn render_logs<S: std::hash::BuildHasher>(
     }
 }
 
+/// Get a consistent color for a Pokemon name
+fn get_pokemon_color(pokemon_name: &str) -> Color {
+    // Use a simple hash to assign consistent colors
+    // Available colors that work well for text
+    let colors = [
+        Color::Cyan,
+        Color::Magenta,
+        Color::Yellow,
+        Color::Green,
+        Color::Blue,
+        Color::LightCyan,
+        Color::LightMagenta,
+        Color::LightYellow,
+        Color::LightGreen,
+        Color::LightBlue,
+    ];
+
+    // Simple hash: sum of character values
+    let hash: usize = pokemon_name.chars().map(|c| c as usize).sum();
+    colors[hash % colors.len()]
+}
+
+/// Create a colored log line
+fn create_colored_log_line(
+    entry: &LogEntry,
+    show_node_name: bool,
+    nodes: &HashMap<TuiNodeId, (String, NodeStatus, HashSet<NodeSpecialization>)>,
+) -> Line<'static> {
+    // Convert UTC timestamp to local time for display
+    use chrono::{Local, TimeZone};
+    let local_timestamp = Local.from_utc_datetime(&entry.timestamp.naive_utc());
+    let timestamp = local_timestamp.format("%H:%M:%S%.3f");
+
+    // Use tracing crate default colors
+    let level_color = match entry.level {
+        LogLevel::Error => Color::LightRed,
+        LogLevel::Warn => Color::LightYellow,
+        LogLevel::Info => Color::LightGreen,
+        LogLevel::Debug => Color::LightBlue,
+        LogLevel::Trace => Color::LightMagenta,
+    };
+
+    // Fixed-width formatting for perfect alignment
+    let level_str = match entry.level {
+        LogLevel::Error => "ERRO",
+        LogLevel::Warn => "WARN",
+        LogLevel::Info => "INFO",
+        LogLevel::Debug => "DEBG",
+        LogLevel::Trace => "TRAC",
+    };
+
+    let message = entry.message.clone();
+
+    if show_node_name {
+        // Extract Pokemon name from the execution_order
+        let (node_display, node_color) = if entry.node_id == "main" {
+            ("main".to_string(), Color::White)
+        } else {
+            // Use the execution_order to find the TuiNodeId with that execution order
+            let execution_order = entry.execution_order;
+
+            // Find the node with this execution_order in our nodes map
+            let found_node = nodes
+                .iter()
+                .find(|(tui_id, _)| tui_id.execution_order == execution_order as u8);
+
+            if let Some((tui_id, _)) = found_node {
+                // Found the node, get its Pokemon name and color
+                let pokemon_name = tui_id.pokemon_name();
+                let color = get_pokemon_color(&pokemon_name);
+                (pokemon_name, color)
+            } else {
+                // Node not found in our map, fallback to showing execution order
+                (format!("node-{execution_order}"), Color::Gray)
+            }
+        };
+
+        Line::from(vec![
+            Span::styled(
+                format!("{timestamp} "),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(format!("[{level_str}]"), Style::default().fg(level_color)),
+            Span::raw(" "),
+            Span::styled(format!("[{node_display}]"), Style::default().fg(node_color)),
+            Span::raw(": "),
+            Span::raw(message),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(
+                format!("{timestamp} "),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(format!("[{level_str}]"), Style::default().fg(level_color)),
+            Span::raw(": "),
+            Span::raw(message),
+        ])
+    }
+}
+
 /// Render logs sidebar with node selection
-#[allow(clippy::too_many_lines)]
-fn render_logs_sidebar<S: std::hash::BuildHasher>(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    ui_state: &mut UiState,
-    _log_reader: &LogReader,
-    nodes: &HashMap<
-        TuiNodeId,
-        (
-            String,
-            NodeStatus,
-            HashSet<proven_topology::NodeSpecialization>,
-        ),
-        S,
-    >,
-) {
+fn render_logs_sidebar(frame: &mut Frame, area: Rect, ui_state: &mut UiState) {
     // Store sidebar areas for mouse click detection
     ui_state.sidebar_area = area;
 
     // Render the border
     let border_block = Block::default()
         .borders(Borders::ALL)
-        .title(format!(" Nodes ({})", ui_state.logs_sidebar_nodes.len()));
-    frame.render_widget(border_block, area);
+        .title(format!(" Nodes ({}) ", ui_state.logs_sidebar_nodes.len()));
+    frame.render_widget(&border_block, area);
 
     // Apply internal margins to the sidebar area
-    let inner_area = area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
+    let inner_area = border_block.inner(area);
 
-    // Split the inner area to put debug at the bottom (always show debug)
+    // Split the inner area to put debug at the bottom
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -885,7 +872,7 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
             && !ui_state.logs_sidebar_debug_selected
         {
             Span::styled(
-                format!(" [`] Overview{}", " ".repeat(23 - 8)), // Pad to full width (23 - 8 chars)
+                format!(" [`] Overview{}", " ".repeat(23 - 13)),
                 Style::default()
                     .fg(Color::Black)
                     .bg(Color::White)
@@ -899,104 +886,86 @@ fn render_logs_sidebar<S: std::hash::BuildHasher>(
     ];
 
     // Add node items
-    for (index, &node_id) in ui_state.logs_sidebar_nodes.iter().enumerate() {
-        let list_index = index + 1; // +1 because "All" is at index 0
-        let is_selected =
-            ui_state.logs_sidebar_selected == list_index && !ui_state.logs_sidebar_debug_selected;
+    for (i, &node_id) in ui_state.logs_sidebar_nodes.iter().enumerate() {
+        let pokemon_name = node_id.full_pokemon_name();
         let node_color = get_node_color(node_id);
+        let is_selected =
+            ui_state.logs_sidebar_selected == i + 1 && !ui_state.logs_sidebar_debug_selected;
 
-        // Get node status and status icon
-        let (status_icon, status_color) =
-            if let Some((_, status, _specializations)) = nodes.get(&node_id) {
-                let icon = get_status_icon(status);
-                let color = match status {
-                    NodeStatus::NotStarted | NodeStatus::Stopped => Color::Gray,
-                    NodeStatus::Starting | NodeStatus::Stopping => Color::Yellow,
-                    NodeStatus::Running => Color::Green,
-                    NodeStatus::Failed(_) => Color::Red,
-                };
-                (icon, color)
-            } else {
-                ("?", Color::Gray) // Unknown status
+        // Get node status and determine icon and color
+        let (status_icon, status_color) = if let Some((_, status, _)) = ui_state.nodes.get(&node_id)
+        {
+            let icon = get_status_icon(status);
+            let color = match status {
+                NodeStatus::NotStarted | NodeStatus::Stopped => Color::Gray,
+                NodeStatus::Starting | NodeStatus::Stopping => Color::Yellow,
+                NodeStatus::Running => Color::Green,
+                NodeStatus::Failed(_) => Color::Red,
             };
-
-        // Show number shortcut for first 9 nodes
-        let prefix = if index < 9 {
-            format!("[{}] ", index + 1)
+            (icon, color)
         } else {
-            "    ".to_string()
+            ("?", Color::Gray) // Unknown status
         };
 
-        let styled_text = if is_selected {
-            // Calculate content length and pad to full width
-            let content = format!(" {}{} {}", prefix, status_icon, node_id.full_pokemon_name());
-            let padding_needed = if content.len() < 25 {
-                25 - content.len()
-            } else {
-                0
-            };
-            let padded_content = format!("{}{}", content, " ".repeat(padding_needed));
+        // Format with number shortcut
+        let prefix = if i < 9 {
+            format!(" [{}] ", i + 1)
+        } else {
+            "     ".to_string()
+        };
 
-            vec![Span::styled(
+        let item = if is_selected {
+            // When selected, show with background color
+            // Need to pad to 25 to fill the entire width
+            let content = format!("{prefix}{status_icon} {pokemon_name}");
+            let padded_content = format!(
+                "{}{}",
+                content,
+                " ".repeat(25_usize.saturating_sub(content.len()))
+            );
+            ListItem::new(Line::from(vec![Span::styled(
                 padded_content,
                 Style::default()
                     .fg(Color::White)
                     .bg(Color::DarkGray)
                     .add_modifier(Modifier::BOLD),
-            )]
+            )]))
         } else {
-            vec![
-                Span::styled(" ", Style::default()),
+            // When not selected, show with colored status icon
+            ListItem::new(Line::from(vec![
                 Span::styled(prefix, Style::default().fg(Color::White)),
                 Span::styled(status_icon, Style::default().fg(status_color)),
-                Span::styled(" ", Style::default()),
-                Span::styled(node_id.full_pokemon_name(), Style::default().fg(node_color)),
-            ]
+                Span::raw(" "),
+                Span::styled(pokemon_name, Style::default().fg(node_color)),
+            ]))
         };
-
-        items.push(ListItem::new(Line::from(styled_text)));
+        items.push(item);
     }
 
-    // Render the main list (All + nodes)
-    let list = List::new(items).style(Style::default().fg(Color::White));
-    frame.render_widget(list, main_area);
+    // Render main list
+    let main_list = List::new(items);
+    frame.render_widget(main_list, main_area);
 
-    // Render debug item at the bottom (always show)
-    let debug_text = if ui_state.logs_sidebar_debug_selected {
-        Line::from(vec![Span::styled(
-            format!(" [d] Debug Logs{}", " ".repeat(23 - 10)), // Pad to full width (23 - 10 chars)
+    // Render debug item separately
+    let debug_item = if ui_state.logs_sidebar_debug_selected {
+        Paragraph::new(Line::from(vec![Span::styled(
+            format!(" [d] Debug{}", " ".repeat(23 - 10)),
             Style::default()
-                .bg(Color::White)
-                .fg(Color::DarkGray)
+                .fg(Color::Black)
+                .bg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
-        )])
+        )]))
     } else {
-        Line::from(vec![Span::styled(
-            " [d] Debug Logs",
+        Paragraph::new(Line::from(vec![Span::styled(
+            " [d] Debug",
             Style::default().fg(Color::Yellow),
-        )])
+        )]))
     };
-
-    let debug_paragraph = Paragraph::new(debug_text).style(Style::default().fg(Color::White));
-    frame.render_widget(debug_paragraph, debug_area);
+    frame.render_widget(debug_item, debug_area);
 }
 
-/// Render footer with context-aware key hints
-fn render_footer<S: std::hash::BuildHasher>(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    shutting_down: bool,
-    ui_state: &UiState,
-    nodes: &HashMap<
-        TuiNodeId,
-        (
-            String,
-            NodeStatus,
-            HashSet<proven_topology::NodeSpecialization>,
-        ),
-        S,
-    >,
-) {
+/// Render footer
+fn render_footer(frame: &mut Frame, area: Rect, shutting_down: bool, ui_state: &UiState) {
     let footer_text = if shutting_down {
         Line::from(vec![
             Span::styled(
@@ -1012,6 +981,8 @@ fn render_footer<S: std::hash::BuildHasher>(
             ),
             Span::styled(" to force quit", Style::default()),
         ])
+    } else if let Some(msg) = &ui_state.message {
+        Line::from(vec![Span::raw(msg)])
     } else {
         // Determine the action text based on selected node
         let (action_text, action_color) =
@@ -1023,7 +994,7 @@ fn render_footer<S: std::hash::BuildHasher>(
                 .get(ui_state.logs_sidebar_selected - 1)
             {
                 // Specific node selected - show context-aware action
-                if let Some((_, status, _specializations)) = nodes.get(&selected_node_id) {
+                if let Some((_, status, _)) = ui_state.nodes.get(&selected_node_id) {
                     match status {
                         NodeStatus::NotStarted | NodeStatus::Stopped | NodeStatus::Failed(_) => {
                             ("start", Color::Green)
@@ -1065,12 +1036,13 @@ fn render_footer<S: std::hash::BuildHasher>(
         }
 
         spans.extend(vec![
+            Span::styled("l", Style::default().fg(Color::Yellow)),
+            Span::styled(
+                format!(":log level ({:?}) ", ui_state.log_level_filter),
+                Style::default(),
+            ),
             Span::styled("a", Style::default().fg(Color::LightMagenta)),
             Span::styled(":apps ", Style::default()),
-            Span::styled("c", Style::default().fg(Color::LightMagenta)),
-            Span::styled(":rpc ", Style::default()),
-            Span::styled("l", Style::default().fg(Color::LightCyan)),
-            Span::styled(":log-level ", Style::default()),
             Span::styled("?", Style::default().fg(Color::White)),
             Span::styled(":help", Style::default()),
         ]);
@@ -1080,345 +1052,71 @@ fn render_footer<S: std::hash::BuildHasher>(
 
     let paragraph = Paragraph::new(footer_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
 
     frame.render_widget(paragraph, area);
 }
 
 /// Render help overlay
-fn render_help_overlay(frame: &mut Frame, area: ratatui::layout::Rect) {
+fn render_help_overlay(frame: &mut Frame, area: Rect) {
     let help_text = vec![
-        Line::from(Span::styled(
-            "Proven Node TUI - Help",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
+        Line::from(vec![Span::styled(
+            "Keyboard Shortcuts",
+            Style::default().add_modifier(Modifier::BOLD),
+        )]),
         Line::from(""),
-        Line::from("Global Keys:"),
-        Line::from("  q               - Graceful quit (stops all nodes)"),
-        Line::from("  Ctrl+C          - Force quit (immediate exit)"),
-        Line::from("  ?               - Toggle help"),
+        Line::from(vec![Span::styled(
+            "Navigation:",
+            Style::default().add_modifier(Modifier::UNDERLINED),
+        )]),
+        Line::from("  ↑/↓       Navigate sidebar"),
+        Line::from("  [`]       View all logs"),
+        Line::from("  [1-9]     Jump to node by number"),
+        Line::from("  [d]       View debug logs"),
         Line::from(""),
-        Line::from("Node Management:"),
-        Line::from("  n               - Start new node"),
-        Line::from("  s               - Start/stop selected node"),
-        Line::from("  r               - Restart selected node"),
+        Line::from(vec![Span::styled(
+            "Node Control:",
+            Style::default().add_modifier(Modifier::UNDERLINED),
+        )]),
+        Line::from("  n         Create new node"),
+        Line::from("  s         Start selected node"),
+        Line::from("  x         Stop selected node"),
+        Line::from("  r         Restart selected node"),
         Line::from(""),
-        Line::from("Application Management:"),
-        Line::from("  a               - Open Application Manager (view, create, manage apps)"),
+        Line::from(vec![Span::styled(
+            "Log Control:",
+            Style::default().add_modifier(Modifier::UNDERLINED),
+        )]),
+        Line::from("  PgUp/PgDn Scroll logs"),
+        Line::from("  Home/End  Jump to start/end"),
         Line::from(""),
-        Line::from("RPC Operations:"),
-        Line::from("  c               - Open RPC modal (Management/Application commands)"),
+        Line::from(vec![Span::styled(
+            "Other:",
+            Style::default().add_modifier(Modifier::UNDERLINED),
+        )]),
+        Line::from("  h         Toggle this help"),
+        Line::from("  q         Quit application"),
         Line::from(""),
-        Line::from("Navigation:"),
-        Line::from("  Up/Down         - Navigate sidebar (select node)"),
-        Line::from("  `               - Select Overview (in sidebar)"),
-        Line::from("  1-9             - Select node in sidebar (quick access)"),
-        Line::from("  d               - Select debug logs (in sidebar)"),
-        Line::from(""),
-        Line::from("Log Viewing:"),
-        Line::from("  Alt+Up/Down     - Scroll logs (line by line)"),
-        Line::from("  PageUp/PageDown - Scroll logs (page by page)"),
-        Line::from("  Home/End        - Scroll to top/bottom of logs"),
-        Line::from("  l               - Select log level filter"),
-        Line::from(""),
-        Line::from("Mouse Controls:"),
-        Line::from("  Click sidebar   - Select node or debug logs"),
-        Line::from("  Scroll wheel    - Scroll logs up/down"),
-        Line::from("  Click and drag  - Text selection (auto-enabled after 250ms)"),
-        Line::from(""),
-        Line::from("Press ? or Esc to close this help"),
+        Line::from("Press any key to close this help"),
     ];
 
-    let popup_area = centered_rect(60, 70, area);
+    let block = Block::default()
+        .title(" Help ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black));
 
-    frame.render_widget(Clear, popup_area);
+    let help_area = centered_rect(60, 70, area);
+    frame.render_widget(Clear, help_area);
 
     let paragraph = Paragraph::new(help_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Help")
-                .title_style(Style::default().add_modifier(Modifier::BOLD)),
-        )
-        .style(Style::default().fg(Color::White));
+        .block(block)
+        .alignment(Alignment::Left);
 
-    frame.render_widget(paragraph, popup_area);
-}
-
-/// Render log level selection modal
-fn render_log_level_modal(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    ui_state: &UiState,
-    log_reader: &LogReader,
-) {
-    let _current_level = log_reader.get_level_filter();
-
-    let log_levels = [
-        ("ERROR", crate::messages::LogLevel::Error, Color::LightRed),
-        ("WARN", crate::messages::LogLevel::Warn, Color::LightYellow),
-        ("INFO", crate::messages::LogLevel::Info, Color::LightGreen),
-        ("DEBUG", crate::messages::LogLevel::Debug, Color::LightBlue),
-        (
-            "TRACE",
-            crate::messages::LogLevel::Trace,
-            Color::LightMagenta,
-        ),
-    ];
-
-    let mut modal_text = vec![
-        Line::from(Span::styled(
-            "Log Level Filter",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
-        Line::from("Select a log level to filter logs:"),
-        Line::from(""),
-    ];
-
-    for (i, (level_name, _level_enum, level_color)) in log_levels.iter().enumerate() {
-        let is_selected = i == ui_state.log_level_modal_selected;
-
-        let (prefix, suffix) = if is_selected {
-            ("> ", " <")
-        } else {
-            ("  ", "  ")
-        };
-
-        let line = Line::from(vec![
-            Span::styled(prefix, Style::default()),
-            Span::styled(*level_name, Style::default().fg(*level_color)),
-            Span::styled(suffix, Style::default()),
-        ]);
-
-        modal_text.push(line);
-    }
-
-    modal_text.extend(vec![
-        Line::from(""),
-        Line::from("Use Up/Down to navigate, Enter to select, Esc to cancel"),
-    ]);
-
-    let popup_area = centered_rect(40, 50, area);
-
-    frame.render_widget(Clear, popup_area);
-
-    let paragraph = Paragraph::new(modal_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Log Level Filter ")
-                .title_style(
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-        )
-        .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
-
-    frame.render_widget(paragraph, popup_area);
-}
-
-/// Render RPC modal
-#[allow(clippy::too_many_lines)]
-fn render_rpc_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
-    let popup_area = centered_rect(70, 60, area);
-
-    frame.render_widget(Clear, popup_area);
-
-    // Create the main modal block
-    let modal_block = Block::default()
-        .borders(Borders::ALL)
-        .title(" RPC Operations ")
-        .title_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
-
-    frame.render_widget(modal_block, popup_area);
-
-    // Split the modal into sections
-    let inner_area = popup_area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 2,
-    });
-
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3), // Tab selection
-            Constraint::Min(5),    // Commands
-            Constraint::Length(3), // Result area (if there's a result)
-            Constraint::Length(2), // Help text
-        ])
-        .split(inner_area);
-
-    // Render tabs
-    let tab_area = chunks[0];
-    let tabs = vec![
-        if ui_state.rpc_modal_tab_selected == 0 {
-            Span::styled(
-                " Management ",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else {
-            Span::styled(" Management ", Style::default().fg(Color::White))
-        },
-        Span::raw(" "),
-        if ui_state.rpc_modal_tab_selected == 1 {
-            Span::styled(
-                " Application ",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else {
-            Span::styled(" Application ", Style::default().fg(Color::White))
-        },
-    ];
-
-    let tabs_paragraph = Paragraph::new(Line::from(tabs))
-        .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
-
-    frame.render_widget(tabs_paragraph, tab_area);
-
-    // Render commands based on selected tab
-    let commands_area = chunks[1];
-
-    if ui_state.rpc_modal_tab_selected == 0 {
-        // Management commands
-        let management_commands = ["WhoAmI", "CreateApplication", "Identify", "Anonymize"];
-
-        let mut command_items = Vec::new();
-
-        for (i, command) in management_commands.iter().enumerate() {
-            let is_selected = i == ui_state.rpc_modal_command_selected;
-
-            let styled_text = if is_selected {
-                vec![Span::styled(
-                    format!("  > {command}  "),
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                )]
-            } else {
-                vec![Span::styled(
-                    format!("    {command}  "),
-                    Style::default().fg(Color::White),
-                )]
-            };
-
-            command_items.push(ListItem::new(Line::from(styled_text)));
-        }
-
-        let commands_list = List::new(command_items)
-            .block(
-                Block::default()
-                    .borders(Borders::TOP)
-                    .title(" Commands ")
-                    .title_style(Style::default().fg(Color::Yellow)),
-            )
-            .style(Style::default().fg(Color::White));
-
-        frame.render_widget(commands_list, commands_area);
-    } else {
-        // Application commands - under construction
-        let under_construction = Paragraph::new(vec![
-            Line::from(""),
-            Line::from(Span::styled(
-                "Application RPC is under construction",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::ITALIC),
-            )),
-            Line::from(""),
-            Line::from("Coming soon: Execute code, list applications, etc."),
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::TOP)
-                .title(" Commands ")
-                .title_style(Style::default().fg(Color::Yellow)),
-        )
-        .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
-
-        frame.render_widget(under_construction, commands_area);
-    }
-
-    // Render result area if there's a result
-    if let Some(result) = &ui_state.rpc_modal_result {
-        let result_area = chunks[2];
-
-        let result_paragraph = Paragraph::new(Line::from(vec![
-            Span::styled("Result: ", Style::default().fg(Color::Gray)),
-            Span::styled(result.clone(), Style::default().fg(Color::White)),
-        ]))
-        .block(
-            Block::default()
-                .borders(Borders::TOP)
-                .title(" Result ")
-                .title_style(Style::default().fg(Color::Green)),
-        )
-        .wrap(ratatui::widgets::Wrap { trim: true });
-
-        frame.render_widget(result_paragraph, result_area);
-    }
-
-    // Render help text
-    let help_area = chunks[3];
-    let help_text = Line::from(vec![
-        Span::styled(
-            "Tab",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(":switch  "),
-        Span::styled(
-            "↑↓",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(":navigate  "),
-        Span::styled(
-            "Enter",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(":execute  "),
-        Span::styled(
-            "Esc",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(":close"),
-    ]);
-
-    let help_paragraph = Paragraph::new(help_text)
-        .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
-
-    frame.render_widget(help_paragraph, help_area);
+    frame.render_widget(paragraph, help_area);
 }
 
 /// Render node type selection modal
-fn render_node_type_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
+fn render_node_type_modal(frame: &mut Frame, area: Rect, ui_state: &UiState) {
     let specializations = [
         ("Bitcoin Mainnet", Color::Yellow),
         ("Bitcoin Testnet", Color::Yellow),
@@ -1449,7 +1147,7 @@ fn render_node_type_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_sta
         let line = Line::from(vec![
             Span::styled(highlight_prefix, Style::default()),
             Span::styled(checkbox, Style::default().fg(Color::Cyan)),
-            Span::styled(" ", Style::default()),
+            Span::raw(" "),
             Span::styled(*spec_name, Style::default().fg(*spec_color)),
             Span::styled(highlight_suffix, Style::default()),
         ]);
@@ -1494,64 +1192,48 @@ fn render_node_type_modal(frame: &mut Frame, area: ratatui::layout::Rect, ui_sta
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),
                 )
-                .padding(ratatui::widgets::Padding::uniform(1)),
+                .padding(Padding::uniform(1)),
         )
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Left);
+        .alignment(Alignment::Left);
 
     frame.render_widget(paragraph, popup_area);
 }
 
-/// Render application manager modal
-#[allow(clippy::too_many_lines)]
-fn render_application_manager_modal(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    ui_state: &UiState,
-) {
-    let popup_area = centered_rect(80, 80, area);
+/// Render application modal
+fn render_application_modal(frame: &mut Frame, area: Rect, ui_state: &UiState) {
+    let modal_area = centered_rect(70, 60, area);
 
-    frame.render_widget(Clear, popup_area);
+    // Clear background
+    frame.render_widget(Clear, modal_area);
 
-    // Create the main modal block
-    let modal_block = Block::default()
-        .borders(Borders::ALL)
+    // Main block
+    let main_block = Block::default()
         .title(" Application Manager ")
-        .title_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black));
 
-    frame.render_widget(modal_block, popup_area);
+    let inner = main_block.inner(modal_area);
+    frame.render_widget(main_block, modal_area);
 
-    // Split the modal into sections
-    let inner_area = popup_area.inner(ratatui::layout::Margin {
-        vertical: 1,
-        horizontal: 2,
-    });
-
+    // Render different views based on app_manager_view
     match ui_state.app_manager_view {
-        1 => render_application_details_view(frame, inner_area, ui_state),
-        2 => render_add_origin_view(frame, inner_area, ui_state),
-        3 => render_create_application_view(frame, inner_area, ui_state),
-        _ => render_application_list_view(frame, inner_area, ui_state),
+        0 => render_application_list_view(frame, inner, ui_state),
+        1 => render_application_details_view(frame, inner, ui_state),
+        2 => render_add_origin_view(frame, inner, ui_state),
+        3 => render_create_application_view(frame, inner, ui_state),
+        _ => {}
     }
 }
 
 /// Render application list view
-#[allow(clippy::too_many_lines)]
-fn render_application_list_view(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    ui_state: &UiState,
-) {
+fn render_application_list_view(frame: &mut Frame, area: Rect, ui_state: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(2), // Title and instructions
-            Constraint::Min(5),    // Application list
-            Constraint::Length(3), // Result area (if there's a result)
+            Constraint::Length(2), // Title
+            Constraint::Min(5),    // List
+            Constraint::Length(3), // Result area
             Constraint::Length(2), // Help text
         ])
         .split(area);
@@ -1564,38 +1246,36 @@ fn render_application_list_view(
                 .fg(Color::Yellow)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(format!(
-            " ({} applications)",
-            ui_state.app_manager_applications.len()
-        )),
+        Span::styled(
+            format!(" ({})", ui_state.app_manager_applications.len()),
+            Style::default().fg(Color::Gray),
+        ),
     ]);
     let title_paragraph = Paragraph::new(title_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
     frame.render_widget(title_paragraph, chunks[0]);
 
-    // Application list
+    // Applications list
     if ui_state.app_manager_applications.is_empty() {
         let empty_text = vec![
             Line::from(""),
-            Line::from(Span::styled(
-                "No applications found.",
-                Style::default()
-                    .fg(Color::Gray)
-                    .add_modifier(Modifier::ITALIC),
-            )),
+            Line::from(vec![Span::styled(
+                "No applications found",
+                Style::default().fg(Color::Gray),
+            )]),
             Line::from(""),
-            Line::from(
-                "Create a new application using the RPC modal (press 'c' → Management → CreateApplication)",
-            ),
+            Line::from(vec![Span::styled(
+                "Press 'c' to create your first application",
+                Style::default().fg(Color::Cyan),
+            )]),
         ];
         let empty_paragraph = Paragraph::new(empty_text)
             .style(Style::default().fg(Color::White))
-            .alignment(ratatui::layout::Alignment::Center);
+            .alignment(Alignment::Center);
         frame.render_widget(empty_paragraph, chunks[1]);
     } else {
         let mut app_items = Vec::new();
-
         for (i, app) in ui_state.app_manager_applications.iter().enumerate() {
             let is_selected = i == ui_state.app_manager_selected_index;
 
@@ -1687,18 +1367,13 @@ fn render_application_list_view(
 
     let help_paragraph = Paragraph::new(help_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
 
     frame.render_widget(help_paragraph, chunks[3]);
 }
 
 /// Render application details view
-#[allow(clippy::too_many_lines)]
-fn render_application_details_view(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    ui_state: &UiState,
-) {
+fn render_application_details_view(frame: &mut Frame, area: Rect, ui_state: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1718,7 +1393,7 @@ fn render_application_details_view(
         )]);
         let title_paragraph = Paragraph::new(title_text)
             .style(Style::default().fg(Color::White))
-            .alignment(ratatui::layout::Alignment::Center);
+            .alignment(Alignment::Center);
         frame.render_widget(title_paragraph, chunks[0]);
 
         // Details
@@ -1806,7 +1481,7 @@ fn render_application_details_view(
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(":back  "),
+        Span::raw(":back to list  "),
         Span::styled(
             "Esc",
             Style::default()
@@ -1818,61 +1493,48 @@ fn render_application_details_view(
 
     let help_paragraph = Paragraph::new(help_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
 
     frame.render_widget(help_paragraph, chunks[2]);
 }
 
 /// Render add origin view
-fn render_add_origin_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_state: &UiState) {
+fn render_add_origin_view(frame: &mut Frame, area: Rect, ui_state: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2), // Title
-            Constraint::Length(4), // Input field
-            Constraint::Length(3), // Result area (if there's a result)
+            Constraint::Length(4), // Input field with format hint
+            Constraint::Min(2),    // Result area
             Constraint::Length(2), // Help text
         ])
         .split(area);
 
     // Title
     let title_text = Line::from(vec![Span::styled(
-        "Add Allowed Origin",
+        "Add Origin",
         Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
     )]);
     let title_paragraph = Paragraph::new(title_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
     frame.render_widget(title_paragraph, chunks[0]);
 
-    // Input field
-    let input_text = vec![
-        Line::from("Enter the origin URL (e.g., https://example.com):"),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("> ", Style::default().fg(Color::Cyan)),
-            Span::styled(
-                &ui_state.app_manager_origin_input,
-                Style::default().fg(Color::White),
-            ),
-            Span::styled("█", Style::default().fg(Color::Gray)), // Cursor
-        ]),
-    ];
+    // Input field with format hint
+    let input_block = Block::default()
+        .title(" Origin URL (e.g., http://localhost:3000 or https://example.com) ")
+        .borders(Borders::ALL)
+        .style(Style::default().fg(Color::Yellow));
 
-    let input_paragraph = Paragraph::new(input_text)
-        .block(
-            Block::default()
-                .borders(Borders::TOP)
-                .title(" Origin Input ")
-                .title_style(Style::default().fg(Color::Yellow)),
-        )
+    let input_text = Paragraph::new(format!("{}_", &ui_state.app_manager_origin_input))
+        .block(input_block)
         .style(Style::default().fg(Color::White));
 
-    frame.render_widget(input_paragraph, chunks[1]);
+    frame.render_widget(input_text, chunks[1]);
 
-    // Result area if there's a result
+    // Result area
     if let Some(result) = &ui_state.app_manager_result {
         let result_paragraph = Paragraph::new(Line::from(vec![
             Span::styled("Result: ", Style::default().fg(Color::Gray)),
@@ -1904,7 +1566,7 @@ fn render_add_origin_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_sta
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(":back  "),
+        Span::raw(":cancel  "),
         Span::styled(
             "Esc",
             Style::default()
@@ -1916,81 +1578,61 @@ fn render_add_origin_view(frame: &mut Frame, area: ratatui::layout::Rect, ui_sta
 
     let help_paragraph = Paragraph::new(help_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
 
     frame.render_widget(help_paragraph, chunks[3]);
 }
 
 /// Render create application view
-fn render_create_application_view(
-    frame: &mut Frame,
-    area: ratatui::layout::Rect,
-    ui_state: &UiState,
-) {
+fn render_create_application_view(frame: &mut Frame, area: Rect, ui_state: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(2), // Title
-            Constraint::Length(6), // Instructions and info
-            Constraint::Length(3), // Result area (if there's a result)
+            Constraint::Length(5), // Create info
+            Constraint::Min(2),    // Result area
             Constraint::Length(2), // Help text
         ])
         .split(area);
 
     // Title
     let title_text = Line::from(vec![Span::styled(
-        "Create New Application",
+        "Create Application",
         Style::default()
             .fg(Color::Yellow)
             .add_modifier(Modifier::BOLD),
     )]);
     let title_paragraph = Paragraph::new(title_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
     frame.render_widget(title_paragraph, chunks[0]);
 
-    // Instructions and info
-    let info_text = vec![
-        Line::from("This will create a new application with the following defaults:"),
+    // Create info
+    let create_text = vec![
         Line::from(""),
+        Line::from(vec![Span::styled(
+            "A new application will be created with:",
+            Style::default().fg(Color::Cyan),
+        )]),
         Line::from(vec![
-            Span::styled("• ", Style::default().fg(Color::Cyan)),
-            Span::styled("Owner: ", Style::default().fg(Color::Cyan)),
+            Span::styled("  • ", Style::default().fg(Color::Green)),
             Span::styled(
-                "Your authenticated identity",
+                "Default name and settings",
                 Style::default().fg(Color::White),
             ),
         ]),
         Line::from(vec![
-            Span::styled("• ", Style::default().fg(Color::Cyan)),
-            Span::styled("Allowed Origins: ", Style::default().fg(Color::Cyan)),
-            Span::styled(
-                "None (you can add them later)",
-                Style::default().fg(Color::White),
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("• ", Style::default().fg(Color::Cyan)),
-            Span::styled("HTTP Domains: ", Style::default().fg(Color::Cyan)),
-            Span::styled(
-                "None (you can link them later)",
-                Style::default().fg(Color::White),
-            ),
+            Span::styled("  • ", Style::default().fg(Color::Green)),
+            Span::styled("Your owner ID", Style::default().fg(Color::White)),
         ]),
     ];
 
-    let info_paragraph = Paragraph::new(info_text)
-        .block(
-            Block::default()
-                .borders(Borders::TOP)
-                .title(" Application Details ")
-                .title_style(Style::default().fg(Color::Yellow)),
-        )
-        .style(Style::default().fg(Color::White));
+    let create_paragraph = Paragraph::new(create_text)
+        .style(Style::default().fg(Color::White))
+        .alignment(Alignment::Left);
+    frame.render_widget(create_paragraph, chunks[1]);
 
-    frame.render_widget(info_paragraph, chunks[1]);
-
-    // Result area if there's a result
+    // Result area
     if let Some(result) = &ui_state.app_manager_result {
         let result_paragraph = Paragraph::new(Line::from(vec![
             Span::styled("Result: ", Style::default().fg(Color::Gray)),
@@ -2015,14 +1657,14 @@ fn render_create_application_view(
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(":create application  "),
+        Span::raw(":create  "),
         Span::styled(
             "Backspace",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw(":back  "),
+        Span::raw(":cancel  "),
         Span::styled(
             "Esc",
             Style::default()
@@ -2034,17 +1676,95 @@ fn render_create_application_view(
 
     let help_paragraph = Paragraph::new(help_text)
         .style(Style::default().fg(Color::White))
-        .alignment(ratatui::layout::Alignment::Center);
+        .alignment(Alignment::Center);
 
     frame.render_widget(help_paragraph, chunks[3]);
 }
 
-/// Helper function to create a centered rectangle
-fn centered_rect(
-    percent_x: u16,
-    percent_y: u16,
-    r: ratatui::layout::Rect,
-) -> ratatui::layout::Rect {
+/// Render log level modal
+fn render_log_level_modal(frame: &mut Frame, area: Rect, ui_state: &UiState) {
+    let modal_area = centered_rect(40, 30, area);
+
+    // Clear background
+    frame.render_widget(Clear, modal_area);
+
+    // Main block
+    let block = Block::default()
+        .title(" Select Log Level ")
+        .borders(Borders::ALL)
+        .style(Style::default().bg(Color::Black));
+
+    let inner = block.inner(modal_area);
+    frame.render_widget(block, modal_area);
+
+    // Log level options
+    let levels = [
+        ("ERROR", "Only show errors", 0),
+        ("WARN", "Show warnings and errors", 1),
+        ("INFO", "Show info, warnings, and errors", 2),
+        ("DEBUG", "Show debug logs and above", 3),
+        ("TRACE", "Show all logs including trace", 4),
+    ];
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(vec![
+            Constraint::Length(1), // Title
+            Constraint::Length(1), // Space
+            Constraint::Length(1), // Error
+            Constraint::Length(1), // Warn
+            Constraint::Length(1), // Info
+            Constraint::Length(1), // Debug
+            Constraint::Length(1), // Trace
+            Constraint::Length(1), // Space
+            Constraint::Length(1), // Help
+        ])
+        .split(inner);
+
+    // Title
+    let title = Paragraph::new("Choose log level filter:")
+        .style(Style::default().fg(Color::Yellow))
+        .alignment(Alignment::Center);
+    frame.render_widget(title, chunks[0]);
+
+    // Render each level option
+    for (i, (level, desc, idx)) in levels.iter().enumerate() {
+        let is_selected = ui_state.log_level_modal_selected == *idx;
+        let is_current = matches!(
+            (ui_state.log_level_filter, idx),
+            (LogLevel::Error, 0)
+                | (LogLevel::Warn, 1)
+                | (LogLevel::Info, 2)
+                | (LogLevel::Debug, 3)
+                | (LogLevel::Trace, 4)
+        );
+
+        let mut text = format!("  {level} - {desc}");
+        if is_current {
+            text.push_str(" (current)");
+        }
+
+        let style = if is_selected {
+            Style::default().fg(Color::Black).bg(Color::White)
+        } else if is_current {
+            Style::default().fg(Color::Green)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        let paragraph = Paragraph::new(text).style(style);
+        frame.render_widget(paragraph, chunks[i + 2]);
+    }
+
+    // Help text
+    let help = Paragraph::new("↑↓: Navigate | Enter: Select | Esc: Cancel")
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Center);
+    frame.render_widget(help, chunks[8]);
+}
+
+/// Helper to create centered rect
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
