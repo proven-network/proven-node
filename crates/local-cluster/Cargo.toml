@@ -1,0 +1,57 @@
+[package]
+name = "proven-local-cluster"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Core dependencies
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+bytes = { workspace = true }
+chrono = { workspace = true }
+dashmap = { workspace = true }
+dirs = { workspace = true }
+futures = { workspace = true }
+hex = { workspace = true }
+parking_lot = { workspace = true }
+rand = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt", "json"] }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+# Cryptography
+ed25519-dalek = { workspace = true }
+sha2 = { workspace = true }
+coset = { workspace = true }
+ciborium = { workspace = true }
+
+# HTTP
+reqwest = { workspace = true, features = ["blocking", "multipart"] }
+
+# Proven dependencies
+proven-applications = { path = "../applications" }
+proven-attestation = { path = "../attestation" }
+proven-attestation-mock = { path = "../attestation-mock" }
+proven-bootable = { path = "../bootable" }
+proven-core = { path = "../core" }
+proven-engine = { path = "../engine" }
+proven-identity = { path = "../identity" }
+proven-local = { path = "../local" }
+proven-passkeys = { path = "../passkeys" }
+proven-runtime = { path = "../runtime" }
+proven-sessions = { path = "../sessions" }
+proven-topology = { path = "../topology" }
+proven-topology-mock = { path = "../topology-mock" }
+proven-util = { path = "../util" }
+
+[dev-dependencies]
+serial_test = { workspace = true }
+tracing-test = { workspace = true }

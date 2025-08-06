@@ -38,6 +38,7 @@ members = [
     "crates/libsql",
     "crates/local",
     "crates/local-cli",
+    "crates/local-cluster",
     "crates/local-tui",
     "crates/network",
     "crates/passkeys",
@@ -110,6 +111,7 @@ default-members = [
     "crates/libsql",
     "crates/local",
     "crates/local-cli",
+    "crates/local-cluster",
     "crates/local-tui",
     "crates/network",
     "crates/passkeys",
@@ -295,6 +297,7 @@ denort_helper = { path = "vendor/deno/ext/rt_helper" }
 der = "0.7.10"
 derive_more = { version = "2.0.1", features = ["display", "from"] }
 digest = "0.10.7"
+dirs = "6.0.0"
 dissimilar = "1.0.10"
 dlopen2 = "0.8.0"
 dns-stamp-parser = "3.0.1"
@@ -458,6 +461,7 @@ proven-kms = { path = "crates/kms" }
 proven-libsql = { path = "crates/libsql" }
 proven-local = { path = "crates/local" }
 proven-local-cli = { path = "crates/local-cli" }
+proven-local-cluster = { path = "crates/local-cluster" }
 proven-local-tui = { path = "crates/local-tui" }
 proven-network = { path = "crates/network" }
 proven-passkeys = { path = "crates/passkeys" }
@@ -529,6 +533,7 @@ rlimit = "0.10.2"
 rocksdb = "0.23.0"
 rsa = { version = "0.9.8", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 rtnetlink = "0.17.0"
+rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
 rustc-hash = "2.1.1"
 rustls = { version = "0.23.30", default-features = false, features = ["aws-lc-rs", "logging", "std", "tls12"] }
 rustls-pemfile = "2.2.0"
