@@ -710,11 +710,7 @@ impl App {
             KeyCode::Enter => {
                 // Create new application using any available node
                 if let Some(url) = self.get_any_node_url() {
-                    match self.rpc_ops.create_application(
-                        &url,
-                        "Default App",
-                        "http://localhost:3000",
-                    ) {
+                    match self.rpc_ops.create_application(&url, "Default App") {
                         Ok(app) => {
                             self.ui_state.app_manager_result =
                                 Some(format!("Created application with ID: {}", app.id));

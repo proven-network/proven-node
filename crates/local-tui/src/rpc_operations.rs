@@ -86,12 +86,7 @@ impl RpcOperations {
     }
 
     /// Create an application
-    pub fn create_application(
-        &self,
-        node_url: &str,
-        name: &str,
-        _origin: &str, // Origin is not used in the current API
-    ) -> Result<Application> {
+    pub fn create_application(&self, node_url: &str, name: &str) -> Result<Application> {
         let mut client = self.client.borrow_mut();
         let mut current_url = self.current_url.borrow_mut();
 
