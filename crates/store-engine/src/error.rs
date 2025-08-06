@@ -7,48 +7,44 @@ use deno_error::{JsErrorClass, PropertyValue};
 use proven_store::StoreError;
 use thiserror::Error;
 
-/// Errors that can occur in the engine store
-#[derive(Clone, Debug, Error)]
+/// Store engine error type
+#[derive(Error, Debug)]
 pub enum Error {
-    /// Engine client error
+    /// Engine error
     #[error("Engine error: {0}")]
     Engine(String),
-
-    /// Stream not found
-    #[error("Stream not found: {0}")]
-    StreamNotFound(String),
 
     /// Serialization error
     #[error("Serialization error: {0}")]
     Serialization(String),
 
-    /// Deserialization error
+    /// Deserialization error  
     #[error("Deserialization error: {0}")]
     Deserialization(String),
 
-    /// Key encoding error
-    #[error("Key encoding error: {0}")]
-    KeyEncoding(String),
+    /// Stream error
+    #[error("Stream error: {0}")]
+    Stream(String),
 
-    /// Operation timeout
-    #[error("Operation timed out")]
-    Timeout,
+    /// Other error
+    #[error("Other error: {0}")]
+    Other(String),
+}
 
-    /// Internal error
-    #[error("Internal error: {0}")]
-    Internal(String),
+impl From<proven_engine::error::Error> for Error {
+    fn from(err: proven_engine::error::Error) -> Self {
+        Self::Engine(err.to_string())
+    }
 }
 
 impl JsErrorClass for Error {
     fn get_class(&self) -> Cow<'static, str> {
         match self {
             Self::Engine(_) => Cow::Borrowed("EngineError"),
-            Self::StreamNotFound(_) => Cow::Borrowed("NotFoundError"),
-            Self::Serialization(_) | Self::Deserialization(_) | Self::KeyEncoding(_) => {
-                Cow::Borrowed("TypeError")
-            }
-            Self::Timeout => Cow::Borrowed("TimeoutError"),
-            Self::Internal(_) => Cow::Borrowed("InternalError"),
+            Self::Serialization(_) => Cow::Borrowed("SerializationError"),
+            Self::Deserialization(_) => Cow::Borrowed("DeserializationError"),
+            Self::Stream(_) => Cow::Borrowed("StreamError"),
+            Self::Other(_) => Cow::Borrowed("Error"),
         }
     }
 

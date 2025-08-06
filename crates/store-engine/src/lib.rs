@@ -1,17 +1,8 @@
 //! Store implementation backed by the Proven consensus engine
 //!
-//! This crate provides a key-value store implementation that uses the Proven
-//! consensus engine's stream functionality for storage. Each store operation
-//! is backed by the distributed consensus system, providing strong consistency
-//! and fault tolerance.
-//!
-//! # Architecture
-//!
-//! The store maps KV operations to stream operations:
-//! - Each scoped store corresponds to a stream in the consensus engine
-//! - Keys are encoded as stream message keys
-//! - Values are stored as stream message payloads
-//! - Metadata (like TTL) can be stored in message headers
+//! This crate provides a simple, performant key-value store that uses
+//! the Proven engine's streaming capabilities. It maintains an in-memory
+//! view of the data that is continuously updated from the engine's streams.
 
 #![warn(missing_docs)]
 #![warn(clippy::all)]
@@ -19,83 +10,32 @@
 #![warn(clippy::nursery)]
 #![allow(clippy::module_name_repetitions)]
 
+mod consumer;
 mod error;
+mod view;
 
 pub use error::Error;
+use view::{KeyOperation, StoreView};
 
-use std::collections::HashMap;
 use std::error::Error as StdError;
 use std::fmt::{Debug, Formatter};
-use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use lru::LruCache;
-use proven_engine::{Client, StreamConfig};
-use proven_storage::LogIndex;
+use proven_engine::{Client, Message, StreamConfig};
 use proven_store::{Store, Store1, Store2, Store3};
-use serde::{Deserialize, Serialize};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use tracing::{debug, info};
+
+use crate::consumer::StoreConsumer;
 
 /// Special stream name for key listing
 const KEY_INDEX_STREAM: &str = "__store_keys__";
 
-/// Default cache size for store states
-const DEFAULT_CACHE_SIZE: usize = 1000;
-
-/// How often to sync with the stream by default
-const DEFAULT_SYNC_INTERVAL: Duration = Duration::from_millis(100);
-
-/// Type alias for the store state cache
-type StoreStateCache = Arc<Mutex<LruCache<String, Arc<CachedStoreState>>>>;
-
-/// Global cache for store states to avoid replaying messages
-static STORE_STATE_CACHE: std::sync::OnceLock<StoreStateCache> = std::sync::OnceLock::new();
-
-/// Get or initialize the global store state cache
-fn get_store_cache() -> StoreStateCache {
-    STORE_STATE_CACHE
-        .get_or_init(|| {
-            Arc::new(Mutex::new(LruCache::new(
-                NonZeroUsize::new(DEFAULT_CACHE_SIZE).unwrap(),
-            )))
-        })
-        .clone()
-}
-
-/// Key operation for tracking keys in a store
-#[derive(Debug, Clone, Serialize, Deserialize)]
-enum KeyOperation {
-    /// A key was added
-    Add { key: String },
-    /// A key was removed  
-    Remove { key: String },
-}
-
-/// Cached store state that can be shared across instances
-struct CachedStoreState {
-    /// The actual store state
-    state: Arc<RwLock<StoreStateInner>>,
-    /// When we last synced with the stream
-    last_sync: Arc<RwLock<Instant>>,
-    /// Stream name for this state
-    #[allow(dead_code)]
-    stream_name: String,
-}
-
-/// Inner state that's protected by `RwLock`
-#[derive(Debug, Clone)]
-struct StoreStateInner {
-    /// The key-value data  
-    data: HashMap<String, Bytes>,
-    /// Last sequence number read from stream
-    last_sequence: u64,
-}
-
 /// Engine-backed key-value store
+#[allow(clippy::type_complexity)]
 pub struct EngineStore<T, D, S>
 where
     T: Clone
@@ -108,10 +48,14 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    /// The engine client
+    /// Engine client
     client: Arc<Client>,
+    /// Store view
+    view: StoreView,
     /// Optional scope prefix
     prefix: Option<String>,
+    /// Consumer handles (only set for root store)
+    consumer_handles: Arc<Mutex<Option<(JoinHandle<()>, JoinHandle<()>)>>>,
     /// Phantom data for type parameters
     _marker: std::marker::PhantomData<(T, D, S)>,
 }
@@ -131,7 +75,9 @@ where
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
+            view: self.view.clone(),
             prefix: self.prefix.clone(),
+            consumer_handles: self.consumer_handles.clone(),
             _marker: std::marker::PhantomData,
         }
     }
@@ -168,26 +114,30 @@ where
     D: Debug + Send + StdError + Sync + 'static,
     S: Debug + Send + StdError + Sync + 'static,
 {
-    /// Create a new engine store with automatic group assignment
+    /// Create a new engine store
     #[must_use]
-    pub const fn new(client: Arc<Client>) -> Self {
+    pub fn new(client: Arc<Client>) -> Self {
         Self {
             client,
+            view: StoreView::new(),
             prefix: None,
+            consumer_handles: Arc::new(Mutex::new(None)),
             _marker: std::marker::PhantomData,
         }
     }
 
     /// Create a scoped store
-    const fn with_scope(client: Arc<Client>, prefix: String) -> Self {
+    fn with_scope(client: Arc<Client>, view: StoreView, prefix: String) -> Self {
         Self {
             client,
+            view,
             prefix: Some(prefix),
+            consumer_handles: Arc::new(Mutex::new(None)),
             _marker: std::marker::PhantomData,
         }
     }
 
-    /// Get the stream name for a given key
+    /// Get the stream name for this store
     fn get_stream_name(&self) -> String {
         self.prefix.as_ref().map_or_else(
             || "store_default".to_string(),
@@ -203,160 +153,59 @@ where
         )
     }
 
-    /// Ensure the stream exists
+    /// Ensure streams exist and start consumers
     #[allow(clippy::cognitive_complexity)]
-    #[allow(clippy::too_many_lines)]
-    async fn ensure_stream(&self) -> Result<(), Error> {
-        const MAX_RETRIES: u32 = 10;
-        const RETRY_DELAY_MS: u64 = 100;
-
-        const MAX_RETRIES_KEY_INDEX: u32 = 10;
-        const RETRY_DELAY_MS_KEY_INDEX: u64 = 100;
-
-        let stream_name = self.get_stream_name();
-
-        // Check if stream exists
-        let stream_exists = match self.client.get_stream_info(&stream_name).await {
-            Ok(Some(_)) => true,
-            Ok(None) | Err(_) => false,
-        };
-
-        if !stream_exists {
-            // Create the stream
-            let config = StreamConfig::default();
-            self.client
-                .create_group_stream(stream_name.clone(), config)
-                .await
-                .map_err(|e| Error::Engine(e.to_string()))?;
-            info!("Created store stream: {}", stream_name);
-
-            // Wait for stream to be fully available in routing table
-            // This prevents race conditions where the stream is created but not yet routable
-            let mut retries = 0;
-
-            while retries < MAX_RETRIES {
-                // Try to verify the stream is accessible by checking if it exists
-                match self.client.get_stream_info(&stream_name).await {
-                    Ok(Some(_)) => {
-                        debug!("Store stream {} verified as accessible", stream_name);
-                        break;
-                    }
-                    Ok(None) => {
-                        debug!(
-                            "Store stream {} not yet accessible, retrying...",
-                            stream_name
-                        );
-                    }
-                    Err(e) => {
-                        debug!(
-                            "Error checking store stream {}: {}, retrying...",
-                            stream_name, e
-                        );
-                    }
-                }
-
-                tokio::time::sleep(tokio::time::Duration::from_millis(RETRY_DELAY_MS)).await;
-                retries += 1;
-            }
-
-            if retries >= MAX_RETRIES {
-                return Err(Error::Engine(format!(
-                    "Stream {stream_name} created but not accessible after {MAX_RETRIES} retries"
-                )));
+    async fn ensure_initialized(&self) -> Result<(), Error> {
+        // Check if already initialized
+        {
+            let handles = self.consumer_handles.lock().await;
+            if handles.is_some() {
+                return Ok(());
             }
         }
 
-        // Also ensure key index stream exists
-        let key_index = self.get_key_index_stream();
-        let key_index_exists = match self.client.get_stream_info(&key_index).await {
-            Ok(Some(_)) => true,
-            Ok(None) | Err(_) => false,
-        };
+        let data_stream = self.get_stream_name();
+        let key_stream = self.get_key_index_stream();
 
-        if !key_index_exists {
+        // Create data stream if it doesn't exist
+        if let Ok(Some(_)) = self.client.get_stream_info(&data_stream).await {
+            debug!("Data stream {} already exists", data_stream);
+        } else {
             let config = StreamConfig::default();
             self.client
-                .create_group_stream(key_index.clone(), config)
-                .await
-                .map_err(|e| Error::Engine(e.to_string()))?;
-            info!("Created key index stream: {}", key_index);
+                .create_group_stream(data_stream.clone(), config)
+                .await?;
+            info!("Created data stream: {}", data_stream);
+        }
 
-            // Wait for key index stream to be fully available
-            let mut retries = 0;
+        // Create key index stream if it doesn't exist
+        if let Ok(Some(_)) = self.client.get_stream_info(&key_stream).await {
+            debug!("Key stream {} already exists", key_stream);
+        } else {
+            let config = StreamConfig::default();
+            self.client
+                .create_group_stream(key_stream.clone(), config)
+                .await?;
+            info!("Created key stream: {}", key_stream);
+        }
 
-            while retries < MAX_RETRIES_KEY_INDEX {
-                match self.client.get_stream_info(&key_index).await {
-                    Ok(Some(_)) => {
-                        debug!("Key index stream {} verified as accessible", key_index);
-                        break;
-                    }
-                    Ok(None) => {
-                        debug!(
-                            "Key index stream {} not yet accessible, retrying...",
-                            key_index
-                        );
-                    }
-                    Err(e) => {
-                        debug!(
-                            "Error checking key index stream {}: {}, retrying...",
-                            key_index, e
-                        );
-                    }
-                }
+        // Start consumers
+        let consumer = StoreConsumer::new(
+            self.view.clone(),
+            self.client.clone(),
+            data_stream,
+            key_stream,
+        );
 
-                tokio::time::sleep(tokio::time::Duration::from_millis(RETRY_DELAY_MS_KEY_INDEX))
-                    .await;
-                retries += 1;
-            }
+        let handles = consumer.start().await?;
 
-            if retries >= MAX_RETRIES {
-                return Err(Error::Engine(format!(
-                    "Key index stream {key_index} created but not accessible after {MAX_RETRIES} retries"
-                )));
-            }
+        // Store handles
+        {
+            let mut consumer_handles = self.consumer_handles.lock().await;
+            *consumer_handles = Some(handles);
         }
 
         Ok(())
-    }
-
-    /// Get or create the cached state for this store
-    async fn get_or_create_cached_state(&self) -> Result<Arc<CachedStoreState>, Error> {
-        let stream_name = self.get_stream_name();
-        let cache = get_store_cache();
-
-        // Check if we already have this state cached
-        {
-            let mut cache_guard = cache.lock().await;
-            if let Some(cached) = cache_guard.get(&stream_name) {
-                return Ok(cached.clone());
-            }
-        }
-
-        // Create new cached state
-        let cached_state = Arc::new(CachedStoreState {
-            state: Arc::new(RwLock::new(StoreStateInner {
-                data: HashMap::new(),
-                last_sequence: 0,
-            })),
-            last_sync: Arc::new(RwLock::new(
-                Instant::now().checked_sub(Duration::from_secs(60)).unwrap(),
-            )), // Force initial sync
-            stream_name: stream_name.clone(),
-        });
-
-        // Insert into cache
-        {
-            let mut cache_guard = cache.lock().await;
-            cache_guard.put(stream_name, cached_state.clone());
-        }
-
-        Ok(cached_state)
-    }
-
-    /// Check if we should sync the state
-    async fn should_sync(&self, cached_state: &CachedStoreState) -> bool {
-        let last_sync = cached_state.last_sync.read().await;
-        last_sync.elapsed() > DEFAULT_SYNC_INTERVAL
     }
 
     /// Track a key operation
@@ -368,86 +217,6 @@ where
             .await
             .map(|_| ())
             .map_err(|e| Error::Engine(e.to_string()))
-    }
-
-    /// Sync state from stream (incremental)
-    async fn sync_state(&self, cached_state: &Arc<CachedStoreState>) -> Result<(), Error> {
-        use futures::StreamExt;
-
-        let stream_name = self.get_stream_name();
-
-        // Check if we should sync
-        if !self.should_sync(cached_state).await {
-            return Ok(());
-        }
-
-        // Get current state
-        let last_sequence = {
-            let state = cached_state.state.read().await;
-            state.last_sequence
-        };
-
-        // Read only new messages since last sync
-        let start = LogIndex::new(last_sequence + 1)
-            .ok_or_else(|| Error::Engine("Start sequence must be greater than 0".to_string()))?;
-
-        // Use streaming API for bounded read
-        let stream = self
-            .client
-            .stream_messages(stream_name.clone(), Some(start))
-            .await
-            .map_err(|e| Error::Engine(e.to_string()))?;
-
-        let mut total_messages = 0;
-
-        // Process messages
-        {
-            let mut state = cached_state.state.write().await;
-            let mut message_stream = Box::pin(stream);
-
-            while let Some((msg, _timestamp, sequence)) = message_stream.next().await {
-                total_messages += 1;
-
-                // Extract key from headers
-                if let Some(key) = msg
-                    .headers
-                    .iter()
-                    .find(|(k, _)| k == "key")
-                    .map(|(_, v)| v.clone())
-                {
-                    // Check if this is a delete (empty payload with deleted=true)
-                    let is_deleted = msg
-                        .headers
-                        .iter()
-                        .any(|(k, v)| k == "deleted" && v == "true");
-
-                    if is_deleted {
-                        state.data.remove(&key);
-                    } else {
-                        // Store the payload directly as bytes
-                        state.data.insert(key, msg.payload);
-                    }
-                }
-
-                state.last_sequence = sequence;
-            }
-            drop(state);
-        }
-
-        // Update last sync time
-        {
-            let mut last_sync = cached_state.last_sync.write().await;
-            *last_sync = Instant::now();
-        }
-
-        if total_messages > 0 {
-            debug!(
-                "Synced {} new messages for stream {}",
-                total_messages, stream_name
-            );
-        }
-
-        Ok(())
     }
 }
 
@@ -470,10 +239,13 @@ where
     where
         K: AsRef<str> + Send,
     {
-        self.ensure_stream().await?;
+        self.ensure_initialized().await?;
 
         let key = key.as_ref();
         debug!("Deleting key: {}", key);
+
+        // Update local view immediately
+        self.view.delete(key);
 
         // Track the key removal
         self.track_key_operation(KeyOperation::Remove {
@@ -482,7 +254,7 @@ where
         .await?;
 
         // Mark as deleted in stream
-        let message = proven_engine::Message::new(vec![])
+        let message = Message::new(vec![])
             .with_header("deleted", "true")
             .with_header("key", key);
 
@@ -490,39 +262,22 @@ where
             .publish_to_stream(self.get_stream_name(), vec![message])
             .await
             .map(|_| ())
-            .map_err(|e| Error::Engine(e.to_string()))?;
-
-        // Update cache immediately
-        let cached_state = self.get_or_create_cached_state().await?;
-        {
-            let mut state = cached_state.state.write().await;
-            state.data.remove(key);
-            // Don't update sequence number here - let sync handle it
-        }
-
-        Ok(())
+            .map_err(|e| Error::Engine(e.to_string()))
     }
 
     async fn get<K>(&self, key: K) -> Result<Option<T>, Self::Error>
     where
         K: AsRef<str> + Send,
     {
-        self.ensure_stream().await?;
+        self.ensure_initialized().await?;
 
         let key = key.as_ref();
         debug!("Getting key: {}", key);
 
-        // Get or create cached state
-        let cached_state = self.get_or_create_cached_state().await?;
-
-        // Sync if needed (incremental)
-        self.sync_state(&cached_state).await?;
-
-        // Get value from cache
-        let state = cached_state.state.read().await;
-        state.data.get(key).map_or_else(
+        // Get from view
+        self.view.get(key).map_or_else(
             || Ok(None),
-            |bytes| match T::try_from(bytes.clone()) {
+            |bytes| match T::try_from(bytes) {
                 Ok(value) => Ok(Some(value)),
                 Err(e) => {
                     debug!("Failed to deserialize value for key {}: {:?}", key, e);
@@ -533,39 +288,23 @@ where
     }
 
     async fn keys(&self) -> Result<Vec<String>, Self::Error> {
-        self.keys_with_prefix("").await
+        self.ensure_initialized().await?;
+        Ok(self.view.keys())
     }
 
     async fn keys_with_prefix<P>(&self, prefix: P) -> Result<Vec<String>, Self::Error>
     where
         P: AsRef<str> + Send,
     {
-        self.ensure_stream().await?;
-
-        let prefix = prefix.as_ref();
-        debug!("Listing keys with prefix: {}", prefix);
-
-        // Get or create cached state
-        let cached_state = self.get_or_create_cached_state().await?;
-
-        // Sync if needed (incremental)
-        self.sync_state(&cached_state).await?;
-
-        // Get keys from cache
-        let state = cached_state.state.read().await;
-        Ok(state
-            .data
-            .keys()
-            .filter(|k| k.starts_with(prefix))
-            .cloned()
-            .collect())
+        self.ensure_initialized().await?;
+        Ok(self.view.keys_with_prefix(prefix.as_ref()))
     }
 
     async fn put<K>(&self, key: K, value: T) -> Result<(), Self::Error>
     where
         K: AsRef<str> + Send,
     {
-        self.ensure_stream().await?;
+        self.ensure_initialized().await?;
 
         let key = key.as_ref();
         debug!("Putting key: {}", key);
@@ -575,8 +314,11 @@ where
             .try_into()
             .map_err(|e| Error::Serialization(e.to_string()))?;
 
+        // Update local view immediately
+        self.view.put(key.to_string(), bytes.clone());
+
         // Create message with key in header
-        let message = proven_engine::Message::new(bytes.to_vec()).with_header("key", key);
+        let message = Message::new(bytes.to_vec()).with_header("key", key);
 
         // Publish the value
         self.client
@@ -589,22 +331,11 @@ where
         self.track_key_operation(KeyOperation::Add {
             key: key.to_string(),
         })
-        .await?;
-
-        // Update cache immediately
-        let cached_state = self.get_or_create_cached_state().await?;
-        {
-            let mut state = cached_state.state.write().await;
-            state.data.insert(key.to_string(), bytes);
-            // Don't update sequence number here - let sync handle it
-        }
-
-        Ok(())
+        .await
     }
 }
 
-// Scoped store implementations following the same pattern as MemoryStore
-
+// Scoped store implementations
 macro_rules! impl_scoped_store {
     ($index:expr, $parent:ident, $parent_trait:ident, $doc:expr) => {
         paste::paste! {
@@ -622,7 +353,9 @@ macro_rules! impl_scoped_store {
                 S: Debug + Send + StdError + Sync + 'static,
             {
                 client: Arc<Client>,
+                view: StoreView,
                 prefix: Option<String>,
+                consumer_handles: Arc<Mutex<Option<(JoinHandle<()>, JoinHandle<()>)>>>,
                 _marker: std::marker::PhantomData<(T, D, S)>,
             }
 
@@ -641,7 +374,9 @@ macro_rules! impl_scoped_store {
                 fn clone(&self) -> Self {
                     Self {
                         client: self.client.clone(),
+                        view: self.view.clone(),
                         prefix: self.prefix.clone(),
+                        consumer_handles: self.consumer_handles.clone(),
                         _marker: std::marker::PhantomData,
                     }
                 }
@@ -678,27 +413,26 @@ macro_rules! impl_scoped_store {
                 D: Debug + Send + StdError + Sync + 'static,
                 S: Debug + Send + StdError + Sync + 'static,
             {
-                /// Create a new scoped engine store with automatic group assignment
+                /// Create a new scoped engine store
                 #[must_use]
-                pub const fn new(
-                    client: Arc<Client>,
-                ) -> Self {
+                pub fn new(client: Arc<Client>) -> Self {
                     Self {
                         client,
+                        view: StoreView::new(),
                         prefix: None,
+                        consumer_handles: Arc::new(Mutex::new(None)),
                         _marker: std::marker::PhantomData,
                     }
                 }
 
                 /// Create a scoped store
                 #[allow(dead_code)]
-                const fn with_scope(
-                    client: Arc<Client>,
-                    prefix: String,
-                ) -> Self {
+                fn with_scope(client: Arc<Client>, view: StoreView, prefix: String) -> Self {
                     Self {
                         client,
+                        view,
                         prefix: Some(prefix),
+                        consumer_handles: Arc::new(Mutex::new(None)),
                         _marker: std::marker::PhantomData,
                     }
                 }
@@ -730,6 +464,7 @@ macro_rules! impl_scoped_store {
                     };
                     $parent::<T, D, S>::with_scope(
                         self.client.clone(),
+                        self.view.clone(),
                         new_scope,
                     )
                 }
@@ -759,11 +494,8 @@ impl_scoped_store!(
 
 #[cfg(test)]
 mod tests {
-
-    // TODO: Add integration tests with a test engine setup
     #[test]
     fn test_store_creation() {
-        // This is just a placeholder to ensure the module compiles
-        // Real tests would require setting up an engine with test infrastructure
+        // Basic compilation test
     }
 }

@@ -6,19 +6,18 @@ edition = "2021"
 [dependencies]
 async-trait.workspace = true
 bytes.workspace = true
+dashmap = "6.1"
 deno_error.workspace = true
 futures.workspace = true
-lru = "0.12"
 paste.workspace = true
 proven-engine.workspace = true
 proven-store.workspace = true
 proven-storage.workspace = true
-proven-topology.workspace = true
-proven-transport.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-stream = "0.1"
 tracing.workspace = true
 
 [dev-dependencies]
@@ -27,6 +26,7 @@ proven-attestation-mock.workspace = true
 proven-network.workspace = true
 proven-storage.workspace = true
 proven-storage-memory.workspace = true
+proven-topology.workspace = true
 proven-topology-mock.workspace = true
 proven-transport-memory = { path = "../transport-memory" }
 tokio = { workspace = true, features = ["full"] }
