@@ -553,7 +553,7 @@ impl ClusterBuilder {
         let governance = MockTopologyAdaptor::new(
             vec![],
             vec![version],
-            "https://auth.test.com".to_string(),
+            "http://localhost".to_string(),
             vec![],
         );
 
