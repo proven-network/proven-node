@@ -49,6 +49,8 @@ pub struct UiState {
     pub log_level_modal_selected: usize,
     /// Current log level filter
     pub log_level_filter: LogLevel,
+    /// Whether to show target in log lines
+    pub show_log_target: bool,
     /// Selected specializations for new node
     pub node_specializations_selected: Vec<bool>,
     /// Currently highlighted index in the specializations modal
@@ -106,6 +108,7 @@ impl UiState {
             show_log_level_modal: false,
             log_level_modal_selected: 2, // Default to Info
             log_level_filter: LogLevel::Info,
+            show_log_target: false, // Default to false
             node_specializations_selected: vec![false; 7],
             node_modal_selected_index: 0,
             application_modal_active: false,
@@ -655,7 +658,14 @@ fn render_logs(frame: &mut Frame, area: Rect, ui_state: &mut UiState) {
         .iter()
         .skip(ui_state.log_scroll)
         .take(ui_state.log_viewport_height)
-        .map(|entry| create_colored_log_line(entry, show_node_names, &ui_state.nodes))
+        .map(|entry| {
+            create_colored_log_line(
+                entry,
+                show_node_names,
+                ui_state.show_log_target,
+                &ui_state.nodes,
+            )
+        })
         .collect();
 
     // Create dynamic title based on selection
@@ -760,6 +770,7 @@ fn get_pokemon_color(pokemon_name: &str) -> Color {
 fn create_colored_log_line(
     entry: &LogEntry,
     show_node_name: bool,
+    show_target: bool,
     nodes: &HashMap<TuiNodeId, (String, NodeStatus, HashSet<NodeSpecialization>)>,
 ) -> Line<'static> {
     // Convert UTC timestamp to local time for display
@@ -787,6 +798,16 @@ fn create_colored_log_line(
 
     let message = entry.message.clone();
 
+    // Build the spans for the log line
+    let mut spans = vec![
+        Span::styled(
+            format!("{timestamp} "),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(format!("[{level_str}]"), Style::default().fg(level_color)),
+    ];
+
+    // Add node name if enabled
     if show_node_name {
         // Extract Pokemon name from the execution_order
         let (node_display, node_color) = if entry.node_id == "main" {
@@ -811,28 +832,27 @@ fn create_colored_log_line(
             }
         };
 
-        Line::from(vec![
-            Span::styled(
-                format!("{timestamp} "),
-                Style::default().fg(Color::DarkGray),
-            ),
-            Span::styled(format!("[{level_str}]"), Style::default().fg(level_color)),
-            Span::raw(" "),
-            Span::styled(format!("[{node_display}]"), Style::default().fg(node_color)),
-            Span::raw(": "),
-            Span::raw(message),
-        ])
-    } else {
-        Line::from(vec![
-            Span::styled(
-                format!("{timestamp} "),
-                Style::default().fg(Color::DarkGray),
-            ),
-            Span::styled(format!("[{level_str}]"), Style::default().fg(level_color)),
-            Span::raw(": "),
-            Span::raw(message),
-        ])
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            format!("[{node_display}]"),
+            Style::default().fg(node_color),
+        ));
     }
+
+    // Add target if enabled (after node name, without brackets, in grey)
+    if show_target && let Some(target) = &entry.target {
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            target.clone(),
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+
+    // Add message
+    spans.push(Span::raw(": "));
+    spans.push(Span::raw(message));
+
+    Line::from(spans)
 }
 
 /// Render logs sidebar with node selection
@@ -1683,14 +1703,14 @@ fn render_create_application_view(frame: &mut Frame, area: Rect, ui_state: &UiSt
 
 /// Render log level modal
 fn render_log_level_modal(frame: &mut Frame, area: Rect, ui_state: &UiState) {
-    let modal_area = centered_rect(40, 30, area);
+    let modal_area = centered_rect(45, 35, area);
 
     // Clear background
     frame.render_widget(Clear, modal_area);
 
     // Main block
     let block = Block::default()
-        .title(" Select Log Level ")
+        .title(" Log Settings ")
         .borders(Borders::ALL)
         .style(Style::default().bg(Color::Black));
 
@@ -1716,6 +1736,8 @@ fn render_log_level_modal(frame: &mut Frame, area: Rect, ui_state: &UiState) {
             Constraint::Length(1), // Info
             Constraint::Length(1), // Debug
             Constraint::Length(1), // Trace
+            Constraint::Length(1), // Space
+            Constraint::Length(1), // Target toggle
             Constraint::Length(1), // Space
             Constraint::Length(1), // Help
         ])
@@ -1756,11 +1778,29 @@ fn render_log_level_modal(frame: &mut Frame, area: Rect, ui_state: &UiState) {
         frame.render_widget(paragraph, chunks[i + 2]);
     }
 
+    // Target toggle checkbox
+    let is_target_selected = ui_state.log_level_modal_selected == 5;
+    let checkbox = if ui_state.show_log_target {
+        "[✓]"
+    } else {
+        "[ ]"
+    };
+    let target_text = format!("  {checkbox} Show log target/module");
+
+    let target_style = if is_target_selected {
+        Style::default().fg(Color::Black).bg(Color::White)
+    } else {
+        Style::default().fg(Color::White)
+    };
+
+    let target_paragraph = Paragraph::new(target_text).style(target_style);
+    frame.render_widget(target_paragraph, chunks[8]);
+
     // Help text
-    let help = Paragraph::new("↑↓: Navigate | Enter: Select | Esc: Cancel")
+    let help = Paragraph::new("↑↓: Navigate | Enter/Space: Select/Toggle | Esc: Cancel")
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center);
-    frame.render_widget(help, chunks[8]);
+    frame.render_widget(help, chunks[10]);
 }
 
 /// Helper to create centered rect
