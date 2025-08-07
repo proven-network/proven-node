@@ -427,32 +427,37 @@ impl App {
                 }
             }
             KeyCode::Down => {
-                if self.ui_state.log_level_modal_selected < 4 {
+                if self.ui_state.log_level_modal_selected < 5 {
                     self.ui_state.log_level_modal_selected += 1;
                 }
             }
-            KeyCode::Enter => {
-                // Apply the selected log level
-                self.ui_state.log_level_filter = match self.ui_state.log_level_modal_selected {
-                    0 => LogLevel::Error,
-                    1 => LogLevel::Warn,
-                    2 => LogLevel::Info,
-                    3 => LogLevel::Debug,
-                    4 => LogLevel::Trace,
-                    _ => LogLevel::Info,
-                };
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                if self.ui_state.log_level_modal_selected < 5 {
+                    // Apply the selected log level
+                    self.ui_state.log_level_filter = match self.ui_state.log_level_modal_selected {
+                        0 => LogLevel::Error,
+                        1 => LogLevel::Warn,
+                        2 => LogLevel::Info,
+                        3 => LogLevel::Debug,
+                        4 => LogLevel::Trace,
+                        _ => LogLevel::Info,
+                    };
 
-                // Clear current logs and request fresh data with new filter
-                self.ui_state.viewport_logs.clear();
-                self.ui_state.log_scroll = 0;
+                    // Clear current logs and request fresh data with new filter
+                    self.ui_state.viewport_logs.clear();
+                    self.ui_state.log_scroll = 0;
 
-                // Request initial data again to reload with new filter
-                if let Some(reader) = &self.log_reader {
-                    reader.request_initial_data();
+                    // Request initial data again to reload with new filter
+                    if let Some(reader) = &self.log_reader {
+                        reader.request_initial_data();
+                    }
+
+                    // Close modal
+                    self.ui_state.show_log_level_modal = false;
+                } else {
+                    // Toggle the target checkbox
+                    self.ui_state.show_log_target = !self.ui_state.show_log_target;
                 }
-
-                // Close modal
-                self.ui_state.show_log_level_modal = false;
             }
             KeyCode::Esc => {
                 // Close without applying
