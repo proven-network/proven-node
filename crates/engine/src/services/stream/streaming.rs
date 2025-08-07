@@ -142,7 +142,7 @@ where
             }
         }
 
-        info!("Stream to {} completed", peer);
+        debug!("Stream to {} completed", peer);
         Ok(())
     }
 }

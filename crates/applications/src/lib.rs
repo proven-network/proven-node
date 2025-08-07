@@ -251,7 +251,7 @@ impl ApplicationManager {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
 
-        tracing::info!("Application manager initialized and ready");
+        tracing::debug!("Application manager initialized and ready");
 
         Ok(manager)
     }
@@ -297,7 +297,7 @@ impl ApplicationManager {
                 let is_leader = leadership.is_leader().await;
 
                 if is_leader != was_leader {
-                    tracing::info!(
+                    tracing::debug!(
                         "Leadership status changed: is_leader={}, was_leader={}",
                         is_leader,
                         was_leader
@@ -306,7 +306,7 @@ impl ApplicationManager {
 
                 if is_leader && !was_leader {
                     // Became leader - start command service
-                    tracing::info!("Became leader, starting command service");
+                    tracing::debug!("Became leader, starting command service");
 
                     let service = CommandService::new(
                         client.clone(),
@@ -316,11 +316,11 @@ impl ApplicationManager {
                     let mut guard = command_service.lock().await;
                     *guard = Some(service);
                     drop(guard);
-                    tracing::info!("Command service started successfully");
+                    tracing::debug!("Command service started successfully");
                     was_leader = true;
                 } else if !is_leader && was_leader {
                     // Lost leadership - stop command service
-                    tracing::info!("Lost leadership, stopping command service");
+                    tracing::debug!("Lost leadership, stopping command service");
                     let mut guard = command_service.lock().await;
                     if let Some(service) = guard.take() {
                         drop(guard);

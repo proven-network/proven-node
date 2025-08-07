@@ -98,7 +98,7 @@ async fn run_consumer_loop(
         .await
         .map_err(|e| Error::Stream(e.to_string()))?;
 
-    tracing::info!(
+    tracing::debug!(
         "Started event consumer from sequence {} with follow mode",
         start_seq
     );
@@ -121,6 +121,6 @@ async fn run_consumer_loop(
         }
     }
 
-    tracing::info!("Event consumer finished");
+    tracing::debug!("Event consumer finished");
     Ok(())
 }

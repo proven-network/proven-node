@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::foundation::types::ConsensusGroupId;
 use proven_topology::NodeId;
+use tracing::error;
 
 use super::{
     callbacks::GroupConsensusCallbacks,
@@ -24,12 +25,7 @@ impl GroupCallbackDispatcher {
     /// Handle state synchronization after replay completes
     pub async fn dispatch_state_sync(&self, group_id: ConsensusGroupId) {
         if let Err(e) = self.callbacks.on_state_synchronized(group_id).await {
-            tracing::error!("State sync callback failed for group {:?}: {}", group_id, e);
-        } else {
-            tracing::info!(
-                "State synchronized for group {:?} - replay complete",
-                group_id
-            );
+            error!("State sync callback failed for group {:?}: {}", group_id, e);
         }
     }
 
@@ -45,10 +41,9 @@ impl GroupCallbackDispatcher {
             .on_membership_changed(group_id, added_members, removed_members)
             .await
         {
-            tracing::error!(
+            error!(
                 "Membership change callback failed for group {:?}: {}",
-                group_id,
-                e
+                group_id, e
             );
         }
     }
@@ -79,12 +74,6 @@ impl GroupCallbackDispatcher {
                 let entries = entries
                     .as_ref()
                     .expect("Entries should be present coming from local state machine");
-
-                tracing::info!(
-                    "Dispatching on_messages_appended callback for {} entries to stream {}",
-                    entries.len(),
-                    stream_name,
-                );
 
                 if let Err(e) = self
                     .callbacks

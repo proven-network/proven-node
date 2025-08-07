@@ -107,7 +107,7 @@ impl RequestHandler<PublishMessage> for PublishHandler {
                 for node_id in interested_nodes {
                     if node_id != self.node_id {
                         if let Some(stream) = streams.get(&node_id) {
-                            info!("Sending message to {} via stream", node_id);
+                            debug!("Sending message to {} via stream", node_id);
                             // Serialize and send via stream
                             let mut buf = Vec::new();
                             if let Err(e) = ciborium::into_writer(&message, &mut buf) {
@@ -118,7 +118,7 @@ impl RequestHandler<PublishMessage> for PublishHandler {
                             if let Err(e) = stream.send(buf).await {
                                 warn!("Failed to send message to {} via stream: {}", node_id, e);
                             } else {
-                                info!("Successfully sent message to {} via stream", node_id);
+                                debug!("Successfully sent message to {} via stream", node_id);
                             }
                         } else {
                             warn!(

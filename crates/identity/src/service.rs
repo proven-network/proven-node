@@ -10,7 +10,7 @@ use proven_engine::{Client, Message};
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tokio_stream::StreamExt;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 use crate::{Command, Error, Event, Response, view::IdentityView};
 
@@ -225,7 +225,7 @@ impl CommandService {
         self.shutdown_tx = Some(shutdown_tx);
 
         let handle = tokio::spawn(async move {
-            info!("Starting command service for subject '{}'", command_subject);
+            debug!("Starting command service for subject '{}'", command_subject);
 
             // Subscribe to the command subject
             let mut subscription = match client.subscribe(&command_subject, None).await {
@@ -236,7 +236,7 @@ impl CommandService {
                 }
             };
 
-            info!("Command service subscribed and ready");
+            debug!("Command service subscribed and ready");
 
             // Process incoming requests
             loop {
@@ -268,12 +268,12 @@ impl CommandService {
                                 debug!("Received message without reply_to header, ignoring");
                             }
                         } else {
-                            info!("Subscription closed");
+                            debug!("Subscription closed");
                             break;
                         }
                     }
                     _ = &mut shutdown_rx => {
-                        info!("Command service shutting down");
+                        debug!("Command service shutting down");
                         break;
                     }
                 }

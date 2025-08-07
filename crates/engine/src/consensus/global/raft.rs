@@ -390,11 +390,6 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
                             current_leader = metrics.current_leader.clone();
                             current_term = metrics.current_term;
 
-                            tracing::info!(
-                                "Global consensus leader changed: {:?} -> {:?} (term {})",
-                                old_leader, current_leader, current_term
-                            );
-
                             // Call the callback with proper term
                             if let Err(e) = callbacks.on_leader_changed(
                                 old_leader,

@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use proven_topology::NodeId;
+use tracing::error;
 
 use super::{
     callbacks::GlobalConsensusCallbacks,
@@ -23,9 +24,7 @@ impl GlobalCallbackDispatcher {
     /// Handle state synchronization after replay completes
     pub async fn dispatch_state_sync(&self) {
         if let Err(e) = self.callbacks.on_state_synchronized().await {
-            tracing::error!("State sync callback failed: {}", e);
-        } else {
-            tracing::info!("State synchronized - replay complete");
+            error!("State sync callback failed: {}", e);
         }
     }
 
@@ -82,23 +81,14 @@ impl GlobalCallbackDispatcher {
             }
 
             (GlobalRequest::CreateGroup { info }, GlobalResponse::GroupCreated { .. }) => {
-                tracing::info!(
-                    "GlobalCallbackDispatcher: Dispatching on_group_created callback for group {:?}",
-                    info.id
-                );
                 if let Err(e) = self.callbacks.on_group_created(info.id, info).await {
-                    tracing::error!("Group creation callback failed: {}", e);
-                } else {
-                    tracing::info!(
-                        "GlobalCallbackDispatcher: Successfully dispatched on_group_created for group {:?}",
-                        info.id
-                    );
+                    error!("Group creation callback failed: {}", e);
                 }
             }
 
             (GlobalRequest::DissolveGroup { id }, GlobalResponse::GroupDissolved { .. }) => {
                 if let Err(e) = self.callbacks.on_group_dissolved(*id).await {
-                    tracing::error!("Group dissolution callback failed: {}", e);
+                    error!("Group dissolution callback failed: {}", e);
                 }
             }
 

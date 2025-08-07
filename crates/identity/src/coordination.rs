@@ -193,7 +193,7 @@ impl LeadershipCoordinator {
 
         pin!(stream);
 
-        tracing::info!("Started watching leadership stream with follow mode");
+        tracing::debug!("Started watching leadership stream with follow mode");
 
         while let Some((message, _timestamp, sequence)) =
             tokio_stream::StreamExt::next(&mut stream).await
@@ -211,7 +211,7 @@ impl LeadershipCoordinator {
                 state_guard.is_leader = lease.node_id == node_id;
 
                 if state_guard.is_leader {
-                    tracing::info!(
+                    tracing::debug!(
                         "We are the leader (lease expires at {})",
                         lease.expires_at_ms
                     );
@@ -221,7 +221,7 @@ impl LeadershipCoordinator {
             } else if let Some(current) = &state_guard.current_lease {
                 // Lease expired
                 if current.node_id == lease.node_id {
-                    tracing::info!("Leadership lease expired for node {:?}", lease.node_id);
+                    tracing::debug!("Leadership lease expired for node {:?}", lease.node_id);
                     state_guard.current_lease = None;
                     if state_guard.is_leader {
                         state_guard.is_leader = false;

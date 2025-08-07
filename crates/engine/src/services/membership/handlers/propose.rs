@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use proven_topology::NodeId;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     error::ConsensusResult,
@@ -38,7 +38,7 @@ impl ProposeClusterHandler {
         sender: NodeId,
         request: ProposeClusterRequest,
     ) -> ConsensusResult<ProposeClusterResponse> {
-        info!(
+        debug!(
             "Received cluster proposal from {} (formation_id: {}, members: {:?})",
             sender,
             request.formation_id,
@@ -55,7 +55,7 @@ impl ProposeClusterHandler {
         drop(view);
 
         if accepted {
-            info!(
+            debug!(
                 "Accepting cluster proposal from {} (formation_id: {})",
                 sender, request.formation_id
             );

@@ -1,7 +1,7 @@
 //! Handler for PersistMessages command
 
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::foundation::StreamName;
 use crate::foundation::events::{Error as EventError, EventMetadata, RequestHandler};
@@ -86,7 +86,7 @@ where
                 .await
             {
                 Ok(last_seq) => {
-                    info!(
+                    debug!(
                         "Successfully persisted {} messages to stream {} storage (last_seq: {})",
                         message_count, stream_name, last_seq
                     );

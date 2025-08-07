@@ -116,7 +116,7 @@ impl StreamManager {
             .open_stream(peer.clone(), "pubsub", metadata)
             .await?;
 
-        info!("Opened publish stream to {}", peer);
+        debug!("Opened publish stream to {}", peer);
         self.publish_streams
             .write()
             .await
@@ -143,7 +143,7 @@ impl StreamManager {
             .open_stream(peer.clone(), "pubsub", metadata)
             .await?;
 
-        info!("Opened control stream to {}", peer);
+        debug!("Opened control stream to {}", peer);
 
         // Send initial interests before storing the stream
         if let Err(e) = interest_propagator.send_interests_to_stream(&stream).await {

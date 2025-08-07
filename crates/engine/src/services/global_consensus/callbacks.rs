@@ -45,11 +45,6 @@ impl GlobalConsensusCallbacksImpl {
 #[async_trait::async_trait]
 impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
     async fn on_state_synchronized(&self) -> ConsensusResult<()> {
-        tracing::info!(
-            "Global state synchronized - updating routing table for node {}",
-            self.node_id
-        );
-
         // Get all groups and streams
         let all_groups = self.global_state.get_all_groups().await;
         let all_streams = self.global_state.get_all_streams().await;
@@ -112,12 +107,6 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
         group_id: ConsensusGroupId,
         group_info: &GroupInfo,
     ) -> ConsensusResult<()> {
-        tracing::info!(
-            "GlobalConsensusCallbacks: on_group_created called for group {:?} with {} members",
-            group_id,
-            group_info.members.len()
-        );
-
         if let Some(ref event_bus) = self.event_bus {
             // Send command to ensure the group is initialized in group consensus service
             use crate::services::group_consensus::commands::EnsureGroupConsensusInitialized;
@@ -125,11 +114,6 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
                 group_id,
                 members: group_info.members.clone(),
             };
-
-            tracing::info!(
-                "GlobalConsensusCallbacks: Sending EnsureGroupConsensusInitialized command for group {:?}",
-                group_id
-            );
 
             // Use fire-and-forget since this is a callback
             let event_bus_clone = event_bus.clone();
@@ -156,7 +140,6 @@ impl GlobalConsensusCallbacks for GlobalConsensusCallbacksImpl {
 
     async fn on_group_dissolved(&self, group_id: ConsensusGroupId) -> ConsensusResult<()> {
         // TODO: Handle group dissolution
-        tracing::info!("Group dissolved: {:?}", group_id);
 
         // Publish event
         if let Some(ref event_bus) = self.event_bus {

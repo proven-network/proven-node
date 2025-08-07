@@ -49,7 +49,7 @@ impl StreamHandler<Subscribe> for SubscribeHandler {
         _metadata: EventMetadata,
         sink: flume::Sender<Message>,
     ) -> Result<(), EventError> {
-        info!(
+        debug!(
             "Creating streaming subscription for pattern: {:?} (queue_group: {:?})",
             request.subject_pattern, request.queue_group
         );
@@ -92,14 +92,14 @@ impl StreamHandler<Subscribe> for SubscribeHandler {
             .await;
 
         // Propagate interests to all connected peers
-        info!(
+        debug!(
             "Propagating interests after new subscription to pattern: {}",
             pattern
         );
         if let Err(e) = self.interest_propagator.propagate_interests().await {
             warn!("Failed to propagate interests: {}", e);
         } else {
-            info!("Successfully propagated interests");
+            debug!("Successfully propagated interests");
         }
 
         // Create control channel for subscription management
@@ -122,7 +122,7 @@ impl StreamHandler<Subscribe> for SubscribeHandler {
                         // TODO: Implement resume logic if needed
                     }
                     SubscriptionControl::Unsubscribe => {
-                        info!(
+                        debug!(
                             "Unsubscribing streaming subscription {}",
                             subscription_id_clone
                         );
@@ -186,7 +186,7 @@ impl StreamHandler<Subscribe> for SubscribeHandler {
             );
         });
 
-        info!(
+        debug!(
             "Streaming subscription {} created successfully",
             subscription_id
         );

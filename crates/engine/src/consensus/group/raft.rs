@@ -260,11 +260,6 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
                             current_leader = metrics.current_leader.clone();
                             current_term = metrics.current_term;
 
-                            tracing::info!(
-                                "Group {} consensus leader changed: {:?} -> {:?} (term {})",
-                                group_id, old_leader, current_leader, current_term
-                            );
-
                             // Call the callback
                             callback(group_id, old_leader, current_leader.clone(), current_term);
                         }

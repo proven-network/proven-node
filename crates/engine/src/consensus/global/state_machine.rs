@@ -90,12 +90,6 @@ impl GlobalStateMachine {
             let log_id = entry.log_id.clone();
             *self.applied.write().await = Some(log_id.clone());
 
-            tracing::info!(
-                "Applying log entry: index={}, leader_id={:?}",
-                log_id.index,
-                log_id.leader_id
-            );
-
             // Check if we've crossed the replay boundary
             if let Some(boundary) = self.replay_boundary
                 && from_openraft_u64(log_id.index).is_some_and(|idx| idx >= boundary)
@@ -123,25 +117,13 @@ impl GlobalStateMachine {
                         .unwrap_or(false);
 
                     let response = match self.handler.handle(operation.clone(), is_replay).await {
-                        Ok(resp) => {
-                            tracing::info!(
-                                "GlobalStateMachine: Successfully handled operation {:?}, response: {:?}",
-                                operation.request,
-                                resp
-                            );
-                            resp
-                        }
+                        Ok(resp) => resp,
                         Err(e) => GlobalResponse::Error {
                             message: e.to_string(),
                         },
                     };
 
                     // Dispatch callbacks based on operation result
-                    tracing::info!(
-                        "GlobalStateMachine: Dispatching callbacks for operation {:?} with response {:?}",
-                        operation.request,
-                        response
-                    );
                     self.callback_dispatcher
                         .dispatch_operation(&operation.request, &response, is_replay)
                         .await;
@@ -247,12 +229,6 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
         meta: &openraft::SnapshotMeta<GlobalTypeConfig>,
         mut snapshot: GlobalSnapshot,
     ) -> Result<(), StorageError<GlobalTypeConfig>> {
-        tracing::info!(
-            "Installing snapshot: id={}, last_log_id={:?}",
-            meta.snapshot_id,
-            meta.last_log_id
-        );
-
         // Install snapshot into state machine
         use tokio::io::AsyncReadExt;
         let mut buffer = Vec::new();
@@ -282,10 +258,6 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
         // Clear existing state first
         self.state.clear().await;
 
-        // Store counts for logging
-        let group_count = state_data.groups.len();
-        let stream_count = state_data.streams.len();
-
         // Install groups
         for group in state_data.groups {
             self.state
@@ -310,12 +282,6 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
         *self.state_synced.write().await = true;
         // Important: We don't hold any locks when dispatching to avoid deadlocks
         self.callback_dispatcher.dispatch_state_sync().await;
-
-        tracing::info!(
-            "Installed snapshot with {} groups and {} streams",
-            group_count,
-            stream_count
-        );
 
         Ok(())
     }

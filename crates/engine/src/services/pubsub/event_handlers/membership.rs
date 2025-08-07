@@ -95,7 +95,7 @@ where
     async fn handle(&self, event: MembershipEvent, _metadata: EventMetadata) {
         match event {
             MembershipEvent::ClusterFormed { members, .. } => {
-                info!(
+                debug!(
                     "PubSubService: Cluster formed with {} members, propagating interests",
                     members.len()
                 );
@@ -110,7 +110,7 @@ where
             }
 
             MembershipEvent::ClusterJoined { members, .. } => {
-                info!(
+                debug!(
                     "PubSubService: Joined cluster with {} members, propagating interests",
                     members.len()
                 );
@@ -125,7 +125,7 @@ where
             }
 
             MembershipEvent::NodeDiscovered { node_id, .. } => {
-                info!(
+                debug!(
                     "PubSubService: Node {} discovered, sending interests",
                     node_id
                 );
@@ -140,7 +140,7 @@ where
             }
 
             MembershipEvent::NodeOffline { node_id, .. } => {
-                info!(
+                debug!(
                     "PubSubService: Node {} went offline, removing interests",
                     node_id
                 );
@@ -150,7 +150,7 @@ where
             }
 
             MembershipEvent::MembershipChangeRequired { add_nodes, .. } => {
-                info!(
+                debug!(
                     "PubSubService: Membership change required, adding {} nodes",
                     add_nodes.len()
                 );
