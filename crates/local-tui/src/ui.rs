@@ -1056,6 +1056,8 @@ fn render_footer(frame: &mut Frame, area: Rect, shutting_down: bool, ui_state: &
         }
 
         spans.extend(vec![
+            Span::styled("c", Style::default().fg(Color::Cyan)),
+            Span::styled(":clear logs ", Style::default()),
             Span::styled("l", Style::default().fg(Color::Yellow)),
             Span::styled(
                 format!(":log level ({:?}) ", ui_state.log_level_filter),
@@ -1107,6 +1109,7 @@ fn render_help_overlay(frame: &mut Frame, area: Rect) {
             "Log Control:",
             Style::default().add_modifier(Modifier::UNDERLINED),
         )]),
+        Line::from("  c         Clear all logs (from database)"),
         Line::from("  PgUp/PgDn Scroll logs"),
         Line::from("  Home/End  Jump to start/end"),
         Line::from(""),

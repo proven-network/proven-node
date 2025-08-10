@@ -263,4 +263,9 @@ impl ClusterAdapter {
             }
         }
     }
+
+    /// Clear all logs from the database
+    pub fn clear_logs(&mut self) -> Result<()> {
+        self.cluster.clear_logs()
+    }
 }

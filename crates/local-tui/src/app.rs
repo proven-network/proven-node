@@ -301,6 +301,16 @@ impl App {
             KeyCode::Home => self.ui_state.scroll_logs_home(),
             KeyCode::End => self.ui_state.scroll_logs_end(),
 
+            // Clear logs
+            KeyCode::Char('c') => {
+                // Clear both the UI state and the database
+                self.ui_state.clear_logs();
+                if let Err(e) = self.cluster_adapter.clear_logs() {
+                    self.ui_state
+                        .show_error(format!("Failed to clear logs: {e}"));
+                }
+            }
+
             // Help
             KeyCode::Char('h') => self.ui_state.toggle_help(),
 

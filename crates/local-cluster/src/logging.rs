@@ -528,6 +528,19 @@ impl ClusterLogSystem {
     pub fn get_connection(&self) -> Arc<Mutex<Connection>> {
         self.writer.get_connection()
     }
+
+    /// Clear all logs from the database
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database operation fails
+    pub fn clear_logs(&self) -> Result<()> {
+        let conn = self.writer.get_connection();
+        let conn = conn.lock();
+        conn.execute("DELETE FROM logs", [])?;
+        drop(conn);
+        Ok(())
+    }
 }
 
 /// Log filtering options

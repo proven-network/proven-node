@@ -432,6 +432,15 @@ impl LocalCluster {
         Ok(())
     }
 
+    /// Clear all logs from the database
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if clearing logs fails
+    pub fn clear_logs(&self) -> Result<()> {
+        self.log_system.clear_logs()
+    }
+
     // --- Utility Methods ---
 
     /// Wait for all nodes to shutdown
