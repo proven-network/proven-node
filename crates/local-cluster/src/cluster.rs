@@ -14,7 +14,7 @@ use parking_lot::RwLock;
 use proven_attestation::Attestor;
 use proven_attestation_mock::MockAttestor;
 use proven_local::NodeStatus;
-use proven_topology::{Node, NodeId, TopologyAdaptor, Version};
+use proven_topology::{Node, NodeId, NodeSpecialization, TopologyAdaptor, Version};
 use proven_topology_mock::MockTopologyAdaptor;
 use proven_util::port_allocator::allocate_port;
 use std::collections::{HashMap, HashSet};
@@ -93,6 +93,19 @@ impl LocalCluster {
     ///
     /// Returns an error if port allocation fails or node creation fails
     pub fn create_node(&mut self, name: &str) -> Result<NodeInfo> {
+        self.create_node_with_specializations(name, HashSet::default())
+    }
+
+    /// Create a node configuration with specializations without starting it
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if port allocation fails or node creation fails
+    pub fn create_node_with_specializations(
+        &mut self,
+        name: &str,
+        specializations: HashSet<NodeSpecialization>,
+    ) -> Result<NodeInfo> {
         let execution_order = {
             let mut order = self.next_execution_order.write();
             let current = *order;
@@ -124,7 +137,7 @@ impl LocalCluster {
         let node = ManagedNode::new(
             info.clone(),
             config,
-            HashSet::default(),
+            specializations,
             self.governance.clone(),
             self.completion_sender.clone(),
         )?;

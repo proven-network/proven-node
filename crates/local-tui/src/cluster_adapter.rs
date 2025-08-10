@@ -91,8 +91,10 @@ impl ClusterAdapter {
             specializations
         );
 
-        // Create node in cluster
-        let node_info = self.cluster.create_node(name)?;
+        // Create node in cluster with specializations
+        let node_info = self
+            .cluster
+            .create_node_with_specializations(name, specializations)?;
 
         // Store mapping
         let cluster_id = node_info.id.clone();
