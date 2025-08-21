@@ -1,19 +1,14 @@
-//! Secure HLC implementation with NTS validation.
+//! Secure HLC implementation with multi-source validation.
 //!
-//! Provides monotonic, unique timestamps for distributed transactions with
-//! cryptographic time validation via NTS (Network Time Security).
+//! Uses Chrony to track both AWS Time Sync (for precision) and Cloudflare NTS
+//! (for cryptographic validation), detecting tampering by comparing their offsets.
 
 #![warn(missing_docs)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 
-mod adaptive;
-mod client;
-mod constants;
+mod chrony;
 mod error;
-mod messages;
-mod nts;
-mod server;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
@@ -24,105 +19,56 @@ use proven_hlc::{HLCProvider, HlcConfig, HlcTimestamp, Result as HLCResult, Tran
 use proven_topology::NodeId;
 use tracing::{debug, warn};
 
-use adaptive::AdaptiveMeasurements;
-use constants::{CLOCK_DRIFT_CRITICAL_PPM, CLOCK_DRIFT_WARNING_PPM};
+use chrony::ChronySourceManager;
 use error::Result;
-use nts::NtsValidator;
 
-pub use client::TimeClient;
-pub use messages::{TimeRequest, TimeResponse};
-pub use server::TimeServer;
+pub use error::Error;
 
-/// Secure HLC implementation with NTS validation.
+/// Secure HLC implementation with multi-source validation.
 ///
-/// Provides globally unique, monotonic timestamps with cryptographic
-/// time validation for distributed transactions.
+/// Validates AWS Time Sync against Cloudflare NTS to detect tampering.
 pub struct TimeSyncHlcProvider {
-    /// Adaptive measurements for uncertainty
-    adaptive: Arc<AdaptiveMeasurements>,
+    /// Chrony source manager
+    source_manager: Arc<ChronySourceManager>,
     /// Last seen physical time in microseconds
     last_physical: Arc<AtomicU64>,
     /// Logical counter for same physical time
     logical_counter: Arc<AtomicU32>,
     /// Node identifier
     node_id: NodeId,
-    /// NTS validator for secure time
-    nts_validator: Arc<NtsValidator>,
-    /// Background recalibration task handle
-    recalibration_handle: Arc<tokio::sync::RwLock<Option<tokio::task::JoinHandle<()>>>>,
-    /// Time client for enclave mode
-    time_client: Option<Arc<client::TimeClient>>,
+    /// Background validation task handle
+    validation_handle: Arc<tokio::sync::RwLock<Option<tokio::task::JoinHandle<()>>>>,
 }
 
 impl TimeSyncHlcProvider {
-    /// Create for Nitro Enclave with vsock communication on Linux or TCP on other platforms.
+    /// Create a new HLC provider with multi-source validation.
     ///
     /// # Errors
     ///
-    /// Returns an error if connection fails.
-    pub fn new_enclave(
-        config: &HlcConfig,
-        #[cfg(target_os = "linux")] vsock_addr: tokio_vsock::VsockAddr,
-        #[cfg(not(target_os = "linux"))] tcp_addr: std::net::SocketAddr,
-    ) -> Result<Self> {
-        let adaptive = Arc::new(AdaptiveMeasurements::new());
-        let nts_validator = Arc::new(NtsValidator::with_adaptive(
-            Arc::clone(&adaptive),
-            config.max_drift_ms,
-        ));
+    /// Returns an error if Chrony is not available or sources cannot be configured.
+    pub async fn new(config: HlcConfig) -> Result<Self> {
+        let source_manager = Arc::new(ChronySourceManager::new(config.max_drift_ms));
 
-        let time_client = Arc::new(client::TimeClient::new(
-            #[cfg(target_os = "linux")]
-            vsock_addr,
-            #[cfg(not(target_os = "linux"))]
-            tcp_addr,
-        )?);
+        // Verify we can query sources
+        tokio::task::spawn_blocking({
+            let sm = Arc::clone(&source_manager);
+            move || sm.get_all_sources()
+        })
+        .await
+        .map_err(|e| Error::Chrony(format!("Failed to spawn blocking task: {e}")))?
+        .map_err(|e| Error::Chrony(format!("Failed to query sources: {e}")))?;
 
         let node_id = config.node_id;
         let hlc = Self {
-            adaptive,
+            source_manager,
             last_physical: Arc::new(AtomicU64::new(0)),
             logical_counter: Arc::new(AtomicU32::new(0)),
             node_id,
-            nts_validator,
-            recalibration_handle: Arc::new(tokio::sync::RwLock::new(None)),
-            time_client: Some(time_client),
+            validation_handle: Arc::new(tokio::sync::RwLock::new(None)),
         };
 
-        // Start background recalibration task
-        hlc.start_recalibration_task();
-
-        Ok(hlc)
-    }
-
-    /// Create for host with NTS only.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if NTS validation fails to start.
-    pub async fn new_host(config: HlcConfig) -> Result<Self> {
-        let adaptive = Arc::new(AdaptiveMeasurements::new());
-        let nts_validator = Arc::new(NtsValidator::with_adaptive(
-            Arc::clone(&adaptive),
-            config.max_drift_ms,
-        ));
-
-        // Start NTS validation
-        nts_validator.start_validation().await?;
-
-        let node_id = config.node_id;
-        let hlc = Self {
-            adaptive,
-            last_physical: Arc::new(AtomicU64::new(0)),
-            logical_counter: Arc::new(AtomicU32::new(0)),
-            node_id,
-            nts_validator,
-            recalibration_handle: Arc::new(tokio::sync::RwLock::new(None)),
-            time_client: None,
-        };
-
-        // Start background recalibration task
-        hlc.start_recalibration_task();
+        // Start background validation task
+        hlc.start_validation_task();
 
         Ok(hlc)
     }
@@ -199,39 +145,42 @@ impl TimeSyncHlcProvider {
                     .logical_counter
                     .fetch_max(new_logical, Ordering::SeqCst);
                 return;
+            } else {
+                // Our clock is ahead, nothing to update
+                return;
             }
         }
     }
 
-    /// Start the background recalibration task.
-    fn start_recalibration_task(&self) {
-        let adaptive = Arc::clone(&self.adaptive);
-        let nts_validator = Arc::clone(&self.nts_validator);
-        let handle_lock = Arc::clone(&self.recalibration_handle);
+    /// Start the background validation task.
+    fn start_validation_task(&self) {
+        let source_manager = Arc::clone(&self.source_manager);
+        let handle_lock = Arc::clone(&self.validation_handle);
 
         let handle = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(300)); // 5 minutes
+            // Check every 30 seconds for better tamper detection
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
             loop {
                 interval.tick().await;
 
-                // Log current adaptive measurements status
-                adaptive.log_status();
-
-                // Update drift measurements if we have NTS time
-                if let Ok(nts_time) = nts_validator.get_validated_time().await {
-                    let local_time = Utc::now();
-                    adaptive.update_drift_measurement(nts_time, local_time);
+                // Validate sources agree
+                match source_manager.validate_sources() {
+                    Ok((valid, divergence)) => {
+                        if valid {
+                            debug!("Time sources validated: divergence={:.3}ms", divergence);
+                        } else {
+                            warn!(
+                                "Time source validation failed: divergence={:.3}ms",
+                                divergence
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to validate time sources: {}", e);
+                    }
                 }
-
-                // Check drift and log warnings if excessive
-                let drift_ppm = adaptive.get_clock_drift_ppm();
-                if drift_ppm > CLOCK_DRIFT_WARNING_PPM {
-                    warn!("Excessive clock drift detected: {:.1} PPM", drift_ppm);
-                }
-
-                debug!("Recalibration cycle complete");
             }
         });
 
@@ -241,72 +190,34 @@ impl TimeSyncHlcProvider {
         });
     }
 
-    /// Force an NTS update.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if NTS update fails.
-    pub async fn force_nts_update(&self) -> Result<()> {
-        self.nts_validator.force_update().await
-    }
-
     /// Check if the HLC provider is healthy.
     #[must_use]
-    pub fn check_health(&self) -> bool {
-        // Check NTS validator health
-        if !self.nts_validator.is_healthy().unwrap_or(false) {
-            return false;
-        }
-
-        // Check if we have recent measurements
-        let stats = self.adaptive.get_stats();
-        if stats.aws_sample_count < 5 && self.time_client.is_some() {
-            return false; // Not enough samples for enclave mode
-        }
-
-        // Check excessive drift
-        let drift_ppm = self.adaptive.get_clock_drift_ppm();
-        if drift_ppm > CLOCK_DRIFT_CRITICAL_PPM {
-            return false; // Excessive drift
-        }
-
-        true
+    pub async fn check_health(&self) -> bool {
+        let source_manager = Arc::clone(&self.source_manager);
+        tokio::task::spawn_blocking(move || match source_manager.validate_sources() {
+            Ok((valid, _)) => valid,
+            Err(_) => false,
+        })
+        .await
+        .unwrap_or(false)
     }
 }
 
 #[async_trait]
 impl HLCProvider for TimeSyncHlcProvider {
     async fn now(&self) -> HLCResult<TransactionTimestamp> {
-        // Get validated time for uncertainty bounds
-        let wall_time = if let Some(ref client) = self.time_client {
-            // Enclave mode: try host time with NTS validation
-            match client.get_time().await {
-                Ok(host_time) => {
-                    // Validate against NTS
-                    if self.nts_validator.validate(&host_time)? {
-                        self.adaptive
-                            .update_aws_measurement(host_time.uncertainty_us);
-                        host_time.timestamp
-                    } else {
-                        warn!("Host time validation failed, using NTS");
-                        self.nts_validator.get_validated_time().await?
-                    }
-                }
-                Err(e) => {
-                    debug!("Host time unavailable: {}", e);
-                    self.nts_validator.get_validated_time().await?
-                }
-            }
-        } else {
-            // Host mode: use NTS directly
-            self.nts_validator.get_validated_time().await?
-        };
+        // Get validated time and uncertainty from Chrony
+        let source_manager = Arc::clone(&self.source_manager);
+        let (wall_time, uncertainty_us) =
+            tokio::task::spawn_blocking(move || source_manager.get_validated_time())
+                .await
+                .map_err(|e| {
+                    proven_hlc::Error::Internal(format!("Failed to spawn blocking task: {e}"))
+                })?
+                .map_err(|e| proven_hlc::Error::Internal(format!("Time validation failed: {e}")))?;
 
         // Get HLC timestamp
         let hlc = self.next_timestamp();
-
-        // Get current uncertainty
-        let uncertainty_us = self.adaptive.get_uncertainty_us();
 
         Ok(TransactionTimestamp::new(hlc, wall_time, uncertainty_us))
     }
@@ -321,11 +232,19 @@ impl HLCProvider for TimeSyncHlcProvider {
     }
 
     async fn is_healthy(&self) -> HLCResult<bool> {
-        Ok(self.nts_validator.is_healthy()?)
+        Ok(self.check_health().await)
     }
 
     async fn uncertainty_us(&self) -> f64 {
-        self.adaptive.get_uncertainty_us()
+        // Get current uncertainty from Chrony tracking
+        // Note: We get tracking data directly, not validated time
+        // This returns the actual uncertainty even if sources diverge
+        let source_manager = Arc::clone(&self.source_manager);
+        tokio::task::spawn_blocking(move || source_manager.get_tracking_uncertainty())
+            .await
+            .ok()
+            .and_then(std::result::Result::ok)
+            .unwrap_or(100_000.0) // Conservative 100ms fallback for safety
     }
 }
 
@@ -337,7 +256,7 @@ mod tests {
     async fn test_monotonicity() {
         let node_id = NodeId::from_seed(1);
         let config = HlcConfig::new(node_id);
-        let hlc = TimeSyncHlcProvider::new_host(config).await.unwrap();
+        let hlc = TimeSyncHlcProvider::new(config).await.unwrap();
 
         let ts1 = hlc.now().await.unwrap();
         let ts2 = hlc.now().await.unwrap();
@@ -356,10 +275,10 @@ mod tests {
         let node1_id = NodeId::from_seed(1);
         let node2_id = NodeId::from_seed(2);
 
-        let hlc1 = TimeSyncHlcProvider::new_host(HlcConfig::new(node1_id))
+        let hlc1 = TimeSyncHlcProvider::new(HlcConfig::new(node1_id))
             .await
             .unwrap();
-        let hlc2 = TimeSyncHlcProvider::new_host(HlcConfig::new(node2_id))
+        let hlc2 = TimeSyncHlcProvider::new(HlcConfig::new(node2_id))
             .await
             .unwrap();
 

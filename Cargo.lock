@@ -10595,20 +10595,14 @@ name = "proven-hlc-time-sync"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "bincode",
- "bytes",
  "chrono",
  "chrony-candm",
- "hex",
  "parking_lot 0.12.4",
  "proven-hlc",
  "proven-topology",
- "proven-vsock-rpc",
- "serde",
  "thiserror 2.0.12",
  "tokio",
  "tokio-test",
- "tokio-vsock",
  "tracing",
 ]
 

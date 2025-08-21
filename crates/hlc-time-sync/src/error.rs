@@ -33,13 +33,13 @@ pub enum Error {
     #[error("NTS validation failed: drift {0}ms exceeds threshold {1}ms")]
     NtsValidationFailed(f64, f64),
 
-    /// RPC communication error
-    #[error("RPC error: {0}")]
-    Rpc(#[from] proven_vsock_rpc::Error),
+    /// Source not found
+    #[error("Time source not found: {0}")]
+    SourceNotFound(&'static str),
 
-    /// Serialization error
-    #[error("Serialization error: {0}")]
-    Serialization(#[from] bincode::Error),
+    /// Time source tampering detected
+    #[error("Time source tampering detected: divergence {0}ms")]
+    TimeSourceTampering(f64),
 
     /// System time error
     #[error("System time error: {0}")]
