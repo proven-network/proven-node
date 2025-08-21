@@ -214,7 +214,7 @@ impl Database {
                     .get_connection()?
                     .query(
                         "SELECT COUNT(*) FROM __proven_migrations WHERE query_hash = ?1",
-                        Self::convert_params(vec![SqlParam::Text(hash.to_string())]),
+                        Self::convert_params(vec![SqlParam::Text(hash.clone())]),
                     )
                     .await?;
 

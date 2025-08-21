@@ -166,7 +166,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
         engine_router,
         governance: bootstrap.config.governance.clone(),
         http_server,
-        origin: origin.to_string(),
+        origin: origin.clone(),
     });
 
     // Start the gateway first to ensure HTTP server with WebSocket routes is ready

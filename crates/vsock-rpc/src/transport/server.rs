@@ -405,7 +405,7 @@ impl<H: RpcHandler> RpcServer<H> {
                                 payload: vec![],
                                 error: Some(crate::protocol::message::ErrorInfo {
                                     code: code.to_string(),
-                                    message: message.to_string(),
+                                    message: message.clone(),
                                     details: None,
                                 }),
                             };

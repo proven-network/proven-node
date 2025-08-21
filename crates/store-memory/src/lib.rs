@@ -181,7 +181,7 @@ where
                         .strip_prefix(':')?
                         .to_string()
                 } else {
-                    key.to_string()
+                    key.clone()
                 };
 
                 // Apply the optional parameter prefix
