@@ -1,0 +1,14 @@
+[package]
+name = "proven-hlc-mock"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+parking_lot.workspace = true
+proven-hlc.workspace = true
+proven-topology.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

@@ -1,0 +1,27 @@
+[package]
+name = "proven-hlc-time-sync"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+bincode.workspace = true
+bytes.workspace = true
+chrono.workspace = true
+hex.workspace = true
+parking_lot.workspace = true
+proven-hlc.workspace = true
+proven-topology.workspace = true
+proven-vsock-rpc.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+# Platform-specific dependencies
+[target.'cfg(target_os = "linux")'.dependencies]
+chrony-candm.workspace = true
+tokio-vsock.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true

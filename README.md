@@ -105,6 +105,9 @@ Updates to these components will generally require a rebuild and upgrade of Prov
 - [governance-helios](crates/governance-helios): Helios light-client based implementation of the governance interface.
 - [governance-mock](crates/governance-mock): Mock implementation of the governance interface for testing.
 - [headers](crates/headers): Common HTTP header definitions for use in other crates.
+- [hlc](crates/hlc): Hybrid Logical Clock traits and types for monotonic distributed transaction timestamps.
+- [hlc-mock](crates/hlc-mock): Controllable HLC implementation for testing distributed transaction scenarios.
+- [hlc-time-sync](crates/hlc-time-sync): Production HLC provider using AWS Time Sync and NTS for microsecond-accurate timestamps.
 - [host](crates/host): Binary to run on the host machine to manage enclave lifecycle.
 - [http](crates/http): Abstract interface for running an Axum-based HTTP server.
 - [http-insecure](crates/http-insecure): Implementation of simple non-secure HTTP for local development.
