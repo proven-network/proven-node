@@ -63,13 +63,9 @@ impl ProposeClusterHandler {
             // Update our state to forming
             let mut view = self.membership_view.write().await;
             view.cluster_state = ClusterFormationState::Forming {
-                coordinator: request.coordinator.clone(),
+                coordinator: request.coordinator,
                 formation_id: request.formation_id,
-                proposed_members: request
-                    .proposed_members
-                    .iter()
-                    .map(|(id, _)| id.clone())
-                    .collect(),
+                proposed_members: request.proposed_members.iter().map(|(id, _)| *id).collect(),
             };
             drop(view);
 

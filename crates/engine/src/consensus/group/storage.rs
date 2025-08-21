@@ -277,7 +277,7 @@ impl<L: LogStorage> RaftLogStorage<GroupTypeConfig> for Arc<GroupRaftLogStorage<
             if let Some((_, data)) = entries.first() {
                 let entry: Entry<GroupTypeConfig> =
                     ciborium::from_reader(data.as_ref()).map_err(|e| StorageError::read(&e))?;
-                log_state.last_log_id = Some(entry.log_id.clone());
+                log_state.last_log_id = Some(entry.log_id);
             }
 
             // Check if we have purged logs by reading metadata

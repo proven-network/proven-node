@@ -93,7 +93,7 @@ where
 
         // Register EnsureGroupConsensusInitialized handler
         let ensure_group_handler = EnsureGroupConsensusInitializedHandler::new(
-            self.node_id.clone(),
+            self.node_id,
             self.consensus_layers.clone(),
             self.group_states.clone(),
             self.network_manager.clone(),
@@ -114,7 +114,7 @@ where
 
         // Register EnsureStreamInitializedInGroup handler
         let ensure_stream_handler = EnsureStreamInitializedInGroupHandler::new(
-            self.node_id.clone(),
+            self.node_id,
             self.consensus_layers.clone(),
             self.event_bus.clone(),
         );
@@ -124,7 +124,7 @@ where
 
         // Register SubmitToGroup handler
         let submit_handler = SubmitToGroupHandler::new(
-            self.node_id.clone(),
+            self.node_id,
             self.consensus_layers.clone(),
             self.routing_table.clone(),
             self.network_manager.clone(),
@@ -148,7 +148,7 @@ where
 
         // Register GetStreamState handler
         let get_stream_state_handler = GetStreamStateHandler::new(
-            self.node_id.clone(),
+            self.node_id,
             self.consensus_layers.clone(),
             self.group_states.clone(),
             self.routing_table.clone(),
@@ -303,7 +303,7 @@ where
 
         // TODO: Get actual members from Raft membership config
         // For now, assume all nodes with this group are members
-        let members = vec![self.node_id.clone()];
+        let members = vec![self.node_id];
         let is_member = true;
 
         Ok(super::types::GroupStateInfo {
@@ -357,7 +357,7 @@ where
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
-            node_id: self.node_id.clone(),
+            node_id: self.node_id,
             network_manager: self.network_manager.clone(),
             storage_manager: self.storage_manager.clone(),
             group_states: self.group_states.clone(),

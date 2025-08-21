@@ -137,7 +137,7 @@ impl RaftSnapshotBuilder<GroupTypeConfig> for GroupSnapshotBuilder {
 
         Ok(Snapshot {
             meta: SnapshotMeta {
-                last_log_id: self.last_applied.clone(),
+                last_log_id: self.last_applied,
                 last_membership: self.membership.clone(),
                 snapshot_id: format!("group-snapshot-{}", chrono::Utc::now().timestamp()),
             },

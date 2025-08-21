@@ -106,7 +106,7 @@ where
                     // We're not the leader - forward to the leader
                     if let Some(leader) = e.get_leader() {
                         drop(groups_guard); // Release lock before network call
-                        self.forward_to_node(request.group_id, leader.clone(), request.request)
+                        self.forward_to_node(request.group_id, *leader, request.request)
                             .await
                     } else {
                         Err(EventError::Internal(format!("Not leader: {e}")))
@@ -131,7 +131,7 @@ where
                 })?;
 
             if let Some(member) = route.members.first() {
-                self.forward_to_node(request.group_id, member.clone(), request.request)
+                self.forward_to_node(request.group_id, *member, request.request)
                     .await
             } else {
                 Err(EventError::Internal(format!(

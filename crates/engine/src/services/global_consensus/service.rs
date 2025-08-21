@@ -128,7 +128,7 @@ where
         if self.consensus_layer.read().await.is_none() {
             let consensus_storage = self.storage_manager.consensus_storage();
             let callbacks = Arc::new(GlobalConsensusCallbacksImpl::new(
-                self.node_id.clone(),
+                self.node_id,
                 Some(self.event_bus.clone()),
                 state_reader.clone(),
                 self.routing_table.clone(),
@@ -136,7 +136,7 @@ where
 
             let layer = Self::create_consensus_layer(
                 &self.config,
-                self.node_id.clone(),
+                self.node_id,
                 self.network_manager.clone(),
                 consensus_storage,
                 callbacks.clone(),
@@ -283,7 +283,7 @@ where
         let network_factory = GlobalNetworkFactory::new(network_manager);
 
         let layer = GlobalConsensusLayer::new(
-            node_id.clone(),
+            node_id,
             raft_config,
             network_factory,
             storage,
@@ -316,7 +316,7 @@ where
     async fn reconcile_membership_on_startup(&self) {
         let consensus_layer = self.consensus_layer.clone();
         let topology_manager = self.topology_manager.clone();
-        let node_id = self.node_id.clone();
+        let node_id = self.node_id;
 
         tokio::spawn(async move {
             // Wait for consensus to be fully initialized and leadership established
@@ -359,7 +359,7 @@ where
                     );
 
                     // Only proceed if we're the leader
-                    if consensus.get_leader() == Some(node_id.clone()) {
+                    if consensus.get_leader() == Some(node_id) {
                         info!("We are the leader, removing missing members from Raft");
 
                         for missing_member in missing_members {
@@ -367,7 +367,7 @@ where
                                 "Removing missing member {} from Raft consensus",
                                 missing_member
                             );
-                            if let Err(e) = consensus.remove_node(missing_member.clone()).await {
+                            if let Err(e) = consensus.remove_node(missing_member).await {
                                 warn!(
                                     "Failed to remove member {} from Raft: {}",
                                     missing_member, e

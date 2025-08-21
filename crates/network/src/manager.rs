@@ -87,7 +87,7 @@ where
 
         let connection_pool = Arc::new(ConnectionPool::new(
             transport,
-            local_node_id.clone(),
+            local_node_id,
             signing_key,
             config,
             incoming_tx.clone(),
@@ -238,7 +238,7 @@ where
 
                                 let handle = crate::stream::StreamHandle {
                                     id: stream_id,
-                                    peer: msg.sender.clone(),
+                                    peer: msg.sender,
                                     stream_type: stream_type.clone(),
                                     sender: if let Some(frame_tx) = frame_sender {
                                         crate::stream::StreamSender::new_with_frame_sender(
@@ -264,7 +264,7 @@ where
                                     stream_id,
                                     StreamInfo {
                                         _stream_type: stream_type.clone(),
-                                        _peer: msg.sender.clone(),
+                                        _peer: msg.sender,
                                         sender: tx,
                                     },
                                 );
@@ -274,7 +274,7 @@ where
                                 {
                                     let stream = crate::stream::Stream { handle };
                                     let handler = handler.clone();
-                                    let sender = msg.sender.clone();
+                                    let sender = msg.sender;
                                     tokio::spawn(async move {
                                         if let Err(e) =
                                             handler.handle_stream(sender, stream, metadata).await
@@ -362,7 +362,7 @@ where
                 if let Some(handler) = handlers.get(service_id) {
                     debug!("Found handler for service: {}", service_id);
                     let ctx = ServiceContext {
-                        sender: msg.sender.clone(),
+                        sender: msg.sender,
                         correlation_id: msg
                             .headers
                             .get("stream_id")
@@ -372,7 +372,7 @@ where
                     let handler = handler.clone();
                     let connection_pool = connection_pool.clone();
                     let topology = topology.clone();
-                    let sender = msg.sender.clone();
+                    let sender = msg.sender;
                     let correlation_id = ctx.correlation_id;
 
                     tokio::spawn(async move {
@@ -444,7 +444,7 @@ where
                     target,
                     M::service_id()
                 );
-                NetworkError::PeerNotFound(Box::new(target.clone()))
+                NetworkError::PeerNotFound(Box::new(target))
             })?;
 
         debug!("Found peer {} at {}", target, peer.origin);
@@ -549,7 +549,7 @@ where
             .topology
             .get_peer_by_node_id(&target)
             .await
-            .ok_or_else(|| NetworkError::PeerNotFound(Box::new(target.clone())))?;
+            .ok_or_else(|| NetworkError::PeerNotFound(Box::new(target)))?;
 
         // Get or create connection
         let conn = self.connection_pool.get_connection(&peer).await?;
@@ -565,7 +565,7 @@ where
         let frame_tx = conn.get_frame_sender();
         let handle = crate::stream::StreamHandle {
             id: stream_id,
-            peer: target.clone(),
+            peer: target,
             stream_type: stream_type.to_string(),
             sender: crate::stream::StreamSender::new_with_frame_sender(
                 tx.clone(),

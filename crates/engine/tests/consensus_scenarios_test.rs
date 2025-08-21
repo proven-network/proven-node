@@ -36,7 +36,7 @@ async fn test_node_restart_rejoin() {
     let mut _initial_leader = None;
     for (i, engine) in engines.iter().enumerate() {
         if let Ok(Some(state)) = engine.client().group_state(group_id).await {
-            _initial_leader = state.leader.clone();
+            _initial_leader = state.leader;
             tracing::info!(
                 "Node {} initial state: leader={:?}, term={}",
                 i,
@@ -51,7 +51,7 @@ async fn test_node_restart_rejoin() {
     // Stop node 2 (index 1)
     let mut engines_vec: Vec<_> = engines.into_iter().collect();
     let mut stopped_engine = engines_vec.remove(1);
-    let stopped_node_id = node_infos[1].node_id.clone();
+    let stopped_node_id = node_infos[1].node_id;
 
     stopped_engine.stop().await.expect("Failed to stop engine");
     tracing::info!("Stopped node: {}", stopped_node_id);
@@ -88,7 +88,7 @@ async fn test_node_restart_rejoin() {
     for (i, engine) in engines_vec.iter().enumerate() {
         if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             if let Some(ref leader) = state.leader {
-                final_leaders.insert(leader.clone());
+                final_leaders.insert(*leader);
             }
             tracing::info!(
                 "Node {} after restart: leader={:?}, term={}, is_member={}",
@@ -274,7 +274,7 @@ async fn test_large_cluster_formation() {
             if state.is_member {
                 member_count += 1;
                 if let Some(ref leader) = state.leader {
-                    leaders.insert(leader.clone());
+                    leaders.insert(*leader);
                 }
             }
             tracing::info!(
@@ -366,7 +366,7 @@ async fn test_network_delays() {
 
     for (i, engine) in engines.iter().enumerate() {
         if let Ok(Some(state)) = engine.client().group_state(group_id).await {
-            final_state.push((i, state.leader.clone(), state.is_member));
+            final_state.push((i, state.leader, state.is_member));
             tracing::info!(
                 "Node {} final state: leader={:?}, is_member={}",
                 i,

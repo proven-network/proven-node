@@ -155,10 +155,10 @@ async fn test_causality_preservation() {
     let node1_id = NodeId::from_seed(4);
     let node2_id = NodeId::from_seed(5);
 
-    let hlc1 = TimeSyncHlcProvider::new_host(HlcConfig::new(node1_id.clone()))
+    let hlc1 = TimeSyncHlcProvider::new_host(HlcConfig::new(node1_id))
         .await
         .expect("Failed to create HLC1");
-    let hlc2 = TimeSyncHlcProvider::new_host(HlcConfig::new(node2_id.clone()))
+    let hlc2 = TimeSyncHlcProvider::new_host(HlcConfig::new(node2_id))
         .await
         .expect("Failed to create HLC2");
 

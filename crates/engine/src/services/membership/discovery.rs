@@ -163,7 +163,7 @@ where
         let mut futures = Vec::new();
         for peer in peers {
             let network_manager = self.network_manager.clone();
-            let peer_id = peer.node_id.clone();
+            let peer_id = peer.node_id;
             let request = request.clone();
             let timeout_duration = self.config.node_request_timeout;
 
@@ -171,11 +171,7 @@ where
                 info!("Querying peer {} for cluster state", peer_id);
                 match timeout(
                     timeout_duration,
-                    network_manager.request_with_timeout(
-                        peer_id.clone(),
-                        request,
-                        timeout_duration,
-                    ),
+                    network_manager.request_with_timeout(peer_id, request, timeout_duration),
                 )
                 .await
                 {
@@ -255,7 +251,7 @@ where
                     members,
                     term,
                     ..
-                } => Some((id, leader.clone(), members.clone(), *term)),
+                } => Some((id, *leader, members.clone(), *term)),
                 _ => None,
             })
             .collect();
@@ -297,13 +293,13 @@ where
                     coordinator,
                     formation_id,
                     ..
-                } => Some((coordinator.clone(), *formation_id)),
+                } => Some((*coordinator, *formation_id)),
                 _ => None,
             })
             .collect();
 
         if !forming_clusters.is_empty() {
-            let (coordinator, formation_id) = forming_clusters[0].clone();
+            let (coordinator, formation_id) = forming_clusters[0];
             info!("Found forming cluster with coordinator {}", coordinator);
             return Ok(Some(DiscoveryResult::JoinFormingCluster {
                 coordinator,
@@ -321,14 +317,14 @@ where
                 all_peers
                     .iter()
                     .find(|p| &p.node_id == id)
-                    .map(|p| (id.clone(), p.clone()))
+                    .map(|p| (*id, p.clone()))
             })
             .collect();
 
         // Include ourselves in the online nodes list
         let mut all_online_nodes = online_nodes.clone();
         if let Some(our_node) = all_peers.iter().find(|n| n.node_id == self.node_id) {
-            all_online_nodes.push((self.node_id.clone(), our_node.clone()));
+            all_online_nodes.push((self.node_id, our_node.clone()));
         }
 
         info!(
@@ -363,7 +359,7 @@ where
         } else {
             info!("Node {} will coordinate cluster formation", coordinator);
             Ok(Some(DiscoveryResult::WaitForCoordinator {
-                coordinator: coordinator.clone(),
+                coordinator: *coordinator,
                 online_peers: online_nodes,
             }))
         }

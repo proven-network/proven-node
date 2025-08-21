@@ -88,14 +88,14 @@ where
         let stream_manager = StreamManager::new();
         let interest_tracker = InterestTracker::new();
         let interest_propagator = Arc::new(InterestPropagator::new(
-            node_id.clone(),
+            node_id,
             interest_tracker.clone(),
             stream_manager.get_control_streams(),
         ));
 
         Self {
             config,
-            node_id: node_id.clone(),
+            node_id,
             interest_tracker,
             message_router: StreamingMessageRouter::new(),
             network_manager: network_manager.clone(),
@@ -179,7 +179,7 @@ where
 
         // Register command handlers for client service requests
         let publish_handler = PublishHandler::new(
-            self.node_id.clone(),
+            self.node_id,
             self.config.max_message_size,
             self.interest_tracker.clone(),
             self.message_router.clone(),
@@ -191,7 +191,7 @@ where
 
         // Register subscribe handler for streaming subscriptions
         let subscribe_handler = SubscribeHandler::new(
-            self.node_id.clone(),
+            self.node_id,
             self.config.max_subscriptions_per_node,
             self.interest_tracker.clone(),
             self.message_router.clone(),
@@ -210,7 +210,7 @@ where
 
         // Subscribe to membership events
         let membership_subscriber = MembershipEventSubscriber::new(
-            self.node_id.clone(),
+            self.node_id,
             self.interest_tracker.clone(),
             self.message_router.clone(),
             self.network_manager.clone(),
@@ -221,7 +221,7 @@ where
 
         // Start stream maintenance task
         let stream_manager = self.stream_manager.clone();
-        let node_id = self.node_id.clone();
+        let node_id = self.node_id;
         let cluster_members = self.cluster_members.clone();
         let network_manager = self.network_manager.clone();
         let interest_propagator = self.interest_propagator.clone();

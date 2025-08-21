@@ -159,7 +159,7 @@ impl IdentityManager {
         let leadership = Arc::new(LeadershipCoordinator::new(
             client.clone(),
             leadership_stream.clone(),
-            client.node_id().clone(),
+            *client.node_id(),
             config.leadership_lease_duration,
             config.leadership_renewal_interval,
         ));

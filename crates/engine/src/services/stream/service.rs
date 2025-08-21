@@ -166,7 +166,7 @@ where
             event_bus: self.event_bus.clone(),
             network_manager: self.network_manager.clone(),
             routing_table: self.routing_table.clone(),
-            node_id: self.node_id.clone(),
+            node_id: self.node_id,
             is_running: self.is_running.clone(),
             shutdown: self.shutdown.clone(),
             background_tasks: self.background_tasks.clone(),
@@ -239,7 +239,7 @@ where
 
         // Register StreamMessages streaming handler (needs network dependencies)
         if let (Some(node_id), Some(routing_table), Some(network_manager)) = (
-            self.node_id.clone(),
+            self.node_id,
             self.routing_table.clone(),
             self.network_manager.clone(),
         ) {

@@ -153,7 +153,7 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
 
         // Pass separated storage and state machine to Raft
         let raft = Raft::new(
-            node_id.clone(),
+            node_id,
             validated_config,
             network_factory,
             log_storage.clone(),   // Log storage only
@@ -195,7 +195,7 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
                 if let Some(forward_to_leader) = err.forward_to_leader() {
                     return Err(Error::not_leader(
                         format!("Not the leader for group {:?}", self.group_id),
-                        forward_to_leader.leader_id.clone(),
+                        forward_to_leader.leader_id,
                     ));
                 }
 
@@ -256,12 +256,12 @@ impl<L: LogStorage> GroupConsensusLayer<L> {
 
                         // Check for leader change or term change
                         if metrics.current_leader != current_leader || metrics.current_term != current_term {
-                            let old_leader = current_leader.clone();
-                            current_leader = metrics.current_leader.clone();
+                            let old_leader = current_leader;
+                            current_leader = metrics.current_leader;
                             current_term = metrics.current_term;
 
                             // Call the callback
-                            callback(group_id, old_leader, current_leader.clone(), current_term);
+                            callback(group_id, old_leader, current_leader, current_term);
                         }
                     }
                     else => {
@@ -299,7 +299,7 @@ impl<L: LogStorage> ConsensusLayer for GroupConsensusLayer<L> {
     }
 
     async fn is_leader(&self) -> bool {
-        self.raft.current_leader().await == Some(self.node_id.clone())
+        self.raft.current_leader().await == Some(self.node_id)
     }
 
     async fn current_term(&self) -> Term {
@@ -309,7 +309,7 @@ impl<L: LogStorage> ConsensusLayer for GroupConsensusLayer<L> {
 
     async fn current_role(&self) -> ConsensusRole {
         let metrics = self.raft.metrics().borrow_watched().clone();
-        if metrics.current_leader == Some(self.node_id.clone()) {
+        if metrics.current_leader == Some(self.node_id) {
             ConsensusRole::Leader
         } else {
             // Check if we're a voter or learner based on the state

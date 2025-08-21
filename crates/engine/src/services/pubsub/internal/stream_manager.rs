@@ -113,14 +113,11 @@ impl StreamManager {
         metadata.insert("channel".to_string(), "publish".to_string());
 
         let stream = network_manager
-            .open_stream(peer.clone(), "pubsub", metadata)
+            .open_stream(*peer, "pubsub", metadata)
             .await?;
 
         debug!("Opened publish stream to {}", peer);
-        self.publish_streams
-            .write()
-            .await
-            .insert(peer.clone(), stream);
+        self.publish_streams.write().await.insert(*peer, stream);
         Ok(())
     }
 
@@ -140,7 +137,7 @@ impl StreamManager {
         metadata.insert("channel".to_string(), "control".to_string());
 
         let stream = network_manager
-            .open_stream(peer.clone(), "pubsub", metadata)
+            .open_stream(*peer, "pubsub", metadata)
             .await?;
 
         debug!("Opened control stream to {}", peer);
@@ -150,10 +147,7 @@ impl StreamManager {
             warn!("Failed to send initial interests to {}: {}", peer, e);
         }
 
-        self.control_streams
-            .write()
-            .await
-            .insert(peer.clone(), stream);
+        self.control_streams.write().await.insert(*peer, stream);
         Ok(())
     }
 

@@ -58,7 +58,7 @@ impl HealthCheckHandler {
         let current_leader = view
             .nodes_with_role(&NodeRole::GlobalConsensusLeader)
             .first()
-            .map(|member| member.node_id.clone());
+            .map(|member| member.node_id);
 
         drop(view);
 

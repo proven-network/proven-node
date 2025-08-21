@@ -668,7 +668,7 @@ mod tests {
         let node_id = NodeId::from_seed(1);
         let event_bus = Arc::new(EventBusBuilder::new().build());
 
-        let client = Client::new(node_id.clone(), event_bus);
+        let client = Client::new(node_id, event_bus);
         assert_eq!(client.node_id, node_id);
     }
 

@@ -4,7 +4,7 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 
 /// Node ID type for consensus system
-#[derive(Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Serialize, Deserialize, Eq, PartialEq)]
 pub struct NodeId(VerifyingKey);
 
 impl NodeId {

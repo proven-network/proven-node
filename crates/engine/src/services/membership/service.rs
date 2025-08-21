@@ -98,14 +98,14 @@ where
         event_bus: Arc<EventBus>,
     ) -> Self {
         let discovery_manager = Arc::new(DiscoveryManager::new(
-            node_id.clone(),
+            node_id,
             network_manager.clone(),
             topology_manager.clone(),
             config.discovery.clone(),
         ));
 
         let health_monitor = Arc::new(HealthMonitor::new(
-            node_id.clone(),
+            node_id,
             network_manager.clone(),
             config.health.clone(),
         ));
@@ -152,7 +152,7 @@ where
         let view = self.membership_view.read().await;
         view.online_nodes()
             .into_iter()
-            .map(|m| (m.node_id.clone(), m.node_info.clone()))
+            .map(|m| (m.node_id, m.node_info.clone()))
             .collect()
     }
 
@@ -213,9 +213,9 @@ where
         roles.insert(NodeRole::GlobalConsensusLeader);
 
         view.nodes.insert(
-            self.node_id.clone(),
+            self.node_id,
             NodeMembership {
-                node_id: self.node_id.clone(),
+                node_id: self.node_id,
                 node_info: self.node_info.clone(),
                 status: NodeStatus::Online,
                 health: HealthInfo::new(),
@@ -225,7 +225,7 @@ where
         );
 
         view.cluster_state = ClusterFormationState::Active {
-            members: vec![self.node_id.clone()],
+            members: vec![self.node_id],
             formed_at_ms: now_timestamp(),
         };
 
@@ -233,8 +233,8 @@ where
 
         // Publish event
         self.publish_event(MembershipEvent::ClusterFormed {
-            members: vec![self.node_id.clone()],
-            coordinator: self.node_id.clone(),
+            members: vec![self.node_id],
+            coordinator: self.node_id,
         })
         .await;
 
@@ -245,10 +245,10 @@ where
         // Get node info for the member
         let mut members = BTreeMap::new();
         if let Some(node_info) = self.topology_manager.get_node(&self.node_id).await {
-            members.insert(self.node_id.clone(), node_info);
+            members.insert(self.node_id, node_info);
         } else {
             // Use our own node info if not in topology yet
-            members.insert(self.node_id.clone(), self.node_info.clone());
+            members.insert(self.node_id, self.node_info.clone());
         }
 
         self.event_bus
@@ -273,21 +273,21 @@ where
     ) -> ConsensusResult<()> {
         let formation_id = Uuid::new_v4();
         let mut proposed_members = online_peers.clone();
-        proposed_members.push((self.node_id.clone(), self.node_info.clone()));
+        proposed_members.push((self.node_id, self.node_info.clone()));
 
         // Update state
         {
             let mut view = self.membership_view.write().await;
             view.cluster_state = ClusterFormationState::Forming {
-                coordinator: self.node_id.clone(),
+                coordinator: self.node_id,
                 formation_id,
-                proposed_members: proposed_members.iter().map(|(id, _)| id.clone()).collect(),
+                proposed_members: proposed_members.iter().map(|(id, _)| *id).collect(),
             };
         }
 
         // Send proposals to all members
         let request = MembershipMessage::ProposeCluster(ProposeClusterRequest {
-            coordinator: self.node_id.clone(),
+            coordinator: self.node_id,
             formation_id,
             proposed_members: proposed_members.clone(),
             timeout_ms: self.config.formation.formation_timeout.as_millis() as u64,
@@ -298,7 +298,7 @@ where
             match self
                 .network_manager
                 .request_with_timeout(
-                    peer_id.clone(),
+                    *peer_id,
                     request.clone(),
                     self.config.discovery.node_request_timeout,
                 )
@@ -359,9 +359,9 @@ where
             }
 
             view.nodes.insert(
-                node_id.clone(),
+                *node_id,
                 NodeMembership {
-                    node_id: node_id.clone(),
+                    node_id: *node_id,
                     node_info: node_info.clone(),
                     status: if node_id == &self.node_id {
                         NodeStatus::Online
@@ -375,7 +375,7 @@ where
             );
         }
 
-        let member_ids: Vec<NodeId> = members.iter().map(|(id, _)| id.clone()).collect();
+        let member_ids: Vec<NodeId> = members.iter().map(|(id, _)| *id).collect();
         view.cluster_state = ClusterFormationState::Active {
             members: member_ids.clone(),
             formed_at_ms: now_timestamp(),
@@ -386,7 +386,7 @@ where
         // Publish event
         self.publish_event(MembershipEvent::ClusterFormed {
             members: member_ids.clone(),
-            coordinator: self.node_id.clone(),
+            coordinator: self.node_id,
         })
         .await;
 
@@ -466,7 +466,7 @@ where
         // Add ourselves if not already in the members list
         let mut all_members = members.clone();
         if !all_members.contains(&self.node_id) {
-            all_members.push(self.node_id.clone());
+            all_members.push(self.node_id);
         }
 
         // For now, we just mark ourselves as part of the active cluster
@@ -480,9 +480,9 @@ where
         for member_id in &all_members {
             if member_id == &self.node_id {
                 view.nodes.insert(
-                    self.node_id.clone(),
+                    self.node_id,
                     NodeMembership {
-                        node_id: self.node_id.clone(),
+                        node_id: self.node_id,
                         node_info: self.node_info.clone(),
                         status: NodeStatus::Online,
                         health: HealthInfo::new(),
@@ -504,7 +504,7 @@ where
 
         match self
             .network_manager
-            .request_with_timeout(leader.clone(), join_request, Duration::from_secs(5))
+            .request_with_timeout(leader, join_request, Duration::from_secs(5))
             .await
         {
             Ok(MembershipResponse::JoinCluster(response)) => {
@@ -567,7 +567,7 @@ where
         match self
             .network_manager
             .request_with_timeout(
-                coordinator.clone(),
+                coordinator,
                 request,
                 self.config.discovery.node_request_timeout,
             )
@@ -665,7 +665,7 @@ where
         match message {
             MembershipMessage::DiscoverCluster(req) => {
                 let handler = handlers::DiscoverClusterHandler::new(
-                    self.node_id.clone(),
+                    self.node_id,
                     self.membership_view.clone(),
                 );
                 match handler.handle(sender, req).await {
@@ -678,7 +678,7 @@ where
             }
             MembershipMessage::ProposeCluster(req) => {
                 let handler = handlers::ProposeClusterHandler::new(
-                    self.node_id.clone(),
+                    self.node_id,
                     self.membership_view.clone(),
                 );
                 match handler.handle(sender, req).await {
@@ -691,7 +691,7 @@ where
             }
             MembershipMessage::AcceptProposal(req) => {
                 let handler = handlers::AcceptProposalHandler::new(
-                    self.node_id.clone(),
+                    self.node_id,
                     self.membership_view.clone(),
                 );
                 match handler.handle(sender, req).await {
@@ -703,10 +703,8 @@ where
                 }
             }
             MembershipMessage::HealthCheck(req) => {
-                let handler = handlers::HealthCheckHandler::new(
-                    self.node_id.clone(),
-                    self.membership_view.clone(),
-                );
+                let handler =
+                    handlers::HealthCheckHandler::new(self.node_id, self.membership_view.clone());
                 match handler.handle(sender, req).await {
                     Ok(response) => Ok(MembershipResponse::HealthCheck(response)),
                     Err(e) => {
@@ -717,7 +715,7 @@ where
             }
             MembershipMessage::GracefulShutdown(req) => {
                 let handler = handlers::GracefulShutdownHandler::new(
-                    self.node_id.clone(),
+                    self.node_id,
                     self.membership_view.clone(),
                     self.event_bus.clone(),
                 );
@@ -732,7 +730,7 @@ where
             MembershipMessage::JoinCluster(req) => {
                 // Use the join handler
                 let handler = handlers::JoinClusterHandler::new(
-                    self.node_id.clone(),
+                    self.node_id,
                     self.membership_view.clone(),
                     self.event_bus.clone(),
                 );
@@ -828,7 +826,7 @@ where
             .online_nodes()
             .iter()
             .filter(|n| n.node_id != self.node_id)
-            .map(|n| n.node_id.clone())
+            .map(|n| n.node_id)
             .collect();
         drop(view);
 
@@ -849,7 +847,7 @@ where
                 let msg = shutdown_msg.clone();
                 tokio::spawn(async move {
                     if let Err(e) = network
-                        .request_with_timeout(node_id.clone(), msg, Duration::from_millis(100))
+                        .request_with_timeout(node_id, msg, Duration::from_millis(100))
                         .await
                     {
                         debug!("Failed to send shutdown announcement to {}: {}", node_id, e);
@@ -923,7 +921,7 @@ where
     fn clone(&self) -> Self {
         Self {
             config: self.config.clone(),
-            node_id: self.node_id.clone(),
+            node_id: self.node_id,
             node_info: self.node_info.clone(),
             network_manager: self.network_manager.clone(),
             topology_manager: self.topology_manager.clone(),

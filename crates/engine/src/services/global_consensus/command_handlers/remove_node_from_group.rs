@@ -52,7 +52,7 @@ where
 
         // Create the remove node request
         let global_request = GlobalRequest::RemoveNodeFromGroup {
-            node_id: request.node_id.clone(),
+            node_id: request.node_id,
         };
 
         // Submit the request

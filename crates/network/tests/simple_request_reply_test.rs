@@ -126,8 +126,8 @@ async fn test_simple_request_reply() {
     ));
 
     // Create topology managers
-    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id.clone()));
-    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id.clone()));
+    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id));
+    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id));
 
     // Create TCP transports with listen addresses
     let transport1 = Arc::new(TcpTransport::new(TcpOptions {
@@ -146,7 +146,7 @@ async fn test_simple_request_reply() {
 
     // Create network managers with generics
     let network1 = Arc::new(NetworkManager::new(
-        node1_id.clone(),
+        node1_id,
         transport1.clone(),
         topology1,
         node1_key,
@@ -156,7 +156,7 @@ async fn test_simple_request_reply() {
     ));
 
     let network2 = Arc::new(NetworkManager::new(
-        node2_id.clone(),
+        node2_id,
         transport2.clone(),
         topology2,
         node2_key,
@@ -206,7 +206,7 @@ async fn test_simple_request_reply() {
 
     let response_result = network1
         .request_with_timeout(
-            node2_id.clone(),
+            node2_id,
             request,
             Duration::from_secs(15), // 15 second timeout
         )
@@ -289,8 +289,8 @@ async fn test_request_reply_benchmark() {
     ));
 
     // Create topology managers
-    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id.clone()));
-    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id.clone()));
+    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id));
+    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id));
 
     // Create TCP transports with listen addresses
     let transport1 = Arc::new(TcpTransport::new(TcpOptions {
@@ -308,7 +308,7 @@ async fn test_request_reply_benchmark() {
 
     // Create network managers
     let network1 = Arc::new(NetworkManager::new(
-        node1_id.clone(),
+        node1_id,
         transport1.clone(),
         topology1,
         node1_key,
@@ -318,7 +318,7 @@ async fn test_request_reply_benchmark() {
     ));
 
     let network2 = Arc::new(NetworkManager::new(
-        node2_id.clone(),
+        node2_id,
         transport2.clone(),
         topology2,
         node2_key,
@@ -340,7 +340,7 @@ async fn test_request_reply_benchmark() {
     // Send a dummy request to establish connection
     let _ = network2
         .request_with_timeout(
-            node1_id.clone(),
+            node1_id,
             TestServiceMessage::Request {
                 id: 0,
                 message: "ping".to_string(),
@@ -379,7 +379,7 @@ async fn test_request_reply_benchmark() {
 
         for i in 0..concurrent_requests {
             let network = network1.clone();
-            let target = node2_id.clone();
+            let target = node2_id;
             let request_id = (batch * concurrent_requests + i) as u64;
 
             let handle = tokio::spawn(async move {

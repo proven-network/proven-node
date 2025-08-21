@@ -33,7 +33,7 @@ async fn test_raft_leader_election() {
         if let Ok(Some(state)) = engine.client().group_state(group_id).await
             && let Some(leader) = &state.leader
         {
-            current_leader = Some(leader.clone());
+            current_leader = Some(*leader);
             if state.leader.as_ref() == Some(&node_infos[i].node_id) {
                 leader_engine_idx = Some(i);
             }
@@ -75,7 +75,7 @@ async fn test_raft_leader_election() {
         if let Ok(Some(state)) = engine.client().group_state(group_id).await
             && let Some(new_leader) = &state.leader
         {
-            new_leaders.insert(new_leader.clone());
+            new_leaders.insert(*new_leader);
             new_term = state.term;
             tracing::info!(
                 "Remaining node {} sees new leader: {} (term: {})",
@@ -130,7 +130,7 @@ async fn test_raft_membership_change() {
     // Get initial membership
     let mut initial_members = std::collections::HashSet::new();
     for info in &node_infos {
-        initial_members.insert(info.node_id.clone());
+        initial_members.insert(info.node_id);
     }
 
     tracing::info!("Initial members: {:?}", initial_members);
@@ -148,7 +148,7 @@ async fn test_raft_membership_change() {
     engines.extend(new_engines);
     node_infos.extend(new_node_infos);
 
-    let new_node_id = node_infos[3].node_id.clone();
+    let new_node_id = node_infos[3].node_id;
     tracing::info!("Added new node: {}", new_node_id);
 
     // In the current implementation, the new node needs to be added
@@ -256,7 +256,7 @@ async fn test_split_brain_prevention() {
         if let Ok(Some(state)) = engine.client().group_state(group_id).await
             && let Some(leader) = &state.leader
         {
-            majority_leaders.insert(leader.clone());
+            majority_leaders.insert(*leader);
             if state.is_member {
                 can_operate = true;
             }
@@ -319,7 +319,7 @@ async fn test_deterministic_initialization() {
     let (engines, node_infos) = cluster.add_nodes(3).await;
 
     // Collect and sort node IDs to find expected initializer
-    let mut sorted_ids: Vec<_> = node_infos.iter().map(|info| info.node_id.clone()).collect();
+    let mut sorted_ids: Vec<_> = node_infos.iter().map(|info| info.node_id).collect();
     sorted_ids.sort();
 
     let expected_initializer = &sorted_ids[0];
@@ -339,7 +339,7 @@ async fn test_deterministic_initialization() {
     for (i, engine) in engines.iter().enumerate() {
         if let Ok(Some(state)) = engine.client().group_state(group_id).await {
             if let Some(ref leader) = state.leader {
-                leaders.insert(leader.clone());
+                leaders.insert(*leader);
             }
             terms.insert(state.term);
             tracing::info!(

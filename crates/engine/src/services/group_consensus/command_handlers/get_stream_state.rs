@@ -73,7 +73,7 @@ where
 
         match self
             .network_manager
-            .request_with_timeout(target.clone(), message, std::time::Duration::from_secs(5))
+            .request_with_timeout(target, message, std::time::Duration::from_secs(5))
             .await
         {
             Ok(GroupConsensusServiceResponse::StreamState(state)) => Ok(state),
@@ -125,7 +125,7 @@ where
 
             if let Some(route) = route {
                 if let Some(member) = route.members.first() {
-                    self.forward_to_node(member.clone(), request).await
+                    self.forward_to_node(*member, request).await
                 } else {
                     Err(EventError::Internal(format!(
                         "Group {:?} has no members",

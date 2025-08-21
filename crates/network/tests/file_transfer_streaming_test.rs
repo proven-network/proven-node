@@ -43,7 +43,7 @@ async fn test_file_transfer_streaming() {
     let sender_stream = Stream {
         handle: StreamHandle {
             id: stream_id,
-            peer: receiver_node.clone(),
+            peer: receiver_node,
             stream_type: "file_transfer".to_string(),
             sender: StreamSender::new(tx1, flow_control1.clone()),
             receiver: StreamReceiver::new(rx2, flow_control1.clone()),
@@ -54,7 +54,7 @@ async fn test_file_transfer_streaming() {
     let receiver_stream = Stream {
         handle: StreamHandle {
             id: stream_id,
-            peer: sender_node.clone(),
+            peer: sender_node,
             stream_type: "file_transfer".to_string(),
             sender: StreamSender::new(tx2, flow_control2.clone()),
             receiver: StreamReceiver::new(rx1, flow_control2.clone()),
@@ -207,7 +207,7 @@ async fn test_bidirectional_streaming() {
     let stream1 = Stream {
         handle: StreamHandle {
             id: stream_id,
-            peer: node2.clone(),
+            peer: node2,
             stream_type: "bidirectional_test".to_string(),
             sender: StreamSender::new(tx1_to_2, flow_control1.clone()),
             receiver: StreamReceiver::new(rx2_to_1, flow_control1.clone()),
@@ -218,7 +218,7 @@ async fn test_bidirectional_streaming() {
     let stream2 = Stream {
         handle: StreamHandle {
             id: stream_id,
-            peer: node1.clone(),
+            peer: node1,
             stream_type: "bidirectional_test".to_string(),
             sender: StreamSender::new(tx2_to_1, flow_control2.clone()),
             receiver: StreamReceiver::new(rx1_to_2, flow_control2.clone()),

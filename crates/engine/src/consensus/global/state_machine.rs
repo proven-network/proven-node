@@ -87,8 +87,8 @@ impl GlobalStateMachine {
 
         for entry in entries {
             // Update applied index
-            let log_id = entry.log_id.clone();
-            *self.applied.write().await = Some(log_id.clone());
+            let log_id = entry.log_id;
+            *self.applied.write().await = Some(log_id);
 
             // Check if we've crossed the replay boundary
             if let Some(boundary) = self.replay_boundary
@@ -147,10 +147,9 @@ impl GlobalStateMachine {
 
                     // Calculate membership changes
                     let old_members: Vec<NodeId> =
-                        old_membership.nodes().map(|(id, _)| id.clone()).collect();
+                        old_membership.nodes().map(|(id, _)| *id).collect();
 
-                    let new_members: Vec<NodeId> =
-                        membership.nodes().map(|(id, _)| id.clone()).collect();
+                    let new_members: Vec<NodeId> = membership.nodes().map(|(id, _)| *id).collect();
 
                     // Find removed members
                     let removed_members: Vec<NodeId> = old_members
@@ -200,7 +199,7 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
         ),
         StorageError<GlobalTypeConfig>,
     > {
-        let applied = self.applied.read().await.clone();
+        let applied = *self.applied.read().await;
         let membership = self.membership.read().await.clone();
         Ok((applied, membership))
     }
@@ -275,7 +274,7 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
         }
 
         // 3. Update applied index and membership from metadata
-        *self.applied.write().await = meta.last_log_id.clone();
+        *self.applied.write().await = meta.last_log_id;
         *self.membership.write().await = meta.last_membership.clone();
 
         // 4. Mark state as synced and fire the state sync callback
@@ -299,7 +298,7 @@ impl RaftStateMachine<GlobalTypeConfig> for Arc<GlobalStateMachine> {
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
         GlobalSnapshotBuilder::new(
             self.state.clone(),
-            self.applied.read().await.clone(),
+            *self.applied.read().await,
             self.membership.read().await.clone(),
         )
     }

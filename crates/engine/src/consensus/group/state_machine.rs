@@ -91,8 +91,8 @@ impl GroupStateMachine {
 
         for entry in entries {
             // Update applied index
-            let log_id = entry.log_id.clone();
-            *self.applied.write().await = Some(log_id.clone());
+            let log_id = entry.log_id;
+            *self.applied.write().await = Some(log_id);
 
             // Check if we've reached the replay boundary
             if let Some(boundary) = self.replay_boundary
@@ -142,10 +142,9 @@ impl GroupStateMachine {
 
                     // Calculate membership changes
                     let old_members: Vec<NodeId> =
-                        old_membership.nodes().map(|(id, _)| id.clone()).collect();
+                        old_membership.nodes().map(|(id, _)| *id).collect();
 
-                    let new_members: Vec<NodeId> =
-                        membership.nodes().map(|(id, _)| id.clone()).collect();
+                    let new_members: Vec<NodeId> = membership.nodes().map(|(id, _)| *id).collect();
 
                     // Find removed members
                     let removed_members: Vec<NodeId> = old_members
@@ -199,7 +198,7 @@ impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
         ),
         StorageError<GroupTypeConfig>,
     > {
-        let applied = self.applied.read().await.clone();
+        let applied = *self.applied.read().await;
         let membership = self.membership.read().await.clone();
         Ok((applied, membership))
     }
@@ -243,7 +242,7 @@ impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
         // 3. Update applied index and membership from metadata
 
         // Update metadata
-        *self.applied.write().await = meta.last_log_id.clone();
+        *self.applied.write().await = meta.last_log_id;
         *self.membership.write().await = meta.last_membership.clone();
 
         Ok(())
@@ -260,7 +259,7 @@ impl RaftStateMachine<GroupTypeConfig> for Arc<GroupStateMachine> {
     async fn get_snapshot_builder(&mut self) -> Self::SnapshotBuilder {
         GroupSnapshotBuilder::new(
             self.state.clone(),
-            self.applied.read().await.clone(),
+            *self.applied.read().await,
             self.membership.read().await.clone(),
         )
     }

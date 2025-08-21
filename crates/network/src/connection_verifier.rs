@@ -449,7 +449,7 @@ where
             self.connection_states.insert(
                 connection_id.clone(),
                 ConnectionState::Verified {
-                    public_key: public_key.clone(),
+                    public_key,
                     verified_at: SystemTime::now(),
                 },
             );
@@ -489,7 +489,7 @@ where
             self.connection_states.insert(
                 connection_id.clone(),
                 ConnectionState::Verified {
-                    public_key: public_key.clone(),
+                    public_key,
                     verified_at: SystemTime::now(),
                 },
             );

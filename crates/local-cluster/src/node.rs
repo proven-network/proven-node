@@ -297,7 +297,7 @@ impl ManagedNode {
             let topology_node = Node::new(
                 "local".to_string(),
                 origin,
-                info.id.clone(),
+                info.id,
                 "local".to_string(),
                 specs.clone(),
             );

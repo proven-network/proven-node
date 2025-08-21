@@ -230,7 +230,7 @@ impl VectorClock {
 
     /// Update the vector clock with a timestamp from a node.
     pub fn update(&mut self, timestamp: HlcTimestamp) {
-        let node_id = timestamp.node_id.clone();
+        let node_id = timestamp.node_id;
         self.clocks
             .entry(node_id)
             .and_modify(|ts| {
@@ -245,7 +245,7 @@ impl VectorClock {
     pub fn merge(&mut self, other: &Self) {
         for (node_id, timestamp) in &other.clocks {
             self.clocks
-                .entry(node_id.clone())
+                .entry(*node_id)
                 .and_modify(|ts| {
                     if timestamp > ts {
                         *ts = timestamp.clone();
@@ -343,9 +343,9 @@ mod tests {
         let node1 = NodeId::from_seed(1);
         let node2 = NodeId::from_seed(2);
 
-        let ts1 = HlcTimestamp::new(100, 0, node1.clone());
-        let ts2 = HlcTimestamp::new(100, 1, node1.clone());
-        let ts3 = HlcTimestamp::new(101, 0, node1.clone());
+        let ts1 = HlcTimestamp::new(100, 0, node1);
+        let ts2 = HlcTimestamp::new(100, 1, node1);
+        let ts3 = HlcTimestamp::new(101, 0, node1);
         let ts4 = HlcTimestamp::new(100, 0, node2);
 
         // Physical time takes precedence
@@ -370,7 +370,7 @@ mod tests {
         let node2 = NodeId::from_seed(2);
 
         let hlc1 = HlcTimestamp::new(1000, 0, node1);
-        let hlc2 = HlcTimestamp::new(1001, 0, node2.clone());
+        let hlc2 = HlcTimestamp::new(1001, 0, node2);
 
         let tx1 = TransactionTimestamp::new(hlc1, Utc::now(), 10.0);
         let tx2 = TransactionTimestamp::new(hlc2, Utc::now(), 10.0);
@@ -394,11 +394,11 @@ mod tests {
         let mut vc2 = VectorClock::new();
 
         // Node 1 performs operation
-        let ts1 = HlcTimestamp::new(100, 0, node1.clone());
+        let ts1 = HlcTimestamp::new(100, 0, node1);
         vc1.update(ts1);
 
         // Node 2 performs operation concurrently
-        let ts2 = HlcTimestamp::new(101, 0, node2.clone());
+        let ts2 = HlcTimestamp::new(101, 0, node2);
         vc2.update(ts2);
 
         // They are concurrent (neither happened before the other)

@@ -52,7 +52,7 @@ where
         // Process additions
         for node_id in request.add_members {
             let add_request = GlobalRequest::AddNodeToGroup {
-                node_id: node_id.clone(),
+                node_id,
                 metadata: Default::default(),
             };
 
@@ -80,9 +80,7 @@ where
 
         // Process removals
         for node_id in request.remove_members {
-            let remove_request = GlobalRequest::RemoveNodeFromGroup {
-                node_id: node_id.clone(),
-            };
+            let remove_request = GlobalRequest::RemoveNodeFromGroup { node_id };
 
             match consensus.submit_request(remove_request).await {
                 Ok(GlobalResponse::NodeRemoved { node_id: _ }) => {

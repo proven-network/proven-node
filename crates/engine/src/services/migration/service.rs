@@ -256,7 +256,7 @@ impl MigrationService {
         // Start migration
         let progress = self
             .node_coordinator
-            .start_migration(node_id.clone(), source_group, target_group)
+            .start_migration(node_id, source_group, target_group)
             .await?;
 
         // Track migration
@@ -349,12 +349,8 @@ impl MigrationService {
 
         // Execute node migrations
         for migration in &plan.node_migrations {
-            self.start_node_migration(
-                migration.node_id.clone(),
-                migration.from_group,
-                migration.to_group,
-            )
-            .await?;
+            self.start_node_migration(migration.node_id, migration.from_group, migration.to_group)
+                .await?;
         }
 
         Ok(())
@@ -449,7 +445,7 @@ impl MigrationService {
                             .filter_map(|(id, progress)| {
                                 if matches!(progress.state, NodeMigrationState::Completed |
                                           NodeMigrationState::Failed { .. }) {
-                                    Some(id.clone())
+                                    Some(*id)
                                 } else {
                                     None
                                 }

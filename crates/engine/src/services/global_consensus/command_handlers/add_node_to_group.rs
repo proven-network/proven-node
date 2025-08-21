@@ -51,7 +51,7 @@ where
 
         // Create the add node request
         let global_request = GlobalRequest::AddNodeToGroup {
-            node_id: request.node_id.clone(),
+            node_id: request.node_id,
             metadata: Default::default(),
         };
 

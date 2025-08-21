@@ -171,7 +171,7 @@ impl OperationHandler for GlobalOperationHandler {
 
             GlobalRequest::AddNodeToGroup { node_id, metadata } => {
                 let info = crate::foundation::models::NodeInfo {
-                    node_id: node_id.clone(),
+                    node_id,
                     joined_at: operation.timestamp,
                     metadata,
                 };

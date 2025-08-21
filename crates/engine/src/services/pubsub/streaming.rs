@@ -118,15 +118,13 @@ impl PubSubStreamingService {
                     InterestMessage::Set { patterns } => {
                         debug!("Setting {} interest patterns from {}", patterns.len(), peer);
                         self.interest_manager
-                            .update_peer_interests(peer.clone(), patterns)
+                            .update_peer_interests(peer, patterns)
                             .await;
                     }
                     InterestMessage::Add { patterns } => {
                         debug!("Adding {} interest patterns from {}", patterns.len(), peer);
                         for pattern in patterns {
-                            self.interest_manager
-                                .add_node_interest(peer.clone(), pattern)
-                                .await;
+                            self.interest_manager.add_node_interest(peer, pattern).await;
                         }
                     }
                     InterestMessage::Remove { patterns } => {
@@ -137,7 +135,7 @@ impl PubSubStreamingService {
                         );
                         for pattern in patterns {
                             self.interest_manager
-                                .remove_node_interest(peer.clone(), &pattern)
+                                .remove_node_interest(peer, &pattern)
                                 .await;
                         }
                     }

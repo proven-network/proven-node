@@ -67,7 +67,7 @@ where
 
     /// Add a cluster member
     async fn add_cluster_member(&self, node_id: &NodeId) {
-        self.cluster_members.write().await.insert(node_id.clone());
+        self.cluster_members.write().await.insert(*node_id);
     }
 
     /// Remove a node's interests from the tracker
@@ -156,10 +156,8 @@ where
                 );
 
                 // Add new nodes to cluster members
-                let new_nodes: Vec<NodeId> = add_nodes
-                    .iter()
-                    .map(|(node_id, _)| node_id.clone())
-                    .collect();
+                let new_nodes: Vec<NodeId> =
+                    add_nodes.iter().map(|(node_id, _)| *node_id).collect();
                 for node_id in &new_nodes {
                     self.add_cluster_member(node_id).await;
                 }

@@ -140,7 +140,7 @@ impl LeadershipCoordinator {
         let watch_handle = {
             let client = Arc::clone(&self.client);
             let stream_name = self.stream_name.clone();
-            let node_id = self.node_id.clone();
+            let node_id = self.node_id;
             let state = Arc::clone(&self.state);
 
             tokio::spawn(async move {
@@ -156,7 +156,7 @@ impl LeadershipCoordinator {
         let renewal_handle = {
             let client = Arc::clone(&self.client);
             let stream_name = self.stream_name.clone();
-            let node_id = self.node_id.clone();
+            let node_id = self.node_id;
             let state = Arc::clone(&self.state);
             let lease_duration = self.lease_duration;
             let renewal_interval = self.renewal_interval;
@@ -285,7 +285,7 @@ impl LeadershipCoordinator {
 
             if should_claim {
                 // Try to claim leadership
-                let lease = LeadershipLease::new(node_id.clone(), lease_duration);
+                let lease = LeadershipLease::new(node_id, lease_duration);
 
                 // Serialize lease
                 let mut payload = Vec::new();

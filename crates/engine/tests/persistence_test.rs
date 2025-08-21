@@ -18,9 +18,9 @@ async fn test_cluster_persistence_across_restarts() {
     // Create a 3-node cluster with RocksDB storage
     let (mut engines, node_infos) = cluster.add_nodes_with_rocksdb(3).await;
 
-    let node_id_1 = node_infos[0].node_id.clone();
-    let node_id_2 = node_infos[1].node_id.clone();
-    let node_id_3 = node_infos[2].node_id.clone();
+    let node_id_1 = node_infos[0].node_id;
+    let node_id_2 = node_infos[1].node_id;
+    let node_id_3 = node_infos[2].node_id;
 
     info!("Created nodes: {}, {}, {}", node_id_1, node_id_2, node_id_3);
 
@@ -201,7 +201,7 @@ async fn test_single_node_persistence() {
 
     let (mut engines, node_infos) = cluster.add_nodes_with_rocksdb(1).await;
 
-    let node_id = node_infos[0].node_id.clone();
+    let node_id = node_infos[0].node_id;
     info!("Created node: {}", node_id);
 
     // Wait for initialization

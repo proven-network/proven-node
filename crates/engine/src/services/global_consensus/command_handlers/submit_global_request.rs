@@ -101,7 +101,7 @@ where
                 // We're not the leader - forward to the leader if known
                 if let Some(leader) = e.get_leader() {
                     drop(consensus_guard); // Release the lock before network call
-                    self.forward_to_node(leader.clone(), request.request)
+                    self.forward_to_node(*leader, request.request)
                         .await
                         .map_err(|e| EventError::Internal(format!("Failed to forward: {e}")))
                 } else {

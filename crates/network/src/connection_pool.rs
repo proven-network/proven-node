@@ -97,7 +97,7 @@ where
         let connection_verifier = Arc::new(ConnectionVerifier::new(
             attestation_verifier,
             cose_handler.clone(),
-            our_node_id.clone(),
+            our_node_id,
         ));
 
         Self {
@@ -121,7 +121,7 @@ where
 
     /// Get or create a connection to a peer
     pub async fn get_connection(&self, peer: &Node) -> NetworkResult<Arc<Connection<G, A>>> {
-        let peer_id = peer.node_id().clone();
+        let peer_id = *peer.node_id();
 
         // Retry loop to handle concurrent connection attempts
         let mut retries = 0;
@@ -207,7 +207,7 @@ where
         &self,
         peer: &Node,
     ) -> NetworkResult<Arc<Connection<G, A>>> {
-        let peer_id = peer.node_id().clone();
+        let peer_id = *peer.node_id();
 
         // Create a channel for other waiters
         let (tx, rx) = oneshot::channel();
@@ -217,7 +217,7 @@ where
         {
             let entry = self
                 .pending_connections
-                .entry(peer_id.clone())
+                .entry(peer_id)
                 .or_insert_with(|| Arc::new(Mutex::new(None)));
 
             let mut guard = entry.lock().await;
@@ -244,7 +244,7 @@ where
                         // Re-acquire the entry to try again
                         let entry = self
                             .pending_connections
-                            .entry(peer_id.clone())
+                            .entry(peer_id)
                             .or_insert_with(|| Arc::new(Mutex::new(None)));
                         let mut guard = entry.lock().await;
                         *guard = Some(rx);
@@ -310,7 +310,7 @@ where
                 .connect(peer)
                 .await
                 .map_err(|e| NetworkError::ConnectionFailed {
-                    node: Box::new(peer.node_id().clone()),
+                    node: Box::new(*peer.node_id()),
                     reason: format!("Transport error: {e}"),
                 })?;
 
@@ -318,8 +318,8 @@ where
 
         let connection = Connection::new_outgoing(
             conn_id.clone(),
-            self.our_node_id.clone(),
-            peer.node_id().clone(),
+            self.our_node_id,
+            *peer.node_id(),
             transport_conn,
             self.cose_handler.clone(),
             self.connection_verifier.clone(),
@@ -337,14 +337,14 @@ where
         // Verify it's the expected peer
         if verified_peer != *peer.node_id() {
             return Err(NetworkError::ConnectionFailed {
-                node: Box::new(peer.node_id().clone()),
+                node: Box::new(*peer.node_id()),
                 reason: format!("Peer mismatch: expected {peer:?}, got {verified_peer}"),
             });
         }
 
         // Store connection
         self.connections
-            .entry(peer.node_id().clone())
+            .entry(*peer.node_id())
             .or_default()
             .push(connection.clone());
 
@@ -428,10 +428,10 @@ where
 
         // Find all unhealthy connections
         for entry in self.connections.iter() {
-            let peer_id = entry.key().clone();
+            let peer_id = *entry.key();
             for conn in entry.value().iter() {
                 if !conn.is_healthy() {
-                    to_remove.push((peer_id.clone(), conn.clone()));
+                    to_remove.push((peer_id, conn.clone()));
                 }
             }
         }
@@ -452,7 +452,7 @@ where
 
         match Connection::new_incoming(
             conn_id.clone(),
-            self.our_node_id.clone(),
+            self.our_node_id,
             transport_conn,
             self.cose_handler.clone(),
             self.connection_verifier.clone(),

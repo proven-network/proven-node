@@ -32,14 +32,14 @@ async fn test_basic_application_operations() {
 
     // Create memory transport
     let transport = Arc::new(MemoryTransport::new(MemoryOptions {
-        listen_node_id: Some(node_id.clone()),
+        listen_node_id: Some(node_id),
     }));
 
     // Create mock topology with this node registered
     let node = TopologyNode::new(
         "test-az".to_string(),
         format!("memory://{node_id}"),
-        node_id.clone(),
+        node_id,
         "test-region".to_string(),
         HashSet::new(),
     );
@@ -49,7 +49,7 @@ async fn test_basic_application_operations() {
     let _ = topology.add_node(node);
 
     let topology_arc = Arc::new(topology);
-    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id.clone()));
+    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id));
 
     // Create signing key for network manager
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&[1u8; 32]);
@@ -59,7 +59,7 @@ async fn test_basic_application_operations() {
 
     // Create network manager
     let network_manager = Arc::new(NetworkManager::new(
-        node_id.clone(),
+        node_id,
         transport,
         topology_manager.clone(),
         signing_key,
@@ -78,7 +78,7 @@ async fn test_basic_application_operations() {
     config.consensus.global.heartbeat_interval = Duration::from_millis(20);
 
     // Build engine
-    let mut engine = EngineBuilder::new(node_id.clone())
+    let mut engine = EngineBuilder::new(node_id)
         .with_config(config)
         .with_network(network_manager)
         .with_topology(topology_manager)
@@ -231,14 +231,14 @@ async fn test_concurrent_operations() {
 
     // Create memory transport
     let transport = Arc::new(MemoryTransport::new(MemoryOptions {
-        listen_node_id: Some(node_id.clone()),
+        listen_node_id: Some(node_id),
     }));
 
     // Create mock topology with this node registered
     let node = TopologyNode::new(
         "test-az".to_string(),
         format!("memory://{node_id}"),
-        node_id.clone(),
+        node_id,
         "test-region".to_string(),
         HashSet::new(),
     );
@@ -248,7 +248,7 @@ async fn test_concurrent_operations() {
     let _ = topology.add_node(node);
 
     let topology_arc = Arc::new(topology);
-    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id.clone()));
+    let topology_manager = Arc::new(TopologyManager::new(topology_arc.clone(), node_id));
 
     // Create signing key for network manager
     let signing_key = ed25519_dalek::SigningKey::from_bytes(&[1u8; 32]);
@@ -258,7 +258,7 @@ async fn test_concurrent_operations() {
 
     // Create network manager
     let network_manager = Arc::new(NetworkManager::new(
-        node_id.clone(),
+        node_id,
         transport,
         topology_manager.clone(),
         signing_key,
@@ -271,7 +271,7 @@ async fn test_concurrent_operations() {
     let storage_manager = Arc::new(StorageManager::new(MemoryStorage::new()));
     let config = EngineConfig::default();
 
-    let mut engine = EngineBuilder::new(node_id.clone())
+    let mut engine = EngineBuilder::new(node_id)
         .with_config(config)
         .with_network(network_manager)
         .with_topology(topology_manager)

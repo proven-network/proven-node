@@ -304,7 +304,7 @@ where
 
     /// Get a client for interacting with the consensus engine
     pub fn client(&self) -> crate::client::Client {
-        crate::client::Client::new(self.node_id.clone(), self.event_bus.clone())
+        crate::client::Client::new(self.node_id, self.event_bus.clone())
     }
 }
 

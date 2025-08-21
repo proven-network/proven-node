@@ -40,7 +40,7 @@ async fn test_basic_stream_communication() {
     let stream1 = Stream {
         handle: StreamHandle {
             id: stream_id,
-            peer: node2_id.clone(),
+            peer: node2_id,
             stream_type: "test_stream".to_string(),
             sender: StreamSender::new(tx1, flow_control1.clone()),
             receiver: StreamReceiver::new(rx2, flow_control1.clone()),
@@ -51,7 +51,7 @@ async fn test_basic_stream_communication() {
     let stream2 = Stream {
         handle: StreamHandle {
             id: stream_id,
-            peer: node1_id.clone(),
+            peer: node1_id,
             stream_type: "test_stream".to_string(),
             sender: StreamSender::new(tx2, flow_control2.clone()),
             receiver: StreamReceiver::new(rx1, flow_control2.clone()),

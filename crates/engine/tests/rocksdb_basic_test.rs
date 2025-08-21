@@ -12,7 +12,7 @@ async fn test_rocksdb_storage_basic() {
     let mut cluster = TestCluster::new(TransportType::Tcp);
     let (engines, node_infos) = cluster.add_nodes_with_rocksdb(1).await;
 
-    let node_id = node_infos[0].node_id.clone();
+    let node_id = node_infos[0].node_id;
     info!("Created node: {}", node_id);
 
     // Wait for initialization using cluster helper

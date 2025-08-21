@@ -165,7 +165,7 @@ where
         // Create callbacks
         let callbacks = Arc::new(GroupConsensusCallbacksImpl::<S>::new(
             request.group_id,
-            self.node_id.clone(),
+            self.node_id,
             Some(self.event_bus.clone()),
         ));
 
@@ -187,7 +187,7 @@ where
         // Create the consensus layer
         let layer = Arc::new(
             GroupConsensusLayer::new(
-                self.node_id.clone(),
+                self.node_id,
                 request.group_id,
                 raft_config,
                 network_factory,
@@ -213,7 +213,7 @@ where
         GroupConsensusService::<T, G, A, S>::start_group_event_monitoring(
             layer.clone(),
             self.event_bus.clone(),
-            self.node_id.clone(),
+            self.node_id,
             request.group_id,
             self.routing_table.clone(),
         );
@@ -226,7 +226,7 @@ where
             let mut raft_members = std::collections::BTreeMap::new();
             for member_id in &request.members {
                 if let Some(node) = self.topology_manager.get_node(member_id).await {
-                    raft_members.insert(member_id.clone(), node);
+                    raft_members.insert(*member_id, node);
                 } else {
                     error!(
                         "Member {} not found in topology for group {}",

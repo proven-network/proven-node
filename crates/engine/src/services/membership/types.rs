@@ -52,7 +52,7 @@ impl MembershipView {
 
     /// Get all members
     pub fn get_members(&self) -> Vec<(NodeId, &NodeMembership)> {
-        self.nodes.iter().map(|(id, m)| (id.clone(), m)).collect()
+        self.nodes.iter().map(|(id, m)| (*id, m)).collect()
     }
 
     /// Get cluster ID (if formed)
@@ -65,7 +65,7 @@ impl MembershipView {
     /// Get coordinator node (if any)
     pub fn get_coordinator(&self) -> Option<NodeId> {
         match &self.cluster_state {
-            ClusterFormationState::Forming { coordinator, .. } => Some(coordinator.clone()),
+            ClusterFormationState::Forming { coordinator, .. } => Some(*coordinator),
             _ => None,
         }
     }

@@ -72,7 +72,7 @@ where
 
         // Let the consensus layer handle adding the node
         consensus
-            .add_node(node_id.clone(), node_info)
+            .add_node(node_id, node_info)
             .await
             .map_err(|e| EventError::Internal(format!("Failed to add node to consensus: {e}")))?;
 

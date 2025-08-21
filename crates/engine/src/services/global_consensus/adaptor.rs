@@ -103,7 +103,7 @@ where
         // Send request and wait for response
         let response = self
             .network_manager
-            .request_with_timeout(self.target_node_id.clone(), message, timeout)
+            .request_with_timeout(self.target_node_id, message, timeout)
             .await
             .map_err(|e| {
                 tracing::debug!(
@@ -142,7 +142,7 @@ where
         // Send request and wait for response
         let response = self
             .network_manager
-            .request_with_timeout(self.target_node_id.clone(), message, timeout)
+            .request_with_timeout(self.target_node_id, message, timeout)
             .await
             .map_err(|e| RPCError::Network(openraft::error::NetworkError::new(&e)))?;
 
@@ -179,7 +179,7 @@ where
         loop {
             match self
                 .network_manager
-                .request_with_timeout(self.target_node_id.clone(), message.clone(), timeout)
+                .request_with_timeout(self.target_node_id, message.clone(), timeout)
                 .await
             {
                 Ok(response) => {

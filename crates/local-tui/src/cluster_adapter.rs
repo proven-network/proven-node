@@ -97,16 +97,14 @@ impl ClusterAdapter {
             .create_node_with_specializations(name, specializations)?;
 
         // Store mapping
-        let cluster_id = node_info.id.clone();
+        let cluster_id = node_info.id;
         let mapping = NodeMapping {
-            cluster_id: cluster_id.clone(),
+            cluster_id,
             display_name: name.to_string(),
         };
 
         self.node_mappings.write().insert(tui_id, mapping.clone());
-        self.cluster_to_tui
-            .write()
-            .insert(cluster_id.clone(), tui_id);
+        self.cluster_to_tui.write().insert(cluster_id, tui_id);
 
         // ALWAYS add to topology BEFORE starting (required by new system)
         // The node needs to be in topology to find itself during startup
@@ -127,7 +125,7 @@ impl ClusterAdapter {
             .get(&tui_id)
             .ok_or_else(|| anyhow!("Node {} not found", tui_id))?;
 
-        let cluster_id = mapping.cluster_id.clone();
+        let cluster_id = mapping.cluster_id;
         drop(mappings);
 
         info!("Stopping node {}", tui_id.full_pokemon_name());
@@ -145,7 +143,7 @@ impl ClusterAdapter {
             .get(&tui_id)
             .ok_or_else(|| anyhow!("Node {} not found", tui_id))?;
 
-        let cluster_id = mapping.cluster_id.clone();
+        let cluster_id = mapping.cluster_id;
         drop(mappings);
 
         info!("Restarting node {}", tui_id.full_pokemon_name());

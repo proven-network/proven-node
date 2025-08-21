@@ -116,9 +116,7 @@ where
         );
 
         // Create routing table
-        let routing_table = Arc::new(crate::foundation::routing::RoutingTable::new(
-            self.node_id.clone(),
-        ));
+        let routing_table = Arc::new(crate::foundation::routing::RoutingTable::new(self.node_id));
 
         // Create consensus services
         use crate::services::global_consensus::{GlobalConsensusConfig, GlobalConsensusService};
@@ -136,7 +134,7 @@ where
 
         let membership_service = Arc::new(MembershipService::<T, G, A, S>::new(
             membership_config,
-            self.node_id.clone(),
+            self.node_id,
             node_info,
             network_manager.clone(),
             topology_manager.clone(),
@@ -156,7 +154,7 @@ where
 
         let global_consensus_service = Arc::new(GlobalConsensusService::new(
             global_consensus_config,
-            self.node_id.clone(),
+            self.node_id,
             network_manager.clone(),
             storage_manager.clone(),
             topology_manager.clone(),
@@ -174,7 +172,7 @@ where
 
         let group_consensus_service = Arc::new(GroupConsensusService::new(
             group_consensus_config,
-            self.node_id.clone(),
+            self.node_id,
             network_manager.clone(),
             storage_manager.clone(),
             new_event_bus.clone(),
@@ -188,7 +186,7 @@ where
         let system_view = Arc::new(crate::services::monitoring::SystemView::new());
         let monitoring_service = Arc::new(MonitoringService::new(
             config.services.monitoring.clone(),
-            self.node_id.clone(),
+            self.node_id,
             system_view,
         ));
 
@@ -201,7 +199,7 @@ where
         let stream_config = StreamServiceConfig::default();
         let stream_service = Arc::new(StreamService::new(
             stream_config,
-            self.node_id.clone(),
+            self.node_id,
             storage_manager.clone(),
             network_manager.clone(),
             routing_table.clone(),
@@ -260,7 +258,7 @@ where
         let pubsub_service = Arc::new(
             PubSubService::new(
                 config.services.pubsub.clone(),
-                self.node_id.clone(),
+                self.node_id,
                 network_manager.clone(),
                 new_event_bus.clone(),
             )

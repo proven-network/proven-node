@@ -72,7 +72,7 @@ impl DiscoverClusterHandler {
             *leader = view
                 .nodes_with_role(&NodeRole::GlobalConsensusLeader)
                 .first()
-                .map(|member| member.node_id.clone());
+                .map(|member| member.node_id);
 
             info!(
                 "Reporting active cluster: leader={:?}, members={}, term={}",
@@ -85,7 +85,7 @@ impl DiscoverClusterHandler {
         }
 
         let response = DiscoverClusterResponse {
-            from_node: self.node_id.clone(),
+            from_node: self.node_id,
             cluster_state,
             node_status: NodeStatus::Online, // TODO: Get from service state
             timestamp: now_timestamp(),

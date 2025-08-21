@@ -93,7 +93,7 @@ impl JoinClusterHandler {
         );
 
         let event = MembershipEvent::MembershipChangeRequired {
-            add_nodes: vec![(sender.clone(), request.node_info.clone())],
+            add_nodes: vec![(sender, request.node_info.clone())],
             remove_nodes: vec![],
             reason: format!("Node {sender} requested to join cluster"),
         };
@@ -108,9 +108,7 @@ impl JoinClusterHandler {
         );
 
         use crate::services::global_consensus::commands::AddNodeToConsensus;
-        let add_node_cmd = AddNodeToConsensus {
-            node_id: sender.clone(),
-        };
+        let add_node_cmd = AddNodeToConsensus { node_id: sender };
 
         match self.event_bus.request(add_node_cmd).await {
             Ok(members) => {
@@ -151,7 +149,7 @@ impl JoinClusterHandler {
         let leader = view
             .nodes_with_role(&NodeRole::GlobalConsensusLeader)
             .first()
-            .map(|member| member.node_id.clone());
+            .map(|member| member.node_id);
 
         ClusterState::Active {
             leader,

@@ -59,8 +59,8 @@ where
         // TODO: Implement cluster initialization logic
         // For now, return a placeholder result
         let cluster_id = uuid::Uuid::new_v4().to_string();
-        let members = vec![self.service.node_id().clone()];
-        let coordinator = self.service.node_id().clone();
+        let members = vec![*self.service.node_id()];
+        let coordinator = *self.service.node_id();
 
         Ok(ClusterFormationResult {
             cluster_id,
@@ -121,7 +121,7 @@ where
             cluster_id: view.cluster_id().to_string(),
             members,
             coordinator: view.get_coordinator(),
-            this_node: self.service.node_id().clone(),
+            this_node: *self.service.node_id(),
         })
     }
 }

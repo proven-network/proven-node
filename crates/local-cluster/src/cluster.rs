@@ -118,7 +118,7 @@ impl LocalCluster {
         let port = allocate_port();
 
         let info = NodeInfo {
-            id: node_id.clone(),
+            id: node_id,
             name: name.to_string(),
             port,
             signing_key: signing_key.clone(),
@@ -228,7 +228,7 @@ impl LocalCluster {
     pub fn get_all_nodes(&self) -> HashMap<NodeId, NodeInfo> {
         self.nodes
             .iter()
-            .map(|entry| (entry.key().clone(), entry.value().info.clone()))
+            .map(|entry| (*entry.key(), entry.value().info.clone()))
             .collect()
     }
 
@@ -256,7 +256,7 @@ impl LocalCluster {
         let topology_node = Node::new(
             "local".to_string(),
             format!("http://localhost:{port}"),
-            node_id.clone(),
+            *node_id,
             "local".to_string(),
             specializations.clone(),
         );
@@ -299,7 +299,7 @@ impl LocalCluster {
         Ok(nodes
             .into_iter()
             .map(|node| {
-                let node_id = node.node_id.clone();
+                let node_id = node.node_id;
                 (node_id, node)
             })
             .collect())
@@ -318,7 +318,7 @@ impl LocalCluster {
             .map_err(|e| anyhow!("Failed to get topology: {:?}", e))?;
         for node in nodes {
             // Find node in our tracking by ID
-            let node_id = node.node_id.clone();
+            let node_id = node.node_id;
             let info = self
                 .nodes
                 .iter()

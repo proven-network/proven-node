@@ -14,7 +14,7 @@ async fn test_memory_echo_server() {
 
     let server_node_id = NodeId::from_seed(10);
     let transport = MemoryTransport::new(MemoryOptions {
-        listen_node_id: Some(server_node_id.clone()),
+        listen_node_id: Some(server_node_id),
     });
 
     // Create listener
@@ -104,7 +104,7 @@ async fn test_multiple_clients() {
 
     let server_node_id = NodeId::from_seed(20);
     let transport = MemoryTransport::new(MemoryOptions {
-        listen_node_id: Some(server_node_id.clone()),
+        listen_node_id: Some(server_node_id),
     });
 
     // Create listener
@@ -161,7 +161,7 @@ async fn test_multiple_clients() {
         let node = Node::new(
             "test-az".to_string(),
             "http://127.0.0.1:8080".to_string(),
-            server_node_id.clone(),
+            server_node_id,
             "test-region".to_string(),
             HashSet::new(),
         );
@@ -205,7 +205,7 @@ async fn test_connection_closed() {
 
     let server_node_id = NodeId::from_seed(30);
     let transport = MemoryTransport::new(MemoryOptions {
-        listen_node_id: Some(server_node_id.clone()),
+        listen_node_id: Some(server_node_id),
     });
 
     // Create listener
@@ -253,7 +253,7 @@ async fn test_listener_close() {
 
     let server_node_id = NodeId::from_seed(40);
     let transport = MemoryTransport::new(MemoryOptions {
-        listen_node_id: Some(server_node_id.clone()),
+        listen_node_id: Some(server_node_id),
     });
 
     // Create and immediately close listener
@@ -265,7 +265,7 @@ async fn test_listener_close() {
     let node = Node::new(
         "test-az".to_string(),
         "http://127.0.0.1:8080".to_string(),
-        server_node_id.clone(),
+        server_node_id,
         "test-region".to_string(),
         HashSet::new(),
     );

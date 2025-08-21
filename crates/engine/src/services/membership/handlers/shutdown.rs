@@ -64,7 +64,7 @@ impl GracefulShutdownHandler {
 
         // Publish event for immediate membership change
         self.event_bus.emit(MembershipEvent::NodeGracefulShutdown {
-            node_id: sender.clone(),
+            node_id: sender,
             reason: request.reason.clone(),
         });
 
@@ -72,7 +72,7 @@ impl GracefulShutdownHandler {
         self.event_bus
             .emit(MembershipEvent::MembershipChangeRequired {
                 add_nodes: vec![],
-                remove_nodes: vec![sender.clone()],
+                remove_nodes: vec![sender],
                 reason: format!("Node {sender} gracefully shutting down"),
             });
 
@@ -83,9 +83,7 @@ impl GracefulShutdownHandler {
         );
 
         use crate::services::global_consensus::commands::RemoveNodeFromConsensus;
-        let remove_node_cmd = RemoveNodeFromConsensus {
-            node_id: sender.clone(),
-        };
+        let remove_node_cmd = RemoveNodeFromConsensus { node_id: sender };
 
         match self.event_bus.request(remove_node_cmd).await {
             Ok(members) => {

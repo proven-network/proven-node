@@ -180,7 +180,7 @@ impl MockHlcProvider {
                 {
                     // Reset logical counter
                     self.logical_counter.store(0, Ordering::SeqCst);
-                    return HlcTimestamp::new(physical_now, 0, self.node_id.clone());
+                    return HlcTimestamp::new(physical_now, 0, self.node_id);
                 }
                 // CAS failed, retry the loop
                 continue;
@@ -193,11 +193,7 @@ impl MockHlcProvider {
             // Ensure physical time doesn't go backwards
             let _ = self.last_physical.fetch_max(physical_now, Ordering::SeqCst);
 
-            return HlcTimestamp::new(
-                last_physical.max(physical_now),
-                logical,
-                self.node_id.clone(),
-            );
+            return HlcTimestamp::new(last_physical.max(physical_now), logical, self.node_id);
         }
     }
 
@@ -263,7 +259,7 @@ impl HLCProvider for MockHlcProvider {
     }
 
     fn node_id(&self) -> NodeId {
-        self.node_id.clone()
+        self.node_id
     }
 
     async fn is_healthy(&self) -> HLCResult<bool> {

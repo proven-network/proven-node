@@ -71,7 +71,7 @@ impl StreamHandler<Subscribe> for SubscribeHandler {
         let subscription = Subscription {
             id: uuid::Uuid::new_v4().to_string(),
             subject_pattern: pattern.clone(),
-            node_id: self.node_id.clone(),
+            node_id: self.node_id,
             queue_group: request.queue_group.clone(),
             created_at: SystemTime::now(),
         };
@@ -88,7 +88,7 @@ impl StreamHandler<Subscribe> for SubscribeHandler {
 
         // Update interest
         self.interest_tracker
-            .add_interest(self.node_id.clone(), pattern.clone())
+            .add_interest(self.node_id, pattern.clone())
             .await;
 
         // Propagate interests to all connected peers

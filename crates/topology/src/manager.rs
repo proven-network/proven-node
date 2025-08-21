@@ -216,7 +216,7 @@ where
     /// Add a node to the cooldown list
     async fn add_to_cooldown(&self, node_id: &NodeId) {
         let mut cooldown_map = self.missing_peer_cooldown.write().await;
-        cooldown_map.insert(node_id.clone(), Instant::now());
+        cooldown_map.insert(*node_id, Instant::now());
         warn!("Added node {} to missing peer cooldown", node_id);
     }
 
@@ -377,7 +377,7 @@ where
     async fn start_refresh_task(&self) {
         let cached_nodes = self.cached_nodes.clone();
         let topology_adaptor = self.topology_adaptor.clone();
-        let node_id = self.node_id.clone();
+        let node_id = self.node_id;
         let broadcaster = self.broadcaster.clone();
 
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
@@ -494,7 +494,7 @@ where
             .map(|(node_id, last_attempt)| {
                 let elapsed = last_attempt.elapsed();
                 let remaining = MISSING_PEER_COOLDOWN.saturating_sub(elapsed);
-                (node_id.clone(), remaining)
+                (*node_id, remaining)
             })
             .collect()
     }
@@ -714,7 +714,7 @@ where
         Self {
             cached_nodes: Arc::clone(&self.cached_nodes),
             topology_adaptor: Arc::clone(&self.topology_adaptor),
-            node_id: self.node_id.clone(),
+            node_id: self.node_id,
             missing_peer_cooldown: Arc::clone(&self.missing_peer_cooldown),
             bootable_state: Arc::clone(&self.bootable_state),
             broadcaster: Arc::clone(&self.broadcaster),

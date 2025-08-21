@@ -190,7 +190,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
         }
 
         // Add as learner first
-        self.add_learner(node_id.clone(), node_info).await?;
+        self.add_learner(node_id, node_info).await?;
 
         // Give learner time to catch up
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -254,7 +254,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
 
     /// Check if this node is the current leader
     pub async fn is_leader(&self) -> bool {
-        self.raft.current_leader().await == Some(self.node_id.clone())
+        self.raft.current_leader().await == Some(self.node_id)
     }
 
     /// Check if Raft has been initialized
@@ -309,7 +309,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
 
         // Pass separated storage and state machine to Raft
         let raft = Raft::new(
-            node_id.clone(),
+            node_id,
             validated_config,
             network_factory,
             log_storage.clone(),   // Log storage only
@@ -339,7 +339,7 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
                 if let Some(forward_to_leader) = err.forward_to_leader() {
                     return Err(Error::not_leader(
                         "Not the leader for global consensus",
-                        forward_to_leader.leader_id.clone(),
+                        forward_to_leader.leader_id,
                     ));
                 }
 
@@ -386,14 +386,14 @@ impl<L: LogStorage> GlobalConsensusLayer<L> {
 
                         // Check for leader change or term change
                         if metrics.current_leader != current_leader || metrics.current_term != current_term {
-                            let old_leader = current_leader.clone();
-                            current_leader = metrics.current_leader.clone();
+                            let old_leader = current_leader;
+                            current_leader = metrics.current_leader;
                             current_term = metrics.current_term;
 
                             // Call the callback with proper term
                             if let Err(e) = callbacks.on_leader_changed(
                                 old_leader,
-                                current_leader.clone(),
+                                current_leader,
                                 current_term
                             ).await {
                                 tracing::error!("Failed to handle leader change: {}", e);
@@ -431,7 +431,7 @@ impl<L: LogStorage> ConsensusLayer for GlobalConsensusLayer<L> {
     }
 
     async fn is_leader(&self) -> bool {
-        self.raft.current_leader().await == Some(self.node_id.clone())
+        self.raft.current_leader().await == Some(self.node_id)
     }
 
     async fn current_term(&self) -> Term {
@@ -441,7 +441,7 @@ impl<L: LogStorage> ConsensusLayer for GlobalConsensusLayer<L> {
 
     async fn current_role(&self) -> ConsensusRole {
         let metrics = self.raft.metrics().borrow_watched().clone();
-        if metrics.current_leader == Some(self.node_id.clone()) {
+        if metrics.current_leader == Some(self.node_id) {
             ConsensusRole::Leader
         } else {
             // Check if we're a voter or learner based on the state

@@ -279,10 +279,7 @@ impl GlobalState {
 
         // Update node mappings
         for member in &info.members {
-            self.node_groups
-                .entry(member.clone())
-                .or_default()
-                .push(info.id);
+            self.node_groups.entry(*member).or_default().push(info.id);
         }
         Ok(())
     }
@@ -324,7 +321,7 @@ impl GlobalState {
     pub async fn add_group_member(&self, group_id: ConsensusGroupId, node_id: NodeId) -> bool {
         if let Some(mut info) = self.groups.get_mut(&group_id) {
             if !info.members.contains(&node_id) {
-                info.members.push(node_id.clone());
+                info.members.push(node_id);
 
                 // Update node mappings
                 self.node_groups.entry(node_id).or_default().push(group_id);
@@ -360,7 +357,7 @@ impl GlobalState {
 
     /// Add cluster member
     pub async fn add_member(&self, info: NodeInfo) {
-        self.members.insert(info.node_id.clone(), info);
+        self.members.insert(info.node_id, info);
     }
 
     /// Remove cluster member

@@ -48,7 +48,7 @@ impl InterestTracker {
             pattern_nodes
                 .entry(pattern.clone())
                 .or_default()
-                .insert(node_id.clone());
+                .insert(node_id);
         }
 
         node_interests.insert(node_id, pattern_set);
@@ -78,7 +78,7 @@ impl InterestTracker {
 
         // Add to node's interests
         node_interests
-            .entry(node_id.clone())
+            .entry(node_id)
             .or_default()
             .insert(pattern.clone());
 
@@ -176,7 +176,7 @@ mod tests {
         // Add interests
         tracker
             .update_interests(
-                node1.clone(),
+                node1,
                 vec![
                     SubjectPattern::new("metrics.*".to_string()).unwrap(),
                     SubjectPattern::new("events.>".to_string()).unwrap(),
@@ -186,7 +186,7 @@ mod tests {
 
         tracker
             .update_interests(
-                node2.clone(),
+                node2,
                 vec![
                     SubjectPattern::new("metrics.cpu".to_string()).unwrap(),
                     SubjectPattern::new("logs.>".to_string()).unwrap(),
@@ -221,7 +221,7 @@ mod tests {
         // Initial interests
         tracker
             .update_interests(
-                node.clone(),
+                node,
                 vec![
                     SubjectPattern::new("foo.*".to_string()).unwrap(),
                     SubjectPattern::new("bar.>".to_string()).unwrap(),
@@ -235,7 +235,7 @@ mod tests {
         // Update interests
         tracker
             .update_interests(
-                node.clone(),
+                node,
                 vec![SubjectPattern::new("baz.*".to_string()).unwrap()],
             )
             .await;

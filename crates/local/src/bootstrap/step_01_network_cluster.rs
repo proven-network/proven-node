@@ -68,7 +68,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     let node_id = NodeId::from(bootstrap.config.node_key.verifying_key());
     let governance = Arc::new(bootstrap.config.governance.clone());
 
-    let topology_manager = Arc::new(TopologyManager::new(governance.clone(), node_id.clone()));
+    let topology_manager = Arc::new(TopologyManager::new(governance.clone(), node_id));
     topology_manager
         .start()
         .await
@@ -77,7 +77,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     let transport = Arc::new(WebSocketTransport::new());
 
     let network_manager = Arc::new(NetworkManager::new(
-        node_id.clone(),
+        node_id,
         transport.clone(),
         topology_manager.clone(),
         bootstrap.config.node_key.clone(),
@@ -176,7 +176,7 @@ pub async fn execute<G: TopologyAdaptor>(bootstrap: &mut Bootstrap<G>) -> Result
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Now build and start the engine
-    let mut engine = EngineBuilder::new(node_id.clone())
+    let mut engine = EngineBuilder::new(node_id)
         .with_config(engine_config)
         .with_network(network_manager.clone())
         .with_topology(topology_manager.clone())

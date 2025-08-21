@@ -317,7 +317,7 @@ impl TestCluster {
         };
         let topology_manager = Arc::new(TopologyManager::with_config(
             governance.clone(),
-            node_id.clone(),
+            node_id,
             topology_config,
         ));
 
@@ -338,7 +338,7 @@ impl TestCluster {
         // Create network manager
         let connection_pool_config = ConnectionPoolConfig::default();
         let network_manager = Arc::new(NetworkManager::new(
-            node_id.clone(),
+            node_id,
             transport.clone(),
             topology_manager.clone(),
             signing_key.clone(),
@@ -353,7 +353,7 @@ impl TestCluster {
 
         // Create engine
         let config = self.create_test_config();
-        let mut engine = EngineBuilder::new(node_id.clone())
+        let mut engine = EngineBuilder::new(node_id)
             .with_config(config)
             .with_network(network_manager.clone())
             .with_topology(topology_manager.clone())
@@ -394,7 +394,7 @@ impl TestCluster {
         engine.start().await.expect("Failed to start engine");
 
         let node_info = NodeInfo {
-            node_id: node_id.clone(),
+            node_id,
             signing_key,
             port,
         };
@@ -472,7 +472,7 @@ impl TestCluster {
         };
         let topology_manager = Arc::new(TopologyManager::with_config(
             governance.clone(),
-            node_id.clone(),
+            node_id,
             topology_config,
         ));
 
@@ -493,7 +493,7 @@ impl TestCluster {
         // Create network manager
         let connection_pool_config = ConnectionPoolConfig::default();
         let network_manager = Arc::new(NetworkManager::new(
-            node_id.clone(),
+            node_id,
             transport.clone(),
             topology_manager.clone(),
             signing_key.clone(),
@@ -533,7 +533,7 @@ impl TestCluster {
 
         // Create engine
         let config = self.create_test_config();
-        let mut engine = EngineBuilder::new(node_id.clone())
+        let mut engine = EngineBuilder::new(node_id)
             .with_config(config)
             .with_network(network_manager.clone())
             .with_topology(topology_manager.clone())
@@ -577,7 +577,7 @@ impl TestCluster {
         tokio::time::sleep(Duration::from_millis(100)).await;
 
         let node_info = NodeInfo {
-            node_id: node_id.clone(),
+            node_id,
             signing_key,
             port,
         };
@@ -812,7 +812,7 @@ impl TestCluster {
                     let info = &existing[i];
                     (
                         Some(info.signing_key.clone()),
-                        info.node_id.clone(),
+                        info.node_id,
                         Some(info.port),
                     )
                 } else {

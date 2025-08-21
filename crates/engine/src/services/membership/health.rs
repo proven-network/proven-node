@@ -95,7 +95,7 @@ where
                         NodeStatus::Online | NodeStatus::Unreachable { .. }
                     )
                 })
-                .map(|(id, _)| id.clone())
+                .map(|(id, _)| *id)
                 .collect()
         };
 
@@ -121,11 +121,7 @@ where
                 let start = std::time::Instant::now();
                 let result = timeout(
                     timeout_duration,
-                    network_manager.request_with_timeout(
-                        node_id.clone(),
-                        request,
-                        timeout_duration,
-                    ),
+                    network_manager.request_with_timeout(node_id, request, timeout_duration),
                 )
                 .await;
 
@@ -241,7 +237,7 @@ where
 
                                         event_bus.emit(MembershipEvent::MembershipChangeRequired {
                                             add_nodes: vec![],
-                                            remove_nodes: vec![node_id.clone()],
+                                            remove_nodes: vec![node_id],
                                             reason: "Node offline due to failed health checks"
                                                 .to_string(),
                                         });
@@ -253,12 +249,10 @@ where
                                         );
 
                                         use crate::services::global_consensus::commands::RemoveNodeFromConsensus;
-                                        let remove_node_cmd = RemoveNodeFromConsensus {
-                                            node_id: node_id.clone(),
-                                        };
+                                        let remove_node_cmd = RemoveNodeFromConsensus { node_id };
 
                                         let event_bus_clone = event_bus.clone();
-                                        let node_id_clone = node_id.clone();
+                                        let node_id_clone = node_id;
                                         tokio::spawn(async move {
                                             match event_bus_clone.request(remove_node_cmd).await {
                                                 Ok(members) => {
@@ -306,7 +300,7 @@ where
         });
 
         if info.is_member {
-            if info.current_leader == Some(member.node_id.clone()) {
+            if info.current_leader == Some(member.node_id) {
                 member.roles.insert(NodeRole::GlobalConsensusLeader);
             } else {
                 member.roles.insert(NodeRole::GlobalConsensusMember);

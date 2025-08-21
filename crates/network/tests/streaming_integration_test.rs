@@ -100,14 +100,14 @@ async fn test_streaming_end_to_end() {
             Node::new(
                 "test-az".to_string(),
                 format!("http://127.0.0.1:{node1_port}"),
-                node1_id.clone(),
+                node1_id,
                 "test-region".to_string(),
                 Default::default(),
             ),
             Node::new(
                 "test-az".to_string(),
                 format!("http://127.0.0.1:{node2_port}"),
-                node2_id.clone(),
+                node2_id,
                 "test-region".to_string(),
                 Default::default(),
             ),
@@ -122,8 +122,8 @@ async fn test_streaming_end_to_end() {
     ));
 
     // Create topology managers
-    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id.clone()));
-    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id.clone()));
+    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id));
+    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id));
 
     // Start topology managers
     topology1.start().await.unwrap();
@@ -138,7 +138,7 @@ async fn test_streaming_end_to_end() {
     }));
 
     let manager1 = NetworkManager::new(
-        node1_id.clone(),
+        node1_id,
         transport1,
         topology1.clone(),
         node1_key,
@@ -148,7 +148,7 @@ async fn test_streaming_end_to_end() {
     );
 
     let manager2 = NetworkManager::new(
-        node2_id.clone(),
+        node2_id,
         transport2,
         topology2.clone(),
         node2_key,
@@ -225,14 +225,14 @@ async fn test_multiple_concurrent_streams() {
             Node::new(
                 "test-az".to_string(),
                 format!("http://127.0.0.1:{node1_port}"),
-                node1_id.clone(),
+                node1_id,
                 "test-region".to_string(),
                 Default::default(),
             ),
             Node::new(
                 "test-az".to_string(),
                 format!("http://127.0.0.1:{node2_port}"),
-                node2_id.clone(),
+                node2_id,
                 "test-region".to_string(),
                 Default::default(),
             ),
@@ -247,8 +247,8 @@ async fn test_multiple_concurrent_streams() {
     ));
 
     // Create topology managers
-    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id.clone()));
-    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id.clone()));
+    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id));
+    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id));
 
     // Start topology managers
     topology1.start().await.unwrap();
@@ -263,7 +263,7 @@ async fn test_multiple_concurrent_streams() {
     }));
 
     let manager1 = Arc::new(NetworkManager::new(
-        node1_id.clone(),
+        node1_id,
         transport1,
         topology1.clone(),
         node1_key,
@@ -273,7 +273,7 @@ async fn test_multiple_concurrent_streams() {
     ));
 
     let manager2 = NetworkManager::new(
-        node2_id.clone(),
+        node2_id,
         transport2,
         topology2.clone(),
         node2_key,
@@ -302,7 +302,7 @@ async fn test_multiple_concurrent_streams() {
 
     for stream_id in 0..3 {
         let manager = manager1.clone();
-        let node2 = node2_id.clone();
+        let node2 = node2_id;
 
         let handle = tokio::spawn(async move {
             let mut metadata = HashMap::new();
@@ -366,14 +366,14 @@ async fn test_incoming_streams() {
             Node::new(
                 "test-az".to_string(),
                 format!("http://127.0.0.1:{node1_port}"),
-                node1_id.clone(),
+                node1_id,
                 "test-region".to_string(),
                 Default::default(),
             ),
             Node::new(
                 "test-az".to_string(),
                 format!("http://127.0.0.1:{node2_port}"),
-                node2_id.clone(),
+                node2_id,
                 "test-region".to_string(),
                 Default::default(),
             ),
@@ -388,8 +388,8 @@ async fn test_incoming_streams() {
     ));
 
     // Create topology managers
-    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id.clone()));
-    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id.clone()));
+    let topology1 = Arc::new(TopologyManager::new(governance.clone(), node1_id));
+    let topology2 = Arc::new(TopologyManager::new(governance.clone(), node2_id));
 
     // Start topology managers
     topology1.start().await.unwrap();
@@ -404,7 +404,7 @@ async fn test_incoming_streams() {
     }));
 
     let manager1 = NetworkManager::new(
-        node1_id.clone(),
+        node1_id,
         transport1,
         topology1.clone(),
         node1_key,
@@ -414,7 +414,7 @@ async fn test_incoming_streams() {
     );
 
     let manager2 = NetworkManager::new(
-        node2_id.clone(),
+        node2_id,
         transport2,
         topology2.clone(),
         node2_key,

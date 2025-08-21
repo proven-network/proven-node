@@ -125,8 +125,8 @@ where
 
         let (io_task, handler_task) = Self::start_tasks(
             id.clone(),
-            _our_node_id.clone(),
-            expected_peer.clone(),
+            _our_node_id,
+            expected_peer,
             phase.clone(),
             queued_messages.clone(),
             transport_conn,
@@ -142,7 +142,7 @@ where
         let conn = Self {
             id: id.clone(),
             _our_node_id,
-            peer_id: expected_peer.clone(),
+            peer_id: expected_peer,
             phase,
             cose_handler,
             _verifier: verifier.clone(),
@@ -158,7 +158,7 @@ where
             .create_verification_request_for_connection(id.clone())
             .await
             .map_err(|e| NetworkError::ConnectionFailed {
-                node: Box::new(expected_peer.clone()),
+                node: Box::new(expected_peer),
                 reason: format!("Failed to create verification request: {e}"),
             })?;
 
@@ -181,7 +181,7 @@ where
         loop {
             // Check if we're already verified
             if let ConnectionPhase::Verified { peer_id } = &*self.phase.lock().await {
-                return Ok(peer_id.clone());
+                return Ok(*peer_id);
             }
 
             if start.elapsed() > timeout {
@@ -434,7 +434,7 @@ where
                             // Verify it's the expected peer
                             if verified_peer != *peer_id {
                                 return Err(NetworkError::ConnectionFailed {
-                                    node: Box::new(peer_id.clone()),
+                                    node: Box::new(*peer_id),
                                     reason: format!(
                                         "Peer mismatch: expected {peer_id}, got {verified_peer}"
                                     ),
@@ -469,7 +469,7 @@ where
                             verifier.get_connection_state(conn_id).await
                         {
                             return Err(NetworkError::ConnectionFailed {
-                                node: Box::new(peer_id.clone()),
+                                node: Box::new(*peer_id),
                                 reason: format!("Verification failed: {e}"),
                             });
                         }
@@ -576,7 +576,7 @@ where
 
         let (io_task, handler_task) = Self::start_tasks(
             id.clone(),
-            _our_node_id.clone(),
+            _our_node_id,
             peer_id.clone(),
             phase.clone(),
             queued_messages.clone(),
@@ -615,7 +615,7 @@ where
         loop {
             // Check if we're already verified
             if let ConnectionPhase::Verified { peer_id } = &*self.phase.lock().await {
-                return Ok(peer_id.clone());
+                return Ok(*peer_id);
             }
 
             if start.elapsed() > timeout {
@@ -661,7 +661,7 @@ where
 
     /// Get the verified peer ID
     pub async fn peer_id(&self) -> Option<NodeId> {
-        self.peer_id.lock().await.clone()
+        *self.peer_id.lock().await
     }
 
     /// Get the connection ID
@@ -850,7 +850,7 @@ where
                         {
                             // Transition to verified state
                             *phase.lock().await = ConnectionPhase::Verified {
-                                peer_id: verified_peer.clone(),
+                                peer_id: verified_peer,
                             };
 
                             // Update peer_id
@@ -872,7 +872,7 @@ where
                             verifier.get_connection_state(conn_id).await
                         {
                             return Err(NetworkError::ConnectionFailed {
-                                node: Box::new(peer_id.lock().await.clone().unwrap_or_default()),
+                                node: Box::new((*peer_id.lock().await).unwrap_or_default()),
                                 reason: format!("Verification failed: {e}"),
                             });
                         }
@@ -1053,7 +1053,7 @@ where
     pub async fn peer_id(&self) -> Option<NodeId> {
         match self {
             Connection::Incoming(conn) => conn.peer_id().await,
-            Connection::Outgoing(conn) => Some(conn.peer_id().clone()),
+            Connection::Outgoing(conn) => Some(*conn.peer_id()),
         }
     }
 

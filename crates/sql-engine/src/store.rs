@@ -142,7 +142,7 @@ impl SqlStore for SqlEngineStore {
             let leadership = Arc::new(LeadershipCoordinator::new(
                 self.client.clone(),
                 leadership_stream,
-                self.client.node_id().clone(),
+                *self.client.node_id(),
                 self.lease_duration,
                 self.renewal_interval,
             ));

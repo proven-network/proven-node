@@ -232,7 +232,7 @@ mod tests {
 
         // Track assignments
         let assignments = vec![("rocksdb".to_string(), 1), ("bitcoin".to_string(), 2)];
-        manager.track_node_assignments(node_id.clone(), assignments);
+        manager.track_node_assignments(node_id, assignments);
 
         // Release node directories
         manager.release_node_directories(&node_id);

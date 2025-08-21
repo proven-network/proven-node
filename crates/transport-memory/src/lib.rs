@@ -105,7 +105,7 @@ impl Transport for MemoryTransport {
     }
 
     async fn listen(&self) -> Result<Box<dyn Listener>, TransportError> {
-        let node_id = self.options.listen_node_id.clone().ok_or_else(|| {
+        let node_id = self.options.listen_node_id.ok_or_else(|| {
             TransportError::InvalidAddress("No listen node ID configured".to_string())
         })?;
 
@@ -121,14 +121,14 @@ impl Transport for MemoryTransport {
         // Create the listener
         let (incoming_tx, incoming_rx) = flume::unbounded();
         let listener = MemoryListener {
-            node_id: node_id.clone(),
+            node_id,
             incoming_rx: Arc::new(RwLock::new(incoming_rx)),
             incoming_tx,
             closed: Arc::new(RwLock::new(false)),
         };
 
         // Register in global registry
-        GLOBAL_REGISTRY.insert(node_id.clone(), listener.clone());
+        GLOBAL_REGISTRY.insert(node_id, listener.clone());
 
         info!("Memory listener created for node {}", node_id);
 
@@ -283,7 +283,7 @@ mod tests {
 
         let node_id = NodeId::from_seed(1);
         let listener_transport = MemoryTransport::new(MemoryOptions {
-            listen_node_id: Some(node_id.clone()),
+            listen_node_id: Some(node_id),
         });
 
         // Create listener
@@ -323,10 +323,10 @@ mod tests {
 
         let node_id = NodeId::from_seed(2);
         let transport1 = MemoryTransport::new(MemoryOptions {
-            listen_node_id: Some(node_id.clone()),
+            listen_node_id: Some(node_id),
         });
         let transport2 = MemoryTransport::new(MemoryOptions {
-            listen_node_id: Some(node_id.clone()),
+            listen_node_id: Some(node_id),
         });
 
         // First listener should succeed

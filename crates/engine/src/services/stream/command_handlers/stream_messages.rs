@@ -133,12 +133,11 @@ where
         let nodes = group_route.members;
 
         // Pick a node to stream from (preferably not ourselves)
-        let target_node = nodes
+        let target_node = *nodes
             .iter()
             .find(|&n| n != &self.node_id)
             .or_else(|| nodes.first()) // Fallback to any node if all are us
-            .ok_or_else(|| EventError::Internal("No nodes available for streaming".to_string()))?
-            .clone();
+            .ok_or_else(|| EventError::Internal("No nodes available for streaming".to_string()))?;
 
         if target_node == self.node_id {
             return Err(EventError::Internal(
@@ -161,13 +160,13 @@ where
         // Open stream to remote node
         let remote_stream = self
             .network_manager
-            .open_stream(target_node.clone(), "stream_messages", metadata)
+            .open_stream(target_node, "stream_messages", metadata)
             .await
             .map_err(|e| EventError::Internal(format!("Failed to open remote stream: {e}")))?;
 
         // Spawn a task to handle the remote streaming
         let stream_name = request.stream_name.clone();
-        let target_node_clone = target_node.clone();
+        let target_node_clone = target_node;
         tokio::spawn(async move {
             // Forward messages from remote stream to local sink
             while let Some(data) = remote_stream.recv().await {

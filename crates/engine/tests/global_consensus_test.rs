@@ -16,9 +16,9 @@ async fn test_global_consensus_expansion() {
     // Start with 3 nodes
     let (mut engines, mut node_infos) = cluster.add_nodes(3).await;
 
-    let node_id_1 = node_infos[0].node_id.clone();
-    let node_id_2 = node_infos[1].node_id.clone();
-    let node_id_3 = node_infos[2].node_id.clone();
+    let node_id_1 = node_infos[0].node_id;
+    let node_id_2 = node_infos[1].node_id;
+    let node_id_3 = node_infos[2].node_id;
 
     tracing::info!(
         "Created initial nodes: {}, {}, {}",
@@ -93,7 +93,7 @@ async fn test_global_consensus_expansion() {
 
     // Add a 4th node
     let (new_engines, new_node_infos) = cluster.add_nodes(1).await;
-    let node_id_4 = new_node_infos[0].node_id.clone();
+    let node_id_4 = new_node_infos[0].node_id;
 
     engines.extend(new_engines);
     node_infos.extend(new_node_infos);
@@ -206,7 +206,7 @@ async fn test_single_node_to_cluster() {
 
     // Start with just 1 node
     let (mut engines, mut node_infos) = cluster.add_nodes(1).await;
-    let node_id_1 = node_infos[0].node_id.clone();
+    let node_id_1 = node_infos[0].node_id;
 
     tracing::info!("Created single node: {}", node_id_1);
 
@@ -239,7 +239,7 @@ async fn test_single_node_to_cluster() {
 
     // Add a second node
     let (new_engines, new_node_infos) = cluster.add_nodes(1).await;
-    let node_id_2 = new_node_infos[0].node_id.clone();
+    let node_id_2 = new_node_infos[0].node_id;
 
     engines.extend(new_engines);
     node_infos.extend(new_node_infos);
@@ -274,7 +274,7 @@ async fn test_single_node_to_cluster() {
 
     // Add a third node
     let (new_engines, new_node_infos) = cluster.add_nodes(1).await;
-    let node_id_3 = new_node_infos[0].node_id.clone();
+    let node_id_3 = new_node_infos[0].node_id;
 
     engines.extend(new_engines);
     node_infos.extend(new_node_infos);
