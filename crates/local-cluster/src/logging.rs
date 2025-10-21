@@ -326,7 +326,7 @@ impl LogWriter {
 
         // Create tables
         connection
-            .execute(CREATE_TABLE_SQL, params![])
+            .execute_batch(CREATE_TABLE_SQL)
             .context("Failed to create tables")?;
 
         let connection = Arc::new(Mutex::new(connection));
