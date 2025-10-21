@@ -467,15 +467,15 @@ where
                     birthtime: metadata.birthtime,
                     ctime: metadata.ctime,
                     blksize: 4096,
-                    blocks: 0, // TODO: Implement this
+                    blocks: Some(0), // TODO: Implement this
                     is_block_device: false,
                     is_char_device: false,
                     is_fifo: false,
                     is_socket: false,
                     dev: 0,
-                    ino: 0,
+                    ino: Some(0),
                     rdev: 0,
-                    nlink: 1,
+                    nlink: Some(1),
                 })
             },
         )
@@ -624,6 +624,14 @@ where
     ) -> FsResult<()> {
         todo!()
     }
+
+    fn exists_sync(&self, path: &deno_permissions::CheckedPath<'_>) -> bool {
+        block_on(self.get_stored_entry(path.as_ref())).is_ok_and(|e| e.is_some())
+    }
+
+    async fn exists_async(&self, path: deno_permissions::CheckedPathBuf) -> FsResult<bool> {
+        Ok(self.get_stored_entry(path.as_ref()).await?.is_some())
+    }
 }
 
 #[cfg(test)]
@@ -757,6 +765,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: Some(0o755),
+                    custom_flags: None,
                 },
             )
             .await;
@@ -777,6 +786,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: Some(0o755),
+                    custom_flags: None,
                 },
             )
             .await;

@@ -116,6 +116,7 @@ use resolver::CodePackageResolver;
 use bytes::Bytes;
 use deno_ast::{EmitOptions, TranspileOptions};
 pub use deno_core::ModuleSpecifier;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
@@ -243,7 +244,9 @@ impl CodePackage {
                     executor: Default::default(),
                     locker: None,
                     file_system: &NullFileSystem,
+                    jsr_metadata_store: None,
                     jsr_url_provider: Default::default(),
+                    jsr_version_resolver: Cow::default(),
                     passthrough_jsr_specifiers: false,
                     module_analyzer: Default::default(),
                     module_info_cacher: Default::default(),
@@ -386,7 +389,9 @@ impl CodePackage {
                     executor: Default::default(),
                     locker: None,
                     file_system: &NullFileSystem,
+                    jsr_metadata_store: None,
                     jsr_url_provider: Default::default(),
+                    jsr_version_resolver: Cow::default(),
                     passthrough_jsr_specifiers: false,
                     module_analyzer: Default::default(),
                     module_info_cacher: Default::default(),
@@ -673,7 +678,9 @@ impl CodePackage {
                     executor: Default::default(),
                     locker: None,
                     file_system: &NullFileSystem,
+                    jsr_metadata_store: None,
                     jsr_url_provider: Default::default(),
+                    jsr_version_resolver: Cow::default(),
                     passthrough_jsr_specifiers: false,
                     module_analyzer: Default::default(),
                     module_info_cacher: Default::default(),

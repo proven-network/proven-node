@@ -25,7 +25,6 @@ use axum::Router;
 use bytes::Bytes;
 use hickory_proto::rr::{RData, RecordType};
 use hickory_resolver::Resolver;
-use hickory_resolver::config::{ResolverConfig, ResolverOpts};
 use parking_lot::RwLock;
 use proven_bootable::Bootable;
 use proven_http::HttpServer;
@@ -179,7 +178,7 @@ where
     }
 
     async fn verify_domain_dns(domain: &str, expected_cname: &str) -> bool {
-        let dns_resolver = Resolver::tokio(ResolverConfig::default(), ResolverOpts::default());
+        let dns_resolver = Resolver::builder_tokio().unwrap().build();
 
         if let Ok(response) = dns_resolver.lookup(domain, RecordType::CNAME).await
             && let Some(RData::CNAME(cname)) = response.iter().next()

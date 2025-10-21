@@ -60,7 +60,7 @@ impl ExecutionResult {
         match self {
             Self::Ok { output, .. } => serde_json::from_value(output.clone()).map_err(Into::into),
             Self::Error { error, .. } => Err(Error::RuntimeError(rustyscript::Error::JsError(
-                error.clone(),
+                Box::new(error.clone()),
             ))),
         }
     }

@@ -267,8 +267,7 @@ impl RsaesOaepParameters<'_> {
                 let (_, mgf_hash) = Oid::from_ber(params.as_bytes())?;
                 if mgf_hash != OID_NIST_SHA_256 {
                     return Err(anyhow!(
-                        "unexpected KeyTransRecipientInfo.key_encryption_algorithm.mask_gen_func.hash: {}, expected {OID_NIST_SHA_256}",
-                        mgf_hash
+                        "unexpected KeyTransRecipientInfo.key_encryption_algorithm.mask_gen_func.hash: {mgf_hash}, expected {OID_NIST_SHA_256}"
                     ));
                 }
             } else {

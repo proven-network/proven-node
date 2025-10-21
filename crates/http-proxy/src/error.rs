@@ -69,7 +69,7 @@ impl JsErrorClass for Error {
         Box::new(std::iter::empty())
     }
 
-    fn as_any(&self) -> &dyn std::any::Any {
+    fn get_ref(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
         self
     }
 }

@@ -155,7 +155,7 @@ impl LocalCluster {
     pub async fn start_node(&mut self, id: &NodeId) -> Result<()> {
         self.nodes
             .get(id)
-            .ok_or_else(|| anyhow!("Node {} not found", id))?
+            .ok_or_else(|| anyhow!("Node {id} not found"))?
             .send_command(NodeOperation::Start {
                 specializations: None,
             })
@@ -172,7 +172,7 @@ impl LocalCluster {
     pub async fn stop_node(&mut self, id: &NodeId) -> Result<()> {
         self.nodes
             .get(id)
-            .ok_or_else(|| anyhow!("Node {} not found", id))?
+            .ok_or_else(|| anyhow!("Node {id} not found"))?
             .send_command(NodeOperation::Stop)
             .await?;
 
@@ -187,7 +187,7 @@ impl LocalCluster {
     pub async fn restart_node(&mut self, id: &NodeId) -> Result<()> {
         self.nodes
             .get(id)
-            .ok_or_else(|| anyhow!("Node {} not found", id))?
+            .ok_or_else(|| anyhow!("Node {id} not found"))?
             .send_command(NodeOperation::Restart)
             .await?;
 
@@ -244,7 +244,7 @@ impl LocalCluster {
             let node = self
                 .nodes
                 .get(node_id)
-                .ok_or_else(|| anyhow!("Node {} not found", node_id))?;
+                .ok_or_else(|| anyhow!("Node {node_id} not found"))?;
 
             let port = node.info.port;
             let specializations = node.specializations.clone();
@@ -295,7 +295,7 @@ impl LocalCluster {
             .governance
             .get_topology()
             .await
-            .map_err(|e| anyhow!("Failed to get topology: {:?}", e))?;
+            .map_err(|e| anyhow!("Failed to get topology: {e:?}"))?;
         Ok(nodes
             .into_iter()
             .map(|node| {
@@ -315,7 +315,7 @@ impl LocalCluster {
             .governance
             .get_topology()
             .await
-            .map_err(|e| anyhow!("Failed to get topology: {:?}", e))?;
+            .map_err(|e| anyhow!("Failed to get topology: {e:?}"))?;
         for node in nodes {
             // Find node in our tracking by ID
             let node_id = node.node_id;
@@ -328,7 +328,7 @@ impl LocalCluster {
             if let Some(info) = info {
                 self.governance
                     .remove_node(*info.id.verifying_key())
-                    .map_err(|e| anyhow!("Failed to remove node: {:?}", e))?;
+                    .map_err(|e| anyhow!("Failed to remove node: {e:?}"))?;
             }
         }
         Ok(())
@@ -350,7 +350,7 @@ impl LocalCluster {
             "http://localhost:{}",
             self.nodes
                 .get(node_id)
-                .ok_or_else(|| anyhow!("Node {} not found", node_id))?
+                .ok_or_else(|| anyhow!("Node {node_id} not found"))?
                 .info
                 .port
         );
@@ -404,7 +404,7 @@ impl LocalCluster {
         let execution_order = self
             .nodes
             .get(node_id)
-            .ok_or_else(|| anyhow!("Node {} not found", node_id))?
+            .ok_or_else(|| anyhow!("Node {node_id} not found"))?
             .info
             .execution_order;
 

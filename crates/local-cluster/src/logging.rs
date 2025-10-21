@@ -512,7 +512,7 @@ impl ClusterLogSystem {
                 tracing::Level::TRACE,
             ))
             .try_init()
-            .map_err(|e| anyhow::anyhow!("Failed to setup tracing subscriber: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to setup tracing subscriber: {e}"))?;
 
         Ok(())
     }

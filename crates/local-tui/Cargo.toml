@@ -35,7 +35,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+rusqlite.workspace = true
 uuid.workspace = true
 
 # Error handling

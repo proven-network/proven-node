@@ -12,8 +12,8 @@ use tracing::{error, info};
 #[allow(clippy::cognitive_complexity)]
 pub async fn check_hostname_resolution(hostname: &str) -> Result<(), Error> {
     // First try DNS resolution using Hickory resolver
-    let resolver = match Resolver::tokio_from_system_conf() {
-        Ok(resolver) => resolver,
+    let resolver = match Resolver::builder_tokio() {
+        Ok(builder) => builder.build(),
         Err(e) => {
             error!("Failed to create DNS resolver: {}", e);
             return Err(Error::Io(format!("Failed to create DNS resolver: {e}")));

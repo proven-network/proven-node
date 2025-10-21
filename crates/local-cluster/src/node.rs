@@ -150,7 +150,7 @@ impl ManagedNode {
                     .await;
                 });
             })
-            .map_err(|e| anyhow::anyhow!("Failed to spawn thread: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to spawn thread: {e}"))?;
 
         Ok(Self {
             info,
@@ -172,7 +172,7 @@ impl ManagedNode {
         self.command_sender
             .send(operation)
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to send command: {}", e))
+            .map_err(|e| anyhow::anyhow!("Failed to send command: {e}"))
     }
 
     /// Get the current status

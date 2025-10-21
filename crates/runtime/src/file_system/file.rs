@@ -456,6 +456,10 @@ where
     fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn DenoFile>> {
         Ok(self)
     }
+
+    fn maybe_path(&self) -> Option<&std::path::Path> {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -492,6 +496,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: Some(0o644),
+                    custom_flags: None,
                 },
             )
             .await
@@ -516,6 +521,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: None,
+                    custom_flags: None,
                 },
             )
             .await
@@ -539,6 +545,7 @@ mod tests {
                     append: true,
                     create_new: false,
                     mode: Some(0o644),
+                    custom_flags: None,
                 },
             )
             .await
@@ -559,6 +566,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: None,
+                    custom_flags: None,
                 },
             )
             .await
@@ -582,6 +590,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: Some(0o644),
+                    custom_flags: None,
                 },
             )
             .await
@@ -602,6 +611,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: None,
+                    custom_flags: None,
                 },
             )
             .await
@@ -648,6 +658,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: Some(0o444),
+                    custom_flags: None,
                 },
             )
             .await
@@ -670,6 +681,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: None,
+                    custom_flags: None,
                 },
             )
             .await
@@ -695,6 +707,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: Some(0o222),
+                    custom_flags: None,
                 },
             )
             .await
@@ -715,6 +728,7 @@ mod tests {
                     append: false,
                     create_new: false,
                     mode: None,
+                    custom_flags: None,
                 },
             )
             .await

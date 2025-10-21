@@ -672,7 +672,7 @@ where
             Err(rustyscript::Error::JsError(js_error)) => Ok(ExecutionResult::Error {
                 duration,
                 logs,
-                error: js_error,
+                error: *js_error,
             }),
             Err(err) => Err(Error::RuntimeError(err)),
         }

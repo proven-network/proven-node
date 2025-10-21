@@ -1,6 +1,5 @@
 //! Error types for store-engine
 
-use std::any::Any;
 use std::borrow::Cow;
 
 use deno_error::{JsErrorClass, PropertyValue};
@@ -58,7 +57,7 @@ impl JsErrorClass for Error {
         Box::new(std::iter::empty())
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn get_ref(&self) -> &(dyn std::error::Error + Send + Sync + 'static) {
         self
     }
 }
