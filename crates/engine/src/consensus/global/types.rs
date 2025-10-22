@@ -3,6 +3,7 @@
 use proven_storage::LogIndex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 
 use crate::foundation::models::stream::StreamPlacement;
@@ -86,6 +87,65 @@ pub enum GlobalRequest {
         /// Sequence number to delete
         sequence: LogIndex,
     },
+}
+
+impl fmt::Display for GlobalRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::CreateStream { stream_name, .. } => {
+                write!(f, "CreateStream({})", stream_name)
+            }
+            Self::AppendToGlobalStream {
+                stream_name,
+                messages,
+                ..
+            } => {
+                write!(
+                    f,
+                    "AppendToGlobalStream({}, {} messages)",
+                    stream_name,
+                    messages.len()
+                )
+            }
+            Self::DeleteStream { stream_name } => {
+                write!(f, "DeleteStream({})", stream_name)
+            }
+            Self::UpdateStreamConfig { stream_name, .. } => {
+                write!(f, "UpdateStreamConfig({})", stream_name)
+            }
+            Self::CreateGroup { info } => {
+                write!(f, "CreateGroup({})", info.id)
+            }
+            Self::DissolveGroup { id } => {
+                write!(f, "DissolveGroup({})", id)
+            }
+            Self::AddNodeToGroup { node_id, .. } => {
+                write!(f, "AddNodeToGroup({})", node_id)
+            }
+            Self::RemoveNodeFromGroup { node_id } => {
+                write!(f, "RemoveNodeFromGroup({})", node_id)
+            }
+            Self::ReassignStream { stream_name, .. } => {
+                write!(f, "ReassignStream({})", stream_name)
+            }
+            Self::TrimGlobalStream {
+                stream_name,
+                up_to_seq,
+            } => {
+                write!(f, "TrimGlobalStream({}, up_to: {})", stream_name, up_to_seq)
+            }
+            Self::DeleteFromGlobalStream {
+                stream_name,
+                sequence,
+            } => {
+                write!(
+                    f,
+                    "DeleteFromGlobalStream({}, seq: {})",
+                    stream_name, sequence
+                )
+            }
+        }
+    }
 }
 
 /// Global consensus response

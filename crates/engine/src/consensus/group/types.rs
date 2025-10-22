@@ -1,5 +1,6 @@
 //! Types for group consensus layer
 
+use std::fmt;
 use std::sync::Arc;
 
 use proven_storage::LogIndex;
@@ -14,6 +15,15 @@ pub enum GroupRequest {
     Stream(StreamOperation),
     /// Administrative operation
     Admin(AdminOperation),
+}
+
+impl fmt::Display for GroupRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Stream(op) => write!(f, "Stream({})", op),
+            Self::Admin(op) => write!(f, "Admin({})", op),
+        }
+    }
 }
 
 /// Stream operation within a group
@@ -44,6 +54,32 @@ pub enum StreamOperation {
     },
 }
 
+impl fmt::Display for StreamOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Append {
+                stream_name,
+                messages,
+                ..
+            } => {
+                write!(f, "Append({}, {} messages)", stream_name, messages.len())
+            }
+            Self::Trim {
+                stream_name,
+                up_to_seq,
+            } => {
+                write!(f, "Trim({}, up_to: {})", stream_name, up_to_seq)
+            }
+            Self::Delete {
+                stream_name,
+                sequence,
+            } => {
+                write!(f, "Delete({}, seq: {})", stream_name, sequence)
+            }
+        }
+    }
+}
+
 /// Administrative operations
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AdminOperation {
@@ -59,6 +95,20 @@ pub enum AdminOperation {
     },
     /// Compact storage
     Compact,
+}
+
+impl fmt::Display for AdminOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InitializeStream { stream_name } => {
+                write!(f, "InitializeStream({})", stream_name)
+            }
+            Self::RemoveStream { stream_name } => {
+                write!(f, "RemoveStream({})", stream_name)
+            }
+            Self::Compact => write!(f, "Compact"),
+        }
+    }
 }
 
 /// Group consensus response
