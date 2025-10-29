@@ -192,11 +192,11 @@ async-trait = "0.1.89"
 aws-config = { version = "1.8.8", default-features = false, features = ["behavior-version-latest", "credentials-process", "rt-tokio", "rustls"] }
 aws-lc-rs = { version = "1.14.1" }
 aws-lc-sys = { version = "0.32.3" }
-aws-sdk-ec2 = { version = "1.175.1", default-features = false }
+aws-sdk-ec2 = { version = "1.177.0", default-features = false }
 aws-sdk-kms = { version = "1.90.0", default-features = false }
-aws-sdk-route53resolver = { version = "1.92.0", default-features = false }
-aws-sdk-s3 = { version = "1.108.0", default-features = false, features = ["rt-tokio"] }
-aws-sdk-secretsmanager = { version = "1.90.0", default-features = false }
+aws-sdk-route53resolver = { version = "1.93.0", default-features = false }
+aws-sdk-s3 = { version = "1.109.0", default-features = false, features = ["rt-tokio"] }
+aws-sdk-secretsmanager = { version = "1.91.0", default-features = false }
 axum = { version = "0.8.6", features = ["ws"] }
 axum-extra = { version = "0.10.3", features = ["typed-header"] }
 axum-server = { version = "0.7.2", features = ["tls-rustls-no-provider"] }
@@ -332,7 +332,7 @@ fastrand = "2.3.0"
 fastwebsockets = { version = "0.10.0", features = ["upgrade", "unstable-split"] }
 fdlimit = "0.3.0"
 filetime = "0.2.26"
-flate2 = { version = "1.1.4", default-features = false }
+flate2 = { version = "1.1.5", default-features = false }
 flume = "0.11.0"
 fqdn = "0.4.6"
 fs3 = "0.5.0"
@@ -378,7 +378,7 @@ libffi-sys = "=3.3.3"
 libloading = "0.8.9"
 libsql = { version = "0.9.24", default-features = false, features = ["core", "stream"] }
 libsql-ffi = { version = "0.9.24", features = ["session"] }
-libsql-rusqlite = { version = "0.9.24", features = ["limits"] }
+libsql-rusqlite = { version = "0.9.24", features = ["limits", "backup"] }
 libsui = "0.10.0"
 libc = "0.2.177"
 libuv-sys-lite = "1.48.3"
@@ -438,7 +438,7 @@ prettyplease = "0.2.37"
 progenitor = "0.11.2"
 progenitor-client = "0.11.2"
 prometheus = { version = "0.14.0" }
-proptest = "1.8.0"
+proptest = "1.9.0"
 prost = "=0.13.5"
 prost-build = "=0.13.5"
 proven-applications = { path = "crates/applications" }
@@ -538,7 +538,7 @@ reqwest = { version = "0.12.24", default-features = false, features = [
 ] }
 reqwest-middleware = { version = "0.4.2", features = ["json"] }
 reqwest-retry = "0.7.0"
-retri = "0.1.0"
+retri = "0.1.1"
 revm = { version = "30.2.0", default-features = false, features = ["std", "serde", "optional_block_gas_limit", "optional_eip3607", "optional_no_base_fee"] }
 ripemd = "0.1.3"
 rlimit = "0.10.2"
@@ -547,11 +547,11 @@ rsa = { version = "0.9.8", default-features = false, features = ["std", "pem", "
 rtnetlink = "0.18.1"
 rusqlite = { version = "0.37.0", features = ["bundled", "chrono"] }
 rustc-hash = "2.1.1"
-rustls = { version = "0.23.33", default-features = false, features = ["aws-lc-rs", "logging", "std", "tls12"] }
+rustls = { version = "0.23.34", default-features = false, features = ["aws-lc-rs", "logging", "std", "tls12"] }
 rustls-pemfile = "2.2.0"
-rustls-pki-types = { version = "1.12.0", features = ["std"] }
+rustls-pki-types = { version = "1.13.0", features = ["std"] }
 rustls-tokio-stream = "=0.8.0"
-rustls-webpki = { version = "0.103.7", default-features = false, features = ["aws-lc-rs", "std"] }
+rustls-webpki = { version = "0.103.8", default-features = false, features = ["aws-lc-rs", "std"] }
 rustyline = "=13.0.0"
 rustyscript = { path = "vendor/rustyscript", features = ["fs", "web"]}
 saffron = "=0.1.0"
@@ -581,7 +581,7 @@ spki = "0.7.3"
 ssz_types = "=0.11.0"
 strip-ansi-escapes = "0.2.1"
 superstruct = "0.10.0"
-syn = { version = "2.0.107", features = ["full", "extra-traits"] }
+syn = { version = "2.0.108", features = ["full", "extra-traits"] }
 sys_traits = "0.1.18"
 systemctl = "0.5.0"
 tar = "0.4.44"
@@ -627,7 +627,7 @@ which = "8.0.0"
 win32job = "2.0.3"
 winapi = "=0.3.9"
 windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_Media", "Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_WindowsProgramming", "Wdk", "Wdk_System", "Wdk_System_SystemInformation", "Win32_Security", "Win32_System_Pipes", "Wdk_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Kernel"] }
-yoke = { version = "0.8.0", features = ["derive"] }
+yoke = { version = "0.8.1", features = ["derive"] }
 x25519-dalek = "2.0.0"
 x509-parser = { version = "0.18.0", features = ["ring", "verify"] }
 zduny-wasm-timer = "0.2.9"

@@ -102,7 +102,7 @@ impl GovernanceTopologyAdaptor {
             .map_err(Error::Helios)?;
 
         // Wait for sync before wrapping in Arc
-        client.wait_synced().await;
+        let _ = client.wait_synced().await;
 
         // Now wrap in Arc after initialization is complete
         let client = Arc::new(client);
